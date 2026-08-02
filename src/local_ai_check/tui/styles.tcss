@@ -212,3 +212,82 @@ DataTable > .datatable--header {
     margin: 1 0;
     border: round #1f2937;
 }
+
+/* ---------------------------------------------------------------------
+   Guided recommendation workflow.
+   Same sober palette as the rest of the app: no new accent colours, no
+   animation, and status is carried by a marker glyph as well as by colour.
+   --------------------------------------------------------------------- */
+.workflow-header {
+    background: #111827;
+    padding: 1 2;
+    border: round #1f2937;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.workflow-breadcrumb {
+    color: #9ca3af;
+    padding: 1 0 0 0;
+}
+
+.step-done    { color: #10b981; }
+.step-running { color: #3a7bd5; text-style: bold; }
+.step-pending { color: #6b7280; }
+.step-failed  { color: #ef4444; text-style: bold; }
+
+.recommendation-card {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.reason-line {
+    color: #10b981;
+    padding: 0 0 0 1;
+}
+
+.warning-line {
+    color: #f59e0b;
+    padding: 0 0 0 1;
+}
+
+.score-total {
+    color: #3a7bd5;
+    padding: 0 0 1 0;
+}
+
+.score-row {
+    color: #9ca3af;
+}
+
+#results-actions,
+#discovery-actions {
+    height: auto;
+    padding: 1 0;
+}
+
+#results-actions Button,
+#discovery-actions Button {
+    margin: 0 1 0 0;
+}
+
+#wizard-errors,
+#results-extra,
+#discovery-messages,
+#hardware-summary {
+    height: auto;
+}
+
+RadioSet {
+    background: #131922;
+    border: none;
+    height: auto;
+}
+
+Checkbox {
+    background: #131922;
+    border: none;
+}

@@ -1,0 +1,388 @@
+from __future__ import annotations
+
+import json
+
+from local_ai_check.discovery.models import SearchQuery
+from local_ai_check.domain.estimation import CompatibilityStatus
+from local_ai_check.exceptions import (
+    HuggingFaceUnavailableError,
+    ModelNotFoundError,
+)
+from local_ai_check.recommendation.report import (
+    REPORT_SCHEMA_VERSION,
+    report_to_dict,
+    report_to_json,
+    report_to_markdown,
+)
+from local_ai_check.workflow import orchestrator, policies
+from local_ai_check.workflow.container import ServiceContainer
+from local_ai_check.workflow.models import StepStatus, WorkflowStep
+from local_ai_check.workflow.progress import HARDWARE_STEPS
+from tests._workflow_fixtures import (
+    GIB,
+    FakeHfClient,
+    FakeSearchClient,
+    answers,
+    candidate,
+    gguf_analysis,
+    hardware,
+    size_driven_estimator,
+    transformers_analysis,
+)
+
+
+def _container(
+    search: FakeSearchClient,
+    analyses: dict[str, object] | None = None,
+    vram_budget: int = 24 * GIB,
+    inspect_error: Exception | None = None,
+    profile: object | None = None,
+) -> ServiceContainer:
+    estimator = size_driven_estimator(vram_budget=vram_budget)
+    store = analyses or {}
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        if inspect_error is not None and repo_id == "org/broken":
+            raise inspect_error
+        return store.get(repo_id, transformers_analysis(repo_id=repo_id))
+
+    def estimate_memory(**kwargs: object) -> object:
+        return estimator(kwargs["analysis"], kwargs["inference_cfg"])
+
+    def detect(**kwargs: object) -> object:
+        on_step = kwargs.get("on_step")
+        if callable(on_step):
+            for key, _ in HARDWARE_STEPS:
+                on_step(key)
+        return profile if profile is not None else hardware()
+
+    return ServiceContainer(
+        hf_client=FakeHfClient(),
+        search_client=search,
+        detect_hardware=detect,  # type: ignore[arg-type]
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=estimate_memory,  # type: ignore[arg-type]
+        range_client_factory=None,
+    )
+
+
+def _search_with(*repo_ids: str) -> FakeSearchClient:
+    return FakeSearchClient(
+        default=[
+            candidate(repo_id=repo_id, tags=["text-generation", "code"])
+            for repo_id in repo_ids
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hardware step
+# ---------------------------------------------------------------------------
+def test_hardware_scan_reports_every_step_as_done() -> None:
+    snapshots = []
+    services = _container(FakeSearchClient())
+    profile = orchestrator.scan_hardware(services, on_progress=snapshots.append)
+
+    assert profile.cpu.model
+    final = snapshots[-1]
+    assert all(step.status is StepStatus.DONE for step in final.steps)
+    assert len(final.steps) == len(HARDWARE_STEPS)
+
+
+def test_hardware_scan_without_a_gpu_still_succeeds() -> None:
+    """A missing NVIDIA GPU is a warning, never a fatal error."""
+    services = _container(FakeSearchClient(), profile=hardware(vram_gib=None))
+    profile = orchestrator.scan_hardware(services)
+    assert profile.gpus == []
+    assert profile.warnings
+
+
+# ---------------------------------------------------------------------------
+# Happy path
+# ---------------------------------------------------------------------------
+def test_full_successful_run() -> None:
+    services = _container(_search_with("org/Coder-7B", "org/Coder-13B"))
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert state.recommendations
+    assert state.primary is not None
+    assert state.requirements is not None
+    assert state.search_queries
+    assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
+
+
+def test_run_without_a_gpu_still_produces_recommendations() -> None:
+    profile = hardware(vram_gib=None)
+    services = _container(_search_with("org/Coder-7B"), vram_budget=32 * GIB)
+    state = orchestrator.run_workflow(answers(), profile, services)
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert state.warnings  # the "no NVIDIA GPU" warning is carried through
+
+
+def test_gguf_repositories_are_evaluated_through_the_ladder() -> None:
+    services = _container(
+        _search_with("org/Coder-GGUF"),
+        analyses={"org/Coder-GGUF": gguf_analysis(repo_id="org/Coder-GGUF")},
+    )
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    assert state.recommendations
+    config = state.recommendations[0].evaluated.selected_configuration
+    assert config is not None
+    assert config.quantization
+
+
+# ---------------------------------------------------------------------------
+# Degradation
+# ---------------------------------------------------------------------------
+def test_one_broken_candidate_does_not_end_the_run() -> None:
+    services = _container(
+        _search_with("org/broken", "org/Coder-7B"),
+        inspect_error=ModelNotFoundError("gone"),
+    )
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert state.recommendations
+    assert any(item.failed for item in state.evaluated_candidates)
+    assert "org/broken" not in {r.repo_id for r in state.recommendations}
+
+
+def test_total_hugging_face_failure_is_recoverable_not_fatal() -> None:
+    search = FakeSearchClient(raises=HuggingFaceUnavailableError("hub down"))
+    state = orchestrator.run_workflow(answers(), hardware(), _container(search))
+
+    assert state.current_step is WorkflowStep.FAILED
+    assert state.errors
+    assert "hub down" in state.errors[0]
+
+
+def test_a_single_failing_query_does_not_abort_the_search() -> None:
+    search = FakeSearchClient(
+        default=[candidate(repo_id="org/Coder-7B", tags=["text-generation", "code"])],
+        raises=HuggingFaceUnavailableError("one query failed"),
+        raise_on={"coding:coder instruct"},
+    )
+    state = orchestrator.run_workflow(answers(), hardware(), _container(search))
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert any("failed" in w for w in state.warnings)
+
+
+def test_no_candidates_explains_why() -> None:
+    state = orchestrator.run_workflow(
+        answers(), hardware(), _container(FakeSearchClient(default=[]))
+    )
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert state.recommendations == []
+    assert state.no_results_reason
+
+
+def test_nothing_compatible_explains_what_was_missing() -> None:
+    services = _container(_search_with("org/Giant-70B"), vram_budget=1 * GIB)
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    assert state.recommendations == []
+    assert any("No fully compatible" in line for line in state.no_results_reason)
+
+
+# ---------------------------------------------------------------------------
+# Cancellation, limits and caching
+# ---------------------------------------------------------------------------
+def test_cancellation_stops_the_run() -> None:
+    services = _container(_search_with("org/a", "org/b"))
+    state = orchestrator.run_workflow(
+        answers(), hardware(), services, is_cancelled=lambda: True
+    )
+    assert state.current_step is WorkflowStep.FAILED
+    assert state.errors == ["Search cancelled."]
+
+
+def test_deep_inspection_is_capped() -> None:
+    inspected: list[str] = []
+    many = [f"org/model-{index}" for index in range(60)]
+    search = FakeSearchClient(
+        default=[
+            candidate(repo_id=repo, tags=["text-generation", "code"]) for repo in many
+        ]
+    )
+    services = _container(search)
+
+    original = services.inspect_model
+
+    def counting(repo_id: str, client: object = None) -> object:
+        inspected.append(repo_id)
+        return original(repo_id, client)
+
+    services = ServiceContainer(
+        hf_client=services.hf_client,
+        search_client=services.search_client,
+        detect_hardware=services.detect_hardware,
+        inspect_model=counting,  # type: ignore[arg-type]
+        estimate_memory=services.estimate_memory,
+    )
+
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    assert len(set(inspected)) <= policies.MAX_DEEP_INSPECTION
+    assert len(state.candidates) <= policies.MAX_UNIQUE_CANDIDATES
+
+
+def test_the_same_repository_is_inspected_once_per_run() -> None:
+    """The cache is what stops the quantization ladder re-fetching metadata."""
+    calls: list[str] = []
+    search = FakeSearchClient(
+        default=[candidate(repo_id="org/Coder-GGUF", tags=["text-generation", "code"])]
+    )
+    analysis = gguf_analysis(repo_id="org/Coder-GGUF")
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        calls.append(repo_id)
+        return analysis
+
+    services = ServiceContainer(
+        hf_client=FakeHfClient(),
+        search_client=search,
+        detect_hardware=lambda **_: hardware(),  # type: ignore[arg-type]
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=lambda **kwargs: size_driven_estimator(24 * GIB)(  # type: ignore[arg-type]
+            kwargs["analysis"], kwargs["inference_cfg"]
+        ),
+    )
+
+    orchestrator.run_workflow(answers(), hardware(), services)
+    # The ladder tries several quantizations, but inspection happens once.
+    assert calls.count("org/Coder-GGUF") == 1
+
+
+def test_duplicate_search_results_are_inspected_once() -> None:
+    repeated = [
+        candidate(repo_id="org/same", tags=["text-generation", "code"], queries=[f"q{i}"])
+        for i in range(5)
+    ]
+    search = FakeSearchClient(default=repeated)
+    state = orchestrator.run_workflow(answers(), hardware(), _container(search))
+    assert len(state.candidates) == 1
+
+
+def test_every_query_contributes_to_the_candidate_pool() -> None:
+    """The format and language queries must not be starved by the first ones.
+
+    Concatenating results would let the earliest queries fill the whole budget,
+    which is exactly how GGUF builds went missing from a real run.
+    """
+    plentiful = [
+        candidate(repo_id=f"org/generic-{index}", tags=["text-generation", "code"])
+        for index in range(policies.MAX_UNIQUE_CANDIDATES * 2)
+    ]
+    search = FakeSearchClient(
+        default=plentiful,
+        results={
+            "coding:gguf": [
+                candidate(repo_id="org/Coder-GGUF", tags=["text-generation", "gguf"])
+            ],
+            "coding:lang-es": [
+                candidate(repo_id="org/Coder-ES", tags=["text-generation", "code"])
+            ],
+        },
+    )
+    state = orchestrator.run_workflow(answers(), hardware(), _container(search))
+
+    found = {c.repo_id for c in state.candidates}
+    assert "org/Coder-GGUF" in found
+    assert "org/Coder-ES" in found
+    assert len(state.candidates) <= policies.MAX_UNIQUE_CANDIDATES
+
+
+def test_all_queries_are_issued_even_when_early_ones_are_plentiful() -> None:
+    search = FakeSearchClient(
+        default=[
+            candidate(repo_id=f"org/m-{index}", tags=["text-generation", "code"])
+            for index in range(policies.SEARCH_RESULTS_PER_QUERY)
+        ]
+    )
+    orchestrator.run_workflow(answers(), hardware(), _container(search))
+    labels = {query.label for query in search.seen}
+    assert "coding:gguf" in labels
+    assert "coding:trending" in labels
+
+
+def test_restart_produces_an_independent_run() -> None:
+    services = _container(_search_with("org/Coder-7B"))
+    first = orchestrator.run_workflow(answers(), hardware(), services)
+    second = orchestrator.run_workflow(answers(), hardware(), services)
+    assert first.recommendations[0].repo_id == second.recommendations[0].repo_id
+    assert first is not second
+
+
+def test_progress_is_reported_for_every_discovery_step() -> None:
+    snapshots = []
+    services = _container(_search_with("org/Coder-7B"))
+    orchestrator.run_workflow(
+        answers(), hardware(), services, on_progress=snapshots.append
+    )
+    assert snapshots
+    keys = {step.key for step in snapshots[-1].steps}
+    assert {"queries", "search", "filter", "inspect", "rank"} <= keys
+
+
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
+def test_json_export_is_stable_and_complete() -> None:
+    services = _container(_search_with("org/Coder-7B"))
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+
+    payload = json.loads(report_to_json(state))
+    assert payload["schema_version"] == REPORT_SCHEMA_VERSION
+    for key in (
+        "timestamp",
+        "hardware",
+        "user_requirements",
+        "search_strategy",
+        "evaluated_candidates",
+        "recommendations",
+        "warnings",
+        "assumptions",
+    ):
+        assert key in payload
+    assert payload["recommendations"][0]["reasons"]
+    assert payload["recommendations"][0]["score_breakdown"]["weights"]
+
+
+def test_export_contains_no_credentials() -> None:
+    services = _container(_search_with("org/Coder-7B"))
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    text = report_to_json(state).lower()
+    for forbidden in ("hf_token", "authorization", "bearer", "api_key"):
+        assert forbidden not in text
+
+
+def test_markdown_export_renders_the_primary_recommendation() -> None:
+    services = _container(_search_with("org/Coder-7B"))
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    markdown = report_to_markdown(state)
+    assert "# local-ai-check recommendation report" in markdown
+    assert "Best match" in markdown
+    assert "not legal advice" in markdown
+
+
+def test_report_of_an_empty_run_still_serialises() -> None:
+    state = orchestrator.run_workflow(
+        answers(), hardware(), _container(FakeSearchClient(default=[]))
+    )
+    payload = report_to_dict(state)
+    assert payload["recommendations"] == []
+    assert payload["no_results_reason"]
+    assert "No recommendations" in report_to_markdown(state) or state.no_results_reason
+
+
+def test_search_queries_are_recorded_for_the_report() -> None:
+    search = _search_with("org/Coder-7B")
+    state = orchestrator.run_workflow(answers(), hardware(), _container(search))
+    assert state.search_queries
+    assert all(isinstance(query, SearchQuery) for query in search.seen)
+
+
+def test_insufficient_candidates_never_reach_the_recommendations() -> None:
+    services = _container(_search_with("org/Big-70B"), vram_budget=2 * GIB)
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+    for rec in state.recommendations:
+        assert rec.status is not CompatibilityStatus.INSUFFICIENT

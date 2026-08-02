@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import typer
 
@@ -18,13 +19,31 @@ _DEFAULT_RESERVE_GIB = DEVICE_RESERVE_DEFAULT_BYTES / (1024**3)
 
 app = typer.Typer(
     add_completion=False,
-    no_args_is_help=True,
+    # No `no_args_is_help`: the callback decides between launching the UI and
+    # printing help, depending on whether there is a terminal to draw on.
+    invoke_without_command=True,
     help="Analyze local hardware and inspect Hugging Face model repositories.",
 )
 
 
+def _is_interactive_terminal() -> bool:
+    """True only when a full-screen UI can actually be drawn.
+
+    Bare `local-ai-check` opens the guided UI for interactive users, but a
+    piped or redirected invocation (`local-ai-check > out.txt`, a CI step, a
+    script) must keep printing help instead of trying to render a full-screen
+    app into something that is not a terminal.
+    """
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        # Closed or replaced streams: treat as non-interactive.
+        return False
+
+
 @app.callback()
 def _main(
+    ctx: typer.Context,
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
     logging.basicConfig(
@@ -35,6 +54,23 @@ def _main(
         # huggingface_hub emits noisy rate-limit / token hints on every unauthenticated
         # call; hide them unless the user explicitly asks for verbose output.
         logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if _is_interactive_terminal():
+        _launch_ui()
+        raise typer.Exit(code=0)
+
+    typer.echo(ctx.get_help())
+    raise typer.Exit(code=0)
+
+
+def _launch_ui() -> None:
+    # Local import: Textual is heavy and only needed when the UI is invoked.
+    from local_ai_check.tui.app import run as run_ui
+
+    run_ui()
 
 
 @app.command("scan", help="Detect and display local hardware resources.")
@@ -58,10 +94,7 @@ def doctor_command() -> None:
 
 @app.command("ui", help="Launch the interactive terminal UI (Textual).")
 def ui_command() -> None:
-    # Local import: Textual is heavy and only needed when the UI is actually invoked.
-    from local_ai_check.tui.app import run as run_ui
-
-    run_ui()
+    _launch_ui()
 
 
 @app.command("estimate", help="Estimate the memory footprint of a model for inference.")

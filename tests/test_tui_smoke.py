@@ -4,8 +4,9 @@ import asyncio
 
 from local_ai_check.domain.estimation import CompatibilityStatus
 from local_ai_check.tui.app import LocalAiCheckApp
-from local_ai_check.tui.screens.home import HomeScreen
+from local_ai_check.tui.screens.advanced_tools import AdvancedToolsScreen
 from local_ai_check.tui.screens.scan import ScanScreen
+from local_ai_check.tui.screens.welcome import WelcomeScreen
 from local_ai_check.tui.widgets.assessment_badge import AssessmentBadge
 from local_ai_check.tui.widgets.cli_equivalent import CliEquivalent
 from local_ai_check.tui.widgets.summary_card import SummaryCard
@@ -15,11 +16,13 @@ def _run(coro):  # type: ignore[no-untyped-def]
     return asyncio.run(coro)
 
 
-def test_app_starts_at_home_screen() -> None:
+def test_app_starts_at_welcome_screen() -> None:
+    """The guided flow is the entry point; the tool menu moved to Advanced tools."""
+
     async def scenario() -> None:
         app = LocalAiCheckApp()
         async with app.run_test() as pilot:
-            assert isinstance(pilot.app.screen, HomeScreen)
+            assert isinstance(pilot.app.screen, WelcomeScreen)
 
     _run(scenario())
 
@@ -31,6 +34,48 @@ def test_navigation_to_scan_screen() -> None:
             await pilot.press("s")
             await pilot.pause()
             assert isinstance(pilot.app.screen, ScanScreen)
+
+    _run(scenario())
+
+
+def test_advanced_tools_reaches_every_original_screen() -> None:
+    """Every pre-existing screen must remain registered after the restructure."""
+
+    async def scenario() -> None:
+        app = LocalAiCheckApp()
+        async with app.run_test() as pilot:
+            app.push_screen("advanced")
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, AdvancedToolsScreen)
+
+            for name, expected in (
+                ("scan", "ScanScreen"),
+                ("inspect", "InspectScreen"),
+                ("estimate", "EstimateScreen"),
+                ("doctor", "DoctorScreen"),
+            ):
+                app.push_screen(name)
+                await pilot.pause()
+                assert type(pilot.app.screen).__name__ == expected
+                app.pop_screen()
+                await pilot.pause()
+
+    _run(scenario())
+
+
+def test_advanced_menu_lists_every_original_tool() -> None:
+    async def scenario() -> None:
+        app = LocalAiCheckApp()
+        async with app.run_test() as pilot:
+            app.push_screen("advanced")
+            await pilot.pause()
+            ids = {item.id for item in pilot.app.screen.query("ListItem")}
+            assert {
+                "menu-scan",
+                "menu-inspect",
+                "menu-estimate",
+                "menu-doctor",
+            } <= ids
 
     _run(scenario())
 
@@ -64,13 +109,12 @@ def test_cli_equivalent_widget_stores_command() -> None:
     assert widget._command == "local-ai-check scan"
 
 
-def test_home_shows_credits_widget() -> None:
+def test_welcome_shows_credits_widget() -> None:
     from local_ai_check.tui.widgets.credits import CreditsPanel
 
     async def scenario() -> None:
         app = LocalAiCheckApp()
         async with app.run_test() as pilot:
-            # The Home screen must include the CreditsPanel at the bottom of the scroll.
             credits = pilot.app.screen.query(CreditsPanel)
             assert len(credits) == 1
 
