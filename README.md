@@ -1,8 +1,14 @@
 # local-ai-check
 
-A local CLI that inspects your machine and tells you what Hugging Face models it could plausibly run, with an explainable memory estimate for each configuration.
+`local-ai-check` is an explainable local-AI capacity analyzer for inspecting Hugging Face models and estimating their hardware requirements. It reads your machine, reads a model's public metadata, and tells you whether the two fit — showing its work for every number.
 
-Built as the first phases of a TFG (end-of-degree project) whose long-term goal is designing a local AI infrastructure for a company. The tool intentionally stops short of downloading weights or running inference; every number it produces is derived from public metadata and documented heuristics.
+The project is also being developed as part of an end-of-degree project (TFG) focused on corporate local-AI infrastructure. The tool intentionally stops short of downloading weights or running inference; every number it produces is derived from public metadata and documented heuristics.
+
+## Interactive interface
+
+![local-ai-check dashboard](docs/assets/tui-home.png)
+
+![Memory estimation view](docs/assets/tui-estimate.png)
 
 ## Requirements
 
@@ -16,15 +22,43 @@ Optional:
 
 ## Install
 
+### Use it from the repository
+
 ```bash
+git clone https://github.com/Ton-Llop/AI-checker.git
+cd AI-checker
 uv sync
+uv run local-ai-check ui
 ```
 
-Creates a virtual environment and installs runtime + development dependencies from `pyproject.toml`.
+`uv sync` creates a virtual environment and installs the runtime dependencies plus the `dev` dependency group declared under `[dependency-groups]` in `pyproject.toml` — uv installs default groups automatically, so contributors need no extra flag. Pass `--no-dev` if you only want the runtime dependencies.
+
+### Development
+
+```bash
+uv sync
+uv run ruff check .
+uv run mypy src
+uv run pytest
+uv build
+```
 
 ## Commands
 
 Five subcommands: `scan`, `inspect`, `estimate`, `doctor` (all classic CLI) and `ui` (interactive TUI). All read-only.
+
+```bash
+uv run local-ai-check ui                          # interactive terminal UI
+uv run local-ai-check scan                        # local hardware
+uv run local-ai-check doctor                      # environment health
+uv run local-ai-check inspect <repo-id-or-url>    # analyze a model repository
+uv run local-ai-check estimate <repo-id-or-url>   # memory footprint + compatibility
+```
+
+The two front-ends share the same services and produce the same numbers:
+
+- **CLI** — for automation, scripting and reproducible output. `--json` emits a stable schema you can pipe into other tools.
+- **TUI** — a guided, visual flow for exploring models interactively. Every action shows the equivalent CLI command so you can lift it into a script.
 
 ### `scan` — local hardware
 
@@ -130,7 +164,7 @@ GGUF repositories typically ship only the quantized weights — no `config.json`
    2. `general.source.huggingface.repository` read from the GGUF header itself → HIGH confidence.
    3. `https://huggingface.co/...` URL found in a model-card field (`source`, `homepage`, …) → MEDIUM confidence.
    4. Nothing → UNRESOLVED. The name of the repo (`X-GGUF` → `X`) is **never** used as an answer — only surfaced as evidence.
-2. **GGUF header read via HTTP Range.** No full download: initial 256 KiB range, doubling up to 8 MiB. If the server ignores `Range` the buffer is truncated at the limit and a warning is raised. Timeouts, 4xx/5xx, malformed headers all degrade cleanly.
+2. **GGUF header read via HTTP Range.** No full download: initial 256 KiB range, doubling up to 8 MiB. The response is *streamed* and iteration stops the moment the requested number of bytes has been read, so a server that ignores `Range` and answers `200 OK` with the whole file still costs only the prefix — the rest of the body is never pulled off the wire. That case is flagged with a warning and the reader stops growing the range. Timeouts, 4xx/5xx, `416` and malformed headers all degrade cleanly.
 3. **Config merge.** GGUF header wins for fields it declares (it is the artifact that will run). Base config fills the rest. Conflicts (`context_length` mismatch, for instance) are recorded as warnings and shown in the "Configuration source" row.
 
 ### Precedence policy
@@ -154,8 +188,6 @@ uv run local-ai-check estimate <repo> --no-resolve-base-model
 Falls back to the previous behaviour: GGUF weights only, KV cache reported as unknown.
 
 ## How the estimator works
-
-## Estimator internals
 
 The estimator composes four independent, per-source-documented estimates:
 
@@ -219,12 +251,19 @@ Boundaries kept clean:
 ## Testing
 
 ```bash
-uv run pytest -q
+uv run pytest
 uv run ruff check .
 uv run mypy src
 ```
 
-Tests use fake HTTP clients, fake NVML providers and programmatically-built GGUF header fixtures; the Hugging Face API and NVIDIA driver are never touched. 131 tests as of this iteration.
+Tests use fake HTTP clients (`httpx.MockTransport`), fake NVML providers and programmatically-built GGUF header fixtures; the Hugging Face API and NVIDIA driver are never touched, and the Textual UI is driven headless through `App.run_test()`. No GPU, no network and no TTY required — which is also what lets the same suite run unchanged in CI.
+
+Packaging is verified separately, since a dropped non-Python resource (the Textual stylesheet) would not show up in the test suite:
+
+```bash
+uv build
+uv run python scripts/check_dist.py
+```
 
 ## Limitations (deliberate)
 
@@ -236,7 +275,7 @@ Tests use fake HTTP clients, fake NVML providers and programmatically-built GGUF
 - Runtime overhead and device reserve are heuristics — centralised in `estimator/policies.py` and explicitly marked `ASSUMED`.
 - **Per-layer offloading is not modelled.** `offloading_required` means "would need to spill to RAM," not "load N layers on GPU."
 - **No estimate substitutes a real benchmark.** Use `estimate` to filter candidates, not to accept or reject models blindly.
-- **GGUF header reads are HTTP-Range based.** Only the first ≤ 8 MiB of the chosen variant is fetched; if the server ignores `Range`, that first 8 MiB is what we get and we stop.
+- **GGUF header reads are HTTP-Range based.** Only the first ≤ 8 MiB of the chosen variant is fetched. Because the response is read as a stream and abandoned once the budget is met, a server that ignores `Range` cannot make the tool download a multi-gigabyte file — but it does mean that if the header is not inside that prefix, enrichment gives up rather than reading further.
 - **Gated base models** require `HF_TOKEN`; without it, enrichment degrades to GGUF-only.
 - The TUI runs on Windows, Linux and WSL, but glyph rendering (borders, shading, colours) depends on the terminal — Windows Terminal / WezTerm / iTerm2 give the best result.
 - **Runtime recommendations are generated, not executed.** They assume a standard install of the runtime and a downloaded copy of the model. The layer-per-GPU split for llama.cpp assumes uniform layer sizes — a documented approximation.
@@ -248,4 +287,4 @@ A `ModelRecommender` that flips the direction: given a task (`text-generation`, 
 
 ## License
 
-MIT.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -112,8 +113,8 @@ def fetch_gguf_header(url: str, http_client: HttpRangeClient) -> HeaderFetchResu
                     "Truncated buffer is too small and the server ignores Range; giving up."
                 )
                 return HeaderFetchResult(
-                header=None, bytes_downloaded=last_downloaded, warnings=warnings
-            )
+                    header=None, bytes_downloaded=last_downloaded, warnings=warnings
+                )
             requested *= RANGE_GROWTH_FACTOR
             continue
         except GgufHeaderInvalidError as exc:
@@ -137,37 +138,110 @@ def fetch_gguf_header(url: str, http_client: HttpRangeClient) -> HeaderFetchResu
     return HeaderFetchResult(header=None, bytes_downloaded=last_downloaded, warnings=warnings)
 
 
-class HttpxRangeClient:
-    """Production Range client using ``httpx`` (already a huggingface_hub dependency).
+_CONTENT_RANGE_RE = re.compile(r"^\s*bytes\s+(\d+)-(\d+)/(?:\d+|\*)\s*$")
 
-    Follows redirects, respects the requested Range, forwards an optional bearer token
-    and never buffers more than what was requested.
+
+def _range_was_honored(response: httpx.Response, start: int) -> bool:
+    """Decide whether the server actually served the range we asked for.
+
+    A ``206`` is the unambiguous signal. A ``200`` means the server ignored the
+    ``Range`` header and started streaming the whole file — unless it also sent
+    a well-formed ``Content-Range`` that begins where we asked, which some
+    proxies do. Anything else is treated as *not* honored, which is the safe
+    direction: the caller then stops growing the range instead of hammering a
+    server that would only ever resend the file from byte zero.
+    """
+    content_range = response.headers.get("Content-Range", "")
+    match = _CONTENT_RANGE_RE.match(content_range)
+    if match is not None and int(match.group(1)) == start:
+        return True
+    return response.status_code == 206 and not content_range
+
+
+def _read_capped(response: httpx.Response, limit: int) -> bytes:
+    """Consume at most ``limit`` bytes from an open streaming response.
+
+    This is the whole point of the streaming client: iteration stops the moment
+    the budget is met, so a server that ignores ``Range`` and replies with a
+    multi-gigabyte GGUF never gets to send more than the header we wanted.
+    """
+    if limit <= 0:
+        return b""
+    buffer = bytearray()
+    for chunk in response.iter_bytes():
+        if not chunk:
+            continue
+        remaining = limit - len(buffer)
+        if remaining <= 0:
+            break
+        buffer.extend(chunk[:remaining])
+        if len(buffer) >= limit:
+            break
+    return bytes(buffer)
+
+
+class HttpxRangeClient:
+    """Production Range client using ``httpx``.
+
+    Follows redirects, forwards an optional bearer token and streams the
+    response body so that no more than the requested number of bytes is ever
+    buffered — even when the server ignores ``Range`` and answers ``200 OK``
+    with the complete file.
     """
 
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(
+        self,
+        token: str | None = None,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self._token = token
-        self._client = httpx.Client(follow_redirects=True)
+        # ``transport`` exists so tests can inject an httpx.MockTransport
+        # without reaching the network; production callers leave it as None.
+        self._client = httpx.Client(follow_redirects=True, transport=transport)
 
     def fetch_range(
         self, url: str, start: int, end: int, timeout: float
     ) -> RangeResponse:
+        requested_size = end - start + 1
         headers = {"Range": f"bytes={start}-{end}"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+
         try:
-            response = self._client.get(url, headers=headers, timeout=timeout)
+            with self._client.stream(
+                "GET", url, headers=headers, timeout=timeout
+            ) as response:
+                if response.status_code == 416:
+                    # Range not satisfiable. The caller degrades on the status
+                    # alone, so there is nothing worth reading from the body.
+                    return RangeResponse(
+                        body=b"", honored_range=False, status_code=416
+                    )
+                if response.status_code >= 400:
+                    raise OSError(
+                        f"HTTP {response.status_code} while fetching range from {url}"
+                    )
+                body = _read_capped(response, requested_size)
+                honored = _range_was_honored(response, start)
+                status_code = response.status_code
         except httpx.TimeoutException as exc:
             raise TimeoutError(str(exc)) from exc
         except httpx.HTTPError as exc:
             raise OSError(str(exc)) from exc
 
-        honored = response.status_code == 206 or bool(
-            response.headers.get("Content-Range")
-        )
+        if not honored:
+            logger.warning(
+                "Server ignored the Range header for %s (HTTP %s); "
+                "stopped after %d of the %d requested bytes.",
+                url,
+                status_code,
+                len(body),
+                requested_size,
+            )
         return RangeResponse(
-            body=response.content,
+            body=body,
             honored_range=honored,
-            status_code=response.status_code,
+            status_code=status_code,
         )
 
     def close(self) -> None:

@@ -373,6 +373,7 @@ name = "local-ai-check"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "nvidia-ml-py" },
     { name = "psutil" },
@@ -382,7 +383,7 @@ dependencies = [
     { name = "typer" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
@@ -393,20 +394,24 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
     { name = "huggingface-hub", specifier = ">=0.24" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "nvidia-ml-py", specifier = ">=12.560.30" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "rich", specifier = ">=13.7" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "textual", specifier = ">=0.85" },
     { name = "typer", specifier = ">=0.12" },
-    { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=6.0" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8.2" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "ruff", specifier = ">=0.5" },
+    { name = "types-psutil", specifier = ">=6.0" },
+]
 
 [[package]]
 name = "markdown-it-py"

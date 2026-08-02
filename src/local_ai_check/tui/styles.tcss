@@ -56,6 +56,12 @@ Footer > .footer--key {
     padding: 0 0 1 0;
 }
 
+/* Horizontal defaults to height: 1fr, which inside a height: auto card makes
+   the card swallow the whole screen and push the panes below it out of view. */
+.card > Horizontal {
+    height: auto;
+}
+
 .menu {
     background: #131922;
     border: round #1f2937;

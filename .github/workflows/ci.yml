@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      # --locked fails the build if uv.lock is out of date with pyproject.toml,
+      # so a forgotten `uv lock` cannot slip through review.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type-check
+        run: uv run mypy src
+
+      # No GPU, no NVML, no Hugging Face account and no TTY on the runners: the
+      # suite fakes NVML, HfApi and the HTTP client, and Textual is driven
+      # headless through App.run_test().
+      - name: Test
+        run: uv run pytest
+
+      - name: Build wheel and source distribution
+        run: uv build
+
+      # The TUI is unusable without its stylesheet, and a non-Python file is
+      # exactly the kind of thing a packaging change silently drops. Verify the
+      # artifacts rather than trusting that it works from the source tree.
+      - name: Verify packaged artifacts
+        run: uv run python scripts/check_dist.py
+
+  # Installing the wheel into a clean environment proves the entry point and the
+  # bundled Textual resources work outside the repository checkout.
+  smoke-install:
+    name: Installed-wheel smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build
+        run: |
+          uv sync --locked
+          uv build
+
+      - name: Install the wheel into a throwaway environment
+        run: |
+          uv venv /tmp/smoke
+          VIRTUAL_ENV=/tmp/smoke uv pip install dist/*.whl
+
+      - name: Entry point works from the installed package
+        run: |
+          /tmp/smoke/bin/local-ai-check --help
+          /tmp/smoke/bin/local-ai-check scan
+          /tmp/smoke/bin/local-ai-check doctor
+          /tmp/smoke/bin/local-ai-check estimate --help
+
+      - name: Textual stylesheet is importable from the installed package
+        run: |
+          /tmp/smoke/bin/python -c "
+          from pathlib import Path
+          import local_ai_check.tui.app as app
+          css = Path(app.LocalAiCheckApp.CSS_PATH)
+          assert css.is_file(), f'missing stylesheet: {css}'
+          assert css.stat().st_size > 0, 'stylesheet is empty'
+          print(f'OK: {css} ({css.stat().st_size} bytes)')
+          "
