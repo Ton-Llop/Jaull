@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from local_ai_check.metadata.range_reader import (
+from jaull.metadata.range_reader import (
     RangeResponse,
     fetch_gguf_header,
 )

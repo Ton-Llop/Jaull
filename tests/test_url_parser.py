@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.exceptions import InvalidModelReferenceError
-from local_ai_check.huggingface.url_parser import normalize_repo_id
+from jaull.exceptions import InvalidModelReferenceError
+from jaull.huggingface.url_parser import normalize_repo_id
 
 
 @pytest.mark.parametrize(

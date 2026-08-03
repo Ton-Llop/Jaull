@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.discovery.models import EvaluatedCandidate
-from local_ai_check.domain.estimation import (
+from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
-from local_ai_check.domain.inference import InferenceConfiguration
-from local_ai_check.recommendation import explanations, policies, ranker, scoring
-from local_ai_check.recommendation.service import recommend
-from local_ai_check.workflow import policies as workflow_policies
-from local_ai_check.workflow.models import RecommendationPriority, UseCase
-from local_ai_check.workflow.requirements import build_requirements
+from jaull.domain.inference import InferenceConfiguration
+from jaull.recommendation import explanations, policies, ranker, scoring
+from jaull.recommendation.capability import CapabilitySignal
+from jaull.recommendation.service import recommend
+from jaull.workflow import policies as workflow_policies
+from jaull.workflow.models import RecommendationPriority, UseCase
+from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     answers,
@@ -84,8 +85,26 @@ def test_priority_changes_the_weights() -> None:
     balanced = ranker.weights_for(RecommendationPriority.BALANCED)
     memory = ranker.weights_for(RecommendationPriority.MEMORY)
     quality = ranker.weights_for(RecommendationPriority.QUALITY)
-    assert memory["hardware_fit"] > balanced["hardware_fit"]
+    # Memory priority pushes both memory-fit and concurrency-fit above balanced.
+    assert memory["memory_fit"] > balanced["memory_fit"]
+    assert memory["concurrency_fit"] > balanced["concurrency_fit"]
     assert quality["task_match"] > balanced["task_match"]
+    assert quality["capability"] > balanced["capability"]
+
+
+def test_recommend_uses_injected_capability_analyzer() -> None:
+    class FixedAnalyzer:
+        def analyze(self, candidate: object, analysis: object) -> CapabilitySignal:
+            return CapabilitySignal(score=0.91, parameter_count=7_000_000_000)
+
+    results = recommend(
+        [_evaluated()],
+        _req(),  # type: ignore[arg-type]
+        capability_analyzer=FixedAnalyzer(),
+    )
+
+    assert results[0].evaluated.capability_score == 0.91
+    assert results[0].score.capability == 0.91
 
 
 # ---------------------------------------------------------------------------

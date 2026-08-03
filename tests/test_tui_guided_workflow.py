@@ -12,21 +12,21 @@ from pathlib import Path
 
 from textual.widgets import Button, Checkbox, RadioSet
 
-from local_ai_check.tui.app import LocalAiCheckApp
-from local_ai_check.tui.screens.advanced_tools import AdvancedToolsScreen
-from local_ai_check.tui.screens.hardware_analysis import HardwareAnalysisScreen
-from local_ai_check.tui.screens.model_discovery import ModelDiscoveryScreen
-from local_ai_check.tui.screens.recommendation_results import (
+from jaull.tui.app import JaullApp
+from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
+from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
+from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
+from jaull.tui.screens.recommendation_results import (
     RecommendationResultsScreen,
     export_report,
 )
-from local_ai_check.tui.screens.requirements_wizard import RequirementsWizardScreen
-from local_ai_check.tui.screens.welcome import WelcomeScreen
-from local_ai_check.tui.widgets.progress_step import ProgressStepList
-from local_ai_check.tui.widgets.recommendation_card import RecommendationCard
-from local_ai_check.workflow.container import ServiceContainer
-from local_ai_check.workflow.models import UseCase
-from local_ai_check.workflow.progress import HARDWARE_STEPS
+from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
+from jaull.tui.screens.welcome import WelcomeScreen
+from jaull.tui.widgets.progress_step import ProgressStepList
+from jaull.tui.widgets.recommendation_card import RecommendationCard
+from jaull.workflow.container import ServiceContainer
+from jaull.workflow.models import UseCase
+from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
     GIB,
     FakeHfClient,
@@ -88,7 +88,7 @@ async def _settle(pilot, attempts: int = 60) -> None:  # type: ignore[no-untyped
 # ---------------------------------------------------------------------------
 def test_welcome_screen_offers_guided_and_advanced() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             screen = pilot.app.screen
             assert isinstance(screen, WelcomeScreen)
@@ -100,7 +100,7 @@ def test_welcome_screen_offers_guided_and_advanced() -> None:
 
 def test_entering_guided_mode_opens_the_hardware_screen() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
             await pilot.pause()
@@ -111,7 +111,7 @@ def test_entering_guided_mode_opens_the_hardware_screen() -> None:
 
 def test_entering_advanced_tools_keeps_the_original_menu() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen("advanced")
             await pilot.pause()
@@ -128,7 +128,7 @@ def test_entering_advanced_tools_keeps_the_original_menu() -> None:
 # ---------------------------------------------------------------------------
 def test_hardware_screen_shows_progress_and_a_continue_button() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
             await _settle(pilot)
@@ -143,7 +143,7 @@ def test_network_and_probes_do_not_block_the_event_loop() -> None:
     """The UI must still answer keystrokes while a slow probe is running."""
 
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services(detect_delay=0.6))
+        app = JaullApp(services=_services(detect_delay=0.6))
         async with app.run_test() as pilot:
             app.start_guided_workflow()
             await pilot.pause()
@@ -167,7 +167,7 @@ def test_network_and_probes_do_not_block_the_event_loop() -> None:
 # ---------------------------------------------------------------------------
 def test_wizard_collects_answers_from_its_widgets() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
             await pilot.pause()
@@ -184,7 +184,7 @@ def test_wizard_collects_answers_from_its_widgets() -> None:
 
 def test_document_question_is_hidden_unless_the_use_case_needs_it() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
             await pilot.pause()
@@ -211,7 +211,7 @@ def test_document_question_is_hidden_unless_the_use_case_needs_it() -> None:
 
 def test_wizard_rejects_an_empty_language_selection() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
             await pilot.pause()
@@ -227,7 +227,7 @@ def test_wizard_rejects_an_empty_language_selection() -> None:
 
 def test_wizard_rejects_unrecognised_other_languages() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
             await pilot.pause()
@@ -247,7 +247,7 @@ def test_wizard_rejects_unrecognised_other_languages() -> None:
 # ---------------------------------------------------------------------------
 def test_wizard_navigates_into_discovery() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
             await pilot.pause()
@@ -270,7 +270,7 @@ def test_wizard_navigates_into_discovery() -> None:
 
 def test_full_guided_run_reaches_the_results_screen() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test(size=(120, 50)) as pilot:
             app.start_guided_workflow()
             await _settle(pilot)
@@ -296,7 +296,7 @@ def test_full_guided_run_reaches_the_results_screen() -> None:
 
 def test_results_screen_can_render_a_comparison(tmp_path: Path) -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test(size=(120, 50)) as pilot:
             app.start_guided_workflow()
             await _settle(pilot)
@@ -327,7 +327,7 @@ def test_results_screen_can_render_a_comparison(tmp_path: Path) -> None:
 
 def test_restart_returns_to_the_welcome_screen() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp(services=_services())
+        app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
             await _settle(pilot)
@@ -343,6 +343,6 @@ def test_restart_returns_to_the_welcome_screen() -> None:
 def test_services_are_injected_and_never_built_by_screens() -> None:
     """Constructing the app with fakes must not create a real HfClient."""
     services = _services()
-    app = LocalAiCheckApp(services=services)
+    app = JaullApp(services=services)
     assert app.services is services
     assert isinstance(app.services.hf_client, FakeHfClient)

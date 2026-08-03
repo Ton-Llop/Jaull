@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enums import RepositoryType
-from local_ai_check.domain.estimation import (
+from jaull.domain.enums import RepositoryType
+from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
     EstimateSource,
@@ -12,19 +12,19 @@ from local_ai_check.domain.estimation import (
     RuntimeOverheadEstimate,
     WeightEstimate,
 )
-from local_ai_check.domain.hardware import (
+from jaull.domain.hardware import (
     CpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import (
+from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
     WeightPrecision,
 )
-from local_ai_check.domain.model import ModelRepositoryInfo
-from local_ai_check.domain.runtime import RuntimeName
-from local_ai_check.runtime import service as runtime_service
+from jaull.domain.model import ModelRepositoryInfo
+from jaull.domain.runtime import RuntimeName
+from jaull.runtime import service as runtime_service
 
 GIB = 1024**3
 

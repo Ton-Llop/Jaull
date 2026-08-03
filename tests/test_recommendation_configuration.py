@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.domain.inference import WeightPrecision
-from local_ai_check.recommendation.configuration import select_configuration
-from local_ai_check.workflow.models import RecommendationPriority
-from local_ai_check.workflow.requirements import build_requirements
+from jaull.domain.inference import WeightPrecision
+from jaull.recommendation.configuration import select_configuration
+from jaull.workflow.models import RecommendationPriority
+from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     answers,

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.domain.model import GgufVariant, ModelFile
-from local_ai_check.estimator import gguf_selection
-from local_ai_check.exceptions import QuantizationNotFoundError
+from jaull.domain.model import GgufVariant, ModelFile
+from jaull.estimator import gguf_selection
+from jaull.exceptions import QuantizationNotFoundError
 
 
 def _variant(quant: str, size: int) -> GgufVariant:

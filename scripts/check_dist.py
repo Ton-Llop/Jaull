@@ -21,9 +21,9 @@ from pathlib import Path
 DIST = Path("dist")
 
 REQUIRED_IN_WHEEL = (
-    "local_ai_check/tui/styles.tcss",
-    "local_ai_check/cli/app.py",
-    "local_ai_check/__init__.py",
+    "jaull/tui/styles.tcss",
+    "jaull/cli/app.py",
+    "jaull/__init__.py",
 )
 
 # Substrings that must never appear in a published artifact.

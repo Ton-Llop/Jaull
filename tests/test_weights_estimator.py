@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.inference import WeightPrecision
-from local_ai_check.domain.model import (
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.inference import WeightPrecision
+from jaull.domain.model import (
     GgufVariant,
     ModelAnalysis,
     ModelConfig,
@@ -11,8 +11,8 @@ from local_ai_check.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from local_ai_check.estimator import weights
-from local_ai_check.estimator.policies import bytes_per_parameter
+from jaull.estimator import weights
+from jaull.estimator.policies import bytes_per_parameter
 
 
 def _analysis(files: list[ModelFile], primary: RepositoryType) -> ModelAnalysis:

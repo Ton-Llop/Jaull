@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from local_ai_check.domain.enrichment import GgufHeaderMetadata
-from local_ai_check.domain.estimation import EstimationConfidence, MetadataSource
-from local_ai_check.metadata import base_model_resolver
+from jaull.domain.enrichment import GgufHeaderMetadata
+from jaull.domain.estimation import EstimationConfidence, MetadataSource
+from jaull.metadata import base_model_resolver
 
 
 @dataclass

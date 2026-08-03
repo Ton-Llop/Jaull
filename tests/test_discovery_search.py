@@ -12,23 +12,23 @@ from typing import Any
 import pytest
 from huggingface_hub.errors import HfHubHTTPError
 
-from local_ai_check.discovery import query_builder
-from local_ai_check.discovery.candidate_filter import (
+from jaull.discovery import query_builder
+from jaull.discovery.candidate_filter import (
     deduplicate,
     filter_candidates,
     parameter_count_hint,
     shortlist,
 )
-from local_ai_check.discovery.models import SearchQuery
-from local_ai_check.discovery.search_client import (
+from jaull.discovery.models import SearchQuery
+from jaull.discovery.search_client import (
     HfSearchClient,
     candidate_from_model_info,
 )
-from local_ai_check.domain.estimation import EstimationConfidence
-from local_ai_check.exceptions import HuggingFaceUnavailableError
-from local_ai_check.workflow import policies
-from local_ai_check.workflow.models import CommercialUse, UseCase
-from local_ai_check.workflow.requirements import build_requirements
+from jaull.domain.estimation import EstimationConfidence
+from jaull.exceptions import HuggingFaceUnavailableError
+from jaull.workflow import policies
+from jaull.workflow.models import CommercialUse, UseCase
+from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import answers, candidate, hardware
 
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.model import ModelFile
-from local_ai_check.huggingface.classifiers import classify_repository
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.model import ModelFile
+from jaull.huggingface.classifiers import classify_repository
 
 
 def _files(*paths: str) -> list[ModelFile]:

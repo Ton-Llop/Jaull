@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enrichment import GgufHeaderMetadata
-from local_ai_check.domain.estimation import ConfigurationSource
-from local_ai_check.domain.model import ModelConfig
-from local_ai_check.metadata import config_merger
+from jaull.domain.enrichment import GgufHeaderMetadata
+from jaull.domain.estimation import ConfigurationSource
+from jaull.domain.model import ModelConfig
+from jaull.metadata import config_merger
 
 
 def test_only_gguf_produces_gguf_sourced_config() -> None:

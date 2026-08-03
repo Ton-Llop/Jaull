@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 
-from local_ai_check.domain.estimation import CompatibilityStatus
-from local_ai_check.tui.app import LocalAiCheckApp
-from local_ai_check.tui.screens.advanced_tools import AdvancedToolsScreen
-from local_ai_check.tui.screens.scan import ScanScreen
-from local_ai_check.tui.screens.welcome import WelcomeScreen
-from local_ai_check.tui.widgets.assessment_badge import AssessmentBadge
-from local_ai_check.tui.widgets.cli_equivalent import CliEquivalent
-from local_ai_check.tui.widgets.summary_card import SummaryCard
+from jaull.domain.estimation import CompatibilityStatus
+from jaull.tui.app import JaullApp
+from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
+from jaull.tui.screens.scan import ScanScreen
+from jaull.tui.screens.welcome import WelcomeScreen
+from jaull.tui.widgets.assessment_badge import AssessmentBadge
+from jaull.tui.widgets.cli_equivalent import CliEquivalent
+from jaull.tui.widgets.summary_card import SummaryCard
 
 
 def _run(coro):  # type: ignore[no-untyped-def]
@@ -20,7 +20,7 @@ def test_app_starts_at_welcome_screen() -> None:
     """The guided flow is the entry point; the tool menu moved to Advanced tools."""
 
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             assert isinstance(pilot.app.screen, WelcomeScreen)
 
@@ -29,7 +29,7 @@ def test_app_starts_at_welcome_screen() -> None:
 
 def test_navigation_to_scan_screen() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             await pilot.press("s")
             await pilot.pause()
@@ -42,7 +42,7 @@ def test_advanced_tools_reaches_every_original_screen() -> None:
     """Every pre-existing screen must remain registered after the restructure."""
 
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             app.push_screen("advanced")
             await pilot.pause()
@@ -65,7 +65,7 @@ def test_advanced_tools_reaches_every_original_screen() -> None:
 
 def test_advanced_menu_lists_every_original_tool() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             app.push_screen("advanced")
             await pilot.pause()
@@ -82,7 +82,7 @@ def test_advanced_menu_lists_every_original_tool() -> None:
 
 def test_quit_binding_exits_cleanly() -> None:
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             await pilot.press("q")
             await pilot.pause()
@@ -105,15 +105,15 @@ def test_assessment_badge_covers_all_statuses() -> None:
 
 
 def test_cli_equivalent_widget_stores_command() -> None:
-    widget = CliEquivalent("local-ai-check scan")
-    assert widget._command == "local-ai-check scan"
+    widget = CliEquivalent("jaull scan")
+    assert widget._command == "jaull scan"
 
 
 def test_welcome_shows_credits_widget() -> None:
-    from local_ai_check.tui.widgets.credits import CreditsPanel
+    from jaull.tui.widgets.credits import CreditsPanel
 
     async def scenario() -> None:
-        app = LocalAiCheckApp()
+        app = JaullApp()
         async with app.run_test() as pilot:
             credits = pilot.app.screen.query(CreditsPanel)
             assert len(credits) == 1

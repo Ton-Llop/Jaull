@@ -7,10 +7,10 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from local_ai_check.cli.app import app
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.inference import TargetDevice
-from local_ai_check.domain.model import (
+from jaull.cli.app import app
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.inference import TargetDevice
+from jaull.domain.model import (
     ModelAnalysis,
     ModelConfig,
     ModelFile,
@@ -18,8 +18,8 @@ from local_ai_check.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from local_ai_check.estimator import service as estimator_service
-from local_ai_check.presentation.estimation_report import (
+from jaull.estimator import service as estimator_service
+from jaull.presentation.estimation_report import (
     SCHEMA_VERSION,
     estimate_to_json_dict,
 )
@@ -85,10 +85,10 @@ def _run_and_estimate(*, monkeypatch) -> dict[str, Any]:
     analysis = _stub_analysis(client)
 
     monkeypatch.setattr(
-        "local_ai_check.cli.estimate.inspect_model",
+        "jaull.cli.estimate.inspect_model",
         lambda repo_id, client=None: analysis,
     )
-    monkeypatch.setattr("local_ai_check.cli.estimate.HfClient", lambda: client)
+    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
     # detect_hardware() runs on the real machine; that's fine.
 
     runner = CliRunner()
@@ -131,7 +131,7 @@ def test_json_output_has_stable_schema(monkeypatch) -> None:
 
 
 def test_estimate_to_json_dict_is_json_serialisable() -> None:
-    from local_ai_check.domain.estimation import (
+    from jaull.domain.estimation import (
         CompatibilityAssessment,
         CompatibilityStatus,
         EstimateSource,
@@ -142,7 +142,7 @@ def test_estimate_to_json_dict_is_json_serialisable() -> None:
         RuntimeOverheadEstimate,
         WeightEstimate,
     )
-    from local_ai_check.domain.inference import InferenceConfiguration
+    from jaull.domain.inference import InferenceConfiguration
 
     weights_component = MemoryComponent(
         name="Weights",
@@ -229,10 +229,10 @@ def test_cli_estimate_rich_output(monkeypatch) -> None:
     )
     analysis = _stub_analysis(client)
     monkeypatch.setattr(
-        "local_ai_check.cli.estimate.inspect_model",
+        "jaull.cli.estimate.inspect_model",
         lambda repo_id, client=None: analysis,
     )
-    monkeypatch.setattr("local_ai_check.cli.estimate.HfClient", lambda: client)
+    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
 
     runner = CliRunner()
     result = runner.invoke(app, ["estimate", "user/model"], catch_exceptions=False)
@@ -256,15 +256,15 @@ def test_service_end_to_end_shape_is_used(monkeypatch) -> None:
     client = _StubClient()
     analysis = _stub_analysis(client)
     monkeypatch.setattr(
-        "local_ai_check.cli.estimate.inspect_model",
+        "jaull.cli.estimate.inspect_model",
         lambda repo_id, client=None: analysis,
     )
-    monkeypatch.setattr("local_ai_check.cli.estimate.HfClient", lambda: client)
+    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
 
     runner = CliRunner()
     result = runner.invoke(
         app, ["estimate", "user/model"], catch_exceptions=True
     )
     assert called.get("hit") is True
-    # Runtime error surfaces (not one of our LocalAiCheckError types → not caught).
+    # Runtime error surfaces (not one of our JaullError types → not caught).
     assert result.exit_code != 0

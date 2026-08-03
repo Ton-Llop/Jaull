@@ -16,8 +16,8 @@ from collections.abc import Iterator
 import httpx
 import pytest
 
-from local_ai_check.metadata.policies import INITIAL_HEADER_RANGE_BYTES
-from local_ai_check.metadata.range_reader import (
+from jaull.metadata.policies import INITIAL_HEADER_RANGE_BYTES
+from jaull.metadata.range_reader import (
     HttpxRangeClient,
     fetch_gguf_header,
 )

@@ -1,0 +1,321 @@
+/* Corporate palette for jaull TUI.
+   Sober, professional; no bright green or terminal-hacker aesthetics. */
+
+Screen {
+    background: #0e1116;
+    color: #e5e7eb;
+}
+
+Header {
+    background: #111827;
+    color: #e5e7eb;
+    text-style: bold;
+    height: 3;
+    padding: 0 2;
+    border-bottom: solid #1f2937;
+}
+
+Footer {
+    background: #111827;
+    color: #9ca3af;
+}
+
+Footer > .footer--key {
+    color: #3a7bd5;
+    text-style: bold;
+}
+
+.banner {
+    background: #111827;
+    color: #e5e7eb;
+    padding: 1 2;
+    border: round #1f2937;
+    margin: 0 0 1 0;
+}
+
+.banner-title {
+    text-style: bold;
+    color: #3a7bd5;
+}
+
+.banner-subtitle {
+    color: #9ca3af;
+}
+
+.card {
+    background: #131922;
+    border: round #1f2937;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.card-title {
+    text-style: bold;
+    color: #3a7bd5;
+    padding: 0 0 1 0;
+}
+
+/* Horizontal defaults to height: 1fr, which inside a height: auto card makes
+   the card swallow the whole screen and push the panes below it out of view. */
+.card > Horizontal {
+    height: auto;
+}
+
+.menu {
+    background: #131922;
+    border: round #1f2937;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.menu > .menu-item {
+    padding: 0 1;
+    color: #e5e7eb;
+}
+
+.menu > .menu-item:hover,
+.menu > .menu-item.-current {
+    background: #1f2937;
+    text-style: bold;
+}
+
+.status-ok    { color: #10b981; text-style: bold; }
+.status-warn  { color: #f59e0b; text-style: bold; }
+.status-fail  { color: #ef4444; text-style: bold; }
+
+Input {
+    background: #131922;
+    border: round #1f2937;
+    color: #e5e7eb;
+}
+Input:focus {
+    border: round #3a7bd5;
+}
+
+Button {
+    background: #1f2937;
+    color: #e5e7eb;
+    border: none;
+    padding: 0 3;
+    height: 3;
+}
+Button.-primary {
+    background: #3a7bd5;
+    color: #ffffff;
+    text-style: bold;
+}
+Button:focus, Button:hover {
+    background: #2b3748;
+}
+
+DataTable {
+    background: #131922;
+    color: #e5e7eb;
+}
+DataTable > .datatable--header {
+    background: #1f2937;
+    color: #9ca3af;
+    text-style: bold;
+}
+
+.warnings {
+    background: #1a1207;
+    border: round #f59e0b;
+    color: #fbbf24;
+    padding: 1 2;
+    margin: 1 0;
+}
+
+.cli-hint {
+    background: #131922;
+    border: round #1f2937;
+    color: #9ca3af;
+    padding: 1 2;
+    margin: 1 0;
+}
+
+.cli-hint-label {
+    color: #6b7280;
+    text-style: italic;
+}
+
+.badge {
+    padding: 0 2;
+    text-style: bold;
+}
+.badge-comfortable        { color: #10b981; background: #052e21; }
+.badge-compatible         { color: #10b981; background: #052e21; }
+.badge-tight              { color: #f59e0b; background: #2a1e05; }
+.badge-offloading         { color: #f59e0b; background: #2a1e05; }
+.badge-insufficient       { color: #ef4444; background: #2a0808; }
+.badge-unknown            { color: #9ca3af; background: #1f2937; }
+
+.usage-bar {
+    height: 1;
+    background: #1f2937;
+    color: #3a7bd5;
+    margin: 0 0 1 0;
+}
+
+.logo {
+    background: #060d14;
+    padding: 1 2 0 2;
+    margin: 0 0 1 0;
+    height: auto;
+    align: center top;
+}
+.logo-ascii {
+    color: #7fb8c3;
+    text-style: bold;
+    content-align: center middle;
+    width: auto;
+    height: auto;
+    margin-bottom: 0;
+}
+
+.logo-subtitle {
+    color: #5b7d86;
+    text-style: bold;
+    content-align: center middle;
+    width: auto;
+    height: auto;
+    margin-top: 0;
+}
+
+.credits {
+    background: #131922;
+    border: round #1f2937;
+    padding: 1 2;
+    margin: 2 0 0 0;
+    color: #9ca3af;
+    height: auto;
+}
+.credits-title {
+    color: #3a7bd5;
+    text-style: bold;
+}
+.credits-subtle {
+    color: #6b7280;
+}
+.text-muted {
+    color: #6b7280;
+    padding: 1 0 0 0;
+}
+
+.runtime-card {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 1 2;
+    margin: 1 0;
+    height: auto;
+}
+.runtime-title {
+    color: #3a7bd5;
+    text-style: bold;
+}
+.runtime-code {
+    background: #0b0f16;
+    color: #e5e7eb;
+    padding: 1 2;
+    margin: 1 0;
+    border: round #1f2937;
+}
+
+/* ---------------------------------------------------------------------
+   Guided recommendation workflow.
+   Same sober palette as the rest of the app: no new accent colours, no
+   animation, and status is carried by a marker glyph as well as by colour.
+   --------------------------------------------------------------------- */
+.workflow-header {
+    background: #111827;
+    padding: 1 2;
+    border: round #1f2937;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.workflow-breadcrumb {
+    color: #9ca3af;
+    padding: 1 0 0 0;
+}
+
+.step-done    { color: #10b981; }
+.step-running { color: #3a7bd5; text-style: bold; }
+.step-pending { color: #6b7280; }
+.step-failed  { color: #ef4444; text-style: bold; }
+
+.recommendation-card {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.reason-line {
+    color: #10b981;
+    padding: 0 0 0 1;
+}
+
+.warning-line {
+    color: #f59e0b;
+    padding: 0 0 0 1;
+}
+
+.score-total {
+    color: #3a7bd5;
+    padding: 0 0 1 0;
+}
+
+.score-row {
+    color: #9ca3af;
+}
+
+#results-actions,
+#discovery-actions {
+    height: auto;
+    padding: 1 0;
+}
+
+#results-actions Button,
+#discovery-actions Button {
+    margin: 0 1 0 0;
+}
+
+#wizard-errors,
+#results-extra,
+#discovery-messages,
+#hardware-summary {
+    height: auto;
+}
+
+RadioSet {
+    background: #131922;
+    border: none;
+    height: auto;
+}
+
+Checkbox {
+    background: #131922;
+    border: none;
+}
+
+/* --------------------------------------------------------------------
+   Fase 5: tier headings + compact score strip.
+   -------------------------------------------------------------------- */
+.tier-best-match     { color: #10b981; }
+.tier-recommended    { color: #3a7bd5; }
+.tier-closest-option { color: #f59e0b; }
+.tier-best-effort    { color: #9ca3af; }
+
+.compact-score-strip {
+    background: #131922;
+    border: round #1f2937;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    height: auto;
+}
+.score-total    { color: #e5e7eb; padding: 0 0 0 0; }
+.score-penalty  { color: #f59e0b; padding: 0 0 0 0; }

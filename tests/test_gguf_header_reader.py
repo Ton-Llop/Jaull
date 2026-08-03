@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.exceptions import (
+from jaull.exceptions import (
     GgufHeaderIncompleteError,
     GgufHeaderInvalidError,
 )
-from local_ai_check.metadata.gguf_reader import parse_header
+from jaull.metadata.gguf_reader import parse_header
 from tests._gguf_fixtures import build_header
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from local_ai_check.hardware.detector import detect_hardware
-from local_ai_check.hardware.nvidia import detect_nvidia_gpus
+from jaull.hardware.detector import detect_hardware
+from jaull.hardware.nvidia import detect_nvidia_gpus
 
 
 @dataclass

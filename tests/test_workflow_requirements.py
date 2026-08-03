@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from local_ai_check.workflow import policies
-from local_ai_check.workflow.models import (
+from jaull.workflow import policies
+from jaull.workflow.models import (
     CommercialUse,
     ConcurrencyLevel,
     DocumentScale,
     RecommendationPriority,
     UseCase,
 )
-from local_ai_check.workflow.requirements import (
+from jaull.workflow.requirements import (
     build_requirements,
     normalize_language,
     normalize_languages,

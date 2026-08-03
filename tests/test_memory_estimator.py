@@ -3,20 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.estimation import CompatibilityStatus, EstimationConfidence
-from local_ai_check.domain.hardware import (
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
+from jaull.domain.hardware import (
     CpuInfo,
     GpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import (
+from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
     WeightPrecision,
 )
-from local_ai_check.domain.model import (
+from jaull.domain.model import (
     GgufVariant,
     ModelAnalysis,
     ModelConfig,
@@ -25,7 +25,7 @@ from local_ai_check.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from local_ai_check.estimator import service
+from jaull.estimator import service
 
 GIB = 1024**3
 

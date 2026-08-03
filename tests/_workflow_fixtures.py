@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from local_ai_check.discovery.models import ModelCandidate, SearchQuery
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.estimation import (
+from jaull.discovery.models import ModelCandidate, SearchQuery
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
     EstimateSource,
@@ -23,14 +23,14 @@ from local_ai_check.domain.estimation import (
     RuntimeOverheadEstimate,
     WeightEstimate,
 )
-from local_ai_check.domain.hardware import (
+from jaull.domain.hardware import (
     CpuInfo,
     GpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import InferenceConfiguration, TargetDevice
-from local_ai_check.domain.model import (
+from jaull.domain.inference import InferenceConfiguration, TargetDevice
+from jaull.domain.model import (
     GgufVariant,
     ModelAnalysis,
     ModelConfig,
@@ -38,8 +38,8 @@ from local_ai_check.domain.model import (
     ModelRepositoryInfo,
     RepositoryClassification,
 )
-from local_ai_check.exceptions import HuggingFaceUnavailableError
-from local_ai_check.workflow.models import (
+from jaull.exceptions import HuggingFaceUnavailableError
+from jaull.workflow.models import (
     CommercialUse,
     ConcurrencyLevel,
     RecommendationPriority,

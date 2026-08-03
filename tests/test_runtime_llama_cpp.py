@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enums import RepositoryType
-from local_ai_check.domain.estimation import (
+from jaull.domain.enums import RepositoryType
+from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
     EstimateSource,
@@ -12,18 +12,18 @@ from local_ai_check.domain.estimation import (
     RuntimeOverheadEstimate,
     WeightEstimate,
 )
-from local_ai_check.domain.hardware import (
+from jaull.domain.hardware import (
     CpuInfo,
     GpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import (
+from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
 )
-from local_ai_check.domain.model import ModelRepositoryInfo
-from local_ai_check.runtime import llama_cpp
+from jaull.domain.model import ModelRepositoryInfo
+from jaull.runtime import llama_cpp
 
 GIB = 1024**3
 

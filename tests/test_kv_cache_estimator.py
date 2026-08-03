@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from local_ai_check.domain.inference import WeightPrecision
-from local_ai_check.domain.model import ModelConfig
-from local_ai_check.estimator import kv_cache
+from jaull.domain.inference import WeightPrecision
+from jaull.domain.model import ModelConfig
+from jaull.estimator import kv_cache
 
 
 def test_kv_cache_mha_standard() -> None:

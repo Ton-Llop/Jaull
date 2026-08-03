@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from local_ai_check.domain.enums import DiagnosticStatus  # noqa: F401  (import kept for sanity)
-from local_ai_check.domain.estimation import CompatibilityStatus
-from local_ai_check.domain.hardware import (
+from jaull.domain.enums import DiagnosticStatus  # noqa: F401  (import kept for sanity)
+from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.hardware import (
     CpuInfo,
     GpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import TargetDevice
-from local_ai_check.estimator import compatibility, overhead
+from jaull.domain.inference import TargetDevice
+from jaull.estimator import compatibility, overhead
 
 
 def _profile(

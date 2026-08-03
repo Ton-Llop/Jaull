@@ -95,17 +95,17 @@ jobs:
 
       - name: Entry point works from the installed package
         run: |
-          /tmp/smoke/bin/local-ai-check --help
-          /tmp/smoke/bin/local-ai-check scan
-          /tmp/smoke/bin/local-ai-check doctor
-          /tmp/smoke/bin/local-ai-check estimate --help
+          /tmp/smoke/bin/jaull --help
+          /tmp/smoke/bin/jaull scan
+          /tmp/smoke/bin/jaull doctor
+          /tmp/smoke/bin/jaull estimate --help
 
       - name: Textual stylesheet is importable from the installed package
         run: |
           /tmp/smoke/bin/python -c "
           from pathlib import Path
-          import local_ai_check.tui.app as app
-          css = Path(app.LocalAiCheckApp.CSS_PATH)
+          import jaull.tui.app as app
+          css = Path(app.JaullApp.CSS_PATH)
           assert css.is_file(), f'missing stylesheet: {css}'
           assert css.stat().st_size > 0, 'stylesheet is empty'
           print(f'OK: {css} ({css.stat().st_size} bytes)')

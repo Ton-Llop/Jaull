@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from local_ai_check.domain.enums import RepositoryType
-from local_ai_check.exceptions import ModelAccessDeniedError, ModelNotFoundError
-from local_ai_check.huggingface.repository import inspect_model
+from jaull.domain.enums import RepositoryType
+from jaull.exceptions import ModelAccessDeniedError, ModelNotFoundError
+from jaull.huggingface.repository import inspect_model
 
 
 @dataclass

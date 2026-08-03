@@ -6,8 +6,8 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-from local_ai_check.cli import app as cli_app
-from local_ai_check.cli.app import app
+from jaull.cli import app as cli_app
+from jaull.cli.app import app
 
 
 def test_no_args_prints_help_when_output_is_not_a_terminal(monkeypatch: Any) -> None:

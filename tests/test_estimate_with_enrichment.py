@@ -5,23 +5,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.estimation import (
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimateSource,
     MetadataSource,
 )
-from local_ai_check.domain.hardware import (
+from jaull.domain.hardware import (
     CpuInfo,
     GpuInfo,
     HardwareProfile,
     MemoryInfo,
 )
-from local_ai_check.domain.inference import (
+from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
 )
-from local_ai_check.domain.model import (
+from jaull.domain.model import (
     GgufVariant,
     ModelAnalysis,
     ModelFile,
@@ -29,8 +29,8 @@ from local_ai_check.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from local_ai_check.estimator import service as estimator_service
-from local_ai_check.metadata.range_reader import RangeResponse
+from jaull.estimator import service as estimator_service
+from jaull.metadata.range_reader import RangeResponse
 from tests._gguf_fixtures import build_header
 
 GIB = 1024**3
@@ -186,7 +186,7 @@ def test_no_resolve_base_model_skips_enrichment() -> None:
 
 
 def test_estimate_json_includes_enrichment_fields() -> None:
-    from local_ai_check.presentation.estimation_report import estimate_to_json_dict
+    from jaull.presentation.estimation_report import estimate_to_json_dict
 
     analysis = _gguf_analysis()
     client = _StubHfClient(

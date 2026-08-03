@@ -5,9 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from local_ai_check.domain.enums import Format, RepositoryType
-from local_ai_check.domain.estimation import EstimationConfidence, MetadataSource
-from local_ai_check.domain.model import (
+from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.estimation import EstimationConfidence, MetadataSource
+from jaull.domain.model import (
     GgufVariant,
     ModelAnalysis,
     ModelFile,
@@ -15,9 +15,9 @@ from local_ai_check.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from local_ai_check.exceptions import ModelAccessDeniedError
-from local_ai_check.metadata import service
-from local_ai_check.metadata.range_reader import RangeResponse
+from jaull.exceptions import ModelAccessDeniedError
+from jaull.metadata import service
+from jaull.metadata.range_reader import RangeResponse
 from tests._gguf_fixtures import build_header
 
 

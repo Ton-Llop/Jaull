@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import json
 
-from local_ai_check.discovery.models import SearchQuery
-from local_ai_check.domain.estimation import CompatibilityStatus
-from local_ai_check.exceptions import (
+from jaull.discovery.models import SearchQuery
+from jaull.domain.estimation import CompatibilityStatus
+from jaull.exceptions import (
     HuggingFaceUnavailableError,
     ModelNotFoundError,
 )
-from local_ai_check.recommendation.report import (
+from jaull.recommendation.report import (
     REPORT_SCHEMA_VERSION,
     report_to_dict,
     report_to_json,
     report_to_markdown,
 )
-from local_ai_check.workflow import orchestrator, policies
-from local_ai_check.workflow.container import ServiceContainer
-from local_ai_check.workflow.models import StepStatus, WorkflowStep
-from local_ai_check.workflow.progress import HARDWARE_STEPS
+from jaull.workflow import orchestrator, policies
+from jaull.workflow.container import ServiceContainer
+from jaull.workflow.models import StepStatus, WorkflowStep
+from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
     GIB,
     FakeHfClient,
@@ -359,8 +359,14 @@ def test_markdown_export_renders_the_primary_recommendation() -> None:
     services = _container(_search_with("org/Coder-7B"))
     state = orchestrator.run_workflow(answers(), hardware(), services)
     markdown = report_to_markdown(state)
-    assert "# local-ai-check recommendation report" in markdown
-    assert "Best match" in markdown
+    assert "# jaull recommendation report" in markdown
+    # The primary heading is now tier-driven; one of the four tier labels must
+    # be present, but "Best match" is only used when the estimate is HIGH
+    # confidence and comfortable — which is not guaranteed for every fixture.
+    assert any(
+        heading in markdown
+        for heading in ("Best Match", "Recommended", "Closest Option", "Best Effort")
+    )
     assert "not legal advice" in markdown
 
 
