@@ -184,21 +184,6 @@ DataTable > .datatable--header {
     margin-top: 0;
 }
 
-.credits {
-    background: #131922;
-    border: round #1f2937;
-    padding: 1 2;
-    margin: 2 0 0 0;
-    color: #9ca3af;
-    height: auto;
-}
-.credits-title {
-    color: #3a7bd5;
-    text-style: bold;
-}
-.credits-subtle {
-    color: #6b7280;
-}
 .text-muted {
     color: #6b7280;
     padding: 1 0 0 0;

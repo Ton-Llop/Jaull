@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from jaull.discovery import series
 from jaull.discovery.grouping import collapse_families
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.requirements import UserRequirements
 from jaull.recommendation import (
     capability,
     explanations,
@@ -20,7 +21,6 @@ from jaull.recommendation.models import (
     SeriesSibling,
 )
 from jaull.workflow import policies as workflow_policies
-from jaull.workflow.models import UserRequirements
 
 
 def score_all(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from jaull.discovery.models import ModelCandidate
+from jaull.domain.candidates import ModelCandidate
 from jaull.domain.estimation import EstimationConfidence
 from jaull.recommendation.capability import (
     DEFAULT_CAPABILITY_SCORE,

@@ -9,14 +9,9 @@ from __future__ import annotations
 
 import re
 
+from jaull.domain import policies
 from jaull.domain.hardware import HardwareProfile
-from jaull.workflow import policies
-from jaull.workflow.models import (
-    CommercialUse,
-    UseCase,
-    UserAnswers,
-    UserRequirements,
-)
+from jaull.domain.requirements import CommercialUse, UseCase, UserAnswers, UserRequirements
 
 # Human labels the wizard shows -> ISO 639-1 codes. Hugging Face model cards use
 # these codes in their `language` field, so normalising here means the language

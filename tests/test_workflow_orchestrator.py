@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from jaull.discovery.models import SearchQuery
+from jaull.domain.candidates import SearchQuery
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.exceptions import (
     HuggingFaceUnavailableError,

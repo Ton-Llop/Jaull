@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,

@@ -36,7 +36,6 @@ class Logo(Vertical):
         self._subtitle_widget = Static("", classes="logo-subtitle", markup=True)
         yield self._logo_widget
         yield self._subtitle_widget
-        
 
     def on_mount(self) -> None:
         self._refresh_logo()
@@ -80,7 +79,8 @@ class Logo(Vertical):
 
         def to_rgb(value: str) -> tuple[int, int, int]:
             value = value.lstrip("#")
-            return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+            r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+            return r, g, b
 
         r1, g1, b1 = to_rgb(color_a)
         r2, g2, b2 = to_rgb(color_b)

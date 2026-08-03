@@ -13,12 +13,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
+from jaull.domain.requirements import UserRequirements
 from jaull.recommendation.policies import (
     LicenseCategory,
     classify_license,
 )
-from jaull.workflow.models import UserRequirements
 
 
 class RequirementCheck(BaseModel):

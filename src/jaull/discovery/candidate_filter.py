@@ -15,11 +15,11 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from jaull.discovery.models import ModelCandidate
+from jaull.domain import licenses
+from jaull.domain.candidates import ModelCandidate
 from jaull.domain.estimation import EstimationConfidence
-from jaull.recommendation import policies as rec_policies
-from jaull.workflow import policies
-from jaull.workflow.models import UserRequirements
+from jaull.domain.policies import TEXT_GENERATION_PIPELINE
+from jaull.domain.requirements import UserRequirements
 
 # Tags that mean "this is not a plain text-generation model". This commit only
 # supports text, so these are rejections rather than penalties.
@@ -106,15 +106,15 @@ def _rejection_reason(
         return "Model is multimodal; this version only recommends text models."
 
     pipeline = candidate.pipeline_tag
-    if pipeline and pipeline != policies.TEXT_GENERATION_PIPELINE:
+    if pipeline and pipeline != TEXT_GENERATION_PIPELINE:
         return f"Pipeline {pipeline!r} is not text generation."
 
     if tags & _ADAPTER_TAGS and not candidate.base_model_repo_id:
         return "Adapter without a resolvable base model."
 
     if requirements.commercial_use_required:
-        category = rec_policies.classify_license(candidate.license)
-        if category is rec_policies.LicenseCategory.COMMERCIAL_RESTRICTED:
+        category = licenses.classify_license(candidate.license)
+        if category is licenses.LicenseCategory.COMMERCIAL_RESTRICTED:
             return (
                 f"License {candidate.license!r} is not generally suitable for "
                 "commercial use."

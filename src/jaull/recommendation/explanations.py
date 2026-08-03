@@ -8,14 +8,14 @@ strings from scattering into the Textual screens as ad-hoc conditionals.
 
 from __future__ import annotations
 
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.requirements import UseCase, UserRequirements
 from jaull.recommendation import policies
-from jaull.workflow.models import UseCase, UserRequirements
 
 _USE_CASE_LABEL: dict[UseCase, str] = {
     UseCase.GENERAL_CHAT: "general chat and assistant use",

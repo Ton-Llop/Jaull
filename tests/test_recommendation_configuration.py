@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from jaull.domain.inference import WeightPrecision
-from jaull.recommendation.configuration import select_configuration
-from jaull.workflow.models import RecommendationPriority
+from jaull.domain.requirements import RecommendationPriority
+from jaull.estimator.configuration import select_configuration
 from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,

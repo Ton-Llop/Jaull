@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "timestamp": "<redacted>",
+  "hardware": {
+    "os": "Linux 6.8",
+    "arch": "x86_64",
+    "cpu": "AMD Ryzen 5 3600",
+    "physical_cores": 6,
+    "ram_total_bytes": 34359738368,
+    "ram_available_bytes": 34359738368,
+    "gpus": [
+      {
+        "name": "NVIDIA RTX 4070",
+        "vram_total_bytes": 12884901888,
+        "vram_available_bytes": 12884901888
+      }
+    ],
+    "warnings": []
+  },
+  "user_requirements": {
+    "use_case": "coding",
+    "priority": "balanced",
+    "languages": [
+      "es",
+      "en"
+    ],
+    "concurrent_users": 1,
+    "concurrency_range": "One user",
+    "desired_context": 4096,
+    "commercial_use_required": true,
+    "pipeline_tag": "text-generation",
+    "preferred_formats": [
+      "safetensors",
+      "gguf"
+    ]
+  },
+  "search_strategy": {
+    "queries": [
+      "coding:coder instruct",
+      "coding:code generation",
+      "coding:programming assistant",
+      "coding:safetensors",
+      "coding:gguf",
+      "coding:lang-es",
+      "coding:trending"
+    ],
+    "candidate_count": 1,
+    "evaluated_count": 1
+  },
+  "evaluated_candidates": [
+    {
+      "repo_id": "org/Coder-7B",
+      "failed": false,
+      "repository_type": "transformers",
+      "license": "apache-2.0",
+      "downloads": 10000,
+      "compatibility": "comfortable",
+      "scores": {
+        "memory_fit": 0.0,
+        "concurrency_fit": 0.0,
+        "capability": 0.0,
+        "artifact_realism": 1.0,
+        "hardware_fit": 0.0,
+        "task_match": 0.0,
+        "language_match": 0.0,
+        "license": 0.0,
+        "metadata_quality": 0.0,
+        "popularity": 0.0
+      },
+      "configuration_reason": "float16 is the highest precision that fits the detected memory.",
+      "alternatives_considered": [
+        "float16: comfortable"
+      ],
+      "warnings": [],
+      "requirement_penalty": 1.0,
+      "unmet_requirements": []
+    }
+  ],
+  "recommendations": [
+    {
+      "rank": 1,
+      "repo_id": "org/Coder-7B",
+      "tier": "best_match",
+      "score": 88,
+      "score_breakdown": {
+        "total": 0.8829348874844992,
+        "memory_fit": 0.75,
+        "concurrency_fit": 1.0,
+        "capability": 0.7361680890280335,
+        "hardware_fit": 0.75,
+        "task_match": 1.0,
+        "language_match": 1.0,
+        "license": 1.0,
+        "metadata_quality": 0.85,
+        "popularity": 0.8503224710098063,
+        "hard_penalty": 1.0,
+        "unmet_requirements": [],
+        "weights": {
+          "memory_fit": 0.25,
+          "concurrency_fit": 0.1,
+          "capability": 0.15,
+          "task_match": 0.2,
+          "language_match": 0.12,
+          "license": 0.08,
+          "metadata_quality": 0.07,
+          "popularity": 0.03
+        }
+      },
+      "compatibility": "comfortable",
+      "confidence": "high",
+      "license": "apache-2.0",
+      "license_category": "commercial_allowed",
+      "alternative_label": null,
+      "related_repositories": [],
+      "series_alternatives": [],
+      "reasons": [
+        "Strong match for programming tasks.",
+        "Model metadata lists EN, ES.",
+        "Fits in the detected memory at float16 precision.",
+        "Leaves comfortable free memory after loading.",
+        "apache-2.0 license is generally suitable for commercial use.",
+        "Suggested context of 4096 tokens."
+      ],
+      "warnings": [],
+      "memory": {
+        "schema_version": 1,
+        "model": {
+          "repo_id": "org/Coder-7B",
+          "repository_type": "transformers",
+          "author": null,
+          "pipeline_tag": "text-generation",
+          "library_name": "transformers",
+          "license": "apache-2.0",
+          "gated": false
+        },
+        "inference_configuration": {
+          "context_length": 4096,
+          "batch_size": 1,
+          "target_device": "auto",
+          "precision": "float16",
+          "quantization": null,
+          "kv_cache_dtype": "float16",
+          "safety_margin_percent": 10.0,
+          "device_reserve_bytes": 536870912
+        },
+        "memory": {
+          "weights_bytes": 15032385536,
+          "kv_cache_bytes": 536870912,
+          "runtime_overhead_bytes": 536870912,
+          "device_reserve_bytes": 536870912,
+          "safety_margin_bytes": 0,
+          "total_bytes": 15032385536,
+          "components": [
+            {
+              "name": "Weights",
+              "bytes": 15032385536,
+              "source": "exact",
+              "confidence": "high",
+              "explanation": "fixture"
+            },
+            {
+              "name": "KV cache",
+              "bytes": 536870912,
+              "source": "derived",
+              "confidence": "high",
+              "explanation": "fixture"
+            },
+            {
+              "name": "Runtime overhead",
+              "bytes": 536870912,
+              "source": "assumed",
+              "confidence": "low",
+              "explanation": "fixture"
+            },
+            {
+              "name": "Device reserve",
+              "bytes": 536870912,
+              "source": "assumed",
+              "confidence": "low",
+              "explanation": "fixture"
+            }
+          ]
+        },
+        "weights": {
+          "num_parameters": null,
+          "bits_per_parameter": null,
+          "precision": null,
+          "gguf_variant": null
+        },
+        "kv_cache": {
+          "layers": null,
+          "kv_heads": null,
+          "head_dim": null,
+          "context_length": 4096,
+          "batch_size": 1,
+          "dtype_bytes": 2,
+          "formula": "fixture",
+          "notes": []
+        },
+        "hardware": {
+          "available_vram_bytes": 25769803776,
+          "available_ram_bytes": 34359738368
+        },
+        "assessment": {
+          "status": "comfortable",
+          "confidence": "high",
+          "target_device": "auto",
+          "effective_device": "gpu",
+          "utilisation_ratio": 0.5833333333333334,
+          "reasons": [],
+          "warnings": []
+        },
+        "assumptions": [],
+        "warnings": [],
+        "base_model_resolution": null,
+        "configuration_sources": {},
+        "architecture": null,
+        "runtime_recommendation": null
+      }
+    }
+  ],
+  "warnings": [],
+  "assumptions": [
+    "12 GiB of VRAM detected; safetensors builds are a realistic target alongside GGUF."
+  ],
+  "no_results_reason": [],
+  "disclaimer": "License information is reported from model metadata and is not legal advice; check the model's license yourself before commercial use."
+}

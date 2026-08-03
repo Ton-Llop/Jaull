@@ -24,12 +24,12 @@ from jaull.domain.inference import (
     WeightPrecision,
 )
 from jaull.domain.model import ModelAnalysis
+from jaull.domain.requirements import UserRequirements
+from jaull.estimator import policies
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
-from jaull.recommendation import policies
-from jaull.workflow.models import UserRequirements
 
 # Statuses we are willing to stop the ladder on. Anything worse means "keep
 # looking for a smaller rung".

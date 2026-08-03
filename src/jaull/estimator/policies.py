@@ -7,6 +7,7 @@ of hard-coding values so the assumptions are auditable and easy to tune.
 from __future__ import annotations
 
 from jaull.domain.inference import WeightPrecision
+from jaull.domain.requirements import RecommendationPriority
 
 MiB = 1024 * 1024
 GiB = 1024 * 1024 * 1024
@@ -74,3 +75,35 @@ TIGHT_MAX = 1.00
 # present, gguf_selection falls back to the median-sized variant.
 # --------------------------------------------------------------------------
 DEFAULT_GGUF_QUANTIZATION = "Q4_K_M"
+
+
+# --------------------------------------------------------------------------
+# Automatic configuration selection ladders — priority → ordered rungs.
+# Consumed by ``estimator.configuration.select_configuration``. Ladders are
+# tried in order against the quantizations a repository actually publishes;
+# nothing here assumes a given name exists.
+# --------------------------------------------------------------------------
+QUANTIZATION_LADDERS: dict[RecommendationPriority, tuple[str, ...]] = {
+    RecommendationPriority.QUALITY: ("Q6_K", "Q5_K_M", "Q4_K_M", "Q4_K_S", "Q3_K_M"),
+    RecommendationPriority.BALANCED: ("Q5_K_M", "Q4_K_M", "Q4_K_S", "Q3_K_M"),
+    RecommendationPriority.SPEED: ("Q4_K_M", "Q4_K_S", "Q3_K_M", "Q3_K_S"),
+    RecommendationPriority.MEMORY: ("Q4_K_S", "Q3_K_M", "Q3_K_S", "Q2_K"),
+}
+
+# Below this the quality loss is severe enough that it is only worth offering
+# when nothing else fits at all.
+AGGRESSIVE_QUANTIZATIONS: frozenset[str] = frozenset(
+    {"Q2_K", "Q3_K_S", "IQ1_S", "IQ2_XS"}
+)
+
+# dtype ladder for Transformers repositories. int8/int4 are theoretical: no
+# quantized artifact is confirmed to exist, so picking them lowers confidence.
+TRANSFORMERS_DTYPE_LADDER: tuple[WeightPrecision, ...] = (
+    WeightPrecision.FLOAT16,
+    WeightPrecision.INT8,
+    WeightPrecision.INT4,
+)
+
+THEORETICAL_DTYPES: frozenset[WeightPrecision] = frozenset(
+    {WeightPrecision.INT8, WeightPrecision.INT4}
+)

@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import re
 
-from jaull.discovery.models import EvaluatedCandidate
-from jaull.recommendation import capability
+from jaull.domain import families
+from jaull.domain.candidates import EvaluatedCandidate
 
 # Anything after the family token that looks like "-<digits>[.<digits>]B"
 # is the size marker; strip it to derive the series key.
@@ -32,7 +32,7 @@ def series_key(evaluated: EvaluatedCandidate) -> str:
     """
     repo = evaluated.candidate.repo_id
     owner = repo.split("/", 1)[0].lower() if "/" in repo else ""
-    family = capability.detect_family(evaluated.candidate)
+    family = families.detect_family(evaluated.candidate)
     if family == "unknown":
         # No merging when we cannot recognise the family. The series is the
         # repo itself so it never accidentally collides with anything else.

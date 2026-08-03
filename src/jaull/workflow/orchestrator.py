@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable
 
 from jaull.discovery import candidate_filter, enrichment, query_builder
-from jaull.discovery.models import (
+from jaull.domain.candidates import (
     EvaluatedCandidate,
     ModelCandidate,
     SearchQuery,
@@ -22,6 +22,7 @@ from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
+from jaull.domain.requirements import UserAnswers, UserRequirements
 from jaull.exceptions import HuggingFaceUnavailableError, JaullError
 from jaull.recommendation import explanations
 from jaull.recommendation import service as recommendation_service
@@ -29,11 +30,7 @@ from jaull.workflow import policies
 from jaull.workflow import requirements as requirements_service
 from jaull.workflow.cache import RunCache
 from jaull.workflow.container import ServiceContainer
-from jaull.workflow.models import (
-    UserAnswers,
-    UserRequirements,
-    WorkflowStep,
-)
+from jaull.workflow.models import WorkflowStep
 from jaull.workflow.progress import (
     DISCOVERY_STEPS,
     HARDWARE_STEPS,
@@ -104,7 +101,9 @@ def run_workflow(
 
         reporter.start("queries")
         _check(cancelled)
-        queries = query_builder.build_queries(requirements)
+        queries = query_builder.build_queries(
+            requirements, limit=policies.SEARCH_RESULTS_PER_QUERY
+        )
         reporter.done("queries", f"{len(queries)} queries")
 
         reporter.start("search")

@@ -8,15 +8,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.requirements import UserAnswers, UserRequirements
 from jaull.recommendation.models import ModelRecommendation
-from jaull.workflow.models import (
-    UserAnswers,
-    UserRequirements,
-    WorkflowProgress,
-    WorkflowStep,
-)
+from jaull.workflow.models import WorkflowProgress, WorkflowStep
 
 
 class RecommendationWorkflowState(BaseModel):

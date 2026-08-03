@@ -14,19 +14,19 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
+from jaull.domain.requirements import UserRequirements
+from jaull.estimator.configuration import select_configuration
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
     JaullError,
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
-from jaull.recommendation.configuration import select_configuration
-from jaull.workflow.models import UserRequirements
 
 logger = logging.getLogger(__name__)
 

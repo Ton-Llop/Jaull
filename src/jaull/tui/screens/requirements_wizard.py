@@ -16,17 +16,17 @@ from textual.widgets import (
     Static,
 )
 
-from jaull.tui.widgets.warnings_panel import WarningsPanel
-from jaull.tui.widgets.workflow_header import WorkflowHeader
-from jaull.workflow.models import (
+from jaull.domain.requirements import (
     CommercialUse,
     ConcurrencyLevel,
     DocumentScale,
     RecommendationPriority,
     UseCase,
     UserAnswers,
-    WorkflowStep,
 )
+from jaull.tui.widgets.warnings_panel import WarningsPanel
+from jaull.tui.widgets.workflow_header import WorkflowHeader
+from jaull.workflow.models import WorkflowStep
 from jaull.workflow.requirements import normalize_languages
 
 if TYPE_CHECKING:

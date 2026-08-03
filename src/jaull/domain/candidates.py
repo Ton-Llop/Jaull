@@ -1,8 +1,10 @@
-"""Normalised view of a model found through Hugging Face search.
+"""Search-time and evaluation-time contracts for a candidate model.
 
-`ModelCandidate` is the cheap, search-time view: everything here comes from a
-single `list_models` page, with no per-repository API call. The expensive
-`EvaluatedCandidate` view is produced later by `discovery.enrichment`.
+``ModelCandidate`` is the cheap, search-time view — everything here comes from a
+single ``list_models`` page, no per-repository API call. ``EvaluatedCandidate``
+is the enriched view after inspection, estimation and scoring. Both are the
+public contract that discovery, recommendation and workflow share, so they
+live in ``domain/`` rather than inside any single feature package.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from jaull.domain.model import ModelAnalysis
 
 
 class SearchQuery(BaseModel):
-    """One `list_models` call, described declaratively so it can be asserted on."""
+    """One ``list_models`` call, described declaratively so it can be asserted on."""
 
     model_config = ConfigDict(frozen=True)
 

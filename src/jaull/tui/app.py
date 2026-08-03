@@ -5,6 +5,7 @@ from pathlib import Path
 from textual.app import App
 
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.requirements import UserAnswers
 from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.doctor import DoctorScreen
 from jaull.tui.screens.estimate import EstimateScreen
@@ -18,7 +19,6 @@ from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.scan import ScanScreen
 from jaull.tui.screens.welcome import WelcomeScreen
 from jaull.workflow.container import ServiceContainer
-from jaull.workflow.models import UserAnswers
 from jaull.workflow.state import RecommendationWorkflowState
 
 

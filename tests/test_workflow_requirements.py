@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from jaull.workflow import policies
-from jaull.workflow.models import (
+from jaull.domain import policies
+from jaull.domain.requirements import (
     CommercialUse,
     ConcurrencyLevel,
     DocumentScale,

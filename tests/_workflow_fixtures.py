@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from jaull.discovery.models import ModelCandidate, SearchQuery
+from jaull.domain.candidates import ModelCandidate, SearchQuery
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
@@ -38,14 +38,14 @@ from jaull.domain.model import (
     ModelRepositoryInfo,
     RepositoryClassification,
 )
-from jaull.exceptions import HuggingFaceUnavailableError
-from jaull.workflow.models import (
+from jaull.domain.requirements import (
     CommercialUse,
     ConcurrencyLevel,
     RecommendationPriority,
     UseCase,
     UserAnswers,
 )
+from jaull.exceptions import HuggingFaceUnavailableError
 
 GIB = 1024**3
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from textual.widgets import Button, Checkbox, RadioSet
 
+from jaull.domain.requirements import UseCase
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
@@ -25,7 +26,6 @@ from jaull.tui.screens.welcome import WelcomeScreen
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.recommendation_card import RecommendationCard
 from jaull.workflow.container import ServiceContainer
-from jaull.workflow.models import UseCase
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
     GIB,

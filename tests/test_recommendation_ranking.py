@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import pytest
 
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
 from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation import explanations, policies, ranker, scoring
 from jaull.recommendation.capability import CapabilitySignal
 from jaull.recommendation.service import recommend
 from jaull.workflow import policies as workflow_policies
-from jaull.workflow.models import RecommendationPriority, UseCase
 from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,

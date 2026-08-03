@@ -16,7 +16,7 @@ from huggingface_hub import HfApi
 from huggingface_hub.errors import HfHubHTTPError
 from huggingface_hub.hf_api import ModelInfo
 
-from jaull.discovery.models import ModelCandidate, SearchQuery
+from jaull.domain.candidates import ModelCandidate, SearchQuery
 from jaull.domain.estimation import EstimationConfidence
 from jaull.exceptions import HuggingFaceUnavailableError
 

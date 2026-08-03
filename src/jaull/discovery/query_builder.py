@@ -8,9 +8,12 @@ testable without touching the network.
 
 from __future__ import annotations
 
-from jaull.discovery.models import SearchQuery
-from jaull.workflow import policies
-from jaull.workflow.models import UseCase, UserRequirements
+from jaull.domain.candidates import SearchQuery
+from jaull.domain.requirements import UseCase, UserRequirements
+
+# Default when the caller does not pass a limit. Kept generous — the actual
+# guided run overrides it from ``workflow.policies.SEARCH_RESULTS_PER_QUERY``.
+DEFAULT_RESULTS_PER_QUERY = 20
 
 # Search phrases per use case. Deliberately plain: the Hub's search is a
 # full-text match over repo names and cards, so jargon returns less than the
@@ -38,8 +41,16 @@ _FORMAT_TAGS: dict[str, str] = {
 }
 
 
-def build_queries(requirements: UserRequirements) -> list[SearchQuery]:
-    """Return the ordered, deduplicated set of queries for these requirements."""
+def build_queries(
+    requirements: UserRequirements,
+    limit: int = DEFAULT_RESULTS_PER_QUERY,
+) -> list[SearchQuery]:
+    """Return the ordered, deduplicated set of queries for these requirements.
+
+    ``limit`` is the ``list_models`` page size per query. The guided orchestrator
+    supplies its own value from ``workflow.policies.SEARCH_RESULTS_PER_QUERY``;
+    callers that only want to build the queries can omit it.
+    """
     queries: list[SearchQuery] = []
     seen: set[tuple[str | None, str | None, tuple[str, ...], str, int]] = set()
 
@@ -59,7 +70,7 @@ def build_queries(requirements: UserRequirements) -> list[SearchQuery]:
                 search=phrase,
                 pipeline_tag=requirements.pipeline_tag,
                 sort="downloads",
-                limit=policies.SEARCH_RESULTS_PER_QUERY,
+                limit=limit,
             )
         )
 
@@ -77,7 +88,7 @@ def build_queries(requirements: UserRequirements) -> list[SearchQuery]:
                 pipeline_tag=requirements.pipeline_tag,
                 filter_tags=(tag,),
                 sort="downloads",
-                limit=policies.SEARCH_RESULTS_PER_QUERY,
+                limit=limit,
             )
         )
 
@@ -93,7 +104,7 @@ def build_queries(requirements: UserRequirements) -> list[SearchQuery]:
                 pipeline_tag=requirements.pipeline_tag,
                 filter_tags=(language,),
                 sort="downloads",
-                limit=policies.SEARCH_RESULTS_PER_QUERY,
+                limit=limit,
             )
         )
 
@@ -105,7 +116,7 @@ def build_queries(requirements: UserRequirements) -> list[SearchQuery]:
             search=primary_phrase,
             pipeline_tag=requirements.pipeline_tag,
             sort="trending_score",
-            limit=policies.SEARCH_RESULTS_PER_QUERY,
+            limit=limit,
         )
     )
 

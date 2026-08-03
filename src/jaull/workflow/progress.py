@@ -10,11 +10,7 @@ from __future__ import annotations
 import contextlib
 from typing import Protocol
 
-from jaull.workflow.models import (
-    ProgressStep,
-    StepStatus,
-    WorkflowProgress,
-)
+from jaull.workflow.models import ProgressStep, StepStatus, WorkflowProgress
 
 # --------------------------------------------------------------------------
 # Step catalogues. Labels are user-facing, so they avoid jargon.

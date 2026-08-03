@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from jaull.discovery.models import EvaluatedCandidate
+from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation import policies
 from jaull.recommendation.models import ScoreBreakdown
-from jaull.workflow.models import RecommendationPriority
 
 PenaltyFn = Callable[[EvaluatedCandidate], float]
 UnmetFn = Callable[[EvaluatedCandidate], list[str]]

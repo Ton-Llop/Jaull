@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import math
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.policies import TEXT_GENERATION_PIPELINE
+from jaull.domain.requirements import UseCase, UserRequirements
 from jaull.recommendation import policies
-from jaull.workflow import policies as workflow_policies
-from jaull.workflow.models import UseCase, UserRequirements
 
 # Keywords that suggest a repository targets a given use case. Matched against
 # the repo id and the tag list, both lowercased.
@@ -72,7 +72,7 @@ def task_match(candidate: ModelCandidate, requirements: UserRequirements) -> flo
         0.25 if hits == 0 else min(1.0, 0.45 + 0.18 * hits + 0.15 * strong_hits)
     )
 
-    if candidate.pipeline_tag == workflow_policies.TEXT_GENERATION_PIPELINE:
+    if candidate.pipeline_tag == TEXT_GENERATION_PIPELINE:
         score = min(1.0, score + 0.1)
 
     if any(word in haystack for word in negative):

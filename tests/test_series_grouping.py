@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
 from jaull.discovery.series import (
     group_by_series,
     parameter_label,
     series_key,
 )
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 
 
 def _e(repo_id: str) -> EvaluatedCandidate:

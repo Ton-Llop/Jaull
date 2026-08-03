@@ -13,7 +13,7 @@ would silently merge them.
 
 from __future__ import annotations
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 
 
 def family_key(candidate: ModelCandidate) -> str:

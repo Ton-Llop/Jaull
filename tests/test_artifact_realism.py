@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,

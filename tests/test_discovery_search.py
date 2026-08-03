@@ -19,15 +19,16 @@ from jaull.discovery.candidate_filter import (
     parameter_count_hint,
     shortlist,
 )
-from jaull.discovery.models import SearchQuery
 from jaull.discovery.search_client import (
     HfSearchClient,
     candidate_from_model_info,
 )
+from jaull.domain.candidates import SearchQuery
 from jaull.domain.estimation import EstimationConfidence
+from jaull.domain.policies import TEXT_GENERATION_PIPELINE
+from jaull.domain.requirements import CommercialUse, UseCase
 from jaull.exceptions import HuggingFaceUnavailableError
 from jaull.workflow import policies
-from jaull.workflow.models import CommercialUse, UseCase
 from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import answers, candidate, hardware
 
@@ -53,7 +54,7 @@ def test_each_use_case_produces_its_own_phrases(
 ) -> None:
     queries = query_builder.build_queries(_requirements(use_case))
     assert any(q.search == expected_phrase for q in queries)
-    assert all(q.pipeline_tag == policies.TEXT_GENERATION_PIPELINE for q in queries)
+    assert all(q.pipeline_tag == TEXT_GENERATION_PIPELINE for q in queries)
 
 
 def test_queries_are_not_a_single_literal_string() -> None:

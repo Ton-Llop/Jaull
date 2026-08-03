@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from jaull.discovery.models import EvaluatedCandidate, ModelCandidate
+from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
+from jaull.domain.requirements import RecommendationPriority, UseCase, UserRequirements
 from jaull.recommendation.requirements_gate import (
     evaluate_requirements,
-)
-from jaull.workflow.models import (
-    RecommendationPriority,
-    UseCase,
-    UserRequirements,
 )
 
 

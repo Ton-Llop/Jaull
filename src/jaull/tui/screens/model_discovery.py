@@ -8,15 +8,12 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
+from jaull.domain.requirements import UserAnswers
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
 from jaull.workflow import orchestrator
-from jaull.workflow.models import (
-    UserAnswers,
-    WorkflowProgress,
-    WorkflowStep,
-)
+from jaull.workflow.models import WorkflowProgress, WorkflowStep
 from jaull.workflow.progress import DISCOVERY_STEPS, initial_progress
 from jaull.workflow.state import RecommendationWorkflowState
 
