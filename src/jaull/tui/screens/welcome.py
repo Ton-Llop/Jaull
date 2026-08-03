@@ -7,7 +7,6 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
-from jaull.tui.widgets.credits import CreditsPanel
 from jaull.tui.widgets.logo import Logo
 
 if TYPE_CHECKING:
@@ -51,7 +50,6 @@ class WelcomeScreen(Screen[None]):
                 "scan, inspect, estimate and doctor screens.",
                 classes="text-muted",
             )
-            yield CreditsPanel()
         yield Footer()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:

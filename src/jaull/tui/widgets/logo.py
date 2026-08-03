@@ -15,7 +15,9 @@ _BASE_LOGO = r"""
  ╚════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝
 """.strip("\n")
 
-_SUBTITLE = "Local AI • Hardware • Hugging Face"
+_SUBTITLE = " Made by Ton — TFG "
+_SUBTITLE += "  · MIT License "
+
 
 
 class Logo(Vertical):
@@ -34,6 +36,7 @@ class Logo(Vertical):
         self._subtitle_widget = Static("", classes="logo-subtitle", markup=True)
         yield self._logo_widget
         yield self._subtitle_widget
+        
 
     def on_mount(self) -> None:
         self._refresh_logo()

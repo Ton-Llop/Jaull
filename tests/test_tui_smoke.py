@@ -109,13 +109,3 @@ def test_cli_equivalent_widget_stores_command() -> None:
     assert widget._command == "jaull scan"
 
 
-def test_welcome_shows_credits_widget() -> None:
-    from jaull.tui.widgets.credits import CreditsPanel
-
-    async def scenario() -> None:
-        app = JaullApp()
-        async with app.run_test() as pilot:
-            credits = pilot.app.screen.query(CreditsPanel)
-            assert len(credits) == 1
-
-    _run(scenario())
