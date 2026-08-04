@@ -1,6 +1,6 @@
-# Glossari tècnic de `local-ai-check`
+# Glossari tècnic de `jaull`
 
-Diccionari de consulta ràpida per recordar els conceptes principals del projecte. Les definicions estan orientades al context de `local-ai-check`, no a cobrir tota la teoria d’intel·ligència artificial.
+Diccionari de consulta ràpida per recordar els conceptes principals del projecte. Les definicions estan orientades al context de `jaull`, no a cobrir tota la teoria d’intel·ligència artificial.
 
 ---
 
@@ -14,7 +14,7 @@ Un adapter normalment no es pot executar sol: necessita saber quin és el seu `b
 ### API
 Interfície que permet que un programa parli amb un altre servei.
 
-`local-ai-check` utilitza l’API de Hugging Face per cercar models, consultar repositoris i obtenir metadades.
+`jaull` utilitza l’API de Hugging Face per cercar models, consultar repositoris i obtenir metadades.
 
 ### Architecture / arquitectura
 Estructura interna del model: nombre de capes, tipus d’atenció, `hidden_size`, caps, etc.
@@ -77,7 +77,7 @@ Nombre de seqüències processades conjuntament en una operació.
 
 No és exactament el mateix que nombre d’usuaris simultanis.
 
-En `local-ai-check`, el `batch_size` influeix en el càlcul del KV cache.
+En `jaull`, el `batch_size` influeix en el càlcul del KV cache.
 
 ### Benchmark
 Prova controlada que mesura el comportament real.
@@ -136,7 +136,7 @@ Procés de cercar, deduplicar, filtrar i seleccionar models del Hugging Face Hub
 Interfície basada en comandes:
 
 ```bash
-local-ai-check estimate MODEL
+jaull estimate MODEL
 ```
 
 És adequada per scripting, automatització i resultats reproduïbles.
@@ -384,7 +384,7 @@ No s’ha de mostrar en logs, reports, captures ni commits.
 ### Hugging Face Hub
 Plataforma on es publiquen models, datasets, demos i metadades.
 
-`local-ai-check` utilitza el Hub com a catàleg de candidats.
+`jaull` utilitza el Hub com a catàleg de candidats.
 
 ---
 
@@ -458,7 +458,7 @@ Exemples coneguts:
 - BSD;
 - llicències personalitzades de fabricants.
 
-`local-ai-check` fa una classificació conservadora, però no ofereix assessorament legal.
+`jaull` fa una classificació conservadora, però no ofereix assessorament legal.
 
 ### Likes
 Nombre de “m’agrada” d’un repositori al Hub.
@@ -858,7 +858,7 @@ Comandes habituals:
 ```bash
 uv sync
 uv run pytest
-uv run local-ai-check
+uv run jaull
 uv build
 ```
 

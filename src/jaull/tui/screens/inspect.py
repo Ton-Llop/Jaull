@@ -5,6 +5,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, LoadingIndicator, Static
 
+from jaull.advisor.service import AdvisorService
 from jaull.domain.model import ModelAnalysis
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
@@ -13,8 +14,6 @@ from jaull.exceptions import (
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
-from jaull.huggingface.client import HfClient
-from jaull.huggingface.repository import inspect_model
 from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
@@ -70,7 +69,7 @@ class InspectScreen(Screen[None]):
 
     def _worker(self, repo_id: str) -> None:
         try:
-            analysis = inspect_model(repo_id, client=HfClient())
+            analysis = _advisor(self).inspect_model(repo_id)
         except (
             ModelNotFoundError,
             ModelAccessDeniedError,
@@ -140,6 +139,13 @@ class InspectScreen(Screen[None]):
             content.mount(WarningsPanel(analysis.warnings))
 
         content.mount(CliEquivalent(f"jaull inspect {repo.repo_id}"))
+
+
+def _advisor(screen: Screen[None]) -> AdvisorService:
+    from jaull.tui.app import JaullApp
+
+    assert isinstance(screen.app, JaullApp)
+    return screen.app.advisor
 
 
 def _fmt(byte_count: int | None) -> str:

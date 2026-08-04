@@ -15,6 +15,7 @@ from textual.widgets import (
     Static,
 )
 
+from jaull.advisor.service import AdvisorService
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.inference import (
     InferenceConfiguration,
@@ -22,7 +23,6 @@ from jaull.domain.inference import (
     WeightPrecision,
 )
 from jaull.domain.model import ModelAnalysis
-from jaull.estimator import service as estimator_service
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
@@ -35,11 +35,7 @@ from jaull.exceptions import (
     ModelNotFoundError,
     QuantizationNotFoundError,
 )
-from jaull.hardware.detector import detect_hardware
-from jaull.huggingface.client import HfClient
-from jaull.huggingface.repository import inspect_model
 from jaull.huggingface.url_parser import normalize_repo_id
-from jaull.metadata.range_reader import HttpxRangeClient
 from jaull.tui.widgets.assessment_badge import AssessmentBadge
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
@@ -121,7 +117,7 @@ class EstimateScreen(Screen[None]):
 
     def _detect_worker(self, repo_id: str) -> None:
         try:
-            analysis = inspect_model(repo_id, client=HfClient())
+            analysis = _advisor(self).inspect_model(repo_id)
         except (
             ModelNotFoundError,
             ModelAccessDeniedError,
@@ -257,16 +253,13 @@ class EstimateScreen(Screen[None]):
             safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
             device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
         )
-        hardware = detect_hardware()
-        client = HfClient()
-        range_client = HttpxRangeClient()
+        advisor = _advisor(self)
+        hardware = advisor.scan_hardware()
         try:
-            estimate = estimator_service.estimate_memory(
+            estimate = advisor.estimate_model(
                 analysis=self.state.analysis,
                 hardware=hardware,
                 inference_cfg=cfg,
-                client=client,
-                range_client=range_client,
             )
         except QuantizationNotFoundError as exc:
             self.app.call_from_thread(self._render_error, str(exc))
@@ -333,6 +326,13 @@ class EstimateScreen(Screen[None]):
     def _get_state(self) -> _EstimateFormState:
         # Test helper.
         return self.state
+
+
+def _advisor(screen: Screen[None]) -> AdvisorService:
+    from jaull.tui.app import JaullApp
+
+    assert isinstance(screen.app, JaullApp)
+    return screen.app.advisor
 
 
 def _equivalent_cli(estimate: MemoryEstimate) -> str:

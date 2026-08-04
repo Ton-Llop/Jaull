@@ -1,4 +1,11 @@
-"""Compose scoring, family collapsing, ranking and explanations."""
+"""Compose scoring, family collapsing, ranking and explanations.
+
+This module lives in ``workflow/`` — not ``recommendation/`` — because
+composing candidates from discovery with the recommendation primitives is an
+orchestration concern. Keeping it here lets ``recommendation/`` stay a pure
+provider of scoring, ranking and explanation functions with no upward or
+sideways imports.
+"""
 
 from __future__ import annotations
 

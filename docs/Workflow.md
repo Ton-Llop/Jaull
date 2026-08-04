@@ -1,4 +1,4 @@
-# Arquitectura de `local-ai-check`
+# Arquitectura de `jaull`
 
 Aquest document explica com està organitzat el projecte, quina responsabilitat té cada carpeta i quin recorregut segueix una recomanació des que l’usuari obre la interfície fins que es genera l’informe final.
 
@@ -8,7 +8,7 @@ Aquest document explica com està organitzat el projecte, quina responsabilitat 
 
 ## 1. Què fa el projecte?
 
-`local-ai-check` és una eina de terminal que:
+`jaull` és una eina de terminal que:
 
 1. Detecta el maquinari disponible.
 2. Recull les necessitats de l’usuari mitjançant un assistent guiat.
@@ -128,7 +128,7 @@ Configuració central del projecte:
 - metadades del paquet;
 - dependències de producció;
 - dependències de desenvolupament;
-- entrada de consola `local-ai-check`;
+- entrada de consola `jaull`;
 - configuració de Ruff;
 - configuració de Mypy;
 - configuració de Pytest;
@@ -146,10 +146,10 @@ No s’ha de confondre amb la llicència dels models analitzats. Cada model de H
 
 ---
 
-# 4. Paquet principal: `src/local_ai_check/`
+# 4. Paquet principal: `src/jaull/`
 
 ```text
-src/local_ai_check/
+src/jaull/
 ├── analyzers/
 ├── cli/
 ├── discovery/
@@ -175,10 +175,10 @@ src/local_ai_check/
 Quan s’executa:
 
 ```bash
-local-ai-check
+jaull
 ```
 
-Python entra a `local_ai_check.__main__`, que delega en l’aplicació Typer definida a:
+Python entra a `jaull.__main__`, que delega en l’aplicació Typer definida a:
 
 ```text
 cli/app.py
@@ -193,11 +193,11 @@ cli/app.py
 Comandes principals:
 
 ```bash
-local-ai-check scan
-local-ai-check inspect MODEL
-local-ai-check estimate MODEL
-local-ai-check doctor
-local-ai-check ui
+jaull scan
+jaull inspect MODEL
+jaull estimate MODEL
+jaull doctor
+jaull ui
 ```
 
 ---

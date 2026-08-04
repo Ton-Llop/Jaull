@@ -8,7 +8,6 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator
 
 from jaull.domain.hardware import HardwareProfile
-from jaull.hardware.detector import detect_hardware
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -31,7 +30,7 @@ class ScanScreen(Screen[None]):
         self.run_worker(self._probe, thread=True)
 
     def _probe(self) -> None:
-        profile = detect_hardware()
+        profile = self._app().advisor.scan_hardware()
         self.app.call_from_thread(self._populate, profile)
 
     def _populate(self, profile: HardwareProfile) -> None:

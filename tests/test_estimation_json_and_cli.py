@@ -7,6 +7,7 @@ from typing import Any
 
 from typer.testing import CliRunner
 
+from jaull.advisor.service import AdvisorService
 from jaull.cli.app import app
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.inference import TargetDevice
@@ -19,6 +20,7 @@ from jaull.domain.model import (
     SafetensorsSummary,
 )
 from jaull.estimator import service as estimator_service
+from jaull.hardware.detector import detect_hardware
 from jaull.presentation.estimation_report import (
     SCHEMA_VERSION,
     estimate_to_json_dict,
@@ -69,6 +71,25 @@ def _stub_analysis(client: _StubClient) -> ModelAnalysis:
     )
 
 
+def _install_fake_advisor(
+    monkeypatch, *, analysis: ModelAnalysis, client: _StubClient
+) -> None:
+    """Replace ``AdvisorService.default`` with a hand-wired advisor.
+
+    The fake reuses the real estimator + hardware detection (the tests want to
+    exercise the real memory maths) but shortcircuits ``inspect_model`` to
+    return the canned analysis and hands the stub HfClient to the estimator
+    so its ``safetensors_summary`` probe returns pre-canned data.
+    """
+    advisor = AdvisorService.build(
+        hf_client=client,  # type: ignore[arg-type]
+        detect_hardware=detect_hardware,
+        inspect_model=lambda repo_id, client=None: analysis,  # type: ignore[misc]
+        estimate_memory=estimator_service.estimate_memory,
+    )
+    monkeypatch.setattr(AdvisorService, "default", classmethod(lambda cls: advisor))
+
+
 def _run_and_estimate(*, monkeypatch) -> dict[str, Any]:
     client = _StubClient(
         summary=SafetensorsSummary(
@@ -83,13 +104,7 @@ def _run_and_estimate(*, monkeypatch) -> dict[str, Any]:
         ),
     )
     analysis = _stub_analysis(client)
-
-    monkeypatch.setattr(
-        "jaull.cli.estimate.inspect_model",
-        lambda repo_id, client=None: analysis,
-    )
-    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
-    # detect_hardware() runs on the real machine; that's fine.
+    _install_fake_advisor(monkeypatch, analysis=analysis, client=client)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -228,11 +243,7 @@ def test_cli_estimate_rich_output(monkeypatch) -> None:
         ),
     )
     analysis = _stub_analysis(client)
-    monkeypatch.setattr(
-        "jaull.cli.estimate.inspect_model",
-        lambda repo_id, client=None: analysis,
-    )
-    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
+    _install_fake_advisor(monkeypatch, analysis=analysis, client=client)
 
     runner = CliRunner()
     result = runner.invoke(app, ["estimate", "user/model"], catch_exceptions=False)
@@ -255,11 +266,10 @@ def test_service_end_to_end_shape_is_used(monkeypatch) -> None:
 
     client = _StubClient()
     analysis = _stub_analysis(client)
-    monkeypatch.setattr(
-        "jaull.cli.estimate.inspect_model",
-        lambda repo_id, client=None: analysis,
-    )
-    monkeypatch.setattr("jaull.cli.estimate.HfClient", lambda: client)
+    # AdvisorService.build captures ``estimator_service.estimate_memory`` at
+    # call time, so patching the module attribute above and then constructing
+    # the fake advisor here picks up the ``fake_estimate`` sentinel.
+    _install_fake_advisor(monkeypatch, analysis=analysis, client=client)
 
     runner = CliRunner()
     result = runner.invoke(

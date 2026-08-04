@@ -25,8 +25,8 @@ from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import UserAnswers, UserRequirements
 from jaull.exceptions import HuggingFaceUnavailableError, JaullError
 from jaull.recommendation import explanations
-from jaull.recommendation import service as recommendation_service
 from jaull.workflow import policies
+from jaull.workflow import ranking as recommendation_service
 from jaull.workflow import requirements as requirements_service
 from jaull.workflow.cache import RunCache
 from jaull.workflow.container import ServiceContainer

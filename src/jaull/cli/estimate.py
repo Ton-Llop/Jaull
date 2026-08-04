@@ -8,13 +8,13 @@ from dataclasses import dataclass
 
 from rich.console import Console
 
+from jaull.advisor.service import AdvisorService
 from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
     WeightPrecision,
 )
 from jaull.domain.model import ModelAnalysis
-from jaull.estimator import service
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
@@ -27,11 +27,7 @@ from jaull.exceptions import (
     ModelNotFoundError,
     QuantizationNotFoundError,
 )
-from jaull.hardware.detector import detect_hardware
-from jaull.huggingface.client import HfClient, HfClientProtocol
-from jaull.huggingface.repository import inspect_model
 from jaull.huggingface.url_parser import normalize_repo_id
-from jaull.metadata.range_reader import HttpRangeClient, HttpxRangeClient
 from jaull.presentation.console import make_console
 from jaull.presentation.estimation_report import (
     estimate_to_json_dict,
@@ -60,10 +56,10 @@ class EstimateOptions:
 def run_estimate(
     reference: str,
     options: EstimateOptions,
-    client: HfClientProtocol | None = None,
-    range_client: HttpRangeClient | None = None,
+    advisor: AdvisorService | None = None,
 ) -> int:
     console = make_console()
+    resolved = advisor or AdvisorService.default()
 
     try:
         repo_id = normalize_repo_id(reference)
@@ -71,10 +67,8 @@ def run_estimate(
         _print_error(console, exc, options.as_json)
         return 2
 
-    hf_client = client if client is not None else HfClient()
-
     try:
-        analysis = inspect_model(repo_id, client=hf_client)
+        analysis = resolved.inspect_model(repo_id)
     except ModelNotFoundError as exc:
         _print_error(console, exc, options.as_json)
         return 3
@@ -94,20 +88,14 @@ def run_estimate(
         options=options,
     )
 
-    hardware = detect_hardware()
-
-    effective_range_client: HttpRangeClient | None = range_client
-    if effective_range_client is None and options.resolve_base_model:
-        effective_range_client = HttpxRangeClient()
+    hardware = resolved.scan_hardware()
 
     try:
-        estimate = service.estimate_memory(
+        estimate = resolved.estimate_model(
             analysis=analysis,
             hardware=hardware,
             inference_cfg=inference_cfg,
-            client=hf_client,
             resolve_base_model=options.resolve_base_model,
-            range_client=effective_range_client,
             recommend_runtime=options.recommend_runtime,
         )
     except QuantizationNotFoundError as exc:

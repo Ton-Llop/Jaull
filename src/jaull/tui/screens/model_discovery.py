@@ -12,7 +12,6 @@ from jaull.domain.requirements import UserAnswers
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
-from jaull.workflow import orchestrator
 from jaull.workflow.models import WorkflowProgress, WorkflowStep
 from jaull.workflow.progress import DISCOVERY_STEPS, initial_progress
 from jaull.workflow.state import RecommendationWorkflowState
@@ -60,17 +59,14 @@ class ModelDiscoveryScreen(Screen[None]):
             app.call_from_thread(self._update_progress, progress)
 
         hardware = app.hardware_profile
-        if hardware is None:
-            hardware = orchestrator.scan_hardware(app.services)
-            app.hardware_profile = hardware
-
-        state = orchestrator.run_workflow(
-            answers=self._answers,
+        state = app.advisor.recommend(
+            self._answers,
             hardware=hardware,
-            services=app.services,
             on_progress=report,
             is_cancelled=self._cancel.is_set,
         )
+        if hardware is None:
+            app.hardware_profile = state.hardware
         app.call_from_thread(self._finish, state)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:

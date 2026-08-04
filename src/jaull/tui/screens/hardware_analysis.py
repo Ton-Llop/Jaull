@@ -12,7 +12,6 @@ from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
-from jaull.workflow import orchestrator
 from jaull.workflow.models import WorkflowProgress, WorkflowStep
 from jaull.workflow.progress import HARDWARE_STEPS, initial_progress
 
@@ -55,7 +54,7 @@ class HardwareAnalysisScreen(Screen[None]):
         def report(progress: WorkflowProgress) -> None:
             app.call_from_thread(self._update_progress, progress)
 
-        profile = orchestrator.scan_hardware(app.services, on_progress=report)
+        profile = app.advisor.scan_hardware(on_progress=report)
         app.call_from_thread(self._finish, profile)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:

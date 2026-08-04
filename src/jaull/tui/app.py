@@ -4,6 +4,7 @@ from pathlib import Path
 
 from textual.app import App
 
+from jaull.advisor.service import AdvisorService
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserAnswers
 from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
@@ -53,19 +54,36 @@ class JaullApp(App[None]):
     # Result of the most recent guided run, kept for the results screen.
     workflow_state: RecommendationWorkflowState | None = None
 
-    def __init__(self, services: ServiceContainer | None = None) -> None:
+    def __init__(
+        self,
+        services: ServiceContainer | None = None,
+        advisor: AdvisorService | None = None,
+    ) -> None:
         super().__init__()
         # Services are injected rather than constructed inside screens, so tests
         # can drive the whole guided flow without touching the network. Resolved
         # lazily: building the real container imports huggingface_hub and opens
         # a network-capable client, which a test supplying fakes must not pay for.
-        self._services = services
+        # Either ``services`` (backwards-compatible) or ``advisor`` may be passed;
+        # passing ``advisor`` also fixes ``services`` to the container it wraps.
+        if advisor is not None:
+            self._advisor: AdvisorService | None = advisor
+            self._services: ServiceContainer | None = advisor.services
+        else:
+            self._advisor = None
+            self._services = services
 
     @property
     def services(self) -> ServiceContainer:
         if self._services is None:
             self._services = ServiceContainer.default()
         return self._services
+
+    @property
+    def advisor(self) -> AdvisorService:
+        if self._advisor is None:
+            self._advisor = AdvisorService(services=self.services)
+        return self._advisor
 
     def on_mount(self) -> None:
         self.push_screen("welcome")

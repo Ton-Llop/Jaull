@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+from jaull.advisor.service import AdvisorService
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
     InvalidModelReferenceError,
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
-from jaull.huggingface.repository import inspect_model
 from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
 from jaull.presentation.model_report import render_model
 
 
-def run_inspect(reference: str) -> int:
+def run_inspect(reference: str, advisor: AdvisorService | None = None) -> int:
     console = make_console()
+    resolved = advisor or AdvisorService.default()
 
     try:
         repo_id = normalize_repo_id(reference)
@@ -22,7 +23,7 @@ def run_inspect(reference: str) -> int:
         return 2
 
     try:
-        analysis = inspect_model(repo_id)
+        analysis = resolved.inspect_model(repo_id)
     except ModelNotFoundError as exc:
         console.print(f"[red]{exc}[/red]")
         return 3

@@ -1,0 +1,160 @@
+"""Facade over hardware, HF, estimator and diagnostics services.
+
+Every CLI subcommand and every TUI screen goes through an ``AdvisorService``
+instance so the wiring is defined in exactly one place. ``AdvisorService`` does
+not add logic — it only delegates — but by centralising the composition it
+lets tests inject fakes without monkeypatching import paths and it keeps
+front-end modules free of ``HfClient()``/``detect_hardware`` construction.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
+from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
+from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.hardware import HardwareProfile
+from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.model import DiagnosticResult, ModelAnalysis
+from jaull.domain.requirements import UserAnswers
+from jaull.huggingface.client import HfClientProtocol
+from jaull.metadata.range_reader import HttpRangeClient
+from jaull.workflow.container import (
+    DetectHardwareFn,
+    EstimateMemoryFn,
+    InspectModelFn,
+    ServiceContainer,
+)
+from jaull.workflow.progress import ProgressCallback
+from jaull.workflow.state import RecommendationWorkflowState
+
+DiagnosticsFn = Callable[[], list[DiagnosticResult]]
+CancelCheck = Callable[[], bool]
+
+
+@dataclass(frozen=True)
+class AdvisorService:
+    """Application-layer facade used by CLI and TUI.
+
+    All fields are DI'd: tests build an ``AdvisorService`` with fakes and never
+    touch the network. Production callers use :meth:`default` which wires the
+    real services.
+    """
+
+    services: ServiceContainer
+    collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
+
+    # ------------------------------------------------------------------
+    # Simple pass-throughs — kept as methods so tests can spy on them and
+    # so the front-ends never need to know about ServiceContainer.
+    # ------------------------------------------------------------------
+    def scan_hardware(
+        self, on_progress: ProgressCallback | None = None
+    ) -> HardwareProfile:
+        if on_progress is None:
+            return self.services.detect_hardware()
+        # Delegate to the orchestrator's progress-aware helper: it wires the
+        # per-probe callback into ``detect_hardware`` and reports each step as
+        # its NVML/psutil call returns.
+        from jaull.workflow import orchestrator
+
+        return orchestrator.scan_hardware(self.services, on_progress=on_progress)
+
+    def diagnostics(self) -> list[DiagnosticResult]:
+        return self.collect_diagnostics()
+
+    def inspect_model(self, repo_id: str) -> ModelAnalysis:
+        return self.services.inspect_model(repo_id, client=self.services.hf_client)
+
+    def estimate_model(
+        self,
+        analysis: ModelAnalysis,
+        hardware: HardwareProfile,
+        inference_cfg: InferenceConfiguration,
+        *,
+        resolve_base_model: bool = True,
+        recommend_runtime: bool = True,
+        range_client: HttpRangeClient | None = None,
+    ) -> MemoryEstimate:
+        effective_range = range_client
+        if effective_range is None and resolve_base_model:
+            effective_range = self._make_range_client()
+        return self.services.estimate_memory(
+            analysis=analysis,
+            hardware=hardware,
+            inference_cfg=inference_cfg,
+            client=self.services.hf_client,
+            resolve_base_model=resolve_base_model,
+            range_client=effective_range,
+            recommend_runtime=recommend_runtime,
+        )
+
+    def recommend(
+        self,
+        answers: UserAnswers,
+        *,
+        hardware: HardwareProfile | None = None,
+        on_progress: ProgressCallback | None = None,
+        is_cancelled: CancelCheck | None = None,
+    ) -> RecommendationWorkflowState:
+        # Local import: the orchestrator imports discovery + recommendation,
+        # which we don't want to drag in just because someone constructs an
+        # ``AdvisorService`` for a CLI subcommand that never runs the guided
+        # flow.
+        from jaull.workflow import orchestrator
+
+        hw = hardware or self.scan_hardware()
+        return orchestrator.run_workflow(
+            answers=answers,
+            hardware=hw,
+            services=self.services,
+            on_progress=on_progress,
+            is_cancelled=is_cancelled,
+        )
+
+    # ------------------------------------------------------------------
+    # Composition helpers
+    # ------------------------------------------------------------------
+    def _make_range_client(self) -> HttpRangeClient | None:
+        factory = self.services.range_client_factory
+        if factory is None:
+            return None
+        client = factory()
+        return client  # type: ignore[return-value]
+
+    # ------------------------------------------------------------------
+    # Factories
+    # ------------------------------------------------------------------
+    @classmethod
+    def default(cls) -> AdvisorService:
+        """Production wiring: real HF client, real hardware probes, real estimator."""
+        return cls(services=ServiceContainer.default())
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        hf_client: HfClientProtocol,
+        detect_hardware: DetectHardwareFn,
+        inspect_model: InspectModelFn,
+        estimate_memory: EstimateMemoryFn,
+        collect_diagnostics: DiagnosticsFn = _default_diagnostics,
+    ) -> AdvisorService:
+        """Test wiring: assemble a ServiceContainer from callables and wrap it."""
+        from jaull.discovery.search_client import HfSearchClient
+        from jaull.recommendation.capability import MetadataCapabilityAnalyzer
+
+        services = ServiceContainer(
+            hf_client=hf_client,
+            search_client=HfSearchClient(),
+            detect_hardware=detect_hardware,
+            inspect_model=inspect_model,
+            estimate_memory=estimate_memory,
+            capability_analyzer=MetadataCapabilityAnalyzer(),
+            range_client_factory=None,
+        )
+        return cls(services=services, collect_diagnostics=collect_diagnostics)
+
+
+__all__ = ["AdvisorService", "CancelCheck", "DiagnosticsFn"]

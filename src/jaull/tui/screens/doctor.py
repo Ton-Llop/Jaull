@@ -5,7 +5,6 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, LoadingIndicator
 
-from jaull.cli.doctor import collect_diagnostics
 from jaull.domain.enums import DiagnosticStatus
 from jaull.domain.model import DiagnosticResult
 from jaull.tui.widgets.banner import Banner
@@ -25,7 +24,10 @@ class DoctorScreen(Screen[None]):
         self.run_worker(self._worker, thread=True)
 
     def _worker(self) -> None:
-        results = collect_diagnostics()
+        from jaull.tui.app import JaullApp
+
+        assert isinstance(self.app, JaullApp)
+        results = self.app.advisor.diagnostics()
         self.app.call_from_thread(self._populate, results)
 
     def _populate(self, results: list[DiagnosticResult]) -> None:
