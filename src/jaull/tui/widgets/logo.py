@@ -16,7 +16,7 @@ _BASE_LOGO = r"""
 """.strip("\n")
 
 _SUBTITLE = " Made by Ton — TFG "
-_SUBTITLE += "  · MIT License "
+_SUBTITLE += " · MIT License "
 
 
 

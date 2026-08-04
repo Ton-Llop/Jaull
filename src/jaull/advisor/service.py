@@ -12,12 +12,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from jaull.artifacts.service import ArtifactService
+from jaull.artifacts.storage import ArtifactStorage
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
+from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
+from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
 from jaull.workflow.container import (
@@ -44,6 +48,7 @@ class AdvisorService:
 
     services: ServiceContainer
     collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
+    artifacts: ArtifactService | None = field(default=None)
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -114,8 +119,54 @@ class AdvisorService:
         )
 
     # ------------------------------------------------------------------
+    # Artifact resolution / download / verification
+    # ------------------------------------------------------------------
+    def resolve_artifact(
+        self,
+        repo_id: str,
+        quantization: str | None = None,
+        revision: str | None = None,
+    ) -> ModelArtifact:
+        return self._artifacts().resolve(repo_id, quantization, revision)
+
+    def download_artifact(
+        self,
+        artifact: ModelArtifact,
+        on_progress: object | None = None,
+    ) -> ModelArtifact:
+        # ``on_progress`` accepted for forward compatibility; see
+        # ``ArtifactService.download`` for the current wiring.
+        return self._artifacts().download(artifact, on_progress)  # type: ignore[arg-type]
+
+    def verify_artifact(
+        self,
+        artifact: ModelArtifact,
+        *,
+        full: bool = False,
+    ) -> ModelArtifact:
+        return self._artifacts().verify(artifact, full=full)
+
+    # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
+    def _artifacts(self) -> ArtifactService:
+        """Return the configured ``ArtifactService`` or build a lazy default.
+
+        Direct constructions like ``AdvisorService(services=...)`` do not
+        supply an ``ArtifactService``; instead of failing, we lazy-build one
+        from the same ``hf_client``. Uses ``object.__setattr__`` because the
+        dataclass is frozen — the mutation is a one-time memoisation, not
+        semantic change.
+        """
+        if self.artifacts is not None:
+            return self.artifacts
+        fresh = ArtifactService(
+            resolver=HuggingFaceArtifactResolver(self.services.hf_client),
+            storage=ArtifactStorage(),
+        )
+        object.__setattr__(self, "artifacts", fresh)
+        return fresh
+
     def _make_range_client(self) -> HttpRangeClient | None:
         factory = self.services.range_client_factory
         if factory is None:
@@ -129,7 +180,12 @@ class AdvisorService:
     @classmethod
     def default(cls) -> AdvisorService:
         """Production wiring: real HF client, real hardware probes, real estimator."""
-        return cls(services=ServiceContainer.default())
+        services = ServiceContainer.default()
+        artifacts = ArtifactService(
+            resolver=HuggingFaceArtifactResolver(services.hf_client),
+            storage=ArtifactStorage(),
+        )
+        return cls(services=services, artifacts=artifacts)
 
     @classmethod
     def build(
@@ -140,6 +196,7 @@ class AdvisorService:
         inspect_model: InspectModelFn,
         estimate_memory: EstimateMemoryFn,
         collect_diagnostics: DiagnosticsFn = _default_diagnostics,
+        artifacts: ArtifactService | None = None,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -154,7 +211,11 @@ class AdvisorService:
             capability_analyzer=MetadataCapabilityAnalyzer(),
             range_client_factory=None,
         )
-        return cls(services=services, collect_diagnostics=collect_diagnostics)
+        return cls(
+            services=services,
+            collect_diagnostics=collect_diagnostics,
+            artifacts=artifacts,
+        )
 
 
 __all__ = ["AdvisorService", "CancelCheck", "DiagnosticsFn"]

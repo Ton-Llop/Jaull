@@ -23,8 +23,8 @@ from jaull.tui.screens.recommendation_results import (
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.welcome import WelcomeScreen
-from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.recommendation_card import RecommendationCard
+from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
@@ -133,7 +133,9 @@ def test_hardware_screen_shows_progress_and_a_continue_button() -> None:
             app.start_guided_workflow()
             await _settle(pilot)
             assert app.hardware_profile is not None
-            assert pilot.app.screen.query(ProgressStepList)
+            # After completion the loading card is replaced by the summary
+            # card in the same slot — no scrolling needed to see the result.
+            assert pilot.app.screen.query(SummaryCard)
             assert pilot.app.screen.query_one("#hw-continue", Button)
 
     _run(scenario())

@@ -14,7 +14,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 
 # Modules that legitimately reference the SDK because they test our *mapping*
 # of its error types, using stub objects rather than real calls.
-_ALLOWED_HF_IMPORTS = {"test_discovery_search.py"}
+_ALLOWED_HF_IMPORTS = {"test_discovery_search.py", "test_artifact_service.py"}
 
 _REAL_CALL_PATTERNS = (
     re.compile(r"\bHfApi\s*\("),

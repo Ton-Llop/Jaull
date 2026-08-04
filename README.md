@@ -8,17 +8,25 @@ The project is also being developed as part of an end-of-degree project (TFG) fo
 
 The TUI opens on a choice between a guided analysis and the individual tools:
 
-![Welcome screen with guided and advanced entry points](docs/assets/tui-welcome.png)
+![Welcome screen with guided and advanced entry points](docs/assets/tui-welcome.svg)
 
-Guided mode asks six plain-language questions — no model names, quantizations or dtypes:
+Guided mode starts with a hardware scan: a real progress bar with a paced checklist tells you exactly what the tool is inspecting, and the detected profile appears **in place** when the scan finishes — no scrolling required.
 
-![Requirements wizard](docs/assets/tui-wizard.png)
+![Hardware analysis while scanning](docs/assets/tui-hardware-loading.svg)
+
+![Hardware analysis with the detected profile](docs/assets/tui-hardware-done.svg)
+
+Then six plain-language questions — no model names, quantizations or dtypes:
+
+![Requirements wizard](docs/assets/tui-wizard.svg)
 
 Advanced tools keep the original screens, including the memory estimation view:
 
-![jaull dashboard](docs/assets/tui-home.png)
+![jaull dashboard](docs/assets/tui-home.svg)
 
-![Memory estimation view](docs/assets/tui-estimate.png)
+![Memory estimation view](docs/assets/tui-estimate.svg)
+
+> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py` (headless, no network).
 
 ## Requirements
 
