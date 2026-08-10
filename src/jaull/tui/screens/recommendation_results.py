@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static
+from textual.widgets import Button, DataTable, Footer, Header, Input, Select, Static
 
 from jaull.recommendation import policies
+from jaull.recommendation.models import ModelRecommendation
 from jaull.reporting.writer import (
     default_report_name,
     default_reports_dir,
@@ -50,6 +51,17 @@ class RecommendationResultsScreen(Screen[None]):
             else:
                 yield from self._compose_results()
             with Horizontal(id="results-actions"):
+                if self._state.recommendations:
+                    yield Select(
+                        options=[
+                            (f"#{rec.rank} {rec.repo_id}", str(index))
+                            for index, rec in enumerate(self._state.recommendations)
+                        ],
+                        value="0",
+                        id="res-run-select",
+                        allow_blank=False,
+                    )
+                    yield Button("Run model", id="res-run", classes="-primary")
                 yield Button("Compare", id="res-compare")
                 yield Button("Technical details", id="res-details")
                 yield Button("Export report", id="res-export")
@@ -106,6 +118,10 @@ class RecommendationResultsScreen(Screen[None]):
                 self._show_comparison()
             case "res-details":
                 self._show_details()
+            case "res-run":
+                selected = self._selected_recommendation()
+                if selected is not None:
+                    app.run_recommendation(selected)
             case "res-export":
                 self._prompt_export()
             case "res-restart":
@@ -114,6 +130,18 @@ class RecommendationResultsScreen(Screen[None]):
                 app.goto_advanced_tools()
             case "res-export-confirm":
                 self._do_export()
+
+    def _selected_recommendation(self) -> ModelRecommendation | None:
+        if not self._state.recommendations:
+            return None
+        selector = self.query_one("#res-run-select", Select)
+        try:
+            index = int(str(selector.value))
+        except ValueError:
+            index = 0
+        if index < 0 or index >= len(self._state.recommendations):
+            index = 0
+        return self._state.recommendations[index]
 
     def _extra(self) -> Vertical:
         container = self.query_one("#results-extra", Vertical)

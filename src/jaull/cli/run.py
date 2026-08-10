@@ -19,10 +19,8 @@ from jaull.domain.runtime import (
 )
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
-from jaull.execution.host import HostExecutionBackend
 from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
-from jaull.runtime.llama_cpp_runner import LlamaCppRunner, LlamaCppRunnerError
 
 
 @dataclass(frozen=True)
@@ -43,7 +41,10 @@ def run_model(
     advisor: AdvisorService | None = None,
 ) -> int:
     console = make_console()
-    resolved = advisor or AdvisorService.default()
+    resolved = advisor or AdvisorService.default(
+        llama_cli_path=options.llama_cli_path,
+        llama_cli_timeout_seconds=options.timeout_seconds,
+    )
 
     try:
         repo_id = normalize_repo_id(reference)
@@ -56,12 +57,7 @@ def run_model(
             artifact = resolved.download_artifact(artifact)
         artifact = resolved.verify_artifact(artifact, full=options.full_verify)
 
-        runner = LlamaCppRunner(
-            backend=HostExecutionBackend(),
-            llama_cli_path=options.llama_cli_path,
-            timeout_seconds=options.timeout_seconds,
-        )
-        result = runner.run(
+        result = resolved.run_artifact(
             artifact=artifact,
             prompt=options.prompt,
             runtime=_runtime_from_options(options),
@@ -75,7 +71,7 @@ def run_model(
     except ArtifactError as exc:
         _print_error(console, exc)
         return 4
-    except (ExecutionError, LlamaCppRunnerError) as exc:
+    except ExecutionError as exc:
         _print_error(console, exc)
         return 5
 

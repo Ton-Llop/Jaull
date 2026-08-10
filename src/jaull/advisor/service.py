@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jaull.artifacts.service import ArtifactService
@@ -56,6 +57,8 @@ class AdvisorService:
     collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
     artifacts: ArtifactService | None = field(default=None)
     llama_cpp_runner: LlamaCppRunner | None = field(default=None)
+    llama_cli_path: str | Path | None = field(default=None)
+    llama_cli_timeout_seconds: float = field(default=300.0)
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -194,7 +197,11 @@ class AdvisorService:
         from jaull.execution.host import HostExecutionBackend
         from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
-        fresh = LlamaCppRunner(backend=HostExecutionBackend())
+        fresh = LlamaCppRunner(
+            backend=HostExecutionBackend(),
+            llama_cli_path=self.llama_cli_path,
+            timeout_seconds=self.llama_cli_timeout_seconds,
+        )
         object.__setattr__(self, "llama_cpp_runner", fresh)
         return fresh
 
@@ -209,14 +216,24 @@ class AdvisorService:
     # Factories
     # ------------------------------------------------------------------
     @classmethod
-    def default(cls) -> AdvisorService:
+    def default(
+        cls,
+        *,
+        llama_cli_path: str | Path | None = None,
+        llama_cli_timeout_seconds: float = 300.0,
+    ) -> AdvisorService:
         """Production wiring: real HF client, real hardware probes, real estimator."""
         services = ServiceContainer.default()
         artifacts = ArtifactService(
             resolver=HuggingFaceArtifactResolver(services.hf_client),
             storage=ArtifactStorage(),
         )
-        return cls(services=services, artifacts=artifacts)
+        return cls(
+            services=services,
+            artifacts=artifacts,
+            llama_cli_path=llama_cli_path,
+            llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+        )
 
     @classmethod
     def build(
@@ -229,6 +246,8 @@ class AdvisorService:
         collect_diagnostics: DiagnosticsFn = _default_diagnostics,
         artifacts: ArtifactService | None = None,
         llama_cpp_runner: LlamaCppRunner | None = None,
+        llama_cli_path: str | Path | None = None,
+        llama_cli_timeout_seconds: float = 300.0,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -248,6 +267,8 @@ class AdvisorService:
             collect_diagnostics=collect_diagnostics,
             artifacts=artifacts,
             llama_cpp_runner=llama_cpp_runner,
+            llama_cli_path=llama_cli_path,
+            llama_cli_timeout_seconds=llama_cli_timeout_seconds,
         )
 
 

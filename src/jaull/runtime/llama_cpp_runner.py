@@ -9,8 +9,7 @@ from pathlib import Path
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import ExecutionRequest, InferenceResult
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
-from jaull.exceptions import JaullError
-from jaull.execution.errors import ExecutableNotFoundError
+from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.execution.ports import ExecutionBackendProtocol
 
 _DEFAULT_CONTEXT_SIZE = 4096
@@ -18,7 +17,7 @@ _DEFAULT_GPU_LAYERS = 0
 _LLAMA_CLI = "llama-cli"
 
 
-class LlamaCppRunnerError(JaullError):
+class LlamaCppRunnerError(ExecutionError):
     """Base class for llama.cpp runner failures."""
 
 
@@ -65,6 +64,8 @@ class LlamaCppRunner:
             str(ctx_size),
             "--n-gpu-layers",
             str(n_gpu_layers),
+            "--no-display-prompt",
+            "--simple-io",
             "--single-turn",
             "--prompt",
             prompt,
