@@ -2,7 +2,7 @@
 
 `jaull` is an explainable local-AI capacity analyzer for inspecting Hugging Face models and estimating their hardware requirements. It reads your machine, reads a model's public metadata, and tells you whether the two fit — showing its work for every number.
 
-The project is also being developed as part of an end-of-degree project (TFG) focused on corporate local-AI infrastructure. The tool intentionally stops short of downloading weights or running inference; every number it produces is derived from public metadata and documented heuristics.
+The project is also being developed as part of an end-of-degree project (TFG) focused on corporate local-AI infrastructure. The inspection, estimation and guided recommendation paths intentionally avoid downloading model weights or running inference: every number they produce is derived from public metadata and documented heuristics. The separate `run` subcommand is explicit opt-in execution for already resolved GGUF artifacts through `llama-cli`.
 
 ## Interactive interface
 
@@ -158,7 +158,7 @@ Licenses are bucketed conservatively into `commercial_allowed`, `commercial_rest
 
 ## Commands
 
-Five subcommands: `scan`, `inspect`, `estimate`, `doctor` (all classic CLI) and `ui` (interactive TUI). All read-only.
+Six subcommands: `scan`, `inspect`, `estimate`, `doctor`, `run` (classic CLI) and `ui` (interactive TUI). All are read-only except `run`, which explicitly downloads, verifies and executes a GGUF artifact.
 
 ```bash
 uv run jaull                             # opens the TUI when run in a terminal
@@ -167,6 +167,7 @@ uv run jaull scan                        # local hardware
 uv run jaull doctor                      # environment health
 uv run jaull inspect <repo-id-or-url>    # analyze a model repository
 uv run jaull estimate <repo-id-or-url>   # memory footprint + compatibility
+uv run jaull run --model <repo> --prompt "Hello"  # download, verify and run a GGUF
 ```
 
 Running `jaull` with no subcommand opens the TUI **only when stdin and stdout are both a terminal**. Piped, redirected or CI invocations keep printing help exactly as before, so existing scripts are unaffected.
@@ -236,6 +237,41 @@ Options:
 | `--no-resolve-base-model` | off | Skip base-model resolution and GGUF-header enrichment |
 | `--no-runtime-recommendation` | off | Skip the runtime recommendation section |
 
+### `run` — execute a GGUF with llama-cli
+
+```bash
+uv run jaull run \
+    --model bartowski/Meta-Llama-3.1-8B-Instruct-GGUF \
+    --quantization Q4_K_M \
+    --prompt "Explain what local AI means" \
+    --ctx-size 4096 \
+    --n-gpu-layers 0
+```
+
+`run` is the only command that downloads weights and runs inference. It:
+
+1. normalises the Hugging Face reference;
+2. resolves a single-file GGUF variant;
+3. downloads it into jaull's artifact storage when missing;
+4. verifies file size and SHA-256 sidecar, with optional full re-hashing via `--full-verify`;
+5. executes `llama-cli --single-turn` through the local host backend.
+
+Options:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `--model` / `-m` | required | Hugging Face repo_id or URL |
+| `--quantization` / `-q` | auto | GGUF variant to resolve |
+| `--prompt` / `-p` | required | Prompt sent to `llama-cli` |
+| `--revision` / `-r` | Hub default | Revision to resolve/download |
+| `--llama-cli` | `PATH` lookup | Path to the `llama-cli` executable |
+| `--ctx-size` | 4096 | Context size passed to `llama-cli` |
+| `--n-gpu-layers` | 0 | Number of layers offloaded to GPU |
+| `--timeout-seconds` | 300 | Execution timeout |
+| `--full-verify` | off | Recompute SHA-256 before execution |
+
+Current limitation: only single-file GGUF artifacts are supported. Multipart GGUF and Transformers execution are intentionally rejected in this phase.
+
 ### `doctor` — environment health
 
 ```bash
@@ -273,7 +309,7 @@ Every recommendation carries per-flag provenance:
 - vLLM is only suggested when the architecture is in the shortlist (`llama`, `qwen2`, `mistral`, `phi3`, `gemma`, `gemma2`, `gemma3`) and the model fits GPU memory.
 - If the memory assessment is `insufficient` no runtime is recommended — the user is told explicitly.
 
-The commands are **generated**, not executed. Copy them into your terminal after downloading the actual weights (`huggingface-cli download <repo>`).
+The commands shown by `estimate` and the guided flow are **generated**, not executed. Use them as a transparent starting point. If you want jaull to execute a model directly, use the explicit `run` command, which currently supports single-file GGUF artifacts through `llama-cli`.
 
 ## Base model resolution and GGUF metadata enrichment
 
@@ -351,10 +387,13 @@ In `--device auto`, the estimator prefers GPU, falls back to `offloading_require
 ```
 src/jaull/
 ├── cli/             # thin Typer commands (no business logic)
+├── advisor/         # application facade shared by CLI and TUI
+├── artifacts/       # artifact resolution, download, storage and verification
 ├── workflow/        # guided-run state, requirements, orchestrator, DI container
 ├── discovery/       # Hub search, query builder, filtering, candidate enrichment
 ├── recommendation/  # configuration selection, scoring, ranking, explanations, report
 ├── domain/          # Pydantic models + enums (no Rich/Typer)
+├── execution/       # host command execution contracts and backend
 ├── hardware/        # psutil + NVML probes
 ├── huggingface/     # HfApi wrapper, URL parser, classifier, orchestrator
 ├── analyzers/       # per-repository-type analyzers behind a Protocol
@@ -367,9 +406,11 @@ src/jaull/
 ```
 
 Boundaries kept clean:
+
 - Domain models never import Rich, Typer or Textual.
 - `workflow/`, `discovery/` and `recommendation/` are pure Python: no Textual, no Rich. The whole guided pipeline runs — and is tested — without a terminal.
 - CLI commands and TUI screens never call `HfApi` directly — they go through the service functions and translate exceptions to messages.
+- `run` uses the same artifact resolver/storage contracts, then executes only after verification.
 - Guided screens receive their services from a `ServiceContainer` (`workflow/container.py`) instead of constructing `HfClient()` themselves, so tests drive the whole flow with fakes.
 - Every external dependency (`HfApi`, NVML, HTTP Range client) hides behind a `Protocol` so tests can inject fakes.
 - Every weight, threshold, budget and license rule lives in a `policies.py` module. No magic numbers elsewhere.
@@ -382,7 +423,7 @@ uv run ruff check .
 uv run mypy src
 ```
 
-Tests use fake HTTP clients (`httpx.MockTransport`), fake NVML providers and programmatically-built GGUF header fixtures; the Hugging Face API and NVIDIA driver are never touched, and the Textual UI is driven headless through `App.run_test()`. No GPU, no network and no TTY required — which is also what lets the same suite run unchanged in CI.
+Tests use fake HTTP clients (`httpx.MockTransport`), fake NVML providers, fake artifact services, fake execution backends and programmatically-built GGUF header fixtures; the Hugging Face API, NVIDIA driver and `llama-cli` binary are never touched. The Textual UI is driven headless through `App.run_test()`. No GPU, no network and no TTY required — which is also what lets the same suite run unchanged in CI.
 
 Packaging is verified separately, since a dropped non-Python resource (the Textual stylesheet) would not show up in the test suite:
 
@@ -406,7 +447,9 @@ uv run python scripts/check_dist.py
 
 ### Overall
 
-- No weight downloads, no inference, no benchmarks, no tokens/second.
+- `scan`, `inspect`, `estimate`, `doctor`, the TUI and guided recommendations do not download model weights or run inference. Only the explicit `run` command does.
+- `run` is limited to single-file GGUF artifacts and local `llama-cli`; there is no Transformers/vLLM execution path yet.
+- No benchmarks, no tokens/second.
 - No hardware-purchase recommendations.
 - Only NVIDIA GPUs (via NVML). AMD / Intel / Apple Silicon are out of scope for now.
 - `diffusers` and `onnx` analyzers only list relevant files; sub-configs and opsets are not parsed.
@@ -417,12 +460,12 @@ uv run python scripts/check_dist.py
 - **GGUF header reads are HTTP-Range based.** Only the first ≤ 8 MiB of the chosen variant is fetched. Because the response is read as a stream and abandoned once the budget is met, a server that ignores `Range` cannot make the tool download a multi-gigabyte file — but it does mean that if the header is not inside that prefix, enrichment gives up rather than reading further.
 - **Gated base models** require `HF_TOKEN`; without it, enrichment degrades to GGUF-only.
 - The TUI runs on Windows, Linux and WSL, but glyph rendering (borders, shading, colours) depends on the terminal — Windows Terminal / WezTerm / iTerm2 give the best result.
-- **Runtime recommendations are generated, not executed.** They assume a standard install of the runtime and a downloaded copy of the model. The layer-per-GPU split for llama.cpp assumes uniform layer sizes — a documented approximation.
+- **Runtime recommendations are generated, not executed by `estimate` or guided mode.** They assume a standard runtime install. The explicit `run` command executes only GGUF through `llama-cli`. The layer-per-GPU split for llama.cpp assumes uniform layer sizes — a documented approximation.
 - **vLLM shortlist is intentionally narrow.** The real support matrix is broader; consult vLLM's docs if your architecture is not listed.
 
 ## Next step (out of scope for this iteration)
 
-A `ModelRecommender` that flips the direction: given a task (`text-generation`, `embeddings`, `vision-text`), a batch/context budget and the same `HardwareProfile`, filter Hugging Face's public catalog by tags and return a ranked list of repositories that the `estimate + runtime` pipeline already classifies as `compatible` or `comfortable`. Closes the "what should I buy? → what should I install?" loop the TFG is aiming at.
+The next execution-focused step is to add benchmark feedback around the explicit `run` path: tokens/second, first-token latency, richer download progress and eventually remote execution. Those numbers should remain separate from the metadata-only estimator so the report stays clear about what was measured and what was inferred.
 
 ## License
 

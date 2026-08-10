@@ -2,7 +2,7 @@
 
 Aquest document descriu **les capes** en què està organitzat el projecte i **les regles de dependència** entre elles. `docs/Workflow.md` explica *què fa* el pipeline; aquest document explica *com està muntat* i per què les fronteres estan on estan.
 
-Jaull segueix sent avui un **monòlit modular Python**: no hi ha workers, ni Docker, ni `llama.cpp` real, ni un benchmark worker. El propòsit d’aquesta arquitectura és deixar la casa endreçada perquè el següent cicle (integració real de runtimes, execució remota) pugui afegir-se sense arrossegar cicles.
+Jaull segueix sent avui un **monòlit modular Python**: no hi ha workers, ni Docker, ni benchmark worker. La recomanació guiada continua sent metadata-only, però ja existeix un camí explícit d’execució local: `jaull run` resol, descarrega, verifica i executa artefactes GGUF single-file amb `llama-cli`. El propòsit d’aquesta arquitectura és deixar la casa endreçada perquè els següents cicles (benchmarks, streaming de descàrrega, execució remota) puguin afegir-se sense arrossegar cicles.
 
 ## Diagrama de capes
 
@@ -17,7 +17,7 @@ Jaull segueix sent avui un **monòlit modular Python**: no hi ha workers, ni Doc
              │              (comparteixen contractes via)     │
              └────────────────── Domain  ────────────────────┘
                                      ▲
-              Estimator · Metadata · HuggingFace · Hardware · Runtime
+       Estimator · Metadata · HuggingFace · Hardware · Runtime · Artifacts · Execution
                                      ▲
                      Reporting · Diagnostics · Presentation
 ```
@@ -33,7 +33,9 @@ Les fletxes representen imports permesos, no fluxos de dades.
 | `huggingface/` | Client HTTP contra el Hub i parseig d’URLs | `domain/` |
 | `metadata/` | Lectura de headers safetensors i GGUF | `domain/`, `huggingface/` |
 | `estimator/` | Càlcul de memòria, selecció de variant, compatibilitat | `domain/`, `metadata/`, `huggingface/`, `runtime/` |
-| `runtime/` | Recomanació de runtime (llama.cpp / Transformers / vLLM) | `domain/` |
+| `runtime/` | Recomanació de runtime i runner local de llama.cpp | `domain/`, `execution/` |
+| `artifacts/` | Resolució, descàrrega, emmagatzematge i verificació d’artefactes executables | `domain/`, `huggingface/` |
+| `execution/` | Contractes d’execució i backend host per llançar processos locals | `domain/` |
 | `discovery/` | Consulta al Hub, filtratge, enriquiment, agrupació en sèries | `domain/`, `huggingface/`, `estimator/`, `metadata/` |
 | `recommendation/` | Scoring, ranking, explicacions, capability | `domain/`, `estimator/` |
 | `workflow/` | Orquestrador del guided run (síncron, amb progrés i cancel·lació) | `domain/`, `discovery/`, `recommendation/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/` |
@@ -41,7 +43,7 @@ Les fletxes representen imports permesos, no fluxos de dades.
 | `diagnostics/` | Comprovacions d’entorn (Python, xarxa, HF, NVML, cache) | `domain/`, `hardware/` |
 | `advisor/` | Fachada d’aplicació que empaqueta els serveis anteriors | tot el que hi ha per sota |
 | `presentation/` | Renderitzat Rich (taules, panells) | `domain/`, `reporting/` |
-| `cli/` | Subcomandes Typer, entrypoint | `advisor/`, `presentation/`, `domain/` |
+| `cli/` | Subcomandes Typer, entrypoint; `run` també composa el runner local | `advisor/`, `presentation/`, `domain/`, `runtime/`, `execution/` |
 | `tui/` | Pantalles Textual, entrypoint | `advisor/`, `domain/` |
 
 ## Regles de dependència (dures)
@@ -74,20 +76,43 @@ Totes aquestes consultes han de retornar zero coincidències.
 
 ## `AdvisorService`
 
-`src/jaull/advisor/service.py` conté la fachada única que **tota** la CLI i **totes** les pantalles TUI utilitzen. Els seus mètodes cobreixen les cinc operacions de l’aplicació:
+`src/jaull/advisor/service.py` conté la fachada que la CLI i les pantalles TUI utilitzen per accedir als serveis d’aplicació. Els seus mètodes cobreixen les operacions principals:
 
 - `scan_hardware(on_progress=None)` — perfil local, opcionalment amb progrés per passes.
 - `diagnostics()` — llista de `DiagnosticResult`.
 - `inspect_model(repo_id)` — anàlisi d’un repositori.
 - `estimate_model(analysis, hardware, inference_cfg, ...)` — estimació de memòria completa.
 - `recommend(answers, hardware=None, on_progress=None, is_cancelled=None)` — guided run end-to-end.
+- `resolve_artifact(repo_id, quantization=None, revision=None)` — tria un fitxer GGUF executable.
+- `download_artifact(artifact)` — baixa l’artefacte al layout local.
+- `verify_artifact(artifact, full=False)` — comprova mida i SHA-256.
+- `run_artifact(artifact=..., prompt=..., runtime=...)` — executa via el runner configurat.
 
 Dues fàbriques:
 
 - `AdvisorService.default()` — muntatge de producció (`ServiceContainer.default()`).
 - `AdvisorService.build(hf_client=..., detect_hardware=..., inspect_model=..., estimate_memory=..., collect_diagnostics=...)` — muntatge de test, amb tots els serveis com a callables injectats.
 
-Els screens TUI accedeixen a l’advisor via `self.app.advisor`; les funcions CLI l’accepten com a paràmetre opcional (`advisor: AdvisorService | None = None`) i cauen a `AdvisorService.default()` quan no se’n rep cap.
+Els screens TUI accedeixen a l’advisor via `self.app.advisor`; les funcions CLI l’accepten com a paràmetre opcional (`advisor: AdvisorService | None = None`) i cauen a `AdvisorService.default()` quan no se’n rep cap. `cli/run.py` fa servir l’advisor per resoldre/descarregar/verificar artefactes i instancia el runner local amb les opcions específiques de CLI (`--llama-cli`, `--timeout-seconds`, `--ctx-size`, `--n-gpu-layers`).
+
+## Artefactes i execució local
+
+El camí `run` és deliberadament separat de l’estimador i del workflow guiat:
+
+```text
+cli/run.py
+   ├── normalize_repo_id()
+   ├── AdvisorService.resolve_artifact()
+   ├── AdvisorService.download_artifact()   # només si falta el fitxer
+   ├── AdvisorService.verify_artifact()
+   └── LlamaCppRunner(HostExecutionBackend).run()
+```
+
+`artifacts/` tradueix un repositori abstracte a un `ModelArtifact` concret i verificat. En aquesta fase només accepta GGUF single-file; repositoris Transformers i GGUF multipart es rebutgen amb errors específics.
+
+`execution/` no coneix Hugging Face ni models: només rep una `ExecutionRequest` immutable i retorna un `ExecutionResult`. Això permet provar el runner sense invocar cap binari real.
+
+`runtime/llama_cpp_runner.py` valida que l’artefacte sigui GGUF, descarregat, verificat i present en disc abans de construir el comandament `llama-cli --single-turn`.
 
 ## Composició de dependències
 
@@ -111,6 +136,7 @@ Els contractes de compatibilitat són **byte-idèntics**: `tests/test_reporting_
 ## Treball pendent (fora d’aquest cicle)
 
 - Docker / Docker Compose.
-- Integració real amb `llama.cpp`, descàrrega de pesos i benchmark dels finalistes.
+- Streaming de descàrrega i progrés byte-level per a artefactes grans.
+- Benchmarks reals del camí `run` (tokens/s, latència de primer token).
 - HTTP intern entre `Advisor` i un `Executor` remot.
 - Capturas de `docs/assets/tui-*.png` amb el nom nou (es regeneraran quan la TUI s’estabilitzi).

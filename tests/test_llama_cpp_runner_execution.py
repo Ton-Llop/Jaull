@@ -105,6 +105,7 @@ def test_runner_builds_command_with_exact_local_path(tmp_path: Path) -> None:
         "8192",
         "--n-gpu-layers",
         "12",
+        "--single-turn",
         "--prompt",
         "Explain GGUF: caf\u00e9",
     )

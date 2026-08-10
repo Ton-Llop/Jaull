@@ -1,8 +1,8 @@
 # Arquitectura de `jaull`
 
-Aquest document explica com està organitzat el projecte, quina responsabilitat té cada carpeta i quin recorregut segueix una recomanació des que l’usuari obre la interfície fins que es genera l’informe final.
+Aquest document explica com està organitzat el projecte, quina responsabilitat té cada carpeta i quin recorregut segueix una recomanació des que l’usuari obre la interfície fins que es genera l’informe final. També documenta el camí explícit `run`, que queda separat del workflow guiat perquè descarrega i executa artefactes locals.
 
-> Aquest README descriu l’estat actual del codi. No és una especificació definitiva: algunes heurístiques del recomanador encara s’han de validar amb benchmarks reals.
+> Aquest document descriu l’estat actual del codi. No és una especificació definitiva: algunes heurístiques del recomanador encara s’han de validar amb benchmarks reals.
 
 ---
 
@@ -17,11 +17,12 @@ Aquest document explica com està organitzat el projecte, quina responsabilitat 
 5. Estima la memòria necessària per executar-los.
 6. Selecciona una configuració tècnica probable.
 7. Puntua els candidats i mostra recomanacions explicades.
+8. Opcionalment, amb `jaull run`, descarrega, verifica i executa un GGUF amb `llama-cli`.
 
 El projecte ofereix dues formes d’ús:
 
 - **Mode guiat:** l’usuari respon preguntes senzilles i rep recomanacions automàtiques.
-- **Eines avançades:** permet executar manualment `scan`, `inspect`, `estimate` i `doctor`.
+- **Eines avançades:** permet executar manualment `scan`, `inspect`, `estimate`, `doctor` i, des de CLI, `run`.
 
 ---
 
@@ -43,13 +44,24 @@ WorkflowOrchestrator
    └── Generació de l’informe
 ```
 
+El camí d’execució és més curt i explícit:
+
+```text
+CLI run
+   │
+   ├── resol artefacte GGUF
+   ├── descarrega si falta
+   ├── verifica mida + SHA-256
+   └── executa llama-cli
+```
+
 La idea principal és separar:
 
 - **Presentació:** què veu l’usuari.
 - **Orquestració:** en quin ordre s’executen les operacions.
 - **Lògica de negoci:** com es calcula, filtra o puntua.
 - **Domini:** com es representen les dades.
-- **Infraestructura externa:** maquinari, Hugging Face i HTTP.
+- **Infraestructura externa:** maquinari, Hugging Face, HTTP, sistema de fitxers i processos locals.
 
 Aquesta separació permet reutilitzar els mateixos serveis des de la CLI, la TUI i els tests.
 
@@ -150,11 +162,14 @@ No s’ha de confondre amb la llicència dels models analitzats. Cada model de H
 
 ```text
 src/jaull/
+├── advisor/
 ├── analyzers/
+├── artifacts/
 ├── cli/
 ├── discovery/
 ├── domain/
 ├── estimator/
+├── execution/
 ├── hardware/
 ├── huggingface/
 ├── metadata/
@@ -198,6 +213,7 @@ jaull inspect MODEL
 jaull estimate MODEL
 jaull doctor
 jaull ui
+jaull run --model MODEL --prompt TEXT
 ```
 
 ---
@@ -280,6 +296,29 @@ Models de recomanació de runtime:
 - comandament orientatiu;
 - warnings;
 - nivell de confiança.
+
+### `domain/artifacts.py`
+
+Defineix `ModelArtifact`, el contracte entre “repositori + quantització” i “fitxer local executable”:
+
+- repo_id;
+- revisió;
+- nom del fitxer;
+- format;
+- quantització;
+- mida esperada;
+- ruta local;
+- SHA-256;
+- estat de descàrrega;
+- estat de verificació.
+
+### `domain/execution.py`
+
+Models immutables per executar processos sense acoblar el domini a `subprocess`:
+
+- `ExecutionRequest`
+- `ExecutionResult`
+- `InferenceResult`
 
 ### `domain/enums.py`
 
@@ -658,6 +697,21 @@ Genera una recomanació orientativa per a `llama.cpp`, incloent:
 - comandament de mostra;
 - warnings.
 
+## `runtime/llama_cpp_runner.py`
+
+Executa un `ModelArtifact` GGUF ja descarregat i verificat amb `llama-cli`.
+
+Valida:
+
+- format GGUF;
+- `local_path` present;
+- artefacte descarregat;
+- artefacte verificat;
+- fitxer existent;
+- prompt no buit.
+
+Després construeix un comandament `llama-cli --single-turn` amb `--ctx-size`, `--n-gpu-layers`, `--model` i `--prompt`.
+
 ## `runtime/transformers.py`
 
 Genera una configuració orientativa per carregar el model amb la biblioteca Transformers.
@@ -670,7 +724,74 @@ Comprova una llista conservadora d’arquitectures i condicions abans de proposa
 
 Constants del selector de runtime.
 
-> Actualment la recomanació de runtime és orientativa. Que un model càpiga en memòria no garanteix que tots els backends o quantitzacions siguin executables al maquinari detectat.
+> La recomanació de runtime continua sent orientativa dins `estimate` i el workflow guiat. Només `jaull run` executa, i en aquesta fase només ho fa per GGUF single-file amb `llama-cli`.
+
+---
+
+# 11.1. `artifacts/`: resolució, descàrrega i verificació
+
+Aquesta carpeta converteix una recomanació abstracta en un fitxer local verificat.
+
+## `artifacts/service.py`
+
+Compon:
+
+1. resolver d’artefactes;
+2. storage local;
+3. downloader injectable.
+
+Flux:
+
+```text
+resolve(repo_id, quantization, revision)
+   ↓
+download(artifact)
+   ↓
+verify(artifact, full=False)
+```
+
+La descàrrega desa un sidecar `.sha256`. La verificació ràpida comprova existència, mida i sidecar; `full=True` recalcula el hash del fitxer.
+
+## `artifacts/storage.py`
+
+Defineix el layout local dels artefactes i els sidecars de SHA-256.
+
+## `artifacts/ports.py`
+
+Protocol del resolver. Permet provar el servei sense Hugging Face real.
+
+## `artifacts/errors.py`
+
+Errors específics:
+
+- artefacte no trobat;
+- format no suportat;
+- error de descàrrega;
+- error de verificació.
+
+Limitació actual: només es resolen GGUF single-file. Repositoris Transformers i GGUF multipart es rebutgen explícitament.
+
+---
+
+# 11.2. `execution/`: execució de processos locals
+
+Aquesta carpeta és deliberadament petita. No sap què és Hugging Face ni què és un model.
+
+## `execution/host.py`
+
+Backend host que executa un `ExecutionRequest` amb timeout i retorna `ExecutionResult`.
+
+## `execution/ports.py`
+
+Protocol injectable per substituir l’execució real als tests.
+
+## `execution/errors.py`
+
+Errors d’execució:
+
+- executable absent;
+- timeout;
+- procés amb exit code no zero.
 
 ---
 
@@ -1136,6 +1257,38 @@ Comprova:
 
 `doctor` diagnostica l’entorn, però no decideix quin model és millor.
 
+## `cli/run.py`
+
+Executa un artefacte GGUF concret amb `llama-cli`.
+
+Flux:
+
+```text
+referència Hugging Face
+   ↓
+normalize_repo_id()
+   ↓
+AdvisorService.resolve_artifact()
+   ↓
+AdvisorService.download_artifact() si falta
+   ↓
+AdvisorService.verify_artifact()
+   ↓
+LlamaCppRunner(HostExecutionBackend).run()
+   ↓
+stdout del model
+```
+
+Codis de sortida principals:
+
+- `0`: execució correcta;
+- `2`: referència de model invàlida;
+- `3`: quantització no disponible;
+- `4`: error de resolució, descàrrega o verificació d’artefacte;
+- `5`: error d’execució o de `llama-cli`.
+
+`run` és l’únic subcomandament que descarrega pesos i executa inferència. La resta de camins (`inspect`, `estimate`, TUI i workflow guiat) continuen sent metadata-only.
+
 ---
 
 # 18. `exceptions.py`
@@ -1228,6 +1381,8 @@ Exemple: l’usuari demana chat general, prioritat equilibrada, anglès i 2–5 
 | Canviar el score | `recommendation/scoring.py`, `recommendation/policies.py`, `recommendation/ranker.py` |
 | Canviar textos explicatius | `recommendation/explanations.py` |
 | Canviar el runtime proposat | `runtime/*` |
+| Canviar execució amb `llama-cli` | `cli/run.py`, `runtime/llama_cpp_runner.py`, `execution/*` |
+| Canviar resolució/descàrrega/verificació d’artefactes | `artifacts/*`, `huggingface/artifact_resolver.py`, `domain/artifacts.py` |
 | Canviar el workflow complet | `workflow/orchestrator.py` |
 | Canviar la interfície | `tui/screens/`, `tui/widgets/`, `tui/styles.tcss` |
 | Canviar el format exportat | `recommendation/report.py`, `presentation/estimation_report.py` |
@@ -1283,6 +1438,18 @@ No és necessari llegir els fitxers en ordre alfabètic.
 29. `tests/test_discovery_search.py`
 30. `tests/test_memory_estimator.py`
 
+## Sisena volta: entendre execució explícita
+
+31. `domain/artifacts.py`
+32. `artifacts/service.py`
+33. `huggingface/artifact_resolver.py`
+34. `execution/host.py`
+35. `runtime/llama_cpp_runner.py`
+36. `cli/run.py`
+37. `tests/test_artifact_service.py`
+38. `tests/test_llama_cpp_runner_execution.py`
+39. `tests/test_cli_run.py`
+
 Els tests són una forma molt útil d’entendre quines regles es consideren contracte del sistema.
 
 ---
@@ -1299,6 +1466,7 @@ Els tests són una forma molt útil d’entendre quines regles es consideren con
 8. **No es mesuren tokens/s ni TTFT.** La compatibilitat actual és sobretot de memòria.
 9. **El workflow està limitat a text-generation.** Imatge, àudio i RAG complet encara queden fora.
 10. **Les dades de les model cards poden estar incompletes o ser incorrectes.** El sistema redueix la confiança, però no pot corregir totes les mancances.
+11. **`run` és explícit i limitat.** Només executa GGUF single-file amb `llama-cli`; no executa Transformers, vLLM ni GGUF multipart.
 
 ---
 
