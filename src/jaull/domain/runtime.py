@@ -16,6 +16,31 @@ class RuntimeName(StrEnum):
     UNKNOWN = "unknown"
 
 
+class RuntimeExecutability(StrEnum):
+    """Can the recommended runtime actually load this artifact here?"""
+
+    # Everything the runtime needs is present locally and confirmed.
+    EXECUTABLE = "executable"
+    # Likely to work but at least one gap: no local binary check, unusual dtype,
+    # etc. Safe to suggest, unsafe to promote without a caveat.
+    POTENTIALLY_EXECUTABLE = "potentially_executable"
+    # Hardware or artifact makes this runtime unusable — e.g. AWQ needing CUDA
+    # on a CPU-only box.
+    UNSUPPORTED = "unsupported"
+    UNKNOWN = "unknown"
+
+
+class RuntimeAssessment(BaseModel):
+    """The result of validating a runtime against detected hardware."""
+
+    model_config = ConfigDict(frozen=True)
+
+    runtime: RuntimeName
+    executability: RuntimeExecutability
+    reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class RuntimeFlagSource(StrEnum):
     HARDWARE = "hardware"
     ESTIMATE = "estimate"

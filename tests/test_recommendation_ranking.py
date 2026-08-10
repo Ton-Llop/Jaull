@@ -292,8 +292,59 @@ def test_alternative_label_only_set_when_the_difference_is_real() -> None:
     primary = _evaluated(repo_id="org/A", total_gib=8)
     smaller = _evaluated(repo_id="org/B", total_gib=3)
     identical = _evaluated(repo_id="org/C", total_gib=8)
-    assert ranker.alternative_label(primary, smaller) == "Smaller and faster"
-    assert ranker.alternative_label(primary, identical) is None
+    assert (
+        ranker.alternative_label(primary, smaller) == "Smaller and faster option"
+    )
+    # Same capability, same memory, same footprint → generic label.
+    assert ranker.alternative_label(primary, identical) == "Alternative"
+
+
+def _with_scores(
+    item: EvaluatedCandidate, *, capability: float, memory_fit: float
+) -> EvaluatedCandidate:
+    return item.model_copy(
+        update={"capability_score": capability, "memory_fit_score": memory_fit}
+    )
+
+
+def test_alternative_label_requires_capability_evidence() -> None:
+    """A candidate with a larger memory footprint but *lower* capability_score
+    cannot be labelled "higher capability" — that was the bug that made
+    Qwen 7B AWQ read as "Higher quality" over Qwen 3B GGUF."""
+    primary = _with_scores(
+        _evaluated(repo_id="org/A", total_gib=6),
+        capability=0.78,
+        memory_fit=0.9,
+    )
+    other_bigger_but_weaker = _with_scores(
+        _evaluated(repo_id="org/B", total_gib=10),
+        capability=0.64,
+        memory_fit=0.4,
+    )
+    label = ranker.alternative_label(primary, other_bigger_but_weaker)
+    assert label is not None
+    lowered = label.lower()
+    # Must not claim "higher capability" or "higher quality" — those need
+    # a real capability_score gap.
+    assert "higher" not in lowered
+    assert "quality" not in lowered
+
+
+def test_alternative_label_promotes_real_capability_gap() -> None:
+    primary = _with_scores(
+        _evaluated(repo_id="org/A", total_gib=4),
+        capability=0.55,
+        memory_fit=0.95,
+    )
+    stronger = _with_scores(
+        _evaluated(repo_id="org/B", total_gib=8),
+        capability=0.80,
+        memory_fit=0.55,
+    )
+    assert (
+        ranker.alternative_label(primary, stronger)
+        == "Higher estimated capability, tighter fit"
+    )
 
 
 # ---------------------------------------------------------------------------

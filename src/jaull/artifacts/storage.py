@@ -8,27 +8,17 @@ stay under the root.
 
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
+from jaull.paths import user_data_dir
 
 _SHA256_SUFFIX = ".sha256"
 
 
 def _default_models_dir() -> Path:
-    """Pick a stable per-user models directory that matches OS conventions."""
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA") or str(
-            Path.home() / "AppData" / "Local"
-        )
-        return Path(base) / "jaull" / "models"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "jaull" / "models"
-    xdg = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(xdg) / "jaull" / "models"
+    return user_data_dir("models")
 
 
 class ArtifactStorage:

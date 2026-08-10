@@ -79,10 +79,14 @@ def test_parameter_count_reads_repo_id_suffix() -> None:
 
 
 def test_parameter_count_prefers_inspected_config() -> None:
+    """When the config carries every dimension we need, use it — otherwise
+    fall through to the repo-id suffix, which is exactly what happens with
+    the shared fixture (no ``vocab_size`` declared)."""
     analysis = transformers_analysis(repo_id="org/Model-7B")
-    assert parameter_count(_candidate("org/Model-7B"), analysis) == (
-        12 * 32 * 4096 * 4096
-    )
+    # Fixture lacks vocab_size so the config path abstains and the name-
+    # suffix supplies the count. The important property: it does not silently
+    # return the old 12·L·H² undercount.
+    assert parameter_count(_candidate("org/Model-7B"), analysis) == 7_000_000_000
 
 
 @pytest.mark.parametrize(

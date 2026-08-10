@@ -2,8 +2,10 @@
 
 A recommendation card that always screams *BEST MATCH* is dishonest when the
 top result is a low-confidence estimate for a model that only just fits with
-offloading. This module maps the ``(status, confidence, unmet)`` signal onto
-a small tier vocabulary so the card can pick an appropriate heading.
+offloading — or, worse, a theoretical int4 configuration on hardware that
+cannot actually run it. This module maps the
+``(status, confidence, actionability, unmet)`` signal onto a small tier
+vocabulary so the card can pick an honest heading.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.recommendation.actionability import ActionabilityLevel
 
 
 class RecommendationTier(StrEnum):
@@ -35,20 +38,30 @@ def choose_tier(
     status: CompatibilityStatus,
     confidence: EstimationConfidence,
     hard_penalty: float,
+    actionability: ActionabilityLevel = ActionabilityLevel.ACTIONABLE,
 ) -> RecommendationTier:
-    """Pick a tier from the compatibility, confidence and hard-penalty signals.
+    """Pick a tier from the compatibility, confidence, actionability and
+    hard-penalty signals.
 
     Ordered from strongest to weakest downgrade:
 
     1. Any hard requirement missed → ``BEST_EFFORT``.
     2. Low or unknown confidence → ``BEST_EFFORT``.
-    3. Offloading required or unknown status → ``CLOSEST_OPTION``.
-    4. Tight fit or only medium confidence → ``RECOMMENDED``.
-    5. Comfortable/compatible + high confidence → ``BEST_MATCH``.
+    3. Speculative actionability (theoretical artifact / unknown runtime) →
+       at most ``BEST_EFFORT``.
+    4. Offloading required or unknown status → ``CLOSEST_OPTION``.
+    5. Tight fit or only medium confidence → ``RECOMMENDED``.
+    6. Likely-actionable but not confirmed actionable → at most
+       ``RECOMMENDED``.
+    7. Everything else with high confidence → ``BEST_MATCH``.
     """
     if hard_penalty < 1.0:
         return RecommendationTier.BEST_EFFORT
     if confidence in (EstimationConfidence.LOW, EstimationConfidence.UNKNOWN):
+        return RecommendationTier.BEST_EFFORT
+    if actionability is ActionabilityLevel.SPECULATIVE:
+        # Ranker still ranks it, but it can never earn a BEST/RECOMMENDED
+        # heading because the artifact/runtime path is not confirmed.
         return RecommendationTier.BEST_EFFORT
     if status in (
         CompatibilityStatus.OFFLOADING_REQUIRED,
@@ -58,6 +71,9 @@ def choose_tier(
     if status is CompatibilityStatus.TIGHT:
         return RecommendationTier.RECOMMENDED
     if confidence is EstimationConfidence.MEDIUM:
+        return RecommendationTier.RECOMMENDED
+    if actionability is ActionabilityLevel.LIKELY_ACTIONABLE:
+        # Runtime is *potentially* executable — good, but not "best-match" good.
         return RecommendationTier.RECOMMENDED
     return RecommendationTier.BEST_MATCH
 

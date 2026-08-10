@@ -21,9 +21,9 @@ Generated: <redacted>
 
 ## Recommendations
 
-### 1. org/Coder-7B — Best Match
+### 1. org/Coder-7B — Best Effort
 
-- Score: 88/100
+- Score: 62/100
 - Memory fit: 75%
 - Concurrency fit: 100%
 - Capability: 74%
@@ -32,6 +32,8 @@ Generated: <redacted>
 - License: apache-2.0 (commercial_allowed)
 - Precision: float16
 - Context: 4096 tokens
+- Artifact: native float16 — confirmed
+- Parameter count: 7B (name inference, low confidence)
 
 **Why this model?**
 

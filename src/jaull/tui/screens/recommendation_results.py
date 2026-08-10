@@ -8,7 +8,12 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static
 
-from jaull.recommendation import policies, report
+from jaull.recommendation import policies
+from jaull.reporting.writer import (
+    default_report_name,
+    default_reports_dir,
+    write_recommendation_report,
+)
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
 from jaull.tui.widgets.memory_usage_bar import MemoryUsageBar
 from jaull.tui.widgets.recommendation_card import RecommendationCard
@@ -205,21 +210,23 @@ class RecommendationResultsScreen(Screen[None]):
         container.mount(Static("Export report", classes="card-title"))
         container.mount(
             Static(
-                "Writes JSON, plus a Markdown summary alongside it. "
+                f"Writes JSON + a Markdown twin under {default_reports_dir()} "
+                "unless you enter an absolute or explicitly-relative path. "
                 "No tokens or credentials are included.",
                 classes="text-muted",
             )
         )
         container.mount(
-            Input(value="jaull-report.json", id="res-export-path")
+            Input(value=default_report_name(), id="res-export-path")
         )
         container.mount(Button("Write file", id="res-export-confirm", classes="-primary"))
 
     def _do_export(self) -> None:
-        target = Path(self.query_one("#res-export-path", Input).value.strip())
+        raw = self.query_one("#res-export-path", Input).value.strip()
+        target = Path(raw) if raw else None
         container = self._extra()
         try:
-            written = export_report(self._state, target)
+            written = write_recommendation_report(self._state, target)
         except OSError as exc:
             container.mount(WarningsPanel([f"Could not write the report: {exc}"]))
             return
@@ -238,13 +245,12 @@ class RecommendationResultsScreen(Screen[None]):
 def export_report(
     state: RecommendationWorkflowState, target: Path
 ) -> list[Path]:
-    """Write the JSON report and a Markdown twin. Returns the paths written."""
-    json_path = target if target.suffix == ".json" else target.with_suffix(".json")
-    markdown_path = json_path.with_suffix(".md")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(report.report_to_json(state), encoding="utf-8")
-    markdown_path.write_text(report.report_to_markdown(state), encoding="utf-8")
-    return [json_path, markdown_path]
+    """Backwards-compatible wrapper around :func:`write_recommendation_report`.
+
+    New code should call ``jaull.reporting.writer.write_recommendation_report``
+    directly. Kept here so the existing TUI test contract is preserved.
+    """
+    return write_recommendation_report(state, target)
 
 
 def _breakdown_rows(estimate: object) -> list[tuple[str, str]]:

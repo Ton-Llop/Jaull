@@ -43,16 +43,33 @@ def series_key(evaluated: EvaluatedCandidate) -> str:
 
 
 def _variant_tag(repo_id: str) -> str | None:
-    """Detect a variant that must not be collapsed with base models.
+    """Return a canonical variant tag so semantically different builds do not
+    end up in the same series bucket.
 
-    Instruct/chat models are semantically different from base pretrained
-    models even at the same size, so they get a suffix and stay in their own
-    series bucket.
+    Rules:
+
+    - ``instruct``/``chat``/``it``/``sft`` collapse to ``instruct`` — same
+      family of "fine-tuned to follow instructions".
+    - ``base`` is its own bucket (base pretrained ≠ instruct-tuned).
+    - Format suffixes (``gguf``, ``awq``, ``gptq``, ``hf``, ``onnx``,
+      ``quantized``) are intentionally not variant tags: the same functional
+      model shipped in a different format belongs in the same series so the
+      ladder can promote the best size regardless of packaging.
+
+    Functional specialisations (``coder``, ``vision``, ``embedding``) already
+    live in the family key produced by ``families.detect_family`` and never
+    reach this function — so a Coder-Instruct never collides with a general
+    Instruct at the family level.
     """
     name = repo_id.split("/")[-1].lower()
-    for keyword in ("instruct", "chat", "it", "coder", "vision"):
-        if keyword in name:
-            return keyword
+    if any(word in name for word in ("instruct", "chat", "-it-", "-it2-")):
+        return "instruct"
+    if name.endswith("-it"):
+        return "instruct"
+    if "-sft" in name or name.endswith("-sft"):
+        return "instruct"
+    if "-base" in name or name.endswith("-base"):
+        return "base"
     return None
 
 

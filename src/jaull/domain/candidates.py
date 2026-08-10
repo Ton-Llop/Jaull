@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # tests can construct ``EvaluatedCandidate`` without Pydantic tripping on
 # "class not fully defined".
 from jaull.domain import runtime as _runtime  # noqa: F401
+from jaull.domain.artifact_profile import ArtifactProfile
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
@@ -24,6 +25,8 @@ from jaull.domain.estimation import (
 )
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
+from jaull.domain.parameters import ParameterCount
+from jaull.domain.runtime import RuntimeAssessment
 
 
 class SearchQuery(BaseModel):
@@ -117,6 +120,13 @@ class EvaluatedCandidate(BaseModel):
     # imports (which would be a circular dependency).
     requirement_penalty: float = 1.0
     unmet_requirement_labels: list[str] = Field(default_factory=list)
+
+    # Optional evidence populated during evaluation. All three are ``None`` on
+    # freshly-constructed candidates (search results); ``enrichment`` fills
+    # them once the analysis and configuration are available.
+    parameter_count_info: ParameterCount | None = None
+    artifact_profile: ArtifactProfile | None = None
+    runtime_assessment: RuntimeAssessment | None = None
 
     @property
     def repo_id(self) -> str:

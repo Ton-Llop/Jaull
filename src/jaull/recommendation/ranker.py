@@ -11,6 +11,11 @@ from jaull.domain.estimation import (
 )
 from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation import policies
+from jaull.recommendation.actionability import (
+    ActionabilityLevel,
+    actionability_penalty,
+    assess_actionability,
+)
 from jaull.recommendation.models import ScoreBreakdown
 
 PenaltyFn = Callable[[EvaluatedCandidate], float]
@@ -57,6 +62,9 @@ def score_breakdown(
     total *= policies.CONFIDENCE_MULTIPLIER[_confidence(evaluated)]
     # Hard-requirement penalties come last so they can veto a top pick.
     total *= max(0.0, min(1.0, hard_penalty))
+    # Actionability gate: a speculative candidate must not out-rank a
+    # confirmed-and-executable one of similar composite quality.
+    total *= actionability_penalty(assess_actionability(evaluated))
     return ScoreBreakdown(
         total=max(0.0, min(1.0, total)),
         weights=weights,
@@ -82,12 +90,15 @@ def status_of(evaluated: EvaluatedCandidate) -> CompatibilityStatus:
 def can_be_primary(evaluated: EvaluatedCandidate) -> bool:
     """A model must be at least ``WORST_PRIMARY_STATUS`` to lead the results.
 
-    ``insufficient`` and ``unknown`` are excluded: recommending something that
-    does not fit, or that we could not measure, as *the* answer would be the
-    single most misleading thing this tool could do.
+    Excluded from the primary slot:
+
+    - ``insufficient`` / ``unknown`` compatibility status;
+    - ``BLOCKED`` actionability (unsupported runtime, or hard veto).
     """
     status = status_of(evaluated)
     if status is CompatibilityStatus.UNKNOWN:
+        return False
+    if assess_actionability(evaluated) is ActionabilityLevel.BLOCKED:
         return False
     return policies.STATUS_RANK[status] <= policies.STATUS_RANK[
         policies.WORST_PRIMARY_STATUS
@@ -143,11 +154,17 @@ def select_ranked(
     penalty_of: PenaltyFn | None = None,
     unmet_of: UnmetFn | None = None,
 ) -> list[tuple[EvaluatedCandidate, ScoreBreakdown]]:
-    """Pick up to ``limit`` results with a valid primary at the front."""
+    """Pick up to ``limit`` results with a valid primary at the front.
+
+    Filters out ``INSUFFICIENT`` memory and ``BLOCKED`` actionability — the
+    latter catches "AWQ recommended on a CPU-only machine" and similar
+    runtime/hardware mismatches surfaced by the executability rules.
+    """
     ordered = [
         pair
         for pair in sort_candidates(evaluated, priority, penalty_of, unmet_of)
         if status_of(pair[0]) is not CompatibilityStatus.INSUFFICIENT
+        and assess_actionability(pair[0]) is not ActionabilityLevel.BLOCKED
     ]
     if not ordered:
         return []
@@ -164,24 +181,54 @@ def select_ranked(
     return ordered[:limit]
 
 
+# Minimum capability-score gap before we are willing to say "higher capability".
+# 0.05 is deliberately small: the score is bounded [0,1] and 5 % is roughly one
+# meaningful rung on the size curve without demanding a huge delta.
+_CAPABILITY_GAP = 0.05
+# Companion memory-fit threshold: the alternative is only "tighter" when it
+# is measurably harder to fit than the primary.
+_MEMORY_GAP = 0.05
+
+
 def alternative_label(
     primary: EvaluatedCandidate, other: EvaluatedCandidate
 ) -> str | None:
-    """Describe how an alternative differs — only when the difference is real."""
+    """Describe how an alternative differs — only when the difference is real.
+
+    Uses ``capability_score`` (a real family/parameter-count signal) rather
+    than raw memory footprint. That is what stops the previous behaviour
+    where a bigger *estimate* was silently reported as "higher quality"
+    regardless of the underlying model.
+    """
     primary_total = _total_bytes(primary)
     other_total = _total_bytes(other)
-    if primary_total is None or other_total is None:
-        return None
 
-    if other_total < primary_total * 0.9:
-        return "Smaller and faster"
-    if other_total > primary_total * 1.1:
-        primary_rank = policies.STATUS_RANK[status_of(primary)]
-        other_rank = policies.STATUS_RANK[status_of(other)]
-        if other_rank >= primary_rank:
-            return "Higher quality but tighter fit"
-        return "Larger footprint"
-    return None
+    higher_capability = (
+        other.capability_score >= primary.capability_score + _CAPABILITY_GAP
+    )
+    tighter_fit = (
+        other.memory_fit_score + _MEMORY_GAP <= primary.memory_fit_score
+    )
+    safer_fit = (
+        other.memory_fit_score >= primary.memory_fit_score + _MEMORY_GAP
+    )
+
+    if higher_capability and tighter_fit:
+        return "Higher estimated capability, tighter fit"
+    if higher_capability:
+        return "Higher estimated capability"
+    if safer_fit and other.capability_score <= primary.capability_score:
+        return "Safer option"
+
+    if primary_total is not None and other_total is not None:
+        if other_total < primary_total * 0.9:
+            return "Smaller and faster option"
+        if other_total > primary_total * 1.1:
+            # Larger footprint without any evidence of higher capability →
+            # honest label rather than an inferred quality claim.
+            return "Larger footprint, similar capability"
+
+    return "Alternative"
 
 
 def _total_bytes(evaluated: EvaluatedCandidate) -> int | None:

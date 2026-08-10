@@ -12,20 +12,38 @@ from __future__ import annotations
 import re
 
 from jaull.domain.candidates import ModelCandidate
-from jaull.domain.model import ModelAnalysis
+from jaull.domain.estimation import (
+    EstimateSource,
+    EstimationConfidence,
+    WeightEstimate,
+)
+from jaull.domain.model import ModelAnalysis, ModelConfig
+from jaull.domain.parameters import ParameterCount, ParameterCountSource
 
+# Tokens that split a repository name into "family" (kept) and "variant"
+# (bucketed by series). Format tokens (gguf/awq/…) are stripped when building
+# the family key so ``Qwen2.5-3B-Instruct`` and ``Qwen2.5-3B-Instruct-GGUF``
+# collapse. Functional specialisations (``coder``, ``vision``, ``embedding``)
+# stay in the family key so ``Qwen2.5-Coder-7B`` is not grouped with
+# ``Qwen2.5-7B`` general.
 _VARIANT_TOKENS = {
     "base",
     "chat",
-    "coder",
-    "gguf",
-    "hf",
     "instruct",
     "it",
-    "onnx",
-    "quantized",
     "sft",
-    "vision",
+    "rlhf",
+    "dpo",
+}
+
+_FORMAT_TOKENS = {
+    "gguf",
+    "awq",
+    "gptq",
+    "onnx",
+    "hf",
+    "quantized",
+    "bnb",
 }
 
 _PARAM_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -43,27 +61,152 @@ def detect_family(
 ) -> str:
     """Best-effort family key for series grouping, not a quality tier."""
     config_type = analysis.config.model_type if analysis and analysis.config else None
-    if config_type:
-        return _normalise_family(config_type)
-
     source = candidate.base_model_repo_id or candidate.repo_id
-    family = _family_from_repo_id(source)
-    return family or "unknown"
+    name_family = _family_from_repo_id(source)
+
+    if config_type:
+        base = _normalise_family(config_type)
+        specialization = _extract_specialization(source)
+        if specialization and specialization not in base:
+            return f"{base}-{specialization}"
+        return base
+
+    return name_family or "unknown"
+
+
+def _extract_specialization(repo_id: str) -> str | None:
+    """Return a functional-specialisation token (``coder``, ``vision``, …).
+
+    Present in the name → the family key must keep it so ``Qwen2.5-Coder``
+    never collapses into general ``Qwen2.5``. Distinct from *variant* tokens
+    (instruct/chat/base) which affect the series bucket, not the family.
+    """
+    name = repo_id.split("/")[-1].lower()
+    for keyword in ("coder", "code", "vision", "embedding", "embed", "reranker"):
+        if keyword in name:
+            return keyword
+    return None
+
+
+def resolve_parameter_count(
+    candidate: ModelCandidate,
+    analysis: ModelAnalysis | None,
+    weight_estimate: WeightEstimate | None = None,
+) -> ParameterCount:
+    """Layered source hierarchy — the strongest evidence wins.
+
+    1. ``safetensors_summary.total_parameters`` on the analysis (HIGH) *or* a
+       ``WeightEstimate`` whose ``num_parameters`` came from safetensors
+       metadata (also HIGH — same source, different plumbing).
+    2. A full sum from ``ModelConfig`` (embeddings + attention + FFN, GQA
+       aware). Only when the config carries every dimension we need (MEDIUM).
+    3. GGUF header ``general.parameter_count`` — future work; not populated
+       today, but the hierarchy is prepared for it.
+    4. ``…-7B-…`` suffix in the repo id (LOW).
+    5. Nothing → UNKNOWN.
+    """
+    if analysis is not None:
+        summary = getattr(analysis, "safetensors_summary", None)
+        if summary is not None and summary.total_parameters > 0:
+            return ParameterCount(
+                count=summary.total_parameters,
+                source=ParameterCountSource.SAFETENSORS_METADATA,
+                confidence=EstimationConfidence.HIGH,
+            )
+
+    if weight_estimate is not None and weight_estimate.num_parameters:
+        source = weight_estimate.component.source
+        if source is EstimateSource.METADATA:
+            return ParameterCount(
+                count=weight_estimate.num_parameters,
+                source=ParameterCountSource.SAFETENSORS_METADATA,
+                confidence=EstimationConfidence.HIGH,
+            )
+
+    if analysis is not None:
+        config_count = _from_config(analysis.config)
+        if config_count is not None:
+            return ParameterCount(
+                count=config_count,
+                source=ParameterCountSource.MODEL_CONFIG,
+                confidence=EstimationConfidence.MEDIUM,
+            )
+
+    name_count = _from_repo_id(candidate.repo_id)
+    if name_count is not None:
+        return ParameterCount(
+            count=name_count,
+            source=ParameterCountSource.NAME_INFERENCE,
+            confidence=EstimationConfidence.LOW,
+        )
+
+    return ParameterCount(
+        count=None,
+        source=ParameterCountSource.UNKNOWN,
+        confidence=EstimationConfidence.UNKNOWN,
+    )
 
 
 def parameter_count(
     candidate: ModelCandidate, analysis: ModelAnalysis | None
 ) -> int | None:
-    """Best-effort parameter count, from config or repo-id suffix. Never 0."""
-    if analysis is not None:
-        config = analysis.config
-        if config and config.num_hidden_layers and config.hidden_size:
-            approx = 12 * config.num_hidden_layers * config.hidden_size * config.hidden_size
-            if approx > 0:
-                return approx
+    """Backwards-compatible facade returning just the count (or ``None``).
 
+    New code should prefer :func:`resolve_parameter_count` so it can inspect
+    the source and confidence.
+    """
+    return resolve_parameter_count(candidate, analysis).count
+
+
+def _from_config(config: ModelConfig | None) -> int | None:
+    """Approximate total parameters from a Transformers ``config.json``.
+
+    Includes token embeddings, attention (Q/K/V/O with GQA when
+    ``num_key_value_heads`` differs from ``num_attention_heads``), FFN (SwiGLU
+    when ``intermediate_size`` is declared, classic 4h fallback otherwise) and
+    the LM head (skipped when tied to the input embedding). Rough enough to
+    stand in for a real measurement — it lands within a few percent of the
+    manufacturer-reported size — but honestly under ``MEDIUM`` confidence.
+    """
+    if config is None:
+        return None
+    layers = config.num_hidden_layers
+    hidden = config.hidden_size
+    heads = config.num_attention_heads
+    vocab = config.vocab_size
+    if not layers or not hidden or not heads or not vocab:
+        return None
+
+    head_dim = config.head_dim or (hidden // heads if heads else None)
+    if not head_dim:
+        return None
+    kv_heads = config.num_key_value_heads or heads
+    intermediate = config.intermediate_size or (4 * hidden)
+
+    # Attention: Q = hidden * (heads * head_dim), K/V = hidden * (kv_heads *
+    # head_dim), O = hidden * hidden. Biases are negligible at this scale.
+    attn_per_layer = (
+        hidden * heads * head_dim              # Q
+        + 2 * hidden * kv_heads * head_dim     # K + V
+        + hidden * hidden                      # O
+    )
+    # FFN: assume SwiGLU (gate + up + down = 3 * hidden * intermediate) — that
+    # is what recent 7B-class families ship. For legacy dense FFN this
+    # over-counts by ~1/3; still closer to reality than the old 12·L·H²
+    # formula, which ignored FFN width entirely.
+    ffn_per_layer = 3 * hidden * intermediate
+    layer_total = layers * (attn_per_layer + ffn_per_layer)
+
+    embed = vocab * hidden
+    output_head = 0 if config.tie_word_embeddings else vocab * hidden
+
+    total = embed + layer_total + output_head
+    return total if total > 0 else None
+
+
+def _from_repo_id(repo_id: str) -> int | None:
     for pattern in _PARAM_PATTERNS:
-        match = pattern.search(candidate.repo_id)
+        match = pattern.search(repo_id)
         if match:
             billions = float(match.group(1))
             return int(billions * 1_000_000_000)
@@ -86,10 +229,10 @@ def _family_from_repo_id(repo_id: str) -> str | None:
 
     family_tokens: list[str] = []
     for token in tokens:
-        if token in _VARIANT_TOKENS:
+        if token in _VARIANT_TOKENS or token in _FORMAT_TOKENS:
             break
         family_tokens.append(token)
-        if len(family_tokens) >= 2 and not _VERSION_RE.match(token):
+        if len(family_tokens) >= 3 and not _VERSION_RE.match(token):
             break
 
     if not family_tokens:
@@ -103,4 +246,8 @@ def _normalise_family(value: str) -> str:
     return cleaned.strip("-") or "unknown"
 
 
-__all__ = ["detect_family", "parameter_count"]
+__all__ = [
+    "detect_family",
+    "parameter_count",
+    "resolve_parameter_count",
+]

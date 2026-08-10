@@ -118,10 +118,32 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             lines.append(f"- Context: {config.context_length} tokens")
             if config.concurrent_users > 1:
                 lines.append(f"- Concurrent users: {config.concurrent_users}")
+        artifact = rec.evaluated.artifact_profile
+        if artifact is not None:
+            quant_suffix = f" {artifact.quantization}" if artifact.quantization else ""
+            lines.append(
+                f"- Artifact: {artifact.format.value}{quant_suffix} "
+                f"— {artifact.confirmation.value}"
+            )
+        param = rec.evaluated.parameter_count_info
+        if param is not None and param.is_known:
+            assert param.count is not None
+            lines.append(
+                f"- Parameter count: {_param_label(param.count)} "
+                f"({param.source.value.replace('_', ' ')}, "
+                f"{param.confidence.value} confidence)"
+            )
         estimate = rec.evaluated.memory_estimate
+        runtime_assessment = rec.evaluated.runtime_assessment
         if estimate is not None and estimate.runtime_recommendation is not None:
             runtime = estimate.runtime_recommendation
-            lines.append(f"- Runtime: {runtime.runtime.value}")
+            if runtime_assessment is not None:
+                lines.append(
+                    f"- Runtime: {runtime.runtime.value} "
+                    f"— {runtime_assessment.executability.value}"
+                )
+            else:
+                lines.append(f"- Runtime: {runtime.runtime.value}")
             if runtime.command_preview:
                 lines.append(f"    - `{runtime.command_preview}`")
         lines.append("")
@@ -223,6 +245,41 @@ def _evaluated_to_dict(item: Any) -> dict[str, Any]:
         "warnings": list(item.warnings),
         "requirement_penalty": item.requirement_penalty,
         "unmet_requirements": list(item.unmet_requirement_labels),
+        "parameter_count": _parameter_count_to_dict(item.parameter_count_info),
+        "artifact": _artifact_to_dict(item.artifact_profile),
+        "runtime_assessment": _runtime_assessment_to_dict(item.runtime_assessment),
+    }
+
+
+def _parameter_count_to_dict(param: Any) -> dict[str, Any] | None:
+    if param is None:
+        return None
+    return {
+        "count": param.count,
+        "source": param.source.value,
+        "confidence": param.confidence.value,
+    }
+
+
+def _artifact_to_dict(artifact: Any) -> dict[str, Any] | None:
+    if artifact is None:
+        return None
+    return {
+        "format": artifact.format.value,
+        "quantization": artifact.quantization,
+        "confirmation": artifact.confirmation.value,
+        "reasons": list(artifact.reasons),
+    }
+
+
+def _runtime_assessment_to_dict(assessment: Any) -> dict[str, Any] | None:
+    if assessment is None:
+        return None
+    return {
+        "runtime": assessment.runtime.value,
+        "executability": assessment.executability.value,
+        "reasons": list(assessment.reasons),
+        "warnings": list(assessment.warnings),
     }
 
 
@@ -267,6 +324,13 @@ def _recommendation_to_dict(rec: ModelRecommendation) -> dict[str, Any]:
         "reasons": list(rec.reasons),
         "warnings": list(rec.warnings),
         "memory": None,
+        "parameter_count": _parameter_count_to_dict(
+            rec.evaluated.parameter_count_info
+        ),
+        "artifact": _artifact_to_dict(rec.evaluated.artifact_profile),
+        "runtime_assessment": _runtime_assessment_to_dict(
+            rec.evaluated.runtime_assessment
+        ),
     }
     if rec.evaluated.memory_estimate is not None:
         payload["memory"] = estimate_to_json_dict(rec.evaluated.memory_estimate)
@@ -277,6 +341,14 @@ def _gib(value: int | None) -> str:
     if value is None:
         return "unknown"
     return f"{value / 1024**3:.1f} GiB"
+
+
+def _param_label(count: int) -> str:
+    if count >= 1_000_000_000:
+        return f"{count / 1_000_000_000:.1f}B".replace(".0B", "B")
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.0f}M"
+    return f"{count}"
 
 
 def _yes_no(value: bool | None) -> str:

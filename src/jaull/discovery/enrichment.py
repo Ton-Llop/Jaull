@@ -16,10 +16,12 @@ from collections.abc import Callable
 
 from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.families import resolve_parameter_count
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import UserRequirements
+from jaull.estimator.artifact_analysis import analyze_artifact
 from jaull.estimator.configuration import select_configuration
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
@@ -27,6 +29,7 @@ from jaull.exceptions import (
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
+from jaull.runtime.executability import assess_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +44,7 @@ def evaluate_candidate(
     inspect_fn: InspectFn,
     estimate_fn: EstimateMemoryFn,
 ) -> EvaluatedCandidate:
-    """Inspect and estimate one candidate, degrading instead of raising.
-
-    ``hardware`` is not read directly here — it is already bound into
-    ``estimate_fn`` by the orchestrator — but it stays in the signature so the
-    dependency is explicit at the call site.
-    """
-    del hardware
-
+    """Inspect and estimate one candidate, degrading instead of raising."""
     try:
         analysis = inspect_fn(candidate.repo_id)
     except ModelNotFoundError:
@@ -77,8 +73,25 @@ def evaluate_candidate(
     if choice.estimate is not None:
         warnings.extend(choice.estimate.warnings)
 
+    updated_candidate = _with_repository_type(candidate, analysis)
+    weight_estimate = (
+        choice.estimate.weights if choice.estimate is not None else None
+    )
+    parameter_count_info = resolve_parameter_count(
+        updated_candidate, analysis, weight_estimate=weight_estimate
+    )
+    artifact_profile = analyze_artifact(
+        updated_candidate, analysis, choice.configuration
+    )
+    runtime_recommendation = (
+        choice.estimate.runtime_recommendation if choice.estimate else None
+    )
+    runtime_assessment = assess_runtime(
+        runtime_recommendation, hardware, artifact_profile, choice.estimate
+    )
+
     return EvaluatedCandidate(
-        candidate=_with_repository_type(candidate, analysis),
+        candidate=updated_candidate,
         analysis=analysis,
         selected_configuration=choice.configuration,
         memory_estimate=choice.estimate,
@@ -86,6 +99,9 @@ def evaluate_candidate(
         configuration_reason=choice.reason,
         alternatives_considered=choice.considered,
         warnings=_dedupe(warnings),
+        parameter_count_info=parameter_count_info,
+        artifact_profile=artifact_profile,
+        runtime_assessment=runtime_assessment,
     )
 
 

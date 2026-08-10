@@ -23,6 +23,7 @@ from jaull.recommendation import (
     scoring,
     tier,
 )
+from jaull.recommendation.actionability import assess_actionability
 from jaull.recommendation.models import (
     ModelRecommendation,
     SeriesSibling,
@@ -127,7 +128,12 @@ def recommend(
         )
         status = ranker.status_of(item)
         confidence = scoring.confidence_of(item)
-        rec_tier = tier.choose_tier(status, confidence, breakdown.hard_penalty)
+        rec_tier = tier.choose_tier(
+            status,
+            confidence,
+            breakdown.hard_penalty,
+            actionability=assess_actionability(item),
+        )
         recommendations.append(
             ModelRecommendation(
                 rank=index,

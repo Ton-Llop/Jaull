@@ -73,20 +73,41 @@
       ],
       "warnings": [],
       "requirement_penalty": 1.0,
-      "unmet_requirements": []
+      "unmet_requirements": [],
+      "parameter_count": {
+        "count": 7000000000,
+        "source": "name_inference",
+        "confidence": "low"
+      },
+      "artifact": {
+        "format": "native",
+        "quantization": "float16",
+        "confirmation": "confirmed",
+        "reasons": [
+          "Loaded at native precision float16 (repository publishes weights at this dtype)."
+        ]
+      },
+      "runtime_assessment": {
+        "runtime": "unknown",
+        "executability": "unknown",
+        "reasons": [
+          "No runtime recommendation was produced."
+        ],
+        "warnings": []
+      }
     }
   ],
   "recommendations": [
     {
       "rank": 1,
       "repo_id": "org/Coder-7B",
-      "tier": "best_match",
-      "score": 88,
+      "tier": "best_effort",
+      "score": 62,
       "score_breakdown": {
-        "total": 0.8829348874844992,
+        "total": 0.6187580644747769,
         "memory_fit": 0.75,
         "concurrency_fit": 1.0,
-        "capability": 0.7361680890280335,
+        "capability": 0.7428694531768665,
         "hardware_fit": 0.75,
         "task_match": 1.0,
         "language_match": 1.0,
@@ -216,6 +237,27 @@
         "configuration_sources": {},
         "architecture": null,
         "runtime_recommendation": null
+      },
+      "parameter_count": {
+        "count": 7000000000,
+        "source": "name_inference",
+        "confidence": "low"
+      },
+      "artifact": {
+        "format": "native",
+        "quantization": "float16",
+        "confirmation": "confirmed",
+        "reasons": [
+          "Loaded at native precision float16 (repository publishes weights at this dtype)."
+        ]
+      },
+      "runtime_assessment": {
+        "runtime": "unknown",
+        "executability": "unknown",
+        "reasons": [
+          "No runtime recommendation was produced."
+        ],
+        "warnings": []
       }
     }
   ],

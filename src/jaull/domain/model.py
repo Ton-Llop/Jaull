@@ -50,6 +50,10 @@ class ModelConfig(BaseModel):
     rope_scaling: dict[str, object] | None = None
     tie_word_embeddings: bool | None = None
     vocab_size: int | None = None
+    # ``config.json`` may embed a ``quantization_config`` block (AWQ, GPTQ,
+    # bitsandbytes). Kept as a raw dict so the artifact analyser can inspect
+    # ``quant_method`` / ``bits`` without a coupled schema per family.
+    quantization_config: dict[str, object] | None = None
     # Free-form flags used by the estimator to detect exotic architectures we should
     # warn about (MoE, MLA, custom auto_map, multimodal, ...). Kept as a raw payload
     # so we do not lose information every future addition of a hint would need.
@@ -92,6 +96,11 @@ class ModelAnalysis(BaseModel):
     relevant_files: list[str] = Field(default_factory=list)
     total_size_bytes: int | None = None
     warnings: list[str] = Field(default_factory=list)
+    # Populated by the estimator (or inspector) when safetensors metadata was
+    # already fetched. Kept optional so hand-built ``ModelAnalysis`` objects in
+    # tests keep working; when present, downstream scoring can trust it as the
+    # authoritative parameter count instead of guessing from names.
+    safetensors_summary: SafetensorsSummary | None = None
 
 
 class DiagnosticResult(BaseModel):

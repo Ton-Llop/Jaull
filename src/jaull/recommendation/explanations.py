@@ -8,13 +8,16 @@ strings from scattering into the Textual screens as ad-hoc conditionals.
 
 from __future__ import annotations
 
+from jaull.domain.artifact_profile import ArtifactConfirmation
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.inference import TargetDevice
 from jaull.domain.requirements import UseCase, UserRequirements
+from jaull.domain.runtime import RuntimeExecutability
 from jaull.recommendation import policies
 
 _USE_CASE_LABEL: dict[UseCase, str] = {
@@ -89,15 +92,12 @@ def build_warnings(
             "Compatibility could not be determined; not enough metadata to estimate memory."
         )
     else:
+        device = assessment.effective_device
+        has_gpu = assessment.available_vram_bytes is not None
         if assessment.status is CompatibilityStatus.TIGHT:
-            warnings.append(
-                "Estimated memory leaves limited free VRAM; other applications may not fit."
-            )
+            warnings.append(_tight_warning(device, has_gpu))
         elif assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED:
-            warnings.append(
-                "Model does not fit in VRAM alone and would need CPU/GPU offloading, "
-                "which is significantly slower."
-            )
+            warnings.append(_offloading_warning(has_gpu))
         elif assessment.status is CompatibilityStatus.UNKNOWN:
             warnings.append(
                 "Memory estimate is incomplete; treat this as a low-confidence suggestion."
@@ -140,18 +140,68 @@ def build_warnings(
     if evaluated.metadata_quality_score < _WEAK:
         warnings.append("Model card metadata is sparse, so figures are approximate.")
 
+    # Only claim "no pre-quantized artifact" when the artifact analyser
+    # actually agrees. An AWQ/GPTQ/bnb repo whose config.json declares a
+    # quantization block is a confirmed artifact even when the estimator
+    # renders it at an int4/int8 precision — misdescribing that in the
+    # warning list was one of the reported regressions.
     if (
         evaluated.analysis is not None
         and evaluated.analysis.classification.primary_type is RepositoryType.TRANSFORMERS
         and evaluated.selected_configuration is not None
         and evaluated.selected_configuration.precision in policies.THEORETICAL_DTYPES
+        and (
+            evaluated.artifact_profile is None
+            or evaluated.artifact_profile.confirmation is ArtifactConfirmation.THEORETICAL
+        )
     ):
         warnings.append(
             "The selected precision is a theoretical estimate; no pre-quantized "
             "artifact was found in this repository."
         )
 
+    # Runtime executability — surface hard incompatibilities so nobody spends
+    # time trying to load an AWQ artifact on a CPU-only laptop.
+    runtime = evaluated.runtime_assessment
+    if runtime is not None:
+        if runtime.executability is RuntimeExecutability.UNSUPPORTED:
+            for reason in runtime.reasons:
+                warnings.append(
+                    f"Runtime {runtime.runtime.value} is not usable here: {reason}"
+                )
+        warnings.extend(runtime.warnings)
+
     return _dedupe(warnings)
+
+
+def _tight_warning(device: TargetDevice, has_gpu: bool) -> str:
+    """Word the "tight fit" caveat around the device we would actually use."""
+    if device is TargetDevice.CPU or not has_gpu:
+        return (
+            "Estimated memory leaves limited free system RAM; other "
+            "applications may not fit alongside the model."
+        )
+    if device is TargetDevice.GPU:
+        return (
+            "Estimated memory leaves limited free VRAM; other GPU workloads "
+            "may not fit alongside the model."
+        )
+    return (
+        "Estimated memory leaves limited free headroom for other workloads."
+    )
+
+
+def _offloading_warning(has_gpu: bool) -> str:
+    if not has_gpu:
+        # No GPU: talking about VRAM/RAM offloading is a category error.
+        return (
+            "Model does not fit in system RAM alone; a smaller variant is "
+            "recommended for this machine."
+        )
+    return (
+        "Model does not fit in VRAM alone and would need CPU/GPU offloading, "
+        "which is significantly slower."
+    )
 
 
 def _dedupe(values: list[str]) -> list[str]:
