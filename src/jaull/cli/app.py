@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
 import typer
 
 from jaull.cli.doctor import run_doctor
 from jaull.cli.estimate import EstimateOptions, run_estimate
 from jaull.cli.inspect import run_inspect
+from jaull.cli.run import RunOptions, run_model
 from jaull.cli.scan import run_scan
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
@@ -178,6 +180,51 @@ def estimate_command(
         recommend_runtime=not no_runtime_recommendation,
     )
     raise typer.Exit(code=run_estimate(reference, options))
+
+
+@app.command("run", help="Run a resolved GGUF artifact with llama-cli.")
+def run_command(
+    reference: str = typer.Option(
+        ..., "--model", "-m", help="Hugging Face repo_id or URL."
+    ),
+    quantization: str | None = typer.Option(
+        None, "--quantization", "-q", help="GGUF quantization variant to use."
+    ),
+    prompt: str = typer.Option(..., "--prompt", "-p", help="Prompt to send to llama-cli."),
+    revision: str | None = typer.Option(
+        None, "--revision", "-r", help="Hugging Face revision to resolve."
+    ),
+    llama_cli: Path | None = typer.Option(
+        None,
+        "--llama-cli",
+        help="Path to llama-cli. Defaults to resolving llama-cli from PATH.",
+    ),
+    context_size: int = typer.Option(
+        4096, "--ctx-size", min=1, help="Context size passed to llama-cli."
+    ),
+    n_gpu_layers: int = typer.Option(
+        0,
+        "--n-gpu-layers",
+        help="Number of layers to offload to GPU. Defaults to CPU-only.",
+    ),
+    timeout_seconds: float = typer.Option(
+        300.0, "--timeout-seconds", min=0.1, help="llama-cli timeout."
+    ),
+    full_verify: bool = typer.Option(
+        False, "--full-verify", help="Recompute SHA-256 before running."
+    ),
+) -> None:
+    options = RunOptions(
+        quantization=quantization,
+        prompt=prompt,
+        revision=revision,
+        llama_cli_path=llama_cli,
+        context_size=context_size,
+        n_gpu_layers=n_gpu_layers,
+        timeout_seconds=timeout_seconds,
+        full_verify=full_verify,
+    )
+    raise typer.Exit(code=run_model(reference, options))
 
 
 if __name__ == "__main__":

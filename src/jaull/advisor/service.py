@@ -11,16 +11,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.execution import InferenceResult
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
+from jaull.domain.runtime import RuntimeRecommendation
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
@@ -32,6 +35,9 @@ from jaull.workflow.container import (
 )
 from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
+
+if TYPE_CHECKING:
+    from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
 CancelCheck = Callable[[], bool]
@@ -49,6 +55,7 @@ class AdvisorService:
     services: ServiceContainer
     collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
     artifacts: ArtifactService | None = field(default=None)
+    llama_cpp_runner: LlamaCppRunner | None = field(default=None)
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -146,6 +153,19 @@ class AdvisorService:
     ) -> ModelArtifact:
         return self._artifacts().verify(artifact, full=full)
 
+    def run_artifact(
+        self,
+        *,
+        artifact: ModelArtifact,
+        prompt: str,
+        runtime: RuntimeRecommendation | None = None,
+    ) -> InferenceResult:
+        return self._llama_cpp_runner().run(
+            artifact=artifact,
+            prompt=prompt,
+            runtime=runtime,
+        )
+
     # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
@@ -165,6 +185,17 @@ class AdvisorService:
             storage=ArtifactStorage(),
         )
         object.__setattr__(self, "artifacts", fresh)
+        return fresh
+
+    def _llama_cpp_runner(self) -> LlamaCppRunner:
+        """Return a configured llama.cpp runner, constructing it only when used."""
+        if self.llama_cpp_runner is not None:
+            return self.llama_cpp_runner
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+
+        fresh = LlamaCppRunner(backend=HostExecutionBackend())
+        object.__setattr__(self, "llama_cpp_runner", fresh)
         return fresh
 
     def _make_range_client(self) -> HttpRangeClient | None:
@@ -197,6 +228,7 @@ class AdvisorService:
         estimate_memory: EstimateMemoryFn,
         collect_diagnostics: DiagnosticsFn = _default_diagnostics,
         artifacts: ArtifactService | None = None,
+        llama_cpp_runner: LlamaCppRunner | None = None,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -215,6 +247,7 @@ class AdvisorService:
             services=services,
             collect_diagnostics=collect_diagnostics,
             artifacts=artifacts,
+            llama_cpp_runner=llama_cpp_runner,
         )
 
 
