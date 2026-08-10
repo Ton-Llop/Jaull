@@ -65,6 +65,7 @@ class LlamaCppRunner:
             str(ctx_size),
             "--n-gpu-layers",
             str(n_gpu_layers),
+            "--single-turn",
             "--prompt",
             prompt,
         )
