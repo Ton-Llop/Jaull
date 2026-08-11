@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,12 @@ from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
-from jaull.domain.execution import ExecutionResult, InferenceResult
+from jaull.domain.execution import (
+    ExecutionFailureReason,
+    ExecutionObservation,
+    ExecutionResult,
+    InferenceResult,
+)
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.runtime import (
     RuntimeFlag,
@@ -86,6 +92,25 @@ def _artifact(**updates: object) -> ModelArtifact:
     return ModelArtifact(**data)
 
 
+def _observation(
+    *,
+    success: bool = True,
+    duration_seconds: float = 0.1,
+    peak_ram_bytes: int | None = 512 * 1024**2,
+    peak_vram_bytes: int | None = 256 * 1024**2,
+    exit_code: int | None = 0,
+    failure_reason: ExecutionFailureReason | None = None,
+) -> ExecutionObservation:
+    return ExecutionObservation(
+        success=success,
+        duration_seconds=duration_seconds,
+        peak_ram_bytes=peak_ram_bytes,
+        peak_vram_bytes=peak_vram_bytes,
+        exit_code=exit_code,
+        failure_reason=failure_reason,
+    )
+
+
 def _runtime(*, ctx_size: int = 4096, n_gpu_layers: int = 12) -> RuntimeRecommendation:
     return RuntimeRecommendation(
         runtime=RuntimeName.LLAMA_CPP,
@@ -155,6 +180,7 @@ class _FakeAdvisor:
         fail_run: Exception | None = None,
         prepare_delay: float = 0.0,
         response_text: str = "generated from tui",
+        observation: ExecutionObservation | None = None,
     ) -> None:
         self.services = _services()
         self.artifact = artifact or _artifact()
@@ -162,6 +188,7 @@ class _FakeAdvisor:
         self.fail_run = fail_run
         self.prepare_delay = prepare_delay
         self.response_text = response_text
+        self.observation = observation or _observation()
         self.operations: list[str] = []
         self.resolved: list[tuple[str, str | None, str | None]] = []
         self.downloaded: list[ModelArtifact] = []
@@ -213,10 +240,9 @@ class _FakeAdvisor:
             raise self.fail_run
         return InferenceResult(
             text=self.response_text,
-            duration_seconds=0.1,
-            exit_code=0,
             runtime="llama.cpp",
             model_path=artifact.local_path or Path("/tmp/tiny-q4_k_m.gguf"),
+            observation=self.observation,
         )
 
 
@@ -243,12 +269,23 @@ def _run_workers_inline(
     screen: RecommendationExecutionScreen,
     monkeypatch: Any,
 ) -> None:
+    del app
+
+    class _InlineExecutor:
+        def submit(self, fn: Any, *args: Any, **kwargs: Any) -> Future[None]:
+            fn(*args, **kwargs)
+            future: Future[None] = Future()
+            future.set_result(None)
+            return future
+
+        def shutdown(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
     monkeypatch.setattr(
-        app,
-        "call_from_thread",
-        lambda callback, *args, **kwargs: callback(*args, **kwargs),
+        screen,
+        "_executor",
+        _InlineExecutor(),
     )
-    monkeypatch.setattr(screen, "run_worker", lambda work, *args, **kwargs: work())
 
 
 def _set_prompt(screen: RecommendationExecutionScreen, prompt: str) -> None:
@@ -415,7 +452,11 @@ def test_execution_screen_prepares_artifact_automatically_and_runs_selected_runt
             assert advisor.runs[0][2] is runtime
             assert screen.query(InferencePrompt)
             assert screen.query(InferenceResponse)
-            assert "generated from tui" in _visible_text(screen)
+            text = _visible_text(screen)
+            assert "generated from tui" in text
+            assert "0.10 s" in text
+            assert "RAM 512.0 MiB" in text
+            assert "VRAM 256.0 MiB" in text
             assert "Resolve artifact for org/Tiny-GGUF (Q4_K_M)" in screen.log_messages
             assert "Verifying artifact" in screen.log_messages
             assert "Generating" in screen.log_messages
@@ -427,7 +468,14 @@ def test_execution_screen_keeps_visual_history_across_prompts(
     monkeypatch: Any,
 ) -> None:
     async def scenario() -> None:
-        advisor = _FakeAdvisor(response_text="first response")
+        advisor = _FakeAdvisor(
+            response_text="first response",
+            observation=_observation(
+                duration_seconds=0.11,
+                peak_ram_bytes=512 * 1024**2,
+                peak_vram_bytes=256 * 1024**2,
+            ),
+        )
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
 
         async with app.run_test(size=(120, 50)) as pilot:
@@ -446,6 +494,11 @@ def test_execution_screen_keeps_visual_history_across_prompts(
             assert prompt_input.has_focus
 
             advisor.response_text = "second response"
+            advisor.observation = _observation(
+                duration_seconds=0.22,
+                peak_ram_bytes=768 * 1024**2,
+                peak_vram_bytes=None,
+            )
             _set_prompt(screen, "Say bye")
             screen.query_one("#run-generate", Button).press()
             await pilot.pause()
@@ -456,8 +509,14 @@ def test_execution_screen_keeps_visual_history_across_prompts(
             text = _visible_text(screen)
             assert "Say hi" in text
             assert "first response" in text
+            assert "0.11 s" in text
+            assert "RAM 512.0 MiB" in text
+            assert "VRAM 256.0 MiB" in text
             assert "Say bye" in text
             assert "second response" in text
+            assert "0.22 s" in text
+            assert "RAM 768.0 MiB" in text
+            assert "VRAM unavailable" in text
 
     _run(scenario())
 
@@ -604,7 +663,15 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
             ExecutionTimeoutError("timed out"),
             ExecutionFailedError(
                 "non-zero exit",
-                ExecutionResult(exit_code=2, stdout="", stderr="bad", duration_seconds=0.1),
+                ExecutionResult(
+                    stdout="",
+                    stderr="bad",
+                    observation=_observation(
+                        success=False,
+                        exit_code=2,
+                        failure_reason=ExecutionFailureReason.NON_ZERO_EXIT,
+                    ),
+                ),
             ),
         ]
         for failure in failures:
@@ -646,7 +713,7 @@ def test_execution_screen_rejects_empty_prompt(monkeypatch: Any) -> None:
     _run(scenario())
 
 
-def test_generate_uses_thread_worker_for_long_operations(monkeypatch: Any) -> None:
+def test_generate_runs_long_operations_without_blocking_ui() -> None:
     async def scenario() -> None:
         advisor = _FakeAdvisor(prepare_delay=0.6)
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
@@ -656,17 +723,14 @@ def test_generate_uses_thread_worker_for_long_operations(monkeypatch: Any) -> No
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationExecutionScreen)
-            calls: list[bool] = []
-            monkeypatch.setattr(
-                screen,
-                "run_worker",
-                lambda work, *args, **kwargs: calls.append(bool(kwargs.get("thread"))),
-            )
             _set_prompt(screen, "Hello")
+            started = time.perf_counter()
             screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
-            assert calls == [True]
+            assert time.perf_counter() - started < 0.3
+            assert screen.query_one("#run-generate", Button).disabled is True
+            assert screen.query_one("#run-prompt-input", TextArea).disabled is True
 
     _run(scenario())
 

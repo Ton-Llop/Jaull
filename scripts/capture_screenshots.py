@@ -53,7 +53,7 @@ from _workflow_fixtures import (  # noqa: E402
 from jaull.advisor.service import AdvisorService  # noqa: E402
 from jaull.domain.artifacts import ModelArtifact  # noqa: E402
 from jaull.domain.estimation import MemoryEstimate  # noqa: E402
-from jaull.domain.execution import InferenceResult  # noqa: E402
+from jaull.domain.execution import ExecutionObservation, InferenceResult  # noqa: E402
 from jaull.domain.runtime import (  # noqa: E402
     RuntimeFlag,
     RuntimeFlagSource,
@@ -310,10 +310,16 @@ class _ScriptAdvisor(AdvisorService):
             raise failure
         return InferenceResult(
             text=self.response_text,  # type: ignore[attr-defined]
-            duration_seconds=1.24,
-            exit_code=0,
             runtime="llama.cpp",
             model_path=artifact.local_path or Path("model.gguf"),
+            observation=ExecutionObservation(
+                success=True,
+                duration_seconds=1.24,
+                peak_ram_bytes=None,
+                peak_vram_bytes=None,
+                exit_code=0,
+                failure_reason=None,
+            ),
         )
 
 

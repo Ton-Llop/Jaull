@@ -110,9 +110,45 @@ cli/run.py
 
 `artifacts/` tradueix un repositori abstracte a un `ModelArtifact` concret i verificat. En aquesta fase només accepta GGUF single-file; repositoris Transformers i GGUF multipart es rebutgen amb errors específics.
 
-`execution/` no coneix Hugging Face ni models: només rep una `ExecutionRequest` immutable i retorna un `ExecutionResult`. Això permet provar el runner sense invocar cap binari real.
+`execution/` no coneix Hugging Face ni models: només rep una `ExecutionRequest` immutable i retorna un `ExecutionResult`. Aquest resultat conté stdout/stderr i una `ExecutionObservation`, que és la font de veritat sobre què ha passat realment durant el procés: durada, exit status, peak RSS del procés principal i peak VRAM atribuïda via NVML quan és possible. Això permet provar el runner sense invocar cap binari real i manté separades predicció (`MemoryEstimate`) i observació.
 
 `runtime/llama_cpp_runner.py` valida que l’artefacte sigui GGUF, descarregat, verificat i present en disc abans de construir el comandament `llama-cli --single-turn`.
+
+## Prediction validation
+
+`jaull.evaluation.comparison.compare_prediction` compara una predicció de Jaull
+amb una execució real ja observada:
+
+```text
+MemoryEstimate + ExecutionObservation -> PredictionComparison
+```
+
+La comparació no modifica l'estimador ni calibra fórmules. `MemoryEstimate`
+continua representant la predicció, `ExecutionObservation` continua representant
+la realitat mesurada i `PredictionComparison` és una tercera peça derivada.
+
+La convenció d'error és única:
+
+```text
+error_bytes = measured_bytes - predicted_bytes
+error_percent = (measured_bytes - predicted_bytes) / predicted_bytes * 100
+```
+
+Un error positiu significa que Jaull ha infraestimat el consum real. Un error
+negatiu significa que Jaull ha sobreestimat el consum real.
+
+La comparació RAM només es calcula quan la configuració executada és CPU-only o
+no offload. En aquest cas la predicció comparable és la suma dels components que
+representen consum de procés (`weights + kv_cache + runtime_overhead`), excloent
+`device_reserve` i `safety_margin`, perquè aquests últims són polítiques de
+capacitat i no RSS observat. Quan el runtime usa GPU offload, Jaull encara no
+conserva un breakdown host/device; per tant `ram.predicted_bytes` queda `null` i
+la comparació es marca com `methodologically_unavailable`.
+
+La comparació VRAM també queda `methodologically_unavailable` en aquesta fase:
+el model d'estimació actual no conserva VRAM atribuïda al PID/configuració
+executada. Si NVML no exposa memòria de procés, `peak_vram_bytes = null` no es
+tracta com zero.
 
 ## Composició de dependències
 

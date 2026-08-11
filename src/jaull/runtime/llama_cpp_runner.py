@@ -82,11 +82,10 @@ class LlamaCppRunner:
             ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)
         )
         return InferenceResult(
-            text=_clean_inference_text(result.stdout),
-            duration_seconds=result.duration_seconds,
-            exit_code=result.exit_code,
+            text=_clean_inference_text(result.stdout, prompt=prompt),
             runtime=RuntimeName.LLAMA_CPP.value,
             model_path=model_path,
+            observation=result.observation,
         )
 
 
@@ -157,12 +156,33 @@ def _int_flag(
         ) from exc
 
 
-def _clean_inference_text(raw: str) -> str:
+def _clean_inference_text(raw: str, *, prompt: str | None = None) -> str:
     """Return model text without terminal decoration or control characters."""
     text = _ANSI_RE.sub("", raw)
-    return "".join(
+    text = "".join(
         char for char in text if char in {"\n", "\t"} or ord(char) >= 32
-    ).strip()
+    )
+    if prompt is not None:
+        text = _drop_llama_cli_preamble(text, prompt)
+    return _drop_llama_cli_epilogue(text).strip()
+
+
+def _drop_llama_cli_preamble(text: str, prompt: str) -> str:
+    prompt_line = f"> {prompt.strip()}"
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() == prompt_line:
+            return "\n".join(lines[index + 1 :])
+    return text
+
+
+def _drop_llama_cli_epilogue(text: str) -> str:
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and lines[-1].strip() == "Exiting...":
+        lines.pop()
+    return "\n".join(lines)
 
 
 __all__ = [

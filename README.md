@@ -280,6 +280,21 @@ uv run jaull run \
 4. verifies file size and SHA-256 sidecar, with optional full re-hashing via `--full-verify`;
 5. executes `llama-cli --single-turn` through the local host backend.
 
+Each execution also produces an `ExecutionObservation`, kept separate from the
+metadata-only estimator. The observation records success/failure, duration,
+exit status, peak sampled process RSS and, when NVML can attribute memory to
+the `llama-cli` PID, peak sampled NVIDIA process memory. Sampling currently runs
+every 50 ms, so very short spikes may be underestimated. CPU-only machines or
+unavailable NVML report VRAM as `None` rather than failing inference.
+
+Programmatic callers receive the same split explicitly:
+
+```text
+InferenceResult
+├── text          # generated model response
+└── observation   # success, duration, peak RAM/VRAM, exit status
+```
+
 Options:
 
 | Option | Default | Purpose |

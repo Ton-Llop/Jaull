@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +20,10 @@ from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundErr
 from jaull.execution.errors import ExecutionError
 from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
+from jaull.presentation.execution_report import (
+    render_execution_observation,
+    render_inference_result,
+)
 
 
 @dataclass(frozen=True)
@@ -73,11 +76,16 @@ def run_model(
         return 4
     except ExecutionError as exc:
         _print_error(console, exc)
+        if exc.observation is not None:
+            console.print()
+            render_execution_observation(
+                console,
+                exc.observation,
+                title="Execution failed",
+            )
         return 5
 
-    sys.stdout.write(result.text)
-    if result.text and not result.text.endswith("\n"):
-        sys.stdout.write("\n")
+    render_inference_result(console, result)
     return 0
 
 

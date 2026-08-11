@@ -780,6 +780,13 @@ Aquesta carpeta és deliberadament petita. No sap què és Hugging Face ni què 
 ## `execution/host.py`
 
 Backend host que executa un `ExecutionRequest` amb timeout i retorna `ExecutionResult`.
+La durada es mesura amb `time.perf_counter()` des de l'arrencada correcta del
+procés fins que acaba o és matat per timeout. Durant aquesta finestra es
+mostreja cada 50 ms el RSS del procés principal (`peak_ram_bytes`) i, si NVML
+pot atribuir memòria al PID, la memòria NVIDIA del procés (`peak_vram_bytes`).
+En CPU-only o si NVML falla, VRAM queda com `None`; la inferència no falla per
+absència de mètrica. Com que és sampling, pics molt curts poden quedar
+infraestimats.
 
 ## `execution/ports.py`
 

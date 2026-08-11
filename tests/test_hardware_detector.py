@@ -4,13 +4,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from jaull.hardware.detector import detect_hardware
-from jaull.hardware.nvidia import detect_nvidia_gpus
+from jaull.hardware.nvidia import NvidiaProcessMemorySampler, detect_nvidia_gpus
 
 
 @dataclass
 class _MemStub:
     total: int
     free: int
+
+
+@dataclass
+class _ProcStub:
+    pid: int
+    usedGpuMemory: int
 
 
 class _FakeNvmlOk:
@@ -37,6 +43,26 @@ class _FakeNvmlOk:
 
     def nvmlDeviceGetMemoryInfo(self, handle: Any) -> _MemStub:
         return _MemStub(total=6 * 1024**3, free=5 * 1024**3)
+
+
+class _FakeNvmlProcesses(_FakeNvmlOk):
+    def __init__(self) -> None:
+        self.samples = [
+            [_ProcStub(pid=123, usedGpuMemory=256)],
+            [_ProcStub(pid=123, usedGpuMemory=512)],
+        ]
+
+    def nvmlDeviceGetComputeRunningProcesses(self, handle: Any) -> list[_ProcStub]:
+        del handle
+        if not self.samples:
+            return []
+        return self.samples.pop(0)
+
+
+class _FakeNvmlProcessQueryError(_FakeNvmlOk):
+    def nvmlDeviceGetComputeRunningProcesses(self, handle: Any) -> list[_ProcStub]:
+        del handle
+        raise RuntimeError("process query failed")
 
 
 class _FakeNvmlNoDriver:
@@ -94,3 +120,36 @@ def test_detect_hardware_populates_gpu_when_available() -> None:
     profile = detect_hardware(_FakeNvmlOk())
     assert len(profile.gpus) == 1
     assert profile.gpus[0].name == "NVIDIA GeForce RTX 2060"
+
+
+def test_nvidia_process_sampler_returns_peak_for_matching_pid() -> None:
+    sampler = NvidiaProcessMemorySampler(_FakeNvmlProcesses())
+    try:
+        assert sampler.sample_pid_bytes(123) == 256
+        assert sampler.sample_pid_bytes(123) == 512
+    finally:
+        sampler.close()
+
+
+def test_nvidia_process_sampler_returns_none_when_pid_not_found() -> None:
+    sampler = NvidiaProcessMemorySampler(_FakeNvmlProcesses())
+    try:
+        assert sampler.sample_pid_bytes(999) is None
+    finally:
+        sampler.close()
+
+
+def test_nvidia_process_sampler_returns_none_when_nvml_unavailable() -> None:
+    sampler = NvidiaProcessMemorySampler(_FakeNvmlNoDriver())
+    try:
+        assert sampler.sample_pid_bytes(123) is None
+    finally:
+        sampler.close()
+
+
+def test_nvidia_process_sampler_returns_none_on_process_query_error() -> None:
+    sampler = NvidiaProcessMemorySampler(_FakeNvmlProcessQueryError())
+    try:
+        assert sampler.sample_pid_bytes(123) is None
+    finally:
+        sampler.close()

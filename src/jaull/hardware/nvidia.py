@@ -10,7 +10,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from jaull.domain.hardware import GpuInfo
 
@@ -28,6 +28,11 @@ class NvidiaProbe:
 class _NvmlMemoryInfo(Protocol):
     total: int
     free: int
+
+
+class _NvmlProcessInfo(Protocol):
+    pid: int
+    usedGpuMemory: int
 
 
 class NvmlProvider(Protocol):
@@ -134,3 +139,92 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
     finally:
         with contextlib.suppress(Exception):
             nvml.nvmlShutdown()
+
+
+class NvidiaProcessMemorySampler:
+    """Sample NVIDIA device memory attributed to one process PID.
+
+    NVML process accounting is optional and driver-dependent. This sampler
+    therefore returns ``None`` whenever process memory cannot be attributed
+    reliably, rather than making command execution fail.
+    """
+
+    def __init__(self, provider: NvmlProvider | None = None) -> None:
+        self._nvml = provider if provider is not None else _load_pynvml()
+        self._handles: list[object] = []
+        self._active = False
+        if self._nvml is None:
+            return
+        try:
+            self._nvml.nvmlInit()
+            count = self._nvml.nvmlDeviceGetCount()
+            self._handles = [
+                self._nvml.nvmlDeviceGetHandleByIndex(index)
+                for index in range(count)
+            ]
+            self._active = True
+        except Exception as exc:
+            logger.debug("NVML process sampler initialization failed", exc_info=exc)
+            self.close()
+
+    def sample_pid_bytes(self, pid: int) -> int | None:
+        if not self._active or self._nvml is None:
+            return None
+
+        total = 0
+        found = False
+        for handle in self._handles:
+            device_peak: int | None = None
+            for process in self._running_processes(handle):
+                try:
+                    if int(process.pid) != pid:
+                        continue
+                    used = int(process.usedGpuMemory)
+                except Exception:
+                    continue
+                if used < 0:
+                    continue
+                device_peak = used if device_peak is None else max(device_peak, used)
+                found = True
+            if device_peak is not None:
+                total += device_peak
+        return total if found else None
+
+    def close(self) -> None:
+        if self._nvml is not None:
+            with contextlib.suppress(Exception):
+                self._nvml.nvmlShutdown()
+        self._active = False
+        self._handles = []
+
+    def _running_processes(self, handle: object) -> list[_NvmlProcessInfo]:
+        processes: list[_NvmlProcessInfo] = []
+        for names in (
+            (
+                "nvmlDeviceGetComputeRunningProcesses_v3",
+                "nvmlDeviceGetComputeRunningProcesses_v2",
+                "nvmlDeviceGetComputeRunningProcesses",
+            ),
+            (
+                "nvmlDeviceGetGraphicsRunningProcesses_v3",
+                "nvmlDeviceGetGraphicsRunningProcesses_v2",
+                "nvmlDeviceGetGraphicsRunningProcesses",
+            ),
+        ):
+            processes.extend(self._first_process_query_result(handle, names))
+        return processes
+
+    def _first_process_query_result(
+        self, handle: object, names: tuple[str, ...]
+    ) -> list[_NvmlProcessInfo]:
+        for name in names:
+            method = getattr(cast(Any, self._nvml), name, None)
+            if method is None:
+                continue
+            try:
+                raw = method(handle)
+            except Exception as exc:
+                logger.debug("NVML process query %s failed", name, exc_info=exc)
+                continue
+            return cast(list[_NvmlProcessInfo], raw)
+        return []

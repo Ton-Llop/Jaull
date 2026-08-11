@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Event
 from typing import TYPE_CHECKING
 
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Static, TextArea
 
@@ -14,10 +18,32 @@ from jaull.domain.execution import InferenceResult
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
+from jaull.presentation.execution_report import inline_observation_summary
 from jaull.recommendation.models import ModelRecommendation
 
 if TYPE_CHECKING:
+    from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
+
+
+class _GenerationStep(Message):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+
+class _GenerationDone(Message):
+    def __init__(self, artifact: ModelArtifact, result: InferenceResult) -> None:
+        super().__init__()
+        self.artifact = artifact
+        self.result = result
+
+
+class _GenerationFailed(Message):
+    def __init__(self, message: str, artifact: ModelArtifact | None = None) -> None:
+        super().__init__()
+        self.message = message
+        self.artifact = artifact
 
 
 class RecommendationExecutionScreen(Screen[None]):
@@ -30,6 +56,12 @@ class RecommendationExecutionScreen(Screen[None]):
         self._recommendation = recommendation
         self._artifact: ModelArtifact | None = None
         self._log_messages: list[str] = []
+        self._run_closing = Event()
+        self._executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-run",
+        )
+        self._future: Future[None] | None = None
 
     @property
     def recommendation(self) -> ModelRecommendation:
@@ -66,6 +98,7 @@ class RecommendationExecutionScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._run_closing.clear()
         self._clear_error()
         if self._runtime() is None:
             self._render_error(
@@ -74,6 +107,16 @@ class RecommendationExecutionScreen(Screen[None]):
             self.query_one("#run-generate", Button).disabled = True
             return
         self.query_one("#run-prompt-input", TextArea).focus()
+
+    def on_unmount(self) -> None:
+        self._run_closing.set()
+        self._shutdown_executor()
+
+    def _shutdown_executor(self) -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "run-generate":
@@ -97,17 +140,28 @@ class RecommendationExecutionScreen(Screen[None]):
         self._append_prompt(prompt)
         composer.clear()
         self._set_busy(True, "Preparing model" if self._artifact is None else "Generating")
-        self.run_worker(lambda: self._generate_worker(prompt, runtime), thread=True)
+        self._future = self._executor.submit(
+            self._generate_worker,
+            self._app().advisor,
+            prompt,
+            runtime,
+            self._artifact,
+        )
 
-    def _generate_worker(self, prompt: str, runtime: RuntimeRecommendation) -> None:
-        app = self._app()
+    def _generate_worker(
+        self,
+        advisor: AdvisorService,
+        prompt: str,
+        runtime: RuntimeRecommendation,
+        artifact: ModelArtifact | None,
+    ) -> None:
+        prepared_artifact = artifact
         try:
-            artifact = self._artifact
             if artifact is None:
-                artifact = self._prepare_artifact_from_worker()
-                app.call_from_thread(self._remember_artifact, artifact)
-            app.call_from_thread(self._record_step, "Generating")
-            result = app.advisor.run_artifact(
+                artifact = self._prepare_artifact_from_worker(advisor)
+                prepared_artifact = artifact
+            self._post_step("Generating")
+            result = advisor.run_artifact(
                 artifact=artifact,
                 prompt=prompt,
                 runtime=runtime,
@@ -118,36 +172,65 @@ class RecommendationExecutionScreen(Screen[None]):
             ArtifactError,
             ExecutionError,
         ) as exc:
-            app.call_from_thread(self._generation_failed, str(exc))
+            self._post_generation_failed(str(exc), prepared_artifact)
             return
-        app.call_from_thread(self._generation_done, artifact, result)
+        if not self._run_closing.is_set():
+            self.post_message(_GenerationDone(artifact, result))
 
-    def _prepare_artifact_from_worker(self) -> ModelArtifact:
-        app = self._app()
+    def _prepare_artifact_from_worker(self, advisor: AdvisorService) -> ModelArtifact:
         rec = self._recommendation
         config = rec.evaluated.selected_configuration
         quantization = config.quantization if config is not None else None
 
-        app.call_from_thread(
-            self._record_step,
+        self._post_step(
             f"Resolve artifact for {rec.repo_id}"
             + (f" ({quantization})" if quantization else ""),
         )
-        artifact = app.advisor.resolve_artifact(
+        artifact = advisor.resolve_artifact(
             rec.repo_id,
             quantization=quantization,
             revision=None,
         )
         if not artifact.is_downloaded:
-            app.call_from_thread(self._record_step, "Downloading artifact")
-            artifact = app.advisor.download_artifact(artifact)
+            self._post_step("Downloading artifact")
+            artifact = advisor.download_artifact(artifact)
         else:
-            app.call_from_thread(self._record_step, f"Reuse local artifact {artifact.filename}")
+            self._post_step(f"Reuse local artifact {artifact.filename}")
 
-        app.call_from_thread(self._record_step, "Verifying artifact")
-        artifact = app.advisor.verify_artifact(artifact)
-        app.call_from_thread(self._record_step, "Model ready")
+        self._post_step("Verifying artifact")
+        artifact = advisor.verify_artifact(artifact)
+        self._post_step("Model ready")
         return artifact
+
+    @on(_GenerationStep)
+    def _generation_step_message(self, message: _GenerationStep) -> None:
+        if self._run_closing.is_set():
+            return
+        self._record_step(message.message)
+
+    @on(_GenerationDone)
+    def _generation_done_message(self, message: _GenerationDone) -> None:
+        if self._run_closing.is_set():
+            return
+        self._generation_done(message.artifact, message.result)
+
+    @on(_GenerationFailed)
+    def _generation_failed_message(self, message: _GenerationFailed) -> None:
+        if self._run_closing.is_set():
+            return
+        if message.artifact is not None:
+            self._remember_artifact(message.artifact)
+        self._generation_failed(message.message)
+
+    def _post_step(self, message: str) -> None:
+        if not self._run_closing.is_set():
+            self.post_message(_GenerationStep(message))
+
+    def _post_generation_failed(
+        self, message: str, artifact: ModelArtifact | None
+    ) -> None:
+        if not self._run_closing.is_set():
+            self.post_message(_GenerationFailed(message, artifact))
 
     def _generation_done(self, artifact: ModelArtifact, result: InferenceResult) -> None:
         self._remember_artifact(artifact)
@@ -273,7 +356,7 @@ class InferenceResponse(Vertical):
         yield Static("MODEL", classes="message-label")
         yield Static(Text(_response_text(self._result.text)), classes="message-text")
         yield Static(
-            f"{self._result.duration_seconds:.2f} s · {self._result.runtime}",
+            f"{inline_observation_summary(self._result.observation)} · {self._result.runtime}",
             classes="message-meta",
         )
 

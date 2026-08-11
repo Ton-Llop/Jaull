@@ -6,7 +6,7 @@ import pytest
 
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import EstimationConfidence
-from jaull.domain.execution import ExecutionRequest, ExecutionResult
+from jaull.domain.execution import ExecutionObservation, ExecutionRequest, ExecutionResult
 from jaull.domain.runtime import (
     RuntimeFlag,
     RuntimeFlagSource,
@@ -21,14 +21,28 @@ from jaull.runtime.llama_cpp_runner import (
 )
 
 
+def _observation(
+    *,
+    duration_seconds: float = 1.25,
+    exit_code: int = 0,
+) -> ExecutionObservation:
+    return ExecutionObservation(
+        success=exit_code == 0,
+        duration_seconds=duration_seconds,
+        peak_ram_bytes=None,
+        peak_vram_bytes=None,
+        exit_code=exit_code,
+        failure_reason=None,
+    )
+
+
 class _FakeExecutionBackend:
     def __init__(self, result: ExecutionResult | None = None) -> None:
         self.requests: list[ExecutionRequest] = []
         self.result = result or ExecutionResult(
-            exit_code=0,
             stdout="generated text",
             stderr="diagnostic",
-            duration_seconds=1.25,
+            observation=_observation(duration_seconds=1.25),
         )
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
@@ -135,10 +149,9 @@ def test_runner_sanitizes_terminal_sequences_from_response(tmp_path: Path) -> No
     model_path.write_bytes(b"gguf")
     backend = _FakeExecutionBackend(
         ExecutionResult(
-            exit_code=0,
             stdout="\x1b[2J\x1b[HGenerated [literal]\x07",
             stderr="",
-            duration_seconds=0.2,
+            observation=_observation(duration_seconds=0.2),
         )
     )
     runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
@@ -146,6 +159,30 @@ def test_runner_sanitizes_terminal_sequences_from_response(tmp_path: Path) -> No
     result = runner.run(artifact=_artifact(model_path), prompt="Hello")
 
     assert result.text == "Generated [literal]"
+
+
+def test_runner_strips_llama_cli_preamble_prompt_and_exit_marker(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend(
+        ExecutionResult(
+            stdout=(
+                "Loading model...\n"
+                "build      : b10357\n"
+                "available commands:\n\n"
+                "> Explain GGUF\n"
+                "GGUF is a compact model format.\n\n"
+                "Exiting...\n"
+            ),
+            stderr="",
+            observation=_observation(duration_seconds=0.2),
+        )
+    )
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    result = runner.run(artifact=_artifact(model_path), prompt="Explain GGUF")
+
+    assert result.text == "GGUF is a compact model format."
 
 
 def test_runner_rejects_safetensors(tmp_path: Path) -> None:

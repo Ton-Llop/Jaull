@@ -10,7 +10,11 @@ from jaull.artifacts.errors import ArtifactDownloadError
 from jaull.cli import run as cli_run
 from jaull.cli.run import RunOptions, run_model
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution import InferenceResult
+from jaull.domain.execution import (
+    ExecutionFailureReason,
+    ExecutionObservation,
+    InferenceResult,
+)
 from jaull.domain.runtime import RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
@@ -34,15 +38,35 @@ def _artifact(**updates: object) -> ModelArtifact:
     return ModelArtifact(**data)
 
 
+def _observation(
+    *,
+    duration_seconds: float = 0.2,
+    peak_ram_bytes: int | None = 1536 * 1024**2,
+    peak_vram_bytes: int | None = 1024 * 1024**2,
+    exit_code: int | None = 0,
+    failure_reason: ExecutionFailureReason | None = None,
+) -> ExecutionObservation:
+    return ExecutionObservation(
+        success=exit_code == 0 and failure_reason is None,
+        duration_seconds=duration_seconds,
+        peak_ram_bytes=peak_ram_bytes,
+        peak_vram_bytes=peak_vram_bytes,
+        exit_code=exit_code,
+        failure_reason=failure_reason,
+    )
+
+
 class _FakeAdvisor:
     def __init__(
         self,
         artifact: ModelArtifact | None = None,
         *,
+        observation: ExecutionObservation | None = None,
         fail_at: str | None = None,
         error: Exception | None = None,
     ) -> None:
         self.artifact = artifact or _artifact()
+        self.observation = observation or _observation()
         self.fail_at = fail_at
         self.error = error
         self.operations: list[str] = []
@@ -100,10 +124,9 @@ class _FakeAdvisor:
         self._maybe_fail("run")
         return InferenceResult(
             text="generated answer",
-            duration_seconds=0.2,
-            exit_code=0,
             runtime="llama.cpp",
             model_path=artifact.local_path or Path("/tmp/model.gguf"),
+            observation=self.observation,
         )
 
     def _maybe_fail(self, stage: str) -> None:
@@ -134,7 +157,18 @@ def test_run_model_resolves_downloads_verifies_and_runs_through_advisor(
     )
 
     assert exit_code == 0
-    assert capsys.readouterr().out == "generated answer\n"
+    output = capsys.readouterr().out
+    assert "Model response" in output
+    assert "generated answer" in output
+    assert "Execution observation" in output
+    assert "Duration" in output
+    assert "0.20 s" in output
+    assert "Peak RAM" in output
+    assert "1.5 GiB" in output
+    assert "Peak VRAM" in output
+    assert "1.0 GiB" in output
+    assert "Exit code" in output
+    assert "Reason" not in output
     assert advisor.operations == ["resolve", "download", "verify", "run"]
     assert advisor.resolved == [("owner/repo", "Q4_K_M", "abc123")]
     assert advisor.downloaded == [artifact]
@@ -167,6 +201,64 @@ def test_run_model_skips_download_when_artifact_is_already_local(capsys: Any) ->
     assert advisor.operations == ["resolve", "verify", "run"]
     assert advisor.downloaded == []
     assert advisor.verified == [(artifact, False)]
+
+
+def test_run_model_formats_unavailable_vram_without_zero_bytes(capsys: Any) -> None:
+    advisor = _FakeAdvisor(
+        observation=_observation(
+            peak_ram_bytes=768 * 1024**2,
+            peak_vram_bytes=None,
+        )
+    )
+
+    exit_code = run_model(
+        "owner/repo",
+        RunOptions(quantization=None, prompt="Hello"),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Peak VRAM" in output
+    assert "unavailable" in output
+    assert "0 B" not in output
+
+
+def test_run_model_renders_execution_observation_on_execution_failure(
+    capsys: Any,
+) -> None:
+    observation = _observation(
+        duration_seconds=2.4,
+        peak_ram_bytes=5_700_000_000,
+        peak_vram_bytes=5_900_000_000,
+        exit_code=1,
+        failure_reason=ExecutionFailureReason.NON_ZERO_EXIT,
+    )
+    advisor = _FakeAdvisor(
+        fail_at="run",
+        error=ExecutionError("runtime failed", observation),
+    )
+
+    exit_code = run_model(
+        "owner/repo",
+        RunOptions(quantization=None, prompt="Hello"),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 5
+    assert "runtime failed" in output
+    assert "Execution failed" in output
+    assert "Duration" in output
+    assert "2.40 s" in output
+    assert "Peak RAM" in output
+    assert "5.3 GiB" in output
+    assert "Peak VRAM" in output
+    assert "5.5 GiB" in output
+    assert "Exit code" in output
+    assert "1" in output
+    assert "Reason" in output
+    assert "non_zero_exit" in output
 
 
 def test_run_model_configures_default_advisor_with_llama_cli_options(
