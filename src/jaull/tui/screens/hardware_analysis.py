@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Event
 from typing import TYPE_CHECKING
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, ProgressBar, Static
 
@@ -17,27 +20,39 @@ from jaull.workflow.models import WorkflowProgress, WorkflowStep
 from jaull.workflow.progress import HARDWARE_STEPS, initial_progress
 
 if TYPE_CHECKING:
+    from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
 
-# Pacing between hardware probes so the checklist actually reads as a
-# checklist. Probes finish in microseconds on modern machines; without a
-# floor the whole panel goes green in one frame and the user misses the
-# feedback that the tool actually inspected the system.
-_STEP_PACING_SECONDS = 0.35
-
 _TOTAL_STEPS = float(len(HARDWARE_STEPS))
+
+
+class _HardwareProgress(Message):
+    def __init__(self, progress: WorkflowProgress) -> None:
+        super().__init__()
+        self.progress = progress
+
+
+class _HardwareFinished(Message):
+    def __init__(self, profile: HardwareProfile) -> None:
+        super().__init__()
+        self.profile = profile
 
 
 class HardwareAnalysisScreen(Screen[None]):
     """Step 1 of the guided flow: detect the machine, showing real progress.
 
-    Each checklist line turns green when its probe actually returns, but a
-    small pacing floor keeps the animation legible. When the scan completes
-    the loading card is replaced by the summary card **in place**, so the
-    user never has to scroll to see the result.
+    Each checklist line turns green when its probe actually returns. When the
+    scan completes the loading card is replaced by the summary card in place,
+    so the user never has to scroll to see the result.
     """
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._scan_closing = Event()
+        self._executor: ThreadPoolExecutor | None = None
+        self._future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -51,29 +66,59 @@ class HardwareAnalysisScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._scan_closing.clear()
         content = self.query_one("#hardware-content", Vertical)
         content.mount(_LoadingCard(_TOTAL_STEPS))
-        # Threaded worker: the probes are blocking (psutil, NVML), so running
-        # them here keeps the event loop free to repaint the progress bar.
-        self.run_worker(self._scan, thread=True)
+        # A screen-local executor keeps blocking probes off the event loop
+        # without involving asyncio's default executor, which can outlive
+        # Textual's test harness during teardown.
+        self._executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-hardware",
+        )
+        self._future = self._executor.submit(self._scan, self._app().advisor)
 
-    def _scan(self) -> None:
-        app = self._app()
+    def on_unmount(self) -> None:
+        self._scan_closing.set()
+        self._shutdown_scan_executor()
 
+    def _shutdown_scan_executor(self) -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
+    def _scan(self, advisor: AdvisorService) -> None:
         def report(progress: WorkflowProgress) -> None:
-            # Sleep in the worker thread — never on the UI thread — so the
-            # progress bar can advance in visible increments.
-            time.sleep(_STEP_PACING_SECONDS)
-            app.call_from_thread(self._update_progress, progress)
+            if self._scan_closing.is_set():
+                return
+            self.post_message(_HardwareProgress(progress))
 
-        profile = app.advisor.scan_hardware(on_progress=report)
-        app.call_from_thread(self._finish, profile)
+        profile = advisor.scan_hardware(on_progress=report)
+        if self._scan_closing.is_set():
+            return
+        self.post_message(_HardwareFinished(profile))
+
+    @on(_HardwareProgress)
+    def _update_progress_message(self, message: _HardwareProgress) -> None:
+        if self._scan_closing.is_set():
+            return
+        self._update_progress(message.progress)
+
+    @on(_HardwareFinished)
+    def _finish_message(self, message: _HardwareFinished) -> None:
+        if self._scan_closing.is_set():
+            return
+        self._finish(message.profile)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:
         card = self.query_one(_LoadingCard)
         card.update_progress(progress)
 
     def _finish(self, profile: HardwareProfile) -> None:
+        self._shutdown_scan_executor()
         app = self._app()
         app.hardware_profile = profile
 
@@ -88,7 +133,6 @@ class HardwareAnalysisScreen(Screen[None]):
             # machines are a supported target.
             content.mount(WarningsPanel(profile.warnings))
 
-        content.mount(Static("", classes="text-muted"))
         content.mount(Button("Continue", id="hw-continue", classes="-primary"))
         self.query_one("#hw-continue", Button).focus()
 

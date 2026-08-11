@@ -5,6 +5,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from jaull.recommendation.models import ScoreBreakdown
+from jaull.tui.widgets.compact_score_strip import bar_markup
 
 _BAR_WIDTH = 24
 
@@ -37,10 +38,9 @@ class ScoreBar(Vertical):
         for key, label in _LABELS:
             value = float(values.get(key, 0.0))
             weight = self._breakdown.weights.get(key, 0.0)
-            filled = round(value * _BAR_WIDTH)
-            bar = "█" * filled + "░" * (_BAR_WIDTH - filled)
             yield Static(
-                f"{label.ljust(14)} [b]{bar}[/b] {value * 100:3.0f}%  "
+                f"{label.ljust(14)} {bar_markup(value, _BAR_WIDTH)} "
+                f"{value * 100:3.0f}%  "
                 f"[dim](weight {weight * 100:.0f}%)[/dim]",
                 classes="score-row",
             )

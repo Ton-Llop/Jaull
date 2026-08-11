@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,9 @@ from jaull.execution.ports import ExecutionBackendProtocol
 _DEFAULT_CONTEXT_SIZE = 4096
 _DEFAULT_GPU_LAYERS = 0
 _LLAMA_CLI = "llama-cli"
+_ANSI_RE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])"
+)
 
 
 class LlamaCppRunnerError(ExecutionError):
@@ -65,6 +69,9 @@ class LlamaCppRunner:
             "--n-gpu-layers",
             str(n_gpu_layers),
             "--no-display-prompt",
+            "--color",
+            "off",
+            "--no-show-timings",
             "--simple-io",
             "--single-turn",
             "--prompt",
@@ -75,7 +82,7 @@ class LlamaCppRunner:
             ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)
         )
         return InferenceResult(
-            text=result.stdout,
+            text=_clean_inference_text(result.stdout),
             duration_seconds=result.duration_seconds,
             exit_code=result.exit_code,
             runtime=RuntimeName.LLAMA_CPP.value,
@@ -148,6 +155,14 @@ def _int_flag(
         raise LlamaCppRunnerError(
             f"Runtime flag {name} must be an integer, got {raw!r}."
         ) from exc
+
+
+def _clean_inference_text(raw: str) -> str:
+    """Return model text without terminal decoration or control characters."""
+    text = _ANSI_RE.sub("", raw)
+    return "".join(
+        char for char in text if char in {"\n", "\t"} or ord(char) >= 32
+    ).strip()
 
 
 __all__ = [

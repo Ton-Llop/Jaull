@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Event
 from typing import TYPE_CHECKING
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator
 
@@ -13,11 +17,24 @@ from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 
 if TYPE_CHECKING:
+    from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
+
+
+class _ScanFinished(Message):
+    def __init__(self, profile: HardwareProfile) -> None:
+        super().__init__()
+        self.profile = profile
 
 
 class ScanScreen(Screen[None]):
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._scan_closing = Event()
+        self._executor: ThreadPoolExecutor | None = None
+        self._future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -27,13 +44,39 @@ class ScanScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.run_worker(self._probe, thread=True)
+        self._scan_closing.clear()
+        self._executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-scan",
+        )
+        self._future = self._executor.submit(self._probe, self._app().advisor)
 
-    def _probe(self) -> None:
-        profile = self._app().advisor.scan_hardware()
-        self.app.call_from_thread(self._populate, profile)
+    def on_unmount(self) -> None:
+        self._scan_closing.set()
+        self._shutdown_scan_executor()
+
+    def _shutdown_scan_executor(self) -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
+    def _probe(self, advisor: AdvisorService) -> None:
+        profile = advisor.scan_hardware()
+        if self._scan_closing.is_set():
+            return
+        self.post_message(_ScanFinished(profile))
+
+    @on(_ScanFinished)
+    def _populate_message(self, message: _ScanFinished) -> None:
+        if self._scan_closing.is_set():
+            return
+        self._populate(message.profile)
 
     def _populate(self, profile: HardwareProfile) -> None:
+        self._shutdown_scan_executor()
         app = self._app()
         app.hardware_profile = profile
 

@@ -106,6 +106,9 @@ def test_runner_builds_command_with_exact_local_path(tmp_path: Path) -> None:
         "--n-gpu-layers",
         "12",
         "--no-display-prompt",
+        "--color",
+        "off",
+        "--no-show-timings",
         "--simple-io",
         "--single-turn",
         "--prompt",
@@ -125,6 +128,24 @@ def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:
     command = backend.requests[0].command
     assert command[command.index("--ctx-size") + 1] == "4096"
     assert command[command.index("--n-gpu-layers") + 1] == "0"
+
+
+def test_runner_sanitizes_terminal_sequences_from_response(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend(
+        ExecutionResult(
+            exit_code=0,
+            stdout="\x1b[2J\x1b[HGenerated [literal]\x07",
+            stderr="",
+            duration_seconds=0.2,
+        )
+    )
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    result = runner.run(artifact=_artifact(model_path), prompt="Hello")
+
+    assert result.text == "Generated [literal]"
 
 
 def test_runner_rejects_safetensors(tmp_path: Path) -> None:

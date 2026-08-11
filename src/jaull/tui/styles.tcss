@@ -6,13 +6,36 @@ Screen {
     color: #e5e7eb;
 }
 
+/* ---------------------------------------------------------------------
+   Layout baseline.
+
+   Textual's Vertical, Horizontal and ListView all default to `height: 1fr`.
+   Every container in this app is a block of document flow inside a scroll
+   region, never a flexible pane, so that default makes a single block expand
+   to the whole viewport and pushes everything after it below the fold. Size
+   them to their content instead; the surrounding VerticalScroll is what
+   flexes.
+   --------------------------------------------------------------------- */
+VerticalScroll > Vertical,
+VerticalScroll > Horizontal,
+Vertical > Vertical,
+Vertical > Horizontal,
+ListView {
+    height: auto;
+}
+
 Header {
     background: #111827;
     color: #e5e7eb;
     text-style: bold;
-    height: 3;
-    padding: 0 2;
+    height: 1;
     border-bottom: solid #1f2937;
+}
+
+/* The default header icon is U+2B58, which most terminal fonts lack and which
+   renders as a replacement box. Nothing here depends on it. */
+HeaderIcon {
+    display: none;
 }
 
 Footer {
@@ -28,9 +51,10 @@ Footer > .footer--key {
 .banner {
     background: #111827;
     color: #e5e7eb;
-    padding: 1 2;
+    padding: 0 2;
     border: round #1f2937;
     margin: 0 0 1 0;
+    height: auto;
 }
 
 .banner-title {
@@ -45,7 +69,7 @@ Footer > .footer--key {
 .card {
     background: #131922;
     border: round #1f2937;
-    padding: 1 2;
+    padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
@@ -56,16 +80,10 @@ Footer > .footer--key {
     padding: 0 0 1 0;
 }
 
-/* Horizontal defaults to height: 1fr, which inside a height: auto card makes
-   the card swallow the whole screen and push the panes below it out of view. */
-.card > Horizontal {
-    height: auto;
-}
-
 .menu {
     background: #131922;
     border: round #1f2937;
-    padding: 1 2;
+    padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
@@ -91,6 +109,17 @@ Input {
     color: #e5e7eb;
 }
 Input:focus {
+    border: round #3a7bd5;
+}
+
+TextArea {
+    background: #0b0f16;
+    border: round #1f2937;
+    color: #e5e7eb;
+    height: 5;
+}
+
+TextArea:focus {
     border: round #3a7bd5;
 }
 
@@ -124,16 +153,24 @@ DataTable > .datatable--header {
     background: #1a1207;
     border: round #f59e0b;
     color: #fbbf24;
-    padding: 1 2;
-    margin: 1 0;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+/* Inside a warnings panel the heading is part of the warning, not a blue
+   section title. */
+.warnings .card-title {
+    color: #f59e0b;
 }
 
 .cli-hint {
     background: #131922;
     border: round #1f2937;
     color: #9ca3af;
-    padding: 1 2;
-    margin: 1 0;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    height: auto;
 }
 
 .cli-hint-label {
@@ -141,8 +178,12 @@ DataTable > .datatable--header {
     text-style: italic;
 }
 
+/* Badges size to their label; without this the background stripe runs the
+   full width of the card. */
 .badge {
+    width: auto;
     padding: 0 2;
+    margin: 0 0 1 0;
     text-style: bold;
 }
 .badge-comfortable        { color: #10b981; background: #052e21; }
@@ -186,14 +227,14 @@ DataTable > .datatable--header {
 
 .text-muted {
     color: #6b7280;
-    padding: 1 0 0 0;
+    padding: 0 0 1 0;
 }
 
 .runtime-card {
     background: #131922;
     border: round #3a7bd5;
-    padding: 1 2;
-    margin: 1 0;
+    padding: 0 2;
+    margin: 0 0 1 0;
     height: auto;
 }
 .runtime-title {
@@ -203,9 +244,95 @@ DataTable > .datatable--header {
 .runtime-code {
     background: #0b0f16;
     color: #e5e7eb;
-    padding: 1 2;
-    margin: 1 0;
+    padding: 0 2;
+    margin: 0 0 1 0;
     border: round #1f2937;
+}
+
+/* ---------------------------------------------------------------------
+   Run screen.
+   --------------------------------------------------------------------- */
+.run-header {
+    background: #111827;
+    border-bottom: solid #1f2937;
+    padding: 0 2;
+    height: auto;
+}
+
+.run-title {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+.run-meta {
+    color: #9ca3af;
+}
+
+#run-history {
+    height: 1fr;
+    padding: 0 2 1 2;
+}
+
+#run-console {
+    height: auto;
+    background: #111827;
+    border-top: solid #1f2937;
+    padding: 0 2;
+}
+
+.run-status {
+    color: #9ca3af;
+    padding: 0 0 1 0;
+    height: auto;
+}
+
+.run-error-message {
+    color: #fbbf24;
+    background: #1a1207;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+#run-composer {
+    height: auto;
+}
+
+#run-composer TextArea {
+    width: 1fr;
+}
+
+#run-composer Button {
+    width: auto;
+    margin: 0 0 0 1;
+}
+
+.inference-entry {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 1;
+}
+
+.inference-prompt {
+    border-left: solid #2b3748;
+}
+
+.inference-response {
+    background: #0b0f16;
+    border: solid #1f2937;
+}
+
+.message-label {
+    color: #3a7bd5;
+    text-style: bold;
+}
+
+.message-text {
+    color: #e5e7eb;
+}
+
+.message-meta {
+    color: #6b7280;
 }
 
 /* ---------------------------------------------------------------------
@@ -215,7 +342,7 @@ DataTable > .datatable--header {
    --------------------------------------------------------------------- */
 .workflow-header {
     background: #111827;
-    padding: 1 2;
+    padding: 0 2;
     border: round #1f2937;
     margin: 0 0 1 0;
     height: auto;
@@ -223,7 +350,6 @@ DataTable > .datatable--header {
 
 .workflow-breadcrumb {
     color: #9ca3af;
-    padding: 1 0 0 0;
 }
 
 .step-done    { color: #10b981; }
@@ -234,7 +360,7 @@ DataTable > .datatable--header {
 .recommendation-card {
     background: #131922;
     border: round #3a7bd5;
-    padding: 1 2;
+    padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
@@ -249,11 +375,6 @@ DataTable > .datatable--header {
     padding: 0 0 0 1;
 }
 
-.score-total {
-    color: #3a7bd5;
-    padding: 0 0 1 0;
-}
-
 .score-row {
     color: #9ca3af;
 }
@@ -261,7 +382,7 @@ DataTable > .datatable--header {
 #results-actions,
 #discovery-actions {
     height: auto;
-    padding: 1 0;
+    padding: 0 0 1 0;
 }
 
 #results-actions Button,
@@ -270,10 +391,66 @@ DataTable > .datatable--header {
 }
 
 #wizard-errors,
-#results-extra,
 #discovery-messages,
-#hardware-summary {
+#hardware-summary,
+#hardware-content {
     height: auto;
+}
+
+.results-primary {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 0 2 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.results-kicker,
+.results-section-title {
+    color: #3a7bd5;
+    text-style: bold;
+}
+
+.results-model-name {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+.results-score-line {
+    color: #10b981;
+}
+
+.results-meta-line {
+    color: #9ca3af;
+}
+
+.results-alternative {
+    background: #131922;
+    border: solid #1f2937;
+    padding: 0 2 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.results-alt-title {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+#export-modal {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 1 2;
+    width: 80;
+    height: auto;
+}
+
+#res-export-actions {
+    height: auto;
+}
+
+#res-export-actions Button {
+    margin: 0 1 0 0;
 }
 
 RadioSet {
@@ -302,5 +479,5 @@ Checkbox {
     margin: 0 0 1 0;
     height: auto;
 }
-.score-total    { color: #e5e7eb; padding: 0 0 0 0; }
-.score-penalty  { color: #f59e0b; padding: 0 0 0 0; }
+.score-total    { color: #e5e7eb; }
+.score-penalty  { color: #f59e0b; }

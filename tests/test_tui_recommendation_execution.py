@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from textual.widgets import Button, Input, Select, Static
+from textual.widgets import Button, DataTable, Input, Static, TextArea
 
 from jaull.artifacts.errors import ArtifactDownloadError
 from jaull.domain.artifacts import ModelArtifact
@@ -28,8 +28,17 @@ from jaull.execution.errors import (
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
 from jaull.tui.app import JaullApp
-from jaull.tui.screens.recommendation_execution import RecommendationExecutionScreen
-from jaull.tui.screens.recommendation_results import RecommendationResultsScreen
+from jaull.tui.screens.recommendation_execution import (
+    InferencePrompt,
+    InferenceResponse,
+    RecommendationExecutionScreen,
+)
+from jaull.tui.screens.recommendation_results import (
+    ExportReportModal,
+    RecommendationCompareScreen,
+    RecommendationDetailsScreen,
+    RecommendationResultsScreen,
+)
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.state import RecommendationWorkflowState
 from tests._workflow_fixtures import (
@@ -217,6 +226,8 @@ def _visible_text(screen: object) -> str:
         renderable = getattr(widget, "renderable", None)
         if renderable is not None:
             parts.append(str(renderable))
+        else:
+            parts.append(str(widget.render()))
     return "\n".join(parts)
 
 
@@ -240,7 +251,11 @@ def _run_workers_inline(
     monkeypatch.setattr(screen, "run_worker", lambda work, *args, **kwargs: work())
 
 
-def test_results_screen_selects_recommendation_for_execution() -> None:
+def _set_prompt(screen: RecommendationExecutionScreen, prompt: str) -> None:
+    screen.query_one("#run-prompt-input", TextArea).load_text(prompt)
+
+
+def test_results_screen_runs_an_alternative_recommendation() -> None:
     async def scenario() -> None:
         first = _recommendation(rank=1, repo_id="org/First-GGUF", quantization="Q4_K_M")
         second = _recommendation(rank=2, repo_id="org/Second-GGUF", quantization="Q5_K_M")
@@ -253,8 +268,7 @@ def test_results_screen_selects_recommendation_for_execution() -> None:
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
 
-            screen.query_one("#res-run-select", Select).value = "1"
-            screen.query_one("#res-run", Button).press()
+            screen.query_one("#res-run-1", Button).press()
             await pilot.pause()
 
             run_screen = pilot.app.screen
@@ -264,7 +278,118 @@ def test_results_screen_selects_recommendation_for_execution() -> None:
     _run(scenario())
 
 
-def test_execution_screen_prepares_artifact_and_runs_selected_runtime(
+def test_results_export_modal_can_cancel_reopen_export_and_reopen(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(recommendations=[_recommendation()])
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+
+            results.query_one("#res-export", Button).press()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ExportReportModal)
+            pilot.app.screen.query_one("#res-export-cancel", Button).press()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+            pilot.app.screen.query_one("#res-export", Button).press()
+            await pilot.pause()
+            modal = pilot.app.screen
+            assert isinstance(modal, ExportReportModal)
+            modal.query_one("#res-export-path", Input).value = str(tmp_path / "report.json")
+            modal.query_one("#res-export-confirm", Button).press()
+            await pilot.pause()
+
+            assert (tmp_path / "report.json").exists()
+            assert (tmp_path / "report.md").exists()
+            assert "Report written" in _visible_text(modal)
+
+            modal.query_one("#res-export-close", Button).press()
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-export", Button).press()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, ExportReportModal)
+
+    _run(scenario())
+
+
+def test_results_export_modal_shows_filesystem_errors_without_rebuilding_form(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(recommendations=[_recommendation()])
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        def fail_write(*args: object, **kwargs: object) -> list[Path]:
+            del args, kwargs
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(
+            "jaull.tui.screens.recommendation_results.write_recommendation_report",
+            fail_write,
+        )
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-export", Button).press()
+            await pilot.pause()
+            modal = pilot.app.screen
+            assert isinstance(modal, ExportReportModal)
+            path_input = modal.query_one("#res-export-path", Input)
+
+            modal.query_one("#res-export-confirm", Button).press()
+            await pilot.pause()
+            modal.query_one("#res-export-confirm", Button).press()
+            await pilot.pause()
+
+            assert modal.query_one("#res-export-path", Input) is path_input
+            assert "permission denied" in _visible_text(modal)
+
+    _run(scenario())
+
+
+def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation(rank=1, repo_id="org/First-GGUF"),
+                _recommendation(rank=2, repo_id="org/Second-GGUF"),
+            ]
+        )
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+
+            for _ in range(2):
+                pilot.app.screen.query_one("#res-compare", Button).press()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, RecommendationCompareScreen)
+                assert pilot.app.screen.query(DataTable)
+                pilot.app.screen.query_one("#compare-back", Button).press()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+                pilot.app.screen.query_one("#res-details", Button).press()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
+                assert "Technical details" in _visible_text(pilot.app.screen)
+                pilot.app.screen.query_one("#details-back", Button).press()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+    _run(scenario())
+
+
+def test_execution_screen_prepares_artifact_automatically_and_runs_selected_runtime(
     monkeypatch: Any,
 ) -> None:
     async def scenario() -> None:
@@ -280,30 +405,29 @@ def test_execution_screen_prepares_artifact_and_runs_selected_runtime(
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
-            screen.query_one("#run-prepare", Button).press()
-            await pilot.pause()
-            screen.query_one("#run-prompt-input", Input).value = "Say hi"
-            screen.query_one("#run-execute", Button).press()
+            _set_prompt(screen, "Say hi")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
             assert advisor.operations == ["resolve", "download", "verify", "run"]
             assert advisor.resolved == [("org/Tiny-GGUF", "Q4_K_M", None)]
             assert advisor.runs[0][1] == "Say hi"
             assert advisor.runs[0][2] is runtime
-            response = screen.query_one("#run-response", Static)
-            assert _widget_text(response) == "generated from tui"
+            assert screen.query(InferencePrompt)
+            assert screen.query(InferenceResponse)
+            assert "generated from tui" in _visible_text(screen)
             assert "Resolve artifact for org/Tiny-GGUF (Q4_K_M)" in screen.log_messages
-            assert "Verify size and SHA-256 sidecar" in screen.log_messages
-            assert "Start llama.cpp single-turn generation" in screen.log_messages
+            assert "Verifying artifact" in screen.log_messages
+            assert "Generating" in screen.log_messages
 
     _run(scenario())
 
 
-def test_execution_screen_sanitizes_control_sequences_in_response(
+def test_execution_screen_keeps_visual_history_across_prompts(
     monkeypatch: Any,
 ) -> None:
     async def scenario() -> None:
-        advisor = _FakeAdvisor(response_text="\x1b[2J\x1b[HGenerated [literal]\x07")
+        advisor = _FakeAdvisor(response_text="first response")
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
 
         async with app.run_test(size=(120, 50)) as pilot:
@@ -313,14 +437,62 @@ def test_execution_screen_sanitizes_control_sequences_in_response(
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
-            screen.query_one("#run-prepare", Button).press()
-            await pilot.pause()
-            screen.query_one("#run-prompt-input", Input).value = "Say hi"
-            screen.query_one("#run-execute", Button).press()
+            _set_prompt(screen, "Say hi")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
-            response = screen.query_one("#run-response", Static)
-            assert _widget_text(response) == "Generated [literal]"
+            prompt_input = screen.query_one("#run-prompt-input", TextArea)
+            assert prompt_input.text == ""
+            assert prompt_input.has_focus
+
+            advisor.response_text = "second response"
+            _set_prompt(screen, "Say bye")
+            screen.query_one("#run-generate", Button).press()
+            await pilot.pause()
+
+            assert advisor.runs[-1][1] == "Say bye"
+            assert len(screen.query(InferencePrompt)) == 2
+            assert len(screen.query(InferenceResponse)) == 2
+            text = _visible_text(screen)
+            assert "Say hi" in text
+            assert "first response" in text
+            assert "Say bye" in text
+            assert "second response" in text
+
+    _run(scenario())
+
+
+def test_execution_screen_survives_three_prompts_without_duplicate_ids(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationExecutionScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationExecutionScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            for index in range(3):
+                advisor.response_text = f"response {index}"
+                _set_prompt(screen, f"prompt {index}")
+                screen.query_one("#run-generate", Button).press()
+                await pilot.pause()
+
+            assert len(screen.query(InferencePrompt)) == 3
+            assert len(screen.query(InferenceResponse)) == 3
+            assert screen.query_one("#run-prompt-input", TextArea).text == ""
+            assert advisor.operations == [
+                "resolve",
+                "download",
+                "verify",
+                "run",
+                "run",
+                "run",
+            ]
 
     _run(scenario())
 
@@ -338,13 +510,14 @@ def test_execution_screen_reuses_local_artifact_without_downloading(
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
-            screen.query_one("#run-prepare", Button).press()
+            _set_prompt(screen, "Hello")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
-            assert advisor.operations == ["resolve", "verify"]
+            assert advisor.operations == ["resolve", "verify", "run"]
             assert advisor.downloaded == []
             status = screen.query_one("#run-status", Static)
-            assert "Artifact verified" in _widget_text(status)
+            assert "Model ready" in _widget_text(status)
 
     _run(scenario())
 
@@ -360,7 +533,8 @@ def test_execution_screen_shows_download_failure(monkeypatch: Any) -> None:
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
-            screen.query_one("#run-prepare", Button).press()
+            _set_prompt(screen, "Hello")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
             message = screen.query_one("#run-error-message", Static)
@@ -380,14 +554,44 @@ def test_execution_screen_shows_llama_cli_missing(monkeypatch: Any) -> None:
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
-            screen.query_one("#run-prepare", Button).press()
-            await pilot.pause()
-            screen.query_one("#run-prompt-input", Input).value = "Hello"
-            screen.query_one("#run-execute", Button).press()
+            _set_prompt(screen, "Hello")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
             message = screen.query_one("#run-error-message", Static)
             assert "llama-cli missing" in _widget_text(message)
+
+    _run(scenario())
+
+
+def test_execution_screen_retry_after_run_error_reuses_prepared_artifact(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor(fail_run=ExecutionTimeoutError("first run failed"))
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationExecutionScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationExecutionScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            _set_prompt(screen, "First try")
+            screen.query_one("#run-generate", Button).press()
+            await pilot.pause()
+            assert "first run failed" in _visible_text(screen)
+
+            advisor.fail_run = None
+            advisor.response_text = "retry worked"
+            _set_prompt(screen, "Retry")
+            screen.query_one("#run-generate", Button).press()
+            await pilot.pause()
+
+            assert advisor.operations == ["resolve", "download", "verify", "run", "run"]
+            assert len(screen.query(InferenceResponse)) == 1
+            assert "retry worked" in _visible_text(screen)
 
     _run(scenario())
 
@@ -412,10 +616,8 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
                 screen = pilot.app.screen
                 assert isinstance(screen, RecommendationExecutionScreen)
                 _run_workers_inline(pilot.app, screen, monkeypatch)
-                screen.query_one("#run-prepare", Button).press()
-                await pilot.pause()
-                screen.query_one("#run-prompt-input", Input).value = "Hello"
-                screen.query_one("#run-execute", Button).press()
+                _set_prompt(screen, "Hello")
+                screen.query_one("#run-generate", Button).press()
                 await pilot.pause()
                 message = screen.query_one("#run-error-message", Static)
                 assert str(failure) in _widget_text(message)
@@ -434,19 +636,17 @@ def test_execution_screen_rejects_empty_prompt(monkeypatch: Any) -> None:
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
-            screen.query_one("#run-prepare", Button).press()
-            await pilot.pause()
-            screen.query_one("#run-execute", Button).press()
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
             message = screen.query_one("#run-error-message", Static)
             assert "Prompt must not be empty" in _widget_text(message)
-            assert advisor.operations == ["resolve", "download", "verify"]
+            assert advisor.operations == []
 
     _run(scenario())
 
 
-def test_prepare_uses_thread_worker_for_long_operations(monkeypatch: Any) -> None:
+def test_generate_uses_thread_worker_for_long_operations(monkeypatch: Any) -> None:
     async def scenario() -> None:
         advisor = _FakeAdvisor(prepare_delay=0.6)
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
@@ -462,7 +662,8 @@ def test_prepare_uses_thread_worker_for_long_operations(monkeypatch: Any) -> Non
                 "run_worker",
                 lambda work, *args, **kwargs: calls.append(bool(kwargs.get("thread"))),
             )
-            screen.query_one("#run-prepare", Button).press()
+            _set_prompt(screen, "Hello")
+            screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
             assert calls == [True]
@@ -478,7 +679,7 @@ def test_back_returns_to_results_screen() -> None:
         async with app.run_test(size=(120, 50)) as pilot:
             app.show_recommendations(state)
             await pilot.pause()
-            pilot.app.screen.query_one("#res-run", Button).press()
+            pilot.app.screen.query_one("#res-run-0", Button).press()
             await pilot.pause()
             assert isinstance(pilot.app.screen, RecommendationExecutionScreen)
 
@@ -486,5 +687,88 @@ def test_back_returns_to_results_screen() -> None:
             await pilot.pause()
 
             assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+    _run(scenario())
+
+
+def test_tui_results_execution_export_details_stress_flow(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation(rank=1, repo_id="org/First-GGUF", quantization="Q4_K_M"),
+                _recommendation(rank=2, repo_id="org/Second-GGUF", quantization="Q5_K_M"),
+            ]
+        )
+        advisor = _FakeAdvisor(response_text="initial")
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+
+            for _ in range(2):
+                pilot.app.screen.query_one("#res-export", Button).press()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, ExportReportModal)
+                pilot.app.screen.query_one("#res-export-cancel", Button).press()
+                await pilot.pause()
+
+            pilot.app.screen.query_one("#res-run-0", Button).press()
+            await pilot.pause()
+            run_screen = pilot.app.screen
+            assert isinstance(run_screen, RecommendationExecutionScreen)
+            _run_workers_inline(pilot.app, run_screen, monkeypatch)
+
+            for index in range(3):
+                advisor.response_text = f"response {index}"
+                _set_prompt(run_screen, f"prompt {index}")
+                run_screen.query_one("#run-generate", Button).press()
+                await pilot.pause()
+
+            advisor.fail_run = ExecutionTimeoutError("transient failure")
+            _set_prompt(run_screen, "prompt that fails")
+            run_screen.query_one("#run-generate", Button).press()
+            await pilot.pause()
+            assert "transient failure" in _visible_text(run_screen)
+            assert len(run_screen.query(InferenceResponse)) == 3
+
+            advisor.fail_run = None
+            advisor.response_text = "recovered"
+            _set_prompt(run_screen, "retry prompt")
+            run_screen.query_one("#run-generate", Button).press()
+            await pilot.pause()
+            assert len(run_screen.query(InferenceResponse)) == 4
+            assert "response 0" in _visible_text(run_screen)
+            assert "recovered" in _visible_text(run_screen)
+
+            run_screen.query_one("#run-back", Button).press()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+            pilot.app.screen.query_one("#res-export", Button).press()
+            await pilot.pause()
+            modal = pilot.app.screen
+            assert isinstance(modal, ExportReportModal)
+            modal.query_one("#res-export-path", Input).value = str(tmp_path / "stress.json")
+            modal.query_one("#res-export-confirm", Button).press()
+            await pilot.pause()
+            assert (tmp_path / "stress.json").exists()
+            modal.query_one("#res-export-close", Button).press()
+            await pilot.pause()
+
+            pilot.app.screen.query_one("#res-details", Button).press()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
+            pilot.app.screen.query_one("#details-back", Button).press()
+            await pilot.pause()
+
+            pilot.app.screen.query_one("#res-run-1", Button).press()
+            await pilot.pause()
+            second_run = pilot.app.screen
+            assert isinstance(second_run, RecommendationExecutionScreen)
+            assert second_run.recommendation.repo_id == "org/Second-GGUF"
 
     _run(scenario())

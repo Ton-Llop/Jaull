@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from threading import Event, Lock
 
-from textual.widgets import Button, Checkbox, RadioSet
+from textual.widgets import Button, Checkbox, DataTable, RadioSet
 
 from jaull.domain.requirements import UseCase
 from jaull.tui.app import JaullApp
@@ -18,12 +19,12 @@ from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
 from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
 from jaull.tui.screens.recommendation_results import (
+    RecommendationCompareScreen,
     RecommendationResultsScreen,
     export_report,
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.welcome import WelcomeScreen
-from jaull.tui.widgets.recommendation_card import RecommendationCard
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.progress import HARDWARE_STEPS
@@ -73,6 +74,33 @@ def _services(
         estimate_memory=lambda **kwargs: estimator(  # type: ignore[arg-type]
             kwargs["analysis"], kwargs["inference_cfg"]
         ),
+    )
+
+
+def _services_with_blocking_detector(
+    *,
+    started: Event,
+    release: Event,
+) -> ServiceContainer:
+    base = _services()
+
+    def detect(**kwargs: object) -> object:
+        started.set()
+        release.wait(timeout=5)
+        on_step = kwargs.get("on_step")
+        if callable(on_step):
+            for key, _ in HARDWARE_STEPS:
+                on_step(key)
+        return hardware()
+
+    return ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=base.search_client,
+        detect_hardware=detect,  # type: ignore[arg-type]
+        inspect_model=base.inspect_model,
+        estimate_memory=base.estimate_memory,
+        capability_analyzer=base.capability_analyzer,
+        range_client_factory=base.range_client_factory,
     )
 
 
@@ -137,6 +165,83 @@ def test_hardware_screen_shows_progress_and_a_continue_button() -> None:
             # card in the same slot — no scrolling needed to see the result.
             assert pilot.app.screen.query(SummaryCard)
             assert pilot.app.screen.query_one("#hw-continue", Button)
+
+    _run(scenario())
+
+
+def test_hardware_screen_can_be_closed_before_detector_finishes() -> None:
+    async def scenario() -> None:
+        started = Event()
+        release = Event()
+        app = JaullApp(
+            services=_services_with_blocking_detector(
+                started=started,
+                release=release,
+            )
+        )
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.start_guided_workflow()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
+            assert started.wait(timeout=1)
+
+            app.pop_screen()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, WelcomeScreen)
+
+            release.set()
+            await pilot.pause()
+            await pilot.pause()
+            assert isinstance(pilot.app.screen, WelcomeScreen)
+
+    _run(scenario())
+
+
+def test_hardware_screen_repeated_start_and_back_does_not_hang() -> None:
+    async def scenario() -> None:
+        starts = [Event() for _ in range(3)]
+        releases = [Event() for _ in range(3)]
+        lock = Lock()
+        calls = 0
+        base = _services()
+
+        def detect(**kwargs: object) -> object:
+            nonlocal calls
+            with lock:
+                index = calls
+                calls += 1
+            starts[index].set()
+            releases[index].wait(timeout=5)
+            on_step = kwargs.get("on_step")
+            if callable(on_step):
+                for key, _ in HARDWARE_STEPS:
+                    on_step(key)
+            return hardware()
+
+        app = JaullApp(
+            services=ServiceContainer(
+                hf_client=base.hf_client,
+                search_client=base.search_client,
+                detect_hardware=detect,  # type: ignore[arg-type]
+                inspect_model=base.inspect_model,
+                estimate_memory=base.estimate_memory,
+                capability_analyzer=base.capability_analyzer,
+                range_client_factory=base.range_client_factory,
+            )
+        )
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            for index in range(3):
+                app.start_guided_workflow()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
+                assert starts[index].wait(timeout=1)
+                app.pop_screen()
+                await pilot.pause()
+                assert isinstance(pilot.app.screen, WelcomeScreen)
+                releases[index].set()
+                await pilot.pause()
 
     _run(scenario())
 
@@ -289,7 +394,7 @@ def test_full_guided_run_reaches_the_results_screen() -> None:
 
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
-            assert screen.query(RecommendationCard)
+            assert screen.query_one("#res-run-0", Button)
             assert app.workflow_state is not None
             assert app.workflow_state.recommendations
 
@@ -315,7 +420,8 @@ def test_results_screen_can_render_a_comparison(tmp_path: Path) -> None:
             assert isinstance(screen, RecommendationResultsScreen)
             screen.query_one("#res-compare", Button).press()
             await pilot.pause()
-            assert screen.query("DataTable")
+            assert isinstance(pilot.app.screen, RecommendationCompareScreen)
+            assert pilot.app.screen.query(DataTable)
 
             state = app.workflow_state
             assert state is not None

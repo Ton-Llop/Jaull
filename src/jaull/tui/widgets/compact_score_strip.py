@@ -14,7 +14,18 @@ from textual.widgets import Static
 
 from jaull.recommendation.models import ScoreBreakdown
 
+# A two-tone rule reads as a bar at any width, where the shade-block pair
+# (█ / ░) turns into visual noise once several rows sit on top of each other.
+_FILLED = "#3a7bd5"
+_TRACK = "#2b3748"
+
 _BAR_WIDTH = 14
+
+
+def bar_markup(value: float, width: int) -> str:
+    """A `width`-column bar for a 0..1 value, as console markup."""
+    filled = max(0, min(width, round(value * width)))
+    return f"[{_FILLED}]{'━' * filled}[/][{_TRACK}]{'━' * (width - filled)}[/]"
 
 _ROWS: tuple[tuple[str, str], ...] = (
     ("memory_fit", "Memory"),
@@ -38,10 +49,9 @@ class CompactScoreStrip(Vertical):
         values = self._breakdown.model_dump()
         for key, label in _ROWS:
             value = float(values.get(key, 0.0))
-            filled = round(value * _BAR_WIDTH)
-            bar = "█" * filled + "░" * (_BAR_WIDTH - filled)
             yield Static(
-                f"[dim]{label.ljust(10)}[/dim] [b]{bar}[/b] {value * 100:3.0f}%"
+                f"[dim]{label.ljust(10)}[/dim] {bar_markup(value, _BAR_WIDTH)} "
+                f"{value * 100:3.0f}%"
             )
         if self._breakdown.hard_penalty < 1.0:
             yield Static(
@@ -50,4 +60,4 @@ class CompactScoreStrip(Vertical):
             )
 
 
-__all__ = ["CompactScoreStrip"]
+__all__ = ["CompactScoreStrip", "bar_markup"]

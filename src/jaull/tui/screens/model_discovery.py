@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Static
 
@@ -17,15 +20,28 @@ from jaull.workflow.progress import DISCOVERY_STEPS, initial_progress
 from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
+    from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
+
+
+class _DiscoveryProgress(Message):
+    def __init__(self, progress: WorkflowProgress) -> None:
+        super().__init__()
+        self.progress = progress
+
+
+class _DiscoveryFinished(Message):
+    def __init__(self, state: RecommendationWorkflowState) -> None:
+        super().__init__()
+        self.state = state
 
 
 class ModelDiscoveryScreen(Screen[None]):
     """Step 3: search, inspect and rank, without freezing the interface.
 
-    The whole pipeline runs in a thread worker and reports back through
-    `call_from_thread`, so keystrokes — including Cancel — stay responsive
-    while network calls are in flight.
+    The whole pipeline runs outside the event loop and reports back with
+    non-blocking Textual messages, so keystrokes — including Cancel — stay
+    responsive while network calls are in flight.
     """
 
     BINDINGS = [("escape", "cancel", "Cancel"), ("q", "quit", "Quit")]
@@ -34,6 +50,9 @@ class ModelDiscoveryScreen(Screen[None]):
         super().__init__()
         self._answers = answers
         self._cancel = threading.Event()
+        self._discovery_closing = threading.Event()
+        self._executor: ThreadPoolExecutor | None = None
+        self._future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -50,16 +69,37 @@ class ModelDiscoveryScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.run_worker(self._run, thread=True)
+        self._start_discovery()
 
-    def _run(self) -> None:
-        app = self._app()
+    def on_unmount(self) -> None:
+        self._discovery_closing.set()
+        self._shutdown_discovery_executor()
 
+    def _start_discovery(self) -> None:
+        self._discovery_closing.clear()
+        self._executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-discovery",
+        )
+        self._future = self._executor.submit(self._run, self._app().advisor)
+
+    def _shutdown_discovery_executor(self) -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
+    def _run(self, advisor: AdvisorService) -> None:
         def report(progress: WorkflowProgress) -> None:
-            app.call_from_thread(self._update_progress, progress)
+            if self._discovery_closing.is_set():
+                return
+            self.post_message(_DiscoveryProgress(progress))
 
+        app = self._app()
         hardware = app.hardware_profile
-        state = app.advisor.recommend(
+        state = advisor.recommend(
             self._answers,
             hardware=hardware,
             on_progress=report,
@@ -67,12 +107,27 @@ class ModelDiscoveryScreen(Screen[None]):
         )
         if hardware is None:
             app.hardware_profile = state.hardware
-        app.call_from_thread(self._finish, state)
+        if self._discovery_closing.is_set():
+            return
+        self.post_message(_DiscoveryFinished(state))
+
+    @on(_DiscoveryProgress)
+    def _update_progress_message(self, message: _DiscoveryProgress) -> None:
+        if self._discovery_closing.is_set():
+            return
+        self._update_progress(message.progress)
+
+    @on(_DiscoveryFinished)
+    def _finish_message(self, message: _DiscoveryFinished) -> None:
+        if self._discovery_closing.is_set():
+            return
+        self._finish(message.state)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:
         self.query_one(ProgressStepList).update_progress(progress)
 
     def _finish(self, state: RecommendationWorkflowState) -> None:
+        self._shutdown_discovery_executor()
         app = self._app()
         app.workflow_state = state
 
@@ -134,7 +189,7 @@ class ModelDiscoveryScreen(Screen[None]):
             )
             self.query_one("#discovery-messages", Vertical).remove_children()
             self._replace_actions([Button("Cancel", id="discovery-cancel")])
-            self.run_worker(self._run, thread=True)
+            self._start_discovery()
         elif button_id == "discovery-restart":
             app.restart_workflow()
         elif button_id == "discovery-advanced":

@@ -90,6 +90,8 @@ hf_token.txt
 # Configuración local de asistentes de IA
 # =====================================================================
 .claude/
+.codex/
+.agents/
 
 # =====================================================================
 # IDEs y editores
