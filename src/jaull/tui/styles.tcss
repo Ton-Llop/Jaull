@@ -1,5 +1,29 @@
-/* Corporate palette for jaull TUI.
-   Sober, professional; no bright green or terminal-hacker aesthetics. */
+/* Sober palette for the jaull TUI.
+
+   Design tokens
+   -------------
+   Text hierarchy — three levels, used consistently:
+     primary    #e5e7eb   titles, model names, answers, response bodies
+     secondary  #b3bac6   subtitles, metadata lines, footer
+     muted      #8b95a5   timings, hints, pending steps, CLI labels
+
+   Colour carries one meaning each:
+     #3a7bd5 blue   action / current step / focus
+     #10b981 green  success / comfortable
+     #f59e0b amber  warning / tight
+     #ef4444 red    failure
+
+   Surface hierarchy — reach for the lightest one that works:
+     .surface-strong  bordered + tinted. Primary recommendation, modals,
+                      focused inputs. Nothing else.
+     .surface-subtle  tinted, at most one edge rule. Model responses,
+                      key/value blocks.
+     .section         plain: a title and whitespace. The default.
+     .rule            one hairline, for separating zones (header, composer).
+
+   .card / .banner keep the older boxed look and stay in the advanced tools,
+   which are deliberately a denser, expert-facing mode.
+   --------------------------------------------------------------------- */
 
 Screen {
     background: #0e1116;
@@ -40,7 +64,7 @@ HeaderIcon {
 
 Footer {
     background: #111827;
-    color: #9ca3af;
+    color: #b3bac6;
 }
 
 Footer > .footer--key {
@@ -48,6 +72,57 @@ Footer > .footer--key {
     text-style: bold;
 }
 
+/* ---------------------------------------------------------------------
+   Text hierarchy.
+   --------------------------------------------------------------------- */
+.text-primary   { color: #e5e7eb; }
+.text-secondary { color: #b3bac6; }
+
+/* Secondary information, not decoration: readable, but clearly below the
+   primary level. */
+.text-muted {
+    color: #8b95a5;
+    padding: 0 0 1 0;
+}
+
+.section {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+.section-title {
+    color: #e5e7eb;
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+/* An eyebrow above a block: small, blue, uppercase at the call site. */
+.kicker {
+    color: #3a7bd5;
+    text-style: bold;
+}
+
+.rule {
+    border-bottom: solid #1f2937;
+}
+
+.surface-strong {
+    background: #131922;
+    border: round #3a7bd5;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.surface-subtle {
+    background: #121821;
+    padding: 0 1;
+    height: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Boxed surfaces, kept for the advanced tools and the detail drill-downs.
+   --------------------------------------------------------------------- */
 .banner {
     background: #111827;
     color: #e5e7eb;
@@ -63,7 +138,7 @@ Footer > .footer--key {
 }
 
 .banner-subtitle {
-    color: #9ca3af;
+    color: #b3bac6;
 }
 
 .card {
@@ -138,6 +213,31 @@ Button.-primary {
 Button:focus, Button:hover {
     background: #2b3748;
 }
+Button.-primary:focus, Button.-primary:hover {
+    background: #4a8be5;
+}
+
+/* One-line button for dense rows. Textual's Button ships `min-width: 16`,
+   which is what makes a "Run" button as wide as a sentence. */
+Button.-compact {
+    height: 1;
+    min-width: 6;
+    padding: 0 2;
+}
+
+/* Tertiary action: present, never competing. */
+Button.-quiet {
+    height: 1;
+    min-width: 0;
+    padding: 0 2;
+    background: transparent;
+    color: #8b95a5;
+}
+Button.-quiet:focus, Button.-quiet:hover {
+    background: transparent;
+    color: #b3bac6;
+    text-style: underline;
+}
 
 DataTable {
     background: #131922;
@@ -145,7 +245,7 @@ DataTable {
 }
 DataTable > .datatable--header {
     background: #1f2937;
-    color: #9ca3af;
+    color: #b3bac6;
     text-style: bold;
 }
 
@@ -167,14 +267,14 @@ DataTable > .datatable--header {
 .cli-hint {
     background: #131922;
     border: round #1f2937;
-    color: #9ca3af;
+    color: #b3bac6;
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
 
 .cli-hint-label {
-    color: #6b7280;
+    color: #8b95a5;
     text-style: italic;
 }
 
@@ -191,7 +291,7 @@ DataTable > .datatable--header {
 .badge-tight              { color: #f59e0b; background: #2a1e05; }
 .badge-offloading         { color: #f59e0b; background: #2a1e05; }
 .badge-insufficient       { color: #ef4444; background: #2a0808; }
-.badge-unknown            { color: #9ca3af; background: #1f2937; }
+.badge-unknown            { color: #b3bac6; background: #1f2937; }
 
 .usage-bar {
     height: 1;
@@ -225,11 +325,6 @@ DataTable > .datatable--header {
     margin-top: 0;
 }
 
-.text-muted {
-    color: #6b7280;
-    padding: 0 0 1 0;
-}
-
 .runtime-card {
     background: #131922;
     border: round #3a7bd5;
@@ -250,119 +345,220 @@ DataTable > .datatable--header {
 }
 
 /* ---------------------------------------------------------------------
-   Run screen.
+   Welcome.
    --------------------------------------------------------------------- */
-.run-header {
-    background: #111827;
-    border-bottom: solid #1f2937;
-    padding: 0 2;
-    height: auto;
-}
-
-.run-title {
-    color: #e5e7eb;
-    text-style: bold;
-}
-
-.run-meta {
-    color: #9ca3af;
-}
-
-#run-history {
-    height: 1fr;
-    padding: 0 2 1 2;
-}
-
-#run-console {
-    height: auto;
-    background: #111827;
-    border-top: solid #1f2937;
+#welcome-body {
     padding: 0 2;
 }
 
-.run-status {
-    color: #9ca3af;
+#welcome-tagline {
+    color: #b3bac6;
     padding: 0 0 1 0;
+}
+
+#welcome-menu {
+    background: transparent;
     height: auto;
 }
 
-.run-error-message {
-    color: #fbbf24;
-    background: #1a1207;
-    padding: 0 1;
-    margin: 0 0 1 0;
-    height: auto;
+#welcome-menu > ListItem {
+    background: transparent;
+    padding: 0 0 1 1;
 }
 
-#run-composer {
-    height: auto;
+#welcome-menu > ListItem.-highlight {
+    background: #1b2432;
 }
 
-#run-composer TextArea {
-    width: 1fr;
-}
-
-#run-composer Button {
-    width: auto;
-    margin: 0 0 0 1;
-}
-
-.inference-entry {
-    height: auto;
-    margin: 0 0 1 0;
-    padding: 0 1;
-}
-
-.inference-prompt {
-    border-left: solid #2b3748;
-}
-
-.inference-response {
-    background: #0b0f16;
-    border: solid #1f2937;
-}
-
-.message-label {
-    color: #3a7bd5;
+.menu-label {
+    color: #e5e7eb;
     text-style: bold;
 }
 
-.message-text {
-    color: #e5e7eb;
+#welcome-menu > ListItem.-highlight .menu-label {
+    color: #3a7bd5;
 }
 
-.message-meta {
-    color: #6b7280;
+.menu-hint {
+    color: #8b95a5;
 }
 
 /* ---------------------------------------------------------------------
-   Guided recommendation workflow.
-   Same sober palette as the rest of the app: no new accent colours, no
-   animation, and status is carried by a marker glyph as well as by colour.
+   Guided workflow header: a heading, not a panel.
    --------------------------------------------------------------------- */
 .workflow-header {
-    background: #111827;
-    padding: 0 2;
-    border: round #1f2937;
-    margin: 0 0 1 0;
     height: auto;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    border-bottom: solid #1f2937;
+}
+
+.workflow-title {
+    color: #e5e7eb;
+    text-style: bold;
+    width: 1fr;
+}
+
+.workflow-step-count {
+    color: #8b95a5;
+    width: auto;
+    text-align: right;
+}
+
+.workflow-subtitle {
+    color: #b3bac6;
+    padding: 0 0 1 0;
 }
 
 .workflow-breadcrumb {
-    color: #9ca3af;
+    color: #b3bac6;
 }
 
 .step-done    { color: #10b981; }
 .step-running { color: #3a7bd5; text-style: bold; }
-.step-pending { color: #6b7280; }
+.step-pending { color: #8b95a5; }
 .step-failed  { color: #ef4444; text-style: bold; }
 
-.recommendation-card {
+/* A row whose single action sits on the right edge. */
+.actions-right {
+    height: auto;
+    align-horizontal: right;
+    margin: 0 0 1 0;
+}
+
+/* ---------------------------------------------------------------------
+   Hardware.
+   --------------------------------------------------------------------- */
+#hardware-content,
+#hardware-summary {
+    height: auto;
+    padding: 0 2;
+}
+
+/* ---------------------------------------------------------------------
+   Requirements wizard: questions separated by whitespace, not by boxes.
+   --------------------------------------------------------------------- */
+#wizard-body {
+    padding: 0 2;
+}
+
+.question {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+.question-title {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+.question-note {
+    color: #8b95a5;
+    padding: 0 0 0 3;
+}
+
+.question > RadioSet,
+.question > Checkbox,
+.question > Input {
+    background: transparent;
+    margin: 0 0 0 3;
+}
+
+.question > Input {
+    width: 60;
+}
+
+#wizard-errors {
+    height: auto;
+}
+
+RadioSet {
+    background: transparent;
+    border: none;
+    height: auto;
+}
+
+Checkbox {
+    background: transparent;
+    border: none;
+}
+
+/* ---------------------------------------------------------------------
+   Results.
+   --------------------------------------------------------------------- */
+#results-body,
+#compare-body,
+#details-body {
+    padding: 0 2;
+}
+
+.results-primary {
     background: #131922;
     border: round #3a7bd5;
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
+}
+
+.results-kicker,
+.results-section-title {
+    color: #3a7bd5;
+    text-style: bold;
+}
+
+.results-section-title {
+    padding: 1 0 0 0;
+}
+
+.results-model-name {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+.results-score-line {
+    color: #10b981;
+    width: 1fr;
+}
+
+.results-fit {
+    width: auto;
+    text-align: right;
+}
+
+.fit-good    { color: #10b981; }
+.fit-warn    { color: #f59e0b; }
+.fit-bad     { color: #ef4444; }
+.fit-unknown { color: #8b95a5; }
+
+.results-meta-line {
+    color: #8b95a5;
+    padding: 0 0 1 0;
+}
+
+.results-alternative {
+    height: auto;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    background: #121821;
+}
+
+.results-alt-rank {
+    width: 4;
+    color: #8b95a5;
+}
+
+.results-alt-name {
+    width: 1fr;
+    color: #e5e7eb;
+}
+
+.results-alt-score {
+    width: 8;
+    color: #b3bac6;
+}
+
+.results-alt-fit {
+    width: 16;
 }
 
 .reason-line {
@@ -376,65 +572,39 @@ DataTable > .datatable--header {
 }
 
 .score-row {
-    color: #9ca3af;
+    color: #b3bac6;
 }
 
 #results-actions,
-#discovery-actions {
+#results-actions-secondary,
+#discovery-actions,
+#wizard-actions {
     height: auto;
-    padding: 0 0 1 0;
+}
+
+/* The panel closes on its action; a margin under it only adds dead rows. */
+.results-primary .actions-right {
+    margin: 0;
 }
 
 #results-actions Button,
+#results-actions-secondary Button,
 #discovery-actions Button {
     margin: 0 1 0 0;
 }
 
-#wizard-errors,
 #discovery-messages,
-#hardware-summary,
-#hardware-content {
+#discovery-body {
     height: auto;
 }
 
-.results-primary {
-    background: #131922;
-    border: round #3a7bd5;
-    padding: 0 2 1 2;
-    margin: 0 0 1 0;
-    height: auto;
+#discovery-body {
+    padding: 0 2;
 }
 
-.results-kicker,
-.results-section-title {
-    color: #3a7bd5;
-    text-style: bold;
-}
-
-.results-model-name {
-    color: #e5e7eb;
-    text-style: bold;
-}
-
-.results-score-line {
-    color: #10b981;
-}
-
-.results-meta-line {
-    color: #9ca3af;
-}
-
-.results-alternative {
-    background: #131922;
-    border: solid #1f2937;
-    padding: 0 2 1 2;
-    margin: 0 0 1 0;
-    height: auto;
-}
-
-.results-alt-title {
-    color: #e5e7eb;
-    text-style: bold;
+/* A modal should read as something on top of the results, not as a new page. */
+ExportReportModal {
+    align: center middle;
 }
 
 #export-modal {
@@ -442,6 +612,7 @@ DataTable > .datatable--header {
     border: round #3a7bd5;
     padding: 1 2;
     width: 80;
+    max-width: 100%;
     height: auto;
 }
 
@@ -453,24 +624,13 @@ DataTable > .datatable--header {
     margin: 0 1 0 0;
 }
 
-RadioSet {
-    background: #131922;
-    border: none;
-    height: auto;
-}
-
-Checkbox {
-    background: #131922;
-    border: none;
-}
-
 /* --------------------------------------------------------------------
-   Fase 5: tier headings + compact score strip.
+   Tier headings + compact score strip.
    -------------------------------------------------------------------- */
 .tier-best-match     { color: #10b981; }
 .tier-recommended    { color: #3a7bd5; }
 .tier-closest-option { color: #f59e0b; }
-.tier-best-effort    { color: #9ca3af; }
+.tier-best-effort    { color: #b3bac6; }
 
 .compact-score-strip {
     background: #131922;
@@ -481,3 +641,93 @@ Checkbox {
 }
 .score-total    { color: #e5e7eb; }
 .score-penalty  { color: #f59e0b; }
+
+/* ---------------------------------------------------------------------
+   Run screen: header, history, composer. History is the dominant zone.
+   --------------------------------------------------------------------- */
+.run-header {
+    padding: 0 2;
+    height: auto;
+    margin: 0 0 1 0;
+    border-bottom: solid #1f2937;
+}
+
+.run-title {
+    color: #e5e7eb;
+    text-style: bold;
+}
+
+.run-meta {
+    color: #b3bac6;
+}
+
+#run-history {
+    height: 1fr;
+    padding: 0 2;
+}
+
+#run-console {
+    height: auto;
+    border-top: solid #1f2937;
+    padding: 0 2;
+}
+
+.run-status {
+    color: #b3bac6;
+    height: 1;
+}
+
+.run-error-message {
+    color: #fbbf24;
+    border-left: solid #f59e0b;
+    padding: 0 0 0 1;
+    height: auto;
+}
+
+#run-composer {
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+#run-composer TextArea {
+    width: 1fr;
+    height: 4;
+}
+
+#run-composer Button {
+    width: auto;
+    margin: 0 0 0 1;
+}
+
+.inference-entry {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+.inference-prompt {
+    border-left: solid #2b3748;
+    padding: 0 0 0 1;
+}
+
+.inference-response {
+    background: #121821;
+    border-left: solid #3a7bd5;
+    padding: 0 0 0 1;
+}
+
+.message-label {
+    color: #8b95a5;
+    text-style: bold;
+}
+
+.inference-response .message-label {
+    color: #3a7bd5;
+}
+
+.message-text {
+    color: #e5e7eb;
+}
+
+.message-meta {
+    color: #8b95a5;
+}

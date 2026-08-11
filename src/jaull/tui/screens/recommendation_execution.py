@@ -6,7 +6,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static, TextArea
+from textual.widgets import Button, Footer, Static, TextArea
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
@@ -40,7 +40,8 @@ class RecommendationExecutionScreen(Screen[None]):
         return tuple(self._log_messages)
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
+        # Three zones: a compact header, the history (which owns the screen),
+        # and the composer with a one-line status above it.
         yield _RunHeader(self._recommendation)
         with VerticalScroll(id="run-history"):
             yield Static(
@@ -59,8 +60,9 @@ class RecommendationExecutionScreen(Screen[None]):
                     soft_wrap=True,
                     show_line_numbers=False,
                 )
+                # No Back button: Escape and the footer already navigate, and
+                # a second button next to Generate reads as a second choice.
                 yield Button("Generate", id="run-generate", classes="-primary")
-                yield Button("Back", id="run-back")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -74,11 +76,8 @@ class RecommendationExecutionScreen(Screen[None]):
         self.query_one("#run-prompt-input", TextArea).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        match event.button.id:
-            case "run-back":
-                self.app.pop_screen()
-            case "run-generate":
-                self._start_generate()
+        if event.button.id == "run-generate":
+            self._start_generate()
 
     def _start_generate(self) -> None:
         composer = self.query_one("#run-prompt-input", TextArea)
@@ -97,7 +96,7 @@ class RecommendationExecutionScreen(Screen[None]):
         self._clear_error()
         self._append_prompt(prompt)
         composer.clear()
-        self._set_busy(True, "Preparing model..." if self._artifact is None else "Generating...")
+        self._set_busy(True, "Preparing model" if self._artifact is None else "Generating")
         self.run_worker(lambda: self._generate_worker(prompt, runtime), thread=True)
 
     def _generate_worker(self, prompt: str, runtime: RuntimeRecommendation) -> None:
@@ -159,7 +158,8 @@ class RecommendationExecutionScreen(Screen[None]):
         self._scroll_history_end()
 
     def _generation_failed(self, message: str) -> None:
-        self._set_busy(False, "Ready to retry")
+        # Idle, not successful: the tick belongs to a run that produced output.
+        self._set_busy(False, "Ready to retry", marker="○ ")
         self._render_error(message)
         self.query_one("#run-prompt-input", TextArea).focus()
 
@@ -175,12 +175,12 @@ class RecommendationExecutionScreen(Screen[None]):
     def _append_response(self, result: InferenceResult) -> None:
         self.query_one("#run-empty-state", Static).display = False
         history = self.query_one("#run-history", VerticalScroll)
-        history.mount(InferenceResponse(self._model_label(), result))
+        history.mount(InferenceResponse(result))
 
-    def _set_busy(self, busy: bool, status: str) -> None:
+    def _set_busy(self, busy: bool, status: str, marker: str | None = None) -> None:
         self.query_one("#run-generate", Button).disabled = busy
         self.query_one("#run-prompt-input", TextArea).disabled = busy
-        self._set_status(("● " if busy else "✓ ") + status)
+        self._set_status((marker or ("● " if busy else "✓ ")) + status)
 
     def _set_status(self, status: str) -> None:
         self.query_one("#run-status", Static).update(status)
@@ -209,9 +209,6 @@ class RecommendationExecutionScreen(Screen[None]):
             return None
         return runtime
 
-    def _model_label(self) -> str:
-        return self._recommendation.repo_id.rsplit("/", maxsplit=1)[-1]
-
     def _scroll_history_end(self) -> None:
         history = self.query_one("#run-history", VerticalScroll)
         self.call_after_refresh(history.scroll_end, animate=False)
@@ -224,6 +221,12 @@ class RecommendationExecutionScreen(Screen[None]):
 
 
 class _RunHeader(Vertical):
+    """Which model is loaded and how it is configured. Two lines, no box.
+
+    The guided breadcrumb is gone: running is not one of the four steps, and
+    repeating the path here only added a row.
+    """
+
     DEFAULT_CLASSES = "run-header"
 
     def __init__(self, recommendation: ModelRecommendation) -> None:
@@ -232,14 +235,15 @@ class _RunHeader(Vertical):
 
     def compose(self) -> ComposeResult:
         rec = self._recommendation
-        yield Static(f"Run · {rec.repo_id}", classes="run-title")
+        yield Static(rec.repo_id, classes="run-title")
         meta = " · ".join(_run_metadata(rec))
         if meta:
             yield Static(meta, classes="run-meta")
-        yield Static(_breadcrumb(), classes="workflow-breadcrumb")
 
 
 class InferencePrompt(Vertical):
+    """What the user asked. A label and a left rule, not a speech bubble."""
+
     DEFAULT_CLASSES = "inference-entry inference-prompt"
 
     def __init__(self, prompt: str) -> None:
@@ -252,15 +256,21 @@ class InferencePrompt(Vertical):
 
 
 class InferenceResponse(Vertical):
+    """What the model answered: same shape, accent rule and a faint ground.
+
+    Labelled MODEL rather than with the repository name — the header already
+    says which model is loaded, and a 26-character label shouted above every
+    answer competes with the answer itself.
+    """
+
     DEFAULT_CLASSES = "inference-entry inference-response"
 
-    def __init__(self, model_label: str, result: InferenceResult) -> None:
+    def __init__(self, result: InferenceResult) -> None:
         super().__init__()
-        self._model_label = model_label
         self._result = result
 
     def compose(self) -> ComposeResult:
-        yield Static(self._model_label.upper(), classes="message-label")
+        yield Static("MODEL", classes="message-label")
         yield Static(Text(_response_text(self._result.text)), classes="message-text")
         yield Static(
             f"{self._result.duration_seconds:.2f} s · {self._result.runtime}",
@@ -286,19 +296,6 @@ def _run_metadata(rec: ModelRecommendation) -> list[str]:
     if estimate is not None and estimate.total_bytes is not None:
         values.append(f"{estimate.total_bytes / 1024**3:.2f} GiB")
     return values
-
-
-def _breadcrumb() -> str:
-    parts = [
-        ("Hardware", False),
-        ("Your needs", False),
-        ("Search", False),
-        ("Run", True),
-    ]
-    return "  >  ".join(
-        f"[b]{label}[/b]" if current else f"[dim]{label}[/dim]"
-        for label, current in parts
-    )
 
 
 def _flag_value(runtime: RuntimeRecommendation | None, name: str) -> str | None:

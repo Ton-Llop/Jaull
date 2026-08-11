@@ -22,14 +22,14 @@ _LABELS: tuple[tuple[str, str], ...] = (
 class ScoreBar(Vertical):
     """The composite score with each weighted component shown as a bar."""
 
-    DEFAULT_CLASSES = "card"
+    DEFAULT_CLASSES = "section"
 
     def __init__(self, breakdown: ScoreBreakdown) -> None:
         super().__init__()
         self._breakdown = breakdown
 
     def compose(self) -> ComposeResult:
-        yield Static("Score breakdown", classes="card-title")
+        yield Static("Score breakdown", classes="section-title")
         yield Static(
             f"[bold]{self._breakdown.out_of_100}/100[/bold] overall",
             classes="score-total",

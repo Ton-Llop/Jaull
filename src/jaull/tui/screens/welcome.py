@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, ListItem, ListView, Static
@@ -12,10 +13,19 @@ from jaull.tui.widgets.logo import Logo
 if TYPE_CHECKING:
     from jaull.tui.app import JaullApp
 
+# Two ways in, and nothing else: quitting already has a key and a footer entry,
+# so listing it as a third "choice" only dilutes the actual decision.
 _MENU_ITEMS = [
-    ("guided", "Start guided analysis"),
-    ("advanced", "Advanced tools"),
-    ("quit", "Quit"),
+    (
+        "guided",
+        "Guided analysis",
+        "Scan this machine, answer a few questions, get ranked models",
+    ),
+    (
+        "advanced",
+        "Advanced tools",
+        "Scan, inspect, estimate, doctor",
+    ),
 ]
 
 
@@ -23,33 +33,35 @@ class WelcomeScreen(Screen[None]):
     """Entry point: two ways in, guided first."""
 
     BINDINGS = [
-        ("enter", "select", "Open"),
-        ("q", "quit", "Quit"),
+        # ListView already activates on Enter; the binding is a fallback for
+        # tests and for focus landing elsewhere, so it stays out of the footer.
+        Binding("enter", "select", "Open", show=False),
+        # Nothing to go back to from the entry screen.
+        Binding("escape", "back", "Back", show=False),
+        Binding("q", "quit", "Quit"),
     ]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         with VerticalScroll():
             yield Logo()
-            with Vertical(classes="card"):
+            with Vertical(id="welcome-body"):
                 yield Static(
-                    "Find suitable local AI models for your hardware and use case.",
-                    classes="banner-subtitle",
+                    "Find local AI models this machine can actually run.",
+                    id="welcome-tagline",
                 )
-                yield Static("Choose an action", classes="card-title")
                 yield ListView(
                     *[
-                        ListItem(Static(label), id=f"welcome-{key}", classes="menu-item")
-                        for key, label in _MENU_ITEMS
+                        ListItem(
+                            Static(label, classes="menu-label"),
+                            Static(hint, classes="menu-hint"),
+                            id=f"welcome-{key}",
+                            classes="menu-item",
+                        )
+                        for key, label, hint in _MENU_ITEMS
                     ],
                     id="welcome-menu",
                 )
-            yield Static(
-                "Guided analysis scans your machine, asks a few plain questions and "
-                "recommends models it can justify. Advanced tools keep the original "
-                "scan, inspect, estimate and doctor screens.",
-                classes="text-muted",
-            )
         yield Footer()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -64,9 +76,7 @@ class WelcomeScreen(Screen[None]):
 
     def _activate(self, key: str) -> None:
         app = self._app()
-        if key == "quit":
-            app.exit()
-        elif key == "guided":
+        if key == "guided":
             app.start_guided_workflow()
         elif key == "advanced":
             app.push_screen("advanced")

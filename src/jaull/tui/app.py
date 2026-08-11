@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import App
+from textual.binding import Binding
 
 from jaull.advisor.service import AdvisorService
 from jaull.domain.hardware import HardwareProfile
@@ -33,14 +34,18 @@ class JaullApp(App[None]):
     SUB_TITLE = "Interactive terminal UI"
     CSS_PATH = str(Path(__file__).with_name("styles.tcss"))
 
+    # The tool shortcuts stay bound everywhere — hiding a binding does not
+    # unbind it — but only Back and Quit earn footer space. During the guided
+    # flow a footer advertising Scan/Inspect/Estimate/Doctor/Home is noise
+    # about a mode the user is not in; AdvancedToolsScreen shows them again.
     BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("escape", "back", "Back"),
-        ("s", "goto_scan", "Scan"),
-        ("i", "goto_inspect", "Inspect"),
-        ("e", "goto_estimate", "Estimate"),
-        ("d", "goto_doctor", "Doctor"),
-        ("h", "goto_home", "Home"),
+        Binding("q", "quit", "Quit"),
+        Binding("escape", "back", "Back"),
+        Binding("s", "goto_scan", "Scan", show=False),
+        Binding("i", "goto_inspect", "Inspect", show=False),
+        Binding("e", "goto_estimate", "Estimate", show=False),
+        Binding("d", "goto_doctor", "Doctor", show=False),
+        Binding("h", "goto_home", "Home", show=False),
     ]
 
     SCREENS = {

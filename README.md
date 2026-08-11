@@ -10,7 +10,7 @@ The TUI opens on a choice between a guided analysis and the individual tools:
 
 ![Welcome screen with guided and advanced entry points](docs/assets/tui-welcome.svg)
 
-Guided mode starts with a hardware scan: a real progress bar with a paced checklist tells you exactly what the tool is inspecting, and the detected profile appears **in place** when the scan finishes — no scrolling required.
+Guided mode starts with a hardware scan. Each checklist line turns green when its probe actually returns — there is no fake progress — and the detected profile replaces the checklist **in place** when the scan finishes, so the two states never look alike and nothing needs scrolling.
 
 ![Hardware analysis while scanning](docs/assets/tui-hardware-loading.svg)
 
@@ -20,13 +20,37 @@ Then six plain-language questions — no model names, quantizations or dtypes:
 
 ![Requirements wizard](docs/assets/tui-wizard.svg)
 
+The search reports what it is really doing, and stays cancellable throughout:
+
+![Searching Hugging Face](docs/assets/tui-search.svg)
+
+The best match leads, with the alternatives compressed to one line each:
+
+![Ranked recommendations](docs/assets/tui-results.svg)
+
+Any recommendation can be exported as a JSON + Markdown report:
+
+![Export report dialog](docs/assets/tui-export.svg)
+
+Running a model opens a persistent composer over an append-only history. Each prompt is a single turn; the artifact is prepared once and reused:
+
+![Run screen before the first prompt](docs/assets/tui-run-empty.svg)
+
+![Preparing the local artifact](docs/assets/tui-run-loading.svg)
+
+![Run screen with two prompts and their responses](docs/assets/tui-run-history.svg)
+
+A failed run keeps the history and reports next to the composer, ready to retry:
+
+![Run screen after a failed generation](docs/assets/tui-run-error.svg)
+
 Advanced tools keep the original screens, including the memory estimation view:
 
 ![jaull dashboard](docs/assets/tui-home.svg)
 
 ![Memory estimation view](docs/assets/tui-estimate.svg)
 
-> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py` (headless, no network).
+> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py` (headless, no network, no llama.cpp). Pass `--size 90x28 --out <dir>` to review a narrower terminal without touching the committed assets.
 
 ## Requirements
 

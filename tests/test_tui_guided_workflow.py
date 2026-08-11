@@ -115,13 +115,15 @@ async def _settle(pilot, attempts: int = 60) -> None:  # type: ignore[no-untyped
 # Welcome
 # ---------------------------------------------------------------------------
 def test_welcome_screen_offers_guided_and_advanced() -> None:
+    """Two product decisions, and only two: `q` already quits."""
+
     async def scenario() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             screen = pilot.app.screen
             assert isinstance(screen, WelcomeScreen)
             ids = {item.id for item in screen.query("ListItem")}
-            assert {"welcome-guided", "welcome-advanced", "welcome-quit"} <= ids
+            assert ids == {"welcome-guided", "welcome-advanced"}
 
     _run(scenario())
 

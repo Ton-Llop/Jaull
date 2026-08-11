@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
     Checkbox,
     Footer,
-    Header,
     Input,
     RadioButton,
     RadioSet,
@@ -76,15 +75,16 @@ class RequirementsWizardScreen(Screen[None]):
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.REQUIREMENTS,
-            "What do you need?",
+            "Your needs",
             "Answer in plain terms — the technical settings are derived for you.",
         )
-        with VerticalScroll():
-            with Vertical(classes="card"):
-                yield Static("1. What will you use it for?", classes="card-title")
+        # Numbered questions separated by whitespace, not by six boxes: the
+        # heading and the indent already say where one question ends.
+        with VerticalScroll(id="wizard-body"):
+            with Vertical(classes="question"):
+                yield Static("1  What will you use it for?", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(label, value=index == 0, id=f"uc-{case.value}")
@@ -92,8 +92,8 @@ class RequirementsWizardScreen(Screen[None]):
                     ],
                     id="q-use-case",
                 )
-            with Vertical(classes="card"):
-                yield Static("2. What matters most?", classes="card-title")
+            with Vertical(classes="question"):
+                yield Static("2  What matters most?", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -105,8 +105,8 @@ class RequirementsWizardScreen(Screen[None]):
                     ],
                     id="q-priority",
                 )
-            with Vertical(classes="card"):
-                yield Static("3. Which languages?", classes="card-title")
+            with Vertical(classes="question"):
+                yield Static("3  Which languages?", classes="question-title")
                 for language in _LANGUAGES:
                     yield Checkbox(
                         language,
@@ -118,8 +118,11 @@ class RequirementsWizardScreen(Screen[None]):
                     placeholder="Other languages, comma separated (e.g. fr, italian)",
                     id="lang-other-input",
                 )
-            with Vertical(classes="card"):
-                yield Static("4. How many people will use it at once?", classes="card-title")
+            with Vertical(classes="question"):
+                yield Static(
+                    "4  How many people will use it at once?",
+                    classes="question-title",
+                )
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -133,13 +136,12 @@ class RequirementsWizardScreen(Screen[None]):
                 )
             # Only meaningful for document work; hidden otherwise so the wizard
             # never asks a question the answer cannot influence.
-            with Vertical(classes="card", id="q-documents-card"):
-                yield Static("5. How much text at a time?", classes="card-title")
+            with Vertical(classes="question", id="q-documents-card"):
+                yield Static("5  How much text at a time?", classes="question-title")
                 yield Static(
-                    "This sets the model's context window. It is not the size of a "
-                    "document collection — a retrieval system feeds the model a few "
-                    "chunks at a time.",
-                    classes="text-muted",
+                    "Sets the context window — not the size of a document "
+                    "collection; retrieval feeds the model a few chunks at a time.",
+                    classes="question-note",
                 )
                 yield RadioSet(
                     *[
@@ -152,9 +154,10 @@ class RequirementsWizardScreen(Screen[None]):
                     ],
                     id="q-documents",
                 )
-            with Vertical(classes="card"):
+            with Vertical(classes="question"):
                 yield Static(
-                    "6. Must the model allow commercial use?", classes="card-title"
+                    "6  Must the model allow commercial use?",
+                    classes="question-title",
                 )
                 yield RadioSet(
                     *[
@@ -166,7 +169,8 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-commercial",
                 )
             yield Vertical(id="wizard-errors")
-            yield Button("Find models", id="wizard-submit", classes="-primary")
+            with Horizontal(id="wizard-actions", classes="actions-right"):
+                yield Button("Find models", id="wizard-submit", classes="-primary")
         yield Footer()
 
     def on_mount(self) -> None:

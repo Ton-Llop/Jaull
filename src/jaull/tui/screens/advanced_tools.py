@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, ListItem, ListView, Static
@@ -27,10 +28,16 @@ _MENU_ITEMS = [
 class AdvancedToolsScreen(Screen[None]):
     """The pre-existing tools, for users who know what they are looking for."""
 
+    # This is the mode the tool shortcuts belong to, so here they are shown.
+    # Re-declaring them on the screen overrides the hidden app-level bindings.
     BINDINGS = [
-        ("enter", "select", "Open"),
-        ("escape", "app.pop_screen", "Back"),
-        ("q", "quit", "Quit"),
+        Binding("enter", "select", "Open", show=False),
+        Binding("escape", "app.pop_screen", "Back"),
+        Binding("q", "quit", "Quit"),
+        Binding("s", "app.goto_scan", "Scan"),
+        Binding("i", "app.goto_inspect", "Inspect"),
+        Binding("e", "app.goto_estimate", "Estimate"),
+        Binding("d", "app.goto_doctor", "Doctor"),
     ]
 
     def compose(self) -> ComposeResult:

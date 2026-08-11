@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from jaull.workflow.models import WorkflowStep
@@ -15,9 +15,19 @@ _ORDER: tuple[tuple[WorkflowStep, str], ...] = (
     (WorkflowStep.RANKING, "Results"),
 )
 
+_DONE = "#b3bac6"
+_CURRENT = "#3a7bd5"
+_PENDING = "#8b95a5"
+_JOIN = "#2b3748"
+
 
 class WorkflowHeader(Vertical):
-    """A breadcrumb showing where the user is in the guided flow."""
+    """Where the user is in the guided flow, as a heading rather than a panel.
+
+    Three lines and a hairline: the step title with its position, one line of
+    orientation, and a breadcrumb where the current step is the only thing
+    wearing the accent colour.
+    """
 
     DEFAULT_CLASSES = "workflow-header"
 
@@ -28,19 +38,35 @@ class WorkflowHeader(Vertical):
         self._subtitle = subtitle
 
     def compose(self) -> ComposeResult:
-        yield Static(self._title, classes="banner-title")
+        with Horizontal():
+            yield Static(self._title, classes="workflow-title")
+            position = self._position()
+            if position is not None:
+                yield Static(
+                    f"Step {position} of {len(_ORDER)}",
+                    classes="workflow-step-count",
+                )
         if self._subtitle:
-            yield Static(self._subtitle, classes="banner-subtitle")
+            yield Static(self._subtitle, classes="workflow-subtitle")
         yield Static(self._breadcrumb(), classes="workflow-breadcrumb")
 
-    def _breadcrumb(self) -> str:
-        parts: list[str] = []
-        for step, label in _ORDER:
+    def _position(self) -> int | None:
+        for index, (step, _) in enumerate(_ORDER, start=1):
             if step is self._current:
-                parts.append(f"[b]{label}[/b]")
+                return index
+        return None
+
+    def _breadcrumb(self) -> str:
+        position = self._position() or 0
+        parts: list[str] = []
+        for index, (_, label) in enumerate(_ORDER, start=1):
+            if index == position:
+                parts.append(f"[b {_CURRENT}]{label}[/]")
+            elif index < position:
+                parts.append(f"[{_DONE}]{label}[/]")
             else:
-                parts.append(f"[dim]{label}[/dim]")
-        return "  >  ".join(parts)
+                parts.append(f"[{_PENDING}]{label}[/]")
+        return f"[{_JOIN}] ─── [/]".join(parts)
 
 
 __all__ = ["WorkflowHeader"]

@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Static
+from textual.widgets import Button, Footer, Static
 
 from jaull.domain.requirements import UserAnswers
 from jaull.tui.widgets.progress_step import ProgressStepList
@@ -55,14 +55,17 @@ class ModelDiscoveryScreen(Screen[None]):
         self._future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.CANDIDATE_DISCOVERY,
-            "Searching Hugging Face",
+            "Search",
             "Only public metadata is read. No model weights are downloaded.",
         )
-        with VerticalScroll():
-            yield ProgressStepList("Progress", initial_progress(DISCOVERY_STEPS))
+        with VerticalScroll(id="discovery-body"):
+            yield ProgressStepList(
+                "Searching Hugging Face",
+                initial_progress(DISCOVERY_STEPS),
+                plain=True,
+            )
             yield Vertical(id="discovery-messages")
             with Horizontal(id="discovery-actions"):
                 yield Button("Cancel", id="discovery-cancel")
@@ -142,7 +145,7 @@ class ModelDiscoveryScreen(Screen[None]):
     def _show_cancelled(self) -> None:
         messages = self.query_one("#discovery-messages", Vertical)
         messages.remove_children()
-        messages.mount(Static("Search cancelled.", classes="card-title"))
+        messages.mount(Static("Search cancelled.", classes="section-title"))
         self._replace_actions(
             [
                 Button("Start again", id="discovery-restart", classes="-primary"),
@@ -154,7 +157,7 @@ class ModelDiscoveryScreen(Screen[None]):
         """A transport failure is recoverable: offer a retry, never close the app."""
         messages = self.query_one("#discovery-messages", Vertical)
         messages.remove_children()
-        messages.mount(Static("Search could not be completed", classes="card-title"))
+        messages.mount(Static("Search could not be completed", classes="section-title"))
         messages.mount(WarningsPanel(state.errors or ["Unknown error."]))
         messages.mount(
             Static(

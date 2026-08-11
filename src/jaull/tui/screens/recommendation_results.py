@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static
+from textual.widgets import Button, DataTable, Footer, Input, Static
 
 from jaull.recommendation.models import ModelRecommendation
 from jaull.reporting.writer import (
@@ -37,10 +37,9 @@ class RecommendationResultsScreen(Screen[None]):
         self._state = state
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.RANKING,
-            "Recommendations",
+            "Results",
             "Best fit first. Technical detail is available when you need it.",
         )
         with VerticalScroll(id="results-body"):
@@ -48,18 +47,18 @@ class RecommendationResultsScreen(Screen[None]):
                 yield from self._compose_no_results()
             else:
                 yield from self._compose_results()
-            yield _ResultsActions(bool(self._state.recommendations))
+            yield from _results_actions(bool(self._state.recommendations))
         yield Footer()
 
     def _compose_no_results(self) -> ComposeResult:
-        yield Static("No compatible models found", classes="card-title")
+        yield Static("No compatible models found", classes="section-title")
         yield WarningsPanel(self._state.no_results_reason or ["No candidates could be evaluated."])
 
     def _compose_results(self) -> ComposeResult:
         primary = self._state.recommendations[0]
         yield _PrimaryRecommendationPanel(primary)
         if len(self._state.recommendations) > 1:
-            yield Static("Alternatives", classes="results-section-title")
+            yield Static("ALTERNATIVES", classes="results-section-title")
             for index, rec in enumerate(self._state.recommendations[1:], start=1):
                 yield _AlternativeRecommendationRow(index, rec)
 
@@ -99,7 +98,6 @@ class RecommendationCompareScreen(Screen[None]):
         self._state = state
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Compare",
@@ -126,7 +124,6 @@ class RecommendationDetailsScreen(Screen[None]):
         self._state = state
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Technical details",
@@ -146,17 +143,19 @@ class RecommendationDetailsScreen(Screen[None]):
 
         estimate = primary.evaluated.memory_estimate
         if estimate is not None:
-            yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
+            yield SummaryCard("Memory breakdown", _breakdown_rows(estimate), plain=True)
             if estimate.total_bytes is not None:
                 yield MemoryUsageBar(
                     "Available VRAM",
                     estimate.total_bytes,
                     estimate.assessment.available_vram_bytes,
+                    plain=True,
                 )
                 yield MemoryUsageBar(
                     "Available RAM",
                     estimate.total_bytes,
                     estimate.assessment.available_ram_bytes,
+                    plain=True,
                 )
 
         rows: list[tuple[str, str]] = [
@@ -173,7 +172,7 @@ class RecommendationDetailsScreen(Screen[None]):
             base = estimate.base_model_resolution
             if base is not None and base.repo_id:
                 rows.append(("Base model", f"{base.repo_id} ({base.source.value})"))
-        yield SummaryCard("Pipeline", rows)
+        yield SummaryCard("Pipeline", rows, plain=True)
 
         if self._state.requirements is not None:
             yield SummaryCard(
@@ -186,6 +185,7 @@ class RecommendationDetailsScreen(Screen[None]):
                     )
                 ]
                 or [("-", "none recorded")],
+                plain=True,
             )
         yield CliEquivalent(_equivalent_cli_for(primary))
 
@@ -256,21 +256,26 @@ class ExportReportModal(ModalScreen[None]):
         widget.display = bool(message)
 
 
-class _ResultsActions(Horizontal):
-    def __init__(self, has_results: bool) -> None:
-        super().__init__(id="results-actions")
-        self._has_results = has_results
+def _results_actions(has_results: bool) -> ComposeResult:
+    """Three tiers: run (in the panel), inspect, and leave.
 
-    def compose(self) -> ComposeResult:
-        if self._has_results:
+    Compare/Details/Export are ordinary buttons; starting over and dropping
+    into the advanced tools are quiet, because neither is what the user came
+    here to do.
+    """
+    if has_results:
+        with Horizontal(id="results-actions"):
             yield Button("Compare", id="res-compare")
             yield Button("Details", id="res-details")
             yield Button("Export", id="res-export")
-        yield Button("Start again", id="res-restart")
-        yield Button("Advanced tools", id="res-advanced")
+    with Horizontal(id="results-actions-secondary"):
+        yield Button("Start again", id="res-restart", classes="-quiet")
+        yield Button("Advanced tools", id="res-advanced", classes="-quiet")
 
 
 class _PrimaryRecommendationPanel(Vertical):
+    """The one block on this screen allowed to wear a border."""
+
     DEFAULT_CLASSES = "results-primary"
 
     def __init__(self, recommendation: ModelRecommendation) -> None:
@@ -279,21 +284,29 @@ class _PrimaryRecommendationPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         rec = self._rec
-        yield Static("Best match", classes="results-kicker")
+        yield Static("BEST MATCH", classes="results-kicker")
         yield Static(rec.repo_id, classes="results-model-name")
-        yield Static(
-            f"{rec.score.out_of_100}/100 · {_status_label(rec)} · {rec.confidence.value}",
-            classes="results-score-line",
-        )
+        with Horizontal():
+            yield Static(
+                f"{rec.score.out_of_100} / 100",
+                classes="results-score-line",
+            )
+            yield Static(
+                _status_label(rec),
+                classes=f"results-fit {_fit_class(rec)}",
+            )
         meta = " · ".join(_recommendation_metadata(rec))
         if meta:
             yield Static(meta, classes="results-meta-line")
         for reason in rec.reasons[:3]:
             yield Static(f"✓ {reason}", classes="reason-line")
-        yield Button("Run model", id="res-run-0", classes="-primary")
+        with Horizontal(classes="actions-right"):
+            yield Button("Run model", id="res-run-0", classes="-primary")
 
 
-class _AlternativeRecommendationRow(Vertical):
+class _AlternativeRecommendationRow(Horizontal):
+    """One line per alternative: rank, name, score, fit, and a way to run it."""
+
     DEFAULT_CLASSES = "results-alternative"
 
     def __init__(self, index: int, recommendation: ModelRecommendation) -> None:
@@ -303,16 +316,14 @@ class _AlternativeRecommendationRow(Vertical):
 
     def compose(self) -> ComposeResult:
         rec = self._rec
-        title = rec.alternative_label or f"Alternative {self._index}"
-        yield Static(f"{title}: {rec.repo_id}", classes="results-alt-title")
+        yield Static(f"#{self._index + 1}", classes="results-alt-rank")
+        yield Static(rec.repo_id, classes="results-alt-name")
+        yield Static(str(rec.score.out_of_100), classes="results-alt-score")
         yield Static(
-            f"{rec.score.out_of_100}/100 · {_status_label(rec)} · "
-            + " · ".join(_recommendation_metadata(rec)),
-            classes="results-meta-line",
+            _status_label(rec),
+            classes=f"results-alt-fit {_fit_class(rec)}",
         )
-        if rec.reasons:
-            yield Static(rec.reasons[0], classes="text-muted")
-        yield Button("Run", id=f"res-run-{self._index}")
+        yield Button("Run", id=f"res-run-{self._index}", classes="-compact")
 
 
 def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[str]:
@@ -378,7 +389,22 @@ def _memory_label(rec: ModelRecommendation) -> str:
 
 
 def _status_label(rec: ModelRecommendation) -> str:
-    return rec.status.value.replace("_", " ")
+    return rec.status.value.replace("_", " ").capitalize()
+
+
+# Green comfortable, amber tight, red insufficient — the same reading the rest
+# of the app gives these words.
+_FIT_CLASSES = {
+    "comfortable": "fit-good",
+    "compatible": "fit-good",
+    "tight": "fit-warn",
+    "offloading_required": "fit-warn",
+    "insufficient": "fit-bad",
+}
+
+
+def _fit_class(rec: ModelRecommendation) -> str:
+    return _FIT_CLASSES.get(rec.status.value, "fit-unknown")
 
 
 def _breakdown_rows(estimate: object) -> list[tuple[str, str]]:

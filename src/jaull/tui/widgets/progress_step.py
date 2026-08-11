@@ -18,17 +18,29 @@ _MARKERS: dict[StepStatus, tuple[str, str]] = {
 
 
 class ProgressStepList(Vertical):
-    """Renders a :class:`WorkflowProgress` as a checklist of real operations."""
+    """Renders a :class:`WorkflowProgress` as a checklist of real operations.
 
-    DEFAULT_CLASSES = "card"
+    ``plain`` drops the surrounding box: during a scan the markers are the
+    content, so they do not need a card to sit in.
+    """
 
-    def __init__(self, title: str, progress: WorkflowProgress) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        title: str,
+        progress: WorkflowProgress,
+        *,
+        plain: bool = False,
+    ) -> None:
+        super().__init__(classes="section" if plain else "card")
         self._title = title
         self._progress = progress
+        self._plain = plain
 
     def compose(self) -> ComposeResult:
-        yield Static(self._title, classes="card-title")
+        yield Static(
+            self._title,
+            classes="section-title" if self._plain else "card-title",
+        )
         yield Vertical(id="progress-steps")
 
     def on_mount(self) -> None:

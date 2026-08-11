@@ -671,7 +671,9 @@ def test_generate_uses_thread_worker_for_long_operations(monkeypatch: Any) -> No
     _run(scenario())
 
 
-def test_back_returns_to_results_screen() -> None:
+def test_escape_returns_to_results_screen() -> None:
+    """The composer has no Back button; Escape is the way out."""
+
     async def scenario() -> None:
         state = RecommendationWorkflowState(recommendations=[_recommendation()])
         app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
@@ -682,8 +684,9 @@ def test_back_returns_to_results_screen() -> None:
             pilot.app.screen.query_one("#res-run-0", Button).press()
             await pilot.pause()
             assert isinstance(pilot.app.screen, RecommendationExecutionScreen)
+            assert not pilot.app.screen.query("#run-back")
 
-            pilot.app.screen.query_one("#run-back", Button).press()
+            await pilot.press("escape")
             await pilot.pause()
 
             assert isinstance(pilot.app.screen, RecommendationResultsScreen)
@@ -744,7 +747,7 @@ def test_tui_results_execution_export_details_stress_flow(
             assert "response 0" in _visible_text(run_screen)
             assert "recovered" in _visible_text(run_screen)
 
-            run_screen.query_one("#run-back", Button).press()
+            await pilot.press("escape")
             await pilot.pause()
             assert isinstance(pilot.app.screen, RecommendationResultsScreen)
 

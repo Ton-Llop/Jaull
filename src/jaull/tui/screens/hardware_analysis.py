@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, ProgressBar, Static
+from textual.widgets import Button, Footer
 
 from jaull.domain.hardware import HardwareProfile
 from jaull.tui.widgets.progress_step import ProgressStepList
@@ -22,8 +22,6 @@ from jaull.workflow.progress import HARDWARE_STEPS, initial_progress
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
-
-_TOTAL_STEPS = float(len(HARDWARE_STEPS))
 
 
 class _HardwareProgress(Message):
@@ -42,8 +40,9 @@ class HardwareAnalysisScreen(Screen[None]):
     """Step 1 of the guided flow: detect the machine, showing real progress.
 
     Each checklist line turns green when its probe actually returns. When the
-    scan completes the loading card is replaced by the summary card in place,
-    so the user never has to scroll to see the result.
+    scan completes the checklist is replaced by the summary in place, so the
+    user never has to scroll to see the result — and the two states do not
+    look alike.
     """
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
@@ -55,10 +54,9 @@ class HardwareAnalysisScreen(Screen[None]):
         self._future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield WorkflowHeader(
             WorkflowStep.HARDWARE_SCAN,
-            "Analyzing your system",
+            "Hardware",
             "Reading the hardware available for local inference.",
         )
         with VerticalScroll():
@@ -68,7 +66,7 @@ class HardwareAnalysisScreen(Screen[None]):
     def on_mount(self) -> None:
         self._scan_closing.clear()
         content = self.query_one("#hardware-content", Vertical)
-        content.mount(_LoadingCard(_TOTAL_STEPS))
+        content.mount(_ScanChecklist())
         # A screen-local executor keeps blocking probes off the event loop
         # without involving asyncio's default executor, which can outlive
         # Textual's test harness during teardown.
@@ -114,26 +112,28 @@ class HardwareAnalysisScreen(Screen[None]):
         self._finish(message.profile)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:
-        card = self.query_one(_LoadingCard)
-        card.update_progress(progress)
+        checklist = self.query_one(_ScanChecklist)
+        checklist.update_progress(progress)
 
     def _finish(self, profile: HardwareProfile) -> None:
         self._shutdown_scan_executor()
         app = self._app()
         app.hardware_profile = profile
 
-        # Replace the loading card with the results in the same slot: no
-        # scrolling required to see what came back.
+        # Replace the checklist with the result in the same slot: no scrolling
+        # required to see what came back, and no leftover progress UI.
         content = self.query_one("#hardware-content", Vertical)
         content.remove_children()
-        content.mount(SummaryCard("Detected hardware", _summary_rows(profile)))
+        content.mount(SummaryCard("This machine", _summary_rows(profile), plain=True))
 
         if profile.warnings:
             # A missing NVIDIA GPU is a warning, never a failure: CPU-only
             # machines are a supported target.
             content.mount(WarningsPanel(profile.warnings))
 
-        content.mount(Button("Continue", id="hw-continue", classes="-primary"))
+        actions = Horizontal(classes="actions-right")
+        content.mount(actions)
+        actions.mount(Button("Continue", id="hw-continue", classes="-primary"))
         self.query_one("#hw-continue", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -147,32 +147,25 @@ class HardwareAnalysisScreen(Screen[None]):
         return self.app
 
 
-class _LoadingCard(Vertical):
-    """Single card that holds a ProgressBar + the step checklist together."""
+class _ScanChecklist(Vertical):
+    """The live checklist, and nothing else.
 
-    DEFAULT_CLASSES = "card"
+    A progress bar alongside the markers said the same thing twice while being
+    the heaviest element on the screen; the markers already carry both what is
+    happening and how far along it is.
+    """
 
-    def __init__(self, total_steps: float) -> None:
-        super().__init__()
-        self._total = total_steps
-        self._done = 0
+    DEFAULT_CLASSES = "section"
 
     def compose(self) -> ComposeResult:
-        yield Static("Scanning hardware…", classes="card-title")
-        yield ProgressBar(
-            total=self._total,
-            show_eta=False,
-            id="hardware-progress",
-        )
         yield ProgressStepList(
-            "Detection steps", initial_progress(HARDWARE_STEPS)
+            "Analyzing this machine",
+            initial_progress(HARDWARE_STEPS),
+            plain=True,
         )
 
     def update_progress(self, progress: WorkflowProgress) -> None:
         self.query_one(ProgressStepList).update_progress(progress)
-        done = sum(1 for step in progress.steps if step.status.name == "DONE")
-        # Advance in absolute terms so an out-of-order update never rewinds.
-        self.query_one("#hardware-progress", ProgressBar).update(progress=float(done))
 
 
 def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
