@@ -10,8 +10,15 @@ import tempfile
 from pathlib import Path
 
 from jaull.domain.enums import DiagnosticStatus
+from jaull.domain.hardware import (
+    AcceleratorProfile,
+    AcceleratorType,
+    BackendAvailability,
+    ComputeBackend,
+)
 from jaull.domain.model import DiagnosticResult
 from jaull.hardware.nvidia import detect_nvidia_gpus
+from jaull.hardware.vulkan import detect_vulkan_accelerators
 
 _REQUIRED_DEPENDENCIES = (
     "typer",
@@ -29,6 +36,8 @@ def collect_diagnostics() -> list[DiagnosticResult]:
         _check_huggingface(),
         _check_nvml(),
         _check_nvidia_gpu(),
+        _check_accelerators(),
+        _check_cpu_fallback(),
         _check_cache_writable(),
         *_check_dependencies(),
     ]
@@ -106,6 +115,61 @@ def _check_nvidia_gpu() -> DiagnosticResult:
         status=DiagnosticStatus.WARN,
         detail="not detected",
     )
+
+
+def _check_accelerators() -> DiagnosticResult:
+    accelerators = [
+        *detect_nvidia_gpus().accelerators,
+        *detect_vulkan_accelerators().accelerators,
+    ]
+    if not accelerators:
+        return DiagnosticResult(
+            name="Accelerators",
+            status=DiagnosticStatus.WARN,
+            detail="none detected in the current environment",
+        )
+
+    has_hardware_backend = any(
+        accelerator.type is not AcceleratorType.SOFTWARE
+        and any(
+            backend.availability is BackendAvailability.AVAILABLE
+            for backend in accelerator.backends
+        )
+        for accelerator in accelerators
+    )
+    return DiagnosticResult(
+        name="Accelerators",
+        status=DiagnosticStatus.OK if has_hardware_backend else DiagnosticStatus.WARN,
+        detail=" | ".join(_accelerator_detail(item) for item in accelerators),
+    )
+
+
+def _check_cpu_fallback() -> DiagnosticResult:
+    return DiagnosticResult(
+        name="CPU fallback",
+        status=DiagnosticStatus.OK,
+        detail="available",
+    )
+
+
+def _accelerator_detail(accelerator: AcceleratorProfile) -> str:
+    backends = ", ".join(_backend_detail(accelerator, backend) for backend in ComputeBackend)
+    return f"{accelerator.name} ({accelerator.type.value}; {backends})"
+
+
+def _backend_detail(
+    accelerator: AcceleratorProfile,
+    backend: ComputeBackend,
+) -> str:
+    info = next(
+        (candidate for candidate in accelerator.backends if candidate.backend is backend),
+        None,
+    )
+    if info is None:
+        return f"{backend.value}: unknown"
+    if backend is ComputeBackend.VULKAN and info.software_renderer:
+        return "vulkan: software renderer only"
+    return f"{backend.value}: {info.availability.value}"
 
 
 def _check_cache_writable() -> DiagnosticResult:

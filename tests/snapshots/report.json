@@ -15,6 +15,7 @@
         "vram_available_bytes": 12884901888
       }
     ],
+    "accelerators": [],
     "warnings": []
   },
   "user_requirements": {

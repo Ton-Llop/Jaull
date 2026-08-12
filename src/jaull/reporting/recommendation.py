@@ -191,6 +191,36 @@ def _hardware_to_dict(state: RecommendationWorkflowState) -> dict[str, Any] | No
             }
             for gpu in hw.gpus
         ],
+        "accelerators": [
+            {
+                "name": accelerator.name,
+                "vendor": accelerator.vendor.value,
+                "type": accelerator.type.value,
+                "vendor_id": accelerator.vendor_id,
+                "device_id": accelerator.device_id,
+                "pci_bus_id": accelerator.pci_bus_id,
+                "uuid": accelerator.uuid,
+                "dedicated_memory_bytes": accelerator.dedicated_memory_bytes,
+                "available_memory_bytes": accelerator.available_memory_bytes,
+                "shared_memory": accelerator.shared_memory,
+                "detection_sources": list(accelerator.detection_sources),
+                "backends": [
+                    {
+                        "backend": backend.backend.value,
+                        "availability": backend.availability.value,
+                        "reason": backend.reason.value if backend.reason else None,
+                        "source": backend.source,
+                        "detail": backend.detail,
+                        "api_version": backend.api_version,
+                        "device_name": backend.device_name,
+                        "driver_name": backend.driver_name,
+                        "software_renderer": backend.software_renderer,
+                    }
+                    for backend in accelerator.backends
+                ],
+            }
+            for accelerator in hw.accelerators
+        ],
         "warnings": list(hw.warnings),
     }
 

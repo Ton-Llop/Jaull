@@ -3,7 +3,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import ComputeBackendInfo, HardwareProfile
 from jaull.presentation.console import format_bytes
 
 
@@ -45,6 +45,27 @@ def render_hardware(profile: HardwareProfile, console: Console) -> None:
     else:
         table.add_row("GPU", "no NVIDIA GPU detected")
 
+    if profile.accelerators:
+        for idx, accelerator in enumerate(profile.accelerators):
+            prefix = (
+                f"Accelerator{f' {idx}' if len(profile.accelerators) > 1 else ''}"
+            )
+            memory = (
+                format_bytes(accelerator.dedicated_memory_bytes)
+                if accelerator.dedicated_memory_bytes is not None
+                else "shared/system memory" if accelerator.shared_memory else "unknown"
+            )
+            table.add_row(prefix, accelerator.name)
+            table.add_row("Accelerator vendor", accelerator.vendor.value)
+            table.add_row("Accelerator type", accelerator.type.value)
+            table.add_row("Accelerator memory", memory)
+            table.add_row(
+                "Compute backends",
+                ", ".join(_backend_summary(accelerator.backends)) or "unknown",
+            )
+    else:
+        table.add_row("Accelerators", "none detected")
+
     console.print(table)
 
     if profile.warnings:
@@ -55,3 +76,14 @@ def render_hardware(profile: HardwareProfile, console: Console) -> None:
 
 def _int(value: int | None) -> str:
     return str(value) if value is not None else "unknown"
+
+
+def _backend_summary(backends: list[ComputeBackendInfo]) -> list[str]:
+    return [
+        (
+            f"{backend.backend.value}: software renderer only"
+            if backend.software_renderer
+            else f"{backend.backend.value}: {backend.availability.value}"
+        )
+        for backend in backends
+    ]

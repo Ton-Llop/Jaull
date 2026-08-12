@@ -12,7 +12,16 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from jaull.domain.hardware import GpuInfo
+from jaull.domain.hardware import (
+    AcceleratorProfile,
+    AcceleratorType,
+    AcceleratorVendor,
+    BackendAvailability,
+    BackendAvailabilityReason,
+    ComputeBackend,
+    ComputeBackendInfo,
+    GpuInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class NvidiaProbe:
     gpus: list[GpuInfo]
+    accelerators: list[AcceleratorProfile]
     warnings: list[str]
     driver_version: str | None
     cuda_version: str | None
@@ -33,6 +43,10 @@ class _NvmlMemoryInfo(Protocol):
 class _NvmlProcessInfo(Protocol):
     pid: int
     usedGpuMemory: int
+
+
+class _NvmlPciInfo(Protocol):
+    busId: str | bytes
 
 
 class NvmlProvider(Protocol):
@@ -74,6 +88,7 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
     if nvml is None:
         return NvidiaProbe(
             gpus=[],
+            accelerators=[],
             warnings=["NVML library is not installed; skipping NVIDIA GPU detection."],
             driver_version=None,
             cuda_version=None,
@@ -86,6 +101,7 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
         logger.debug("nvmlInit failed", exc_info=exc)
         return NvidiaProbe(
             gpus=[],
+            accelerators=[],
             warnings=[
                 "NVIDIA driver not detected (NVML initialization failed); "
                 "continuing with CPU information."
@@ -108,6 +124,7 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
             warnings.append("Could not read CUDA driver version.")
 
         gpus: list[GpuInfo] = []
+        accelerators: list[AcceleratorProfile] = []
         try:
             count = nvml.nvmlDeviceGetCount()
         except Exception as exc:
@@ -120,13 +137,19 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
                 handle = nvml.nvmlDeviceGetHandleByIndex(i)
                 name = _decode(nvml.nvmlDeviceGetName(handle))
                 mem = nvml.nvmlDeviceGetMemoryInfo(handle)
-                gpus.append(
-                    GpuInfo(
-                        name=name,
-                        vram_total_bytes=int(mem.total),
-                        vram_available_bytes=int(mem.free),
-                        driver_version=driver,
-                        cuda_version=cuda,
+                gpu = GpuInfo(
+                    name=name,
+                    vram_total_bytes=int(mem.total),
+                    vram_available_bytes=int(mem.free),
+                    driver_version=driver,
+                    cuda_version=cuda,
+                )
+                gpus.append(gpu)
+                accelerators.append(
+                    _accelerator_from_gpu(
+                        gpu,
+                        uuid=_optional_device_string(nvml, "nvmlDeviceGetUUID", handle),
+                        pci_bus_id=_optional_pci_bus_id(nvml, handle),
                     )
                 )
             except Exception as exc:
@@ -134,11 +157,98 @@ def detect_nvidia_gpus(provider: NvmlProvider | None = None) -> NvidiaProbe:
                 warnings.append(f"Could not read information for GPU index {i}.")
 
         return NvidiaProbe(
-            gpus=gpus, warnings=warnings, driver_version=driver, cuda_version=cuda
+            gpus=gpus,
+            accelerators=accelerators,
+            warnings=warnings,
+            driver_version=driver,
+            cuda_version=cuda,
         )
     finally:
         with contextlib.suppress(Exception):
             nvml.nvmlShutdown()
+
+
+def _accelerator_from_gpu(
+    gpu: GpuInfo, *, uuid: str | None = None, pci_bus_id: str | None = None
+) -> AcceleratorProfile:
+    cuda_availability = (
+        BackendAvailability.AVAILABLE
+        if gpu.cuda_version
+        else BackendAvailability.UNKNOWN
+    )
+    return AcceleratorProfile(
+        name=gpu.name,
+        vendor=AcceleratorVendor.NVIDIA,
+        type=AcceleratorType.DEDICATED,
+        vendor_id="0x10de",
+        pci_bus_id=pci_bus_id,
+        uuid=uuid,
+        dedicated_memory_bytes=gpu.vram_total_bytes,
+        available_memory_bytes=gpu.vram_available_bytes,
+        shared_memory=False,
+        detection_sources=["nvml"],
+        backends=[
+            ComputeBackendInfo(
+                backend=ComputeBackend.CUDA,
+                availability=cuda_availability,
+                reason=(
+                    BackendAvailabilityReason.PROBE_AVAILABLE
+                    if gpu.cuda_version
+                    else BackendAvailabilityReason.NOT_CHECKED
+                ),
+                source="nvml",
+                api_version=gpu.cuda_version,
+                driver_name=gpu.driver_version,
+                detail=(
+                    "CUDA driver reported by NVML."
+                    if gpu.cuda_version
+                    else "NVML device detected; CUDA driver version unavailable."
+                ),
+            ),
+            ComputeBackendInfo(
+                backend=ComputeBackend.VULKAN,
+                availability=BackendAvailability.UNKNOWN,
+                reason=BackendAvailabilityReason.NOT_CHECKED,
+                source="nvml",
+                detail="Vulkan backend not checked by NVML.",
+            ),
+            ComputeBackendInfo(
+                backend=ComputeBackend.HIP,
+                availability=BackendAvailability.UNKNOWN,
+                reason=BackendAvailabilityReason.NOT_CHECKED,
+                source="nvml",
+                detail=(
+                    "HIP can target NVIDIA through translation, but this "
+                    "environment was not checked."
+                ),
+            ),
+        ],
+    )
+
+
+def _optional_device_string(
+    nvml: NvmlProvider, method_name: str, handle: object
+) -> str | None:
+    method = getattr(cast(Any, nvml), method_name, None)
+    if method is None:
+        return None
+    try:
+        return _decode(cast(str | bytes, method(handle)))
+    except Exception as exc:
+        logger.debug("Optional NVML method %s failed", method_name, exc_info=exc)
+        return None
+
+
+def _optional_pci_bus_id(nvml: NvmlProvider, handle: object) -> str | None:
+    method = getattr(cast(Any, nvml), "nvmlDeviceGetPciInfo", None)
+    if method is None:
+        return None
+    try:
+        pci = cast(_NvmlPciInfo, method(handle))
+        return _decode(pci.busId)
+    except Exception as exc:
+        logger.debug("Optional NVML PCI probe failed", exc_info=exc)
+        return None
 
 
 class NvidiaProcessMemorySampler:
