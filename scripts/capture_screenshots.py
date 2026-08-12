@@ -376,7 +376,7 @@ async def _settle(pilot, seconds: float = 0.4) -> None:  # type: ignore[no-untyp
 
 def _save(app: JaullApp, out_dir: Path, filename: str) -> None:
     path = app.save_screenshot(filename=filename, path=str(out_dir))
-    print(f"  → {path}")
+    print(f"  -> {path}")
 
 
 async def _capture_welcome(app: JaullApp, pilot, out_dir: Path) -> None:  # type: ignore[no-untyped-def]
@@ -540,29 +540,29 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
 
     async with app.run_test(size=size) as pilot:
         try:
-            print("Capturing welcome…")
+            print("Capturing welcome...")
             await _capture_welcome(app, pilot, out_dir)
 
-            print("Capturing hardware analysis…")
+            print("Capturing hardware analysis...")
             await _capture_hardware(app, pilot, out_dir, scan_gate)
 
-            print("Capturing wizard…")
+            print("Capturing wizard...")
             assert isinstance(app.screen, HardwareAnalysisScreen)
             await _capture_wizard(app, pilot, out_dir)
 
-            print("Capturing search and results…")
+            print("Capturing search and results...")
             await _capture_search_and_results(app, pilot, out_dir, search_gate)
 
-            print("Capturing export…")
+            print("Capturing export...")
             await _capture_export(app, pilot, out_dir)
 
-            print("Capturing run…")
+            print("Capturing run...")
             await _capture_run(app, pilot, out_dir, advisor, artifact_gate)
 
-            print("Capturing advanced tools…")
+            print("Capturing advanced tools...")
             await _capture_advanced(app, pilot, out_dir)
 
-            print("Capturing estimate…")
+            print("Capturing estimate...")
             await _capture_estimate(app, pilot, out_dir)
         finally:
             # A held gate would keep a worker thread parked past teardown.

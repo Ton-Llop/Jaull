@@ -44,6 +44,7 @@ class AcceleratorType(StrEnum):
 
 
 class ComputeBackend(StrEnum):
+    CPU = "cpu"
     CUDA = "cuda"
     VULKAN = "vulkan"
     HIP = "hip"

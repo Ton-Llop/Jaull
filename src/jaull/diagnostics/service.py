@@ -15,10 +15,26 @@ from jaull.domain.hardware import (
     AcceleratorType,
     BackendAvailability,
     ComputeBackend,
+    CpuInfo,
+    HardwareProfile,
+    MemoryInfo,
 )
 from jaull.domain.model import DiagnosticResult
+from jaull.domain.runtime import (
+    ExecutionReadiness,
+    ExecutionReadinessStatus,
+    LlamaCppBinaryStatus,
+    LlamaCppRuntimeCapability,
+    RuntimeBackendSelection,
+)
+from jaull.execution.host import HostExecutionBackend
 from jaull.hardware.nvidia import detect_nvidia_gpus
 from jaull.hardware.vulkan import detect_vulkan_accelerators
+from jaull.runtime.backend_selection import select_runtime_backend
+from jaull.runtime.llama_cpp_capability import (
+    evaluate_execution_readiness,
+    inspect_llama_cpp_runtime,
+)
 
 _REQUIRED_DEPENDENCIES = (
     "typer",
@@ -37,6 +53,9 @@ def collect_diagnostics() -> list[DiagnosticResult]:
         _check_nvml(),
         _check_nvidia_gpu(),
         _check_accelerators(),
+        _check_preferred_backend(),
+        _check_llama_cpp_runtime(),
+        _check_execution_readiness(),
         _check_cpu_fallback(),
         _check_cache_writable(),
         *_check_dependencies(),
@@ -144,6 +163,60 @@ def _check_accelerators() -> DiagnosticResult:
     )
 
 
+def _check_preferred_backend() -> DiagnosticResult:
+    selection = select_runtime_backend(_runtime_hardware_profile())
+    return DiagnosticResult(
+        name="Preferred backend",
+        status=DiagnosticStatus.OK,
+        detail=_selection_detail(selection),
+    )
+
+
+def _check_llama_cpp_runtime() -> DiagnosticResult:
+    capability = inspect_llama_cpp_runtime(backend=HostExecutionBackend())
+    status = (
+        DiagnosticStatus.OK
+        if capability.binary_status is LlamaCppBinaryStatus.AVAILABLE
+        else DiagnosticStatus.WARN
+    )
+    return DiagnosticResult(
+        name="llama.cpp runtime",
+        status=status,
+        detail=_runtime_capability_detail(capability),
+    )
+
+
+def _check_execution_readiness() -> DiagnosticResult:
+    readiness = evaluate_execution_readiness(
+        selection=select_runtime_backend(_runtime_hardware_profile()),
+        runtime_capability=inspect_llama_cpp_runtime(backend=HostExecutionBackend()),
+    )
+    status = (
+        DiagnosticStatus.OK
+        if readiness.status is ExecutionReadinessStatus.READY
+        else DiagnosticStatus.WARN
+    )
+    return DiagnosticResult(
+        name="Execution ready",
+        status=status,
+        detail=_readiness_detail(readiness),
+    )
+
+
+def _runtime_hardware_profile() -> HardwareProfile:
+    accelerators = [
+        *detect_nvidia_gpus().accelerators,
+        *detect_vulkan_accelerators().accelerators,
+    ]
+    return HardwareProfile(
+        os=platform.system() or "unknown",
+        arch=platform.machine() or "unknown",
+        cpu=CpuInfo(),
+        memory=MemoryInfo(total_bytes=0, available_bytes=0),
+        accelerators=accelerators,
+    )
+
+
 def _check_cpu_fallback() -> DiagnosticResult:
     return DiagnosticResult(
         name="CPU fallback",
@@ -152,8 +225,42 @@ def _check_cpu_fallback() -> DiagnosticResult:
     )
 
 
+def _selection_detail(selection: RuntimeBackendSelection) -> str:
+    if selection.selected_accelerator is None:
+        return f"{selection.selected_backend.value} · no usable accelerator"
+    return (
+        f"{selection.selected_backend.value} · "
+        f"{selection.selected_accelerator.name}"
+    )
+
+
+def _runtime_capability_detail(capability: LlamaCppRuntimeCapability) -> str:
+    if capability.binary_status is not LlamaCppBinaryStatus.AVAILABLE:
+        return capability.message or capability.binary_status.value
+    version = capability.version_text.splitlines()[0] if capability.version_text else None
+    backends = [
+        item.backend.value
+        for item in capability.backend_capabilities
+        if item.devices
+    ]
+    suffix = f"; devices: {', '.join(backends)}" if backends else "; devices: none"
+    return f"{version or 'available'}{suffix}"
+
+
+def _readiness_detail(readiness: ExecutionReadiness) -> str:
+    label = {
+        ExecutionReadinessStatus.READY: "yes",
+        ExecutionReadinessStatus.NOT_READY: "no",
+        ExecutionReadinessStatus.UNKNOWN: "unknown",
+    }[readiness.status]
+    return f"{label} · {readiness.reason.value}"
+
+
 def _accelerator_detail(accelerator: AcceleratorProfile) -> str:
-    backends = ", ".join(_backend_detail(accelerator, backend) for backend in ComputeBackend)
+    backends = ", ".join(
+        _backend_detail(accelerator, backend)
+        for backend in (ComputeBackend.CUDA, ComputeBackend.VULKAN, ComputeBackend.HIP)
+    )
     return f"{accelerator.name} ({accelerator.type.value}; {backends})"
 
 

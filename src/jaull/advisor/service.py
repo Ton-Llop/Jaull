@@ -24,7 +24,12 @@ from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
-from jaull.domain.runtime import RuntimeRecommendation
+from jaull.domain.runtime import (
+    ExecutionReadiness,
+    LlamaCppRuntimeCapability,
+    RuntimeBackendSelection,
+    RuntimeRecommendation,
+)
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
@@ -38,6 +43,7 @@ from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
+    from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
@@ -167,6 +173,47 @@ class AdvisorService:
             artifact=artifact,
             prompt=prompt,
             runtime=runtime,
+        )
+
+    def select_runtime_backend(
+        self,
+        hardware: HardwareProfile | None = None,
+    ) -> RuntimeBackendSelection:
+        from jaull.runtime.backend_selection import select_runtime_backend
+
+        return select_runtime_backend(hardware or self.scan_hardware())
+
+    def inspect_llama_cpp_runtime(
+        self,
+        *,
+        backend: ExecutionBackendProtocol | None = None,
+    ) -> LlamaCppRuntimeCapability:
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
+
+        return inspect_llama_cpp_runtime(
+            backend=backend or HostExecutionBackend(),
+            llama_cli_path=self.llama_cli_path,
+            timeout_seconds=self.llama_cli_timeout_seconds,
+        )
+
+    def evaluate_execution_readiness(
+        self,
+        *,
+        selection: RuntimeBackendSelection | None = None,
+        runtime_capability: LlamaCppRuntimeCapability | None = None,
+        hardware: HardwareProfile | None = None,
+        backend: ExecutionBackendProtocol | None = None,
+    ) -> ExecutionReadiness:
+        from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
+
+        effective_selection = selection or self.select_runtime_backend(hardware)
+        effective_capability = runtime_capability or self.inspect_llama_cpp_runtime(
+            backend=backend
+        )
+        return evaluate_execution_readiness(
+            selection=effective_selection,
+            runtime_capability=effective_capability,
         )
 
     # ------------------------------------------------------------------

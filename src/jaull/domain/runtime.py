@@ -7,6 +7,12 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from jaull.domain.estimation import EstimationConfidence
+from jaull.domain.hardware import (
+    AcceleratorType,
+    AcceleratorVendor,
+    ComputeBackend,
+    ComputeBackendInfo,
+)
 
 
 class RuntimeName(StrEnum):
@@ -55,6 +61,148 @@ class RuntimeFlag(BaseModel):
     value: str
     source: RuntimeFlagSource
     explanation: str
+
+
+class RuntimeBackendSelectionReason(StrEnum):
+    NATIVE_BACKEND_AVAILABLE = "native_backend_available"
+    VULKAN_BACKEND_AVAILABLE = "vulkan_backend_available"
+    CPU_FALLBACK = "cpu_fallback"
+    NO_USABLE_ACCELERATOR = "no_usable_accelerator"
+    SOFTWARE_RENDERER_IGNORED = "software_renderer_ignored"
+
+
+class SelectedAcceleratorRef(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    vendor: AcceleratorVendor
+    type: AcceleratorType
+    vendor_id: str | None = None
+    device_id: str | None = None
+    pci_bus_id: str | None = None
+    uuid: str | None = None
+    dedicated_memory_bytes: int | None = None
+    shared_memory: bool = False
+    detection_sources: list[str] = Field(default_factory=list)
+
+
+class RuntimeBackendCandidate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    backend: ComputeBackend
+    accelerator: SelectedAcceleratorRef | None = None
+    backend_info: ComputeBackendInfo | None = None
+    reason: RuntimeBackendSelectionReason
+
+
+class RuntimeBackendSelection(BaseModel):
+    """Preferred compute backend according to observed hardware/environment.
+
+    This does not certify that an installed runtime binary supports the backend.
+    For example, ``selected_backend=vulkan`` means Vulkan is the preferred
+    target from hardware discovery, not that ``llama-cli`` was built with
+    ``GGML_VULKAN``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    selected_backend: ComputeBackend
+    selected_accelerator: SelectedAcceleratorRef | None = None
+    reason: RuntimeBackendSelectionReason
+    backend_info: ComputeBackendInfo | None = None
+    alternatives: list[RuntimeBackendCandidate] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class LlamaCppBinaryStatus(StrEnum):
+    AVAILABLE = "available"
+    MISSING = "missing"
+    NOT_EXECUTABLE = "not_executable"
+    PROBE_FAILED = "probe_failed"
+    UNKNOWN = "unknown"
+
+
+class LlamaCppBackendCapabilityState(StrEnum):
+    CONFIRMED = "confirmed"
+    NOT_OBSERVED = "not_observed"
+    UNKNOWN = "unknown"
+
+
+class LlamaCppCapabilityReason(StrEnum):
+    RUNTIME_AVAILABLE = "runtime_available"
+    RUNTIME_MISSING = "runtime_missing"
+    RUNTIME_NOT_EXECUTABLE = "runtime_not_executable"
+    PROBE_FAILED = "probe_failed"
+    BACKEND_EXPOSED = "backend_exposed"
+    BACKEND_NOT_OBSERVED = "backend_not_observed"
+    CAPABILITY_UNKNOWN = "capability_unknown"
+
+
+class LlamaCppRuntimeDevice(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    backend: ComputeBackend
+    runtime_id: str
+    name: str | None = None
+    memory_total_bytes: int | None = None
+    memory_free_bytes: int | None = None
+
+
+class LlamaCppBackendCapability(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    backend: ComputeBackend
+    state: LlamaCppBackendCapabilityState
+    devices: list[LlamaCppRuntimeDevice] = Field(default_factory=list)
+    reason: LlamaCppCapabilityReason
+    source: str | None = None
+    detail: str | None = None
+
+
+class LlamaCppRuntimeCapability(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    binary_path: str | None = None
+    binary_status: LlamaCppBinaryStatus
+    version_text: str | None = None
+    backend_capabilities: list[LlamaCppBackendCapability] = Field(default_factory=list)
+    probe_source: str | None = None
+    message: str | None = None
+
+
+class ExecutionReadinessStatus(StrEnum):
+    READY = "ready"
+    NOT_READY = "not_ready"
+    UNKNOWN = "unknown"
+
+
+class ExecutionReadinessReason(StrEnum):
+    RUNTIME_AVAILABLE = "runtime_available"
+    RUNTIME_MISSING = "runtime_missing"
+    RUNTIME_NOT_EXECUTABLE = "runtime_not_executable"
+    PROBE_FAILED = "probe_failed"
+    SELECTED_BACKEND_EXPOSED = "selected_backend_exposed"
+    SELECTED_BACKEND_NOT_EXPOSED = "selected_backend_not_exposed"
+    CAPABILITY_UNKNOWN = "capability_unknown"
+
+
+class ExecutionReadiness(BaseModel):
+    """Preflight decision for attempting execution with a selected backend.
+
+    ``READY`` means Jaull has not found a blocking mismatch between the
+    hardware backend selection and the observed ``llama-cli`` capability. It is
+    not proof that inference will succeed; the definitive execution outcome
+    remains ``ExecutionObservation.success``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    status: ExecutionReadinessStatus
+    reason: ExecutionReadinessReason
+    selection: RuntimeBackendSelection
+    runtime_capability: LlamaCppRuntimeCapability
+    selected_backend_capability: LlamaCppBackendCapability | None = None
+    message: str | None = None
 
 
 class RuntimeRecommendation(BaseModel):

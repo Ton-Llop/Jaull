@@ -130,23 +130,43 @@ def test_host_backend_raises_failed_with_captured_result() -> None:
     )
 
 
+_MIN_DELTA_BYTES = 16 * 1024 * 1024
+# 32 MiB of pages, all touched, so RSS reflects the allocation even on
+# Windows (which does not commit untouched pages).
+_TOUCH_PAGES_SNIPPET = textwrap.dedent(
+    """
+    import time
+    _size = 32 * 1024 * 1024
+    _payload = bytearray(_size)
+    for _offset in range(0, _size, 4096):
+        _payload[_offset] = 1
+    time.sleep(0.15)
+    """
+)
+
+
+def _baseline_peak_ram(backend: HostExecutionBackend) -> int:
+    baseline = backend.execute(
+        ExecutionRequest(
+            command=(sys.executable, "-c", "import time; time.sleep(0.1)"),
+            timeout_seconds=5,
+        )
+    )
+    peak = baseline.observation.peak_ram_bytes
+    assert peak is not None
+    return peak
+
+
 def test_host_backend_observes_peak_ram_and_duration() -> None:
     backend = HostExecutionBackend(sample_interval_seconds=0.01)
+    baseline = _baseline_peak_ram(backend)
 
     result = backend.execute(
         ExecutionRequest(
             command=(
                 sys.executable,
                 "-c",
-                textwrap.dedent(
-                    """
-                    import time
-                    payload = bytearray(16 * 1024 * 1024)
-                    payload[0] = 1
-                    time.sleep(0.15)
-                    print("done")
-                    """
-                ),
+                _TOUCH_PAGES_SNIPPET + 'print("done")\n',
             ),
             timeout_seconds=5,
         )
@@ -156,7 +176,7 @@ def test_host_backend_observes_peak_ram_and_duration() -> None:
     assert result.observation.duration_seconds >= 0.1
     assert result.observation.duration_seconds < 5
     assert result.observation.peak_ram_bytes is not None
-    assert result.observation.peak_ram_bytes > 8 * 1024 * 1024
+    assert result.observation.peak_ram_bytes > baseline + _MIN_DELTA_BYTES
 
 
 def test_host_backend_drains_large_stdout_and_stderr_while_sampling() -> None:
@@ -206,6 +226,7 @@ def test_host_backend_observes_peak_vram_with_fake_nvml_provider() -> None:
 
 def test_host_backend_failed_process_keeps_observation() -> None:
     backend = HostExecutionBackend(sample_interval_seconds=0.01)
+    baseline = _baseline_peak_ram(backend)
 
     with pytest.raises(ExecutionFailedError) as ctx:
         backend.execute(
@@ -213,17 +234,8 @@ def test_host_backend_failed_process_keeps_observation() -> None:
                 command=(
                     sys.executable,
                     "-c",
-                    textwrap.dedent(
-                        """
-                        import sys
-                        import time
-                        payload = bytearray(16 * 1024 * 1024)
-                        payload[0] = 1
-                        time.sleep(0.1)
-                        print("failing")
-                        sys.exit(3)
-                        """
-                    ),
+                    _TOUCH_PAGES_SNIPPET
+                    + 'import sys\nprint("failing")\nsys.exit(3)\n',
                 ),
                 timeout_seconds=5,
             )
@@ -235,7 +247,7 @@ def test_host_backend_failed_process_keeps_observation() -> None:
     assert observation.failure_reason is ExecutionFailureReason.NON_ZERO_EXIT
     assert observation.duration_seconds >= 0.05
     assert observation.peak_ram_bytes is not None
-    assert observation.peak_ram_bytes > 8 * 1024 * 1024
+    assert observation.peak_ram_bytes > baseline + _MIN_DELTA_BYTES
 
 
 def test_host_backend_timeout_kills_process_without_zombie(tmp_path: Path) -> None:

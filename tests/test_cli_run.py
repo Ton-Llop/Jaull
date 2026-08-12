@@ -13,6 +13,8 @@ from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import (
     ExecutionFailureReason,
     ExecutionObservation,
+    ExecutionRequest,
+    ExecutionResult,
     InferenceResult,
 )
 from jaull.domain.runtime import RuntimeRecommendation
@@ -299,12 +301,42 @@ def test_run_model_configures_default_advisor_with_llama_cli_options(
     assert advisor.operations == ["resolve", "verify", "run"]
 
 
-def test_advisor_run_artifact_uses_configured_llama_cli_path(tmp_path: Path) -> None:
+class _RecordingBackend:
+    def __init__(self, result: ExecutionResult) -> None:
+        self.requests: list[ExecutionRequest] = []
+        self.result = result
+
+    def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        self.requests.append(request)
+        return self.result
+
+
+def test_advisor_run_artifact_uses_configured_llama_cli_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fake_llama_cli = tmp_path / "fake-llama-cli"
-    fake_llama_cli.write_text("#!/bin/sh\nprintf advisor-output\n", encoding="utf-8")
-    fake_llama_cli.chmod(0o755)
+    fake_llama_cli.write_bytes(b"")
     model_path = tmp_path / "model.gguf"
     model_path.write_bytes(b"gguf")
+
+    backend = _RecordingBackend(
+        result=ExecutionResult(
+            stdout="advisor-output",
+            stderr="",
+            observation=ExecutionObservation(
+                success=True,
+                duration_seconds=0.01,
+                peak_ram_bytes=None,
+                peak_vram_bytes=None,
+                exit_code=0,
+                failure_reason=None,
+            ),
+        )
+    )
+    monkeypatch.setattr(
+        "jaull.execution.host.HostExecutionBackend", lambda *args, **kwargs: backend
+    )
+
     advisor = AdvisorService(
         services=_unused_services(),
         llama_cli_path=fake_llama_cli,
@@ -318,6 +350,7 @@ def test_advisor_run_artifact_uses_configured_llama_cli_path(tmp_path: Path) -> 
 
     assert result.text == "advisor-output"
     assert result.model_path == model_path
+    assert backend.requests[-1].command[0] == str(fake_llama_cli)
 
 
 @pytest.mark.parametrize(
