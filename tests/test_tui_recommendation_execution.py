@@ -950,7 +950,7 @@ def test_execution_screen_survives_three_prompts_without_duplicate_ids(
 
                 await _wait_until(
                     pilot,
-                    lambda: len(screen.query(InferenceResponse)) == index + 1,
+                    lambda expected=index + 1: len(screen.query(InferenceResponse)) == expected,
                 )
 
             assert len(screen.query(InferencePrompt)) == 3

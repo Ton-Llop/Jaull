@@ -8,6 +8,7 @@ from pathlib import Path
 
 import psutil
 import pytest
+import contextlib
 
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
 from jaull.execution.errors import (
@@ -142,12 +143,11 @@ class _SequenceRssProcess:
         self._values = iter(values)
         self._last = 0
 
-    def memory_info(self) -> _MemoryInfo:
-        try:
-            self._last = next(self._values)
-        except StopIteration:
-            pass
-        return _MemoryInfo(rss=self._last)
+def memory_info(self) -> _MemoryInfo:
+    with contextlib.suppress(StopIteration):
+        self._last = next(self._values)
+
+    return _MemoryInfo(rss=self._last)
 
 
 def _patch_rss_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
