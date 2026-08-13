@@ -851,7 +851,10 @@ def test_execution_screen_prepares_artifact_automatically_and_runs_selected_runt
 
             _set_prompt(screen, "Say hi")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 1,
+            )
 
             assert advisor.operations == ["resolve", "download", "verify", "run"]
             assert advisor.resolved == [("org/Tiny-GGUF", "Q4_K_M", None)]
@@ -1000,7 +1003,10 @@ def test_execution_screen_reuses_local_artifact_without_downloading(
             _run_workers_inline(pilot.app, screen, monkeypatch)
             _set_prompt(screen, "Hello")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 1,
+            )
 
             assert advisor.operations == ["resolve", "verify", "run"]
             assert advisor.downloaded == []
@@ -1023,9 +1029,11 @@ def test_execution_screen_shows_download_failure(monkeypatch: Any) -> None:
             _run_workers_inline(pilot.app, screen, monkeypatch)
             _set_prompt(screen, "Hello")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
-
             message = screen.query_one("#run-error-message", Static)
+            await _wait_until(
+                pilot,
+                lambda: "download failed" in _widget_text(message),
+            )
             assert "download failed" in _widget_text(message)
 
     _run(scenario())
@@ -1044,9 +1052,11 @@ def test_execution_screen_shows_llama_cli_missing(monkeypatch: Any) -> None:
             _run_workers_inline(pilot.app, screen, monkeypatch)
             _set_prompt(screen, "Hello")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
-
             message = screen.query_one("#run-error-message", Static)
+            await _wait_until(
+                pilot,
+                lambda: "llama-cli missing" in _widget_text(message),
+            )
             assert "llama-cli missing" in _widget_text(message)
 
     _run(scenario())
@@ -1068,14 +1078,20 @@ def test_execution_screen_retry_after_run_error_reuses_prepared_artifact(
 
             _set_prompt(screen, "First try")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "first run failed" in _visible_text(screen),
+            )
             assert "first run failed" in _visible_text(screen)
 
             advisor.fail_run = None
             advisor.response_text = "retry worked"
             _set_prompt(screen, "Retry")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 1,
+            )
 
             assert advisor.operations == ["resolve", "download", "verify", "run", "run"]
             assert len(screen.query(InferenceResponse)) == 1
@@ -1114,8 +1130,11 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
                 _run_workers_inline(pilot.app, screen, monkeypatch)
                 _set_prompt(screen, "Hello")
                 screen.query_one("#run-generate", Button).press()
-                await pilot.pause()
                 message = screen.query_one("#run-error-message", Static)
+                await _wait_until(
+                    pilot,
+                    lambda expected=str(failure): expected in _widget_text(message),
+                )
                 assert str(failure) in _widget_text(message)
 
     _run(scenario())
@@ -1222,12 +1241,19 @@ def test_tui_results_execution_export_details_stress_flow(
                 advisor.response_text = f"response {index}"
                 _set_prompt(run_screen, f"prompt {index}")
                 run_screen.query_one("#run-generate", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda expected=index + 1: len(run_screen.query(InferenceResponse))
+                    == expected,
+                )
 
             advisor.fail_run = ExecutionTimeoutError("transient failure")
             _set_prompt(run_screen, "prompt that fails")
             run_screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "transient failure" in _visible_text(run_screen),
+            )
             assert "transient failure" in _visible_text(run_screen)
             assert len(run_screen.query(InferenceResponse)) == 3
 
@@ -1235,7 +1261,10 @@ def test_tui_results_execution_export_details_stress_flow(
             advisor.response_text = "recovered"
             _set_prompt(run_screen, "retry prompt")
             run_screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(run_screen.query(InferenceResponse)) == 4,
+            )
             assert len(run_screen.query(InferenceResponse)) == 4
             assert "response 0" in _visible_text(run_screen)
             assert "recovered" in _visible_text(run_screen)

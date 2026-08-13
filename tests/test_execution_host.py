@@ -143,11 +143,11 @@ class _SequenceRssProcess:
         self._values = iter(values)
         self._last = 0
 
-def memory_info(self) -> _MemoryInfo:
-    with contextlib.suppress(StopIteration):
-        self._last = next(self._values)
+    def memory_info(self) -> _MemoryInfo:
+        with contextlib.suppress(StopIteration):
+            self._last = next(self._values)
 
-    return _MemoryInfo(rss=self._last)
+        return _MemoryInfo(rss=self._last)
 
 
 def _patch_rss_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
