@@ -14,6 +14,7 @@ from jaull.tui.screens.estimate import EstimateScreen
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
 from jaull.tui.screens.inspect import InspectScreen
 from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
+from jaull.tui.screens.recommendation_benchmark import RecommendationBenchmarkScreen
 from jaull.tui.screens.recommendation_execution import (
     RecommendationExecutionScreen,
 )
@@ -125,6 +126,12 @@ class JaullApp(App[None]):
 
         assert isinstance(recommendation, ModelRecommendation)
         self.push_screen(RecommendationValidationScreen(recommendation))
+
+    def benchmark_recommendation(self, recommendation: object) -> None:
+        from jaull.recommendation.models import ModelRecommendation
+
+        assert isinstance(recommendation, ModelRecommendation)
+        self.push_screen(RecommendationBenchmarkScreen(recommendation))
 
     def restart_workflow(self) -> None:
         """Drop every guided screen and return to a fresh welcome menu.

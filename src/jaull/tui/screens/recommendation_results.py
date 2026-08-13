@@ -75,6 +75,11 @@ class RecommendationResultsScreen(Screen[None]):
             if 0 <= index < len(self._state.recommendations):
                 app.validate_recommendation(self._state.recommendations[index])
             return
+        if button_id.startswith("res-benchmark-"):
+            index = int(button_id.removeprefix("res-benchmark-"))
+            if 0 <= index < len(self._state.recommendations):
+                app.benchmark_recommendation(self._state.recommendations[index])
+            return
 
         match button_id:
             case "res-compare":
@@ -312,6 +317,11 @@ class _PrimaryRecommendationPanel(Vertical):
                 id="res-validate-0",
                 disabled=not _can_validate(rec),
             )
+            yield Button(
+                "Benchmark",
+                id="res-benchmark-0",
+                disabled=not _can_benchmark(rec),
+            )
 
 
 class _AlternativeRecommendationRow(Horizontal):
@@ -339,6 +349,12 @@ class _AlternativeRecommendationRow(Horizontal):
             id=f"res-validate-{self._index}",
             classes="-compact",
             disabled=not _can_validate(rec),
+        )
+        yield Button(
+            "Benchmark",
+            id=f"res-benchmark-{self._index}",
+            classes="-compact",
+            disabled=not _can_benchmark(rec),
         )
 
 
@@ -415,6 +431,10 @@ def _can_validate(rec: ModelRecommendation) -> bool:
     if estimate is None or estimate.runtime_recommendation is None:
         return False
     return estimate.runtime_recommendation.runtime is RuntimeName.LLAMA_CPP
+
+
+def _can_benchmark(rec: ModelRecommendation) -> bool:
+    return _can_validate(rec)
 
 
 # Green comfortable, amber tight, red insufficient — the same reading the rest

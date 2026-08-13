@@ -1,0 +1,493 @@
+from __future__ import annotations
+
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
+from threading import Event
+from typing import TYPE_CHECKING
+
+from textual import on
+from textual.app import ComposeResult
+from textual.containers import Horizontal, VerticalScroll
+from textual.message import Message
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Static
+
+from jaull.artifacts.errors import ArtifactError
+from jaull.benchmarks.errors import BenchmarkRunnerError
+from jaull.benchmarks.matrix import BenchmarkMatrixRequest, BenchmarkMatrixResult
+from jaull.domain.benchmarks import (
+    BenchmarkGpuLayers,
+    BenchmarkMeasurementKind,
+    BenchmarkRecord,
+    BenchmarkRunResult,
+)
+from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
+from jaull.domain.runtime import (
+    LlamaCppRuntimeCapability,
+    RuntimeBackendSelection,
+    RuntimeName,
+    RuntimeRecommendation,
+)
+from jaull.evaluation.benchmarks import aggregate_benchmark_records
+from jaull.exceptions import (
+    InvalidModelReferenceError,
+    JaullError,
+    QuantizationNotFoundError,
+)
+from jaull.recommendation.models import ModelRecommendation
+from jaull.tui.artifact_preparation import prepare_recommendation_artifact
+from jaull.tui.widgets.summary_card import SummaryCard
+
+if TYPE_CHECKING:
+    from jaull.advisor.service import AdvisorService
+    from jaull.tui.app import JaullApp
+
+
+class _BenchmarkStep(Message):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+
+class _BenchmarkDone(Message):
+    def __init__(self, result: BenchmarkMatrixResult) -> None:
+        super().__init__()
+        self.result = result
+
+
+class _BenchmarkFailed(Message):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+
+class RecommendationBenchmarkScreen(Screen[None]):
+    """Run reproducible llama-bench measurements for a recommendation."""
+
+    BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
+
+    def __init__(self, recommendation: ModelRecommendation) -> None:
+        super().__init__()
+        self._recommendation = recommendation
+        self._log_messages: list[str] = []
+        self._last_result: BenchmarkMatrixResult | None = None
+        self._benchmark_closing = Event()
+        self._executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-benchmark",
+        )
+        self._future: Future[None] | None = None
+
+    @property
+    def recommendation(self) -> ModelRecommendation:
+        return self._recommendation
+
+    def compose(self) -> ComposeResult:
+        yield _BenchmarkHeader(self._recommendation)
+        with VerticalScroll(id="benchmark-body"):
+            yield Static(
+                "Benchmark runs llama-bench and stores reproducible performance "
+                "records. Run and Validate remain separate workflows.",
+                id="benchmark-intro",
+                classes="text-muted",
+            )
+            yield Static("", id="benchmark-status", classes="status-line")
+            yield Static("", id="benchmark-error", classes="warning-line")
+            with Horizontal(id="benchmark-actions"):
+                yield Button(
+                    "Benchmark on this machine",
+                    id="benchmark-start",
+                    classes="-primary",
+                )
+                yield Button(
+                    "Technical details",
+                    id="benchmark-details",
+                    disabled=True,
+                )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        start = self.query_one("#benchmark-start", Button)
+        if self._runtime() is None:
+            start.disabled = True
+            self._set_error("Benchmark requires a llama.cpp runtime recommendation.")
+        else:
+            start.focus()
+        self._set_status("")
+
+    def on_unmount(self) -> None:
+        self._benchmark_closing.set()
+        self._shutdown_executor()
+
+    def _shutdown_executor(self) -> None:
+        if self._future is not None:
+            self._future.cancel()
+            self._future = None
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        match event.button.id:
+            case "benchmark-start":
+                self._start_benchmark()
+            case "benchmark-details":
+                if self._last_result is not None:
+                    self.app.push_screen(BenchmarkDetailsScreen(self._last_result))
+
+    def _start_benchmark(self) -> None:
+        if self._future is not None and not self._future.done():
+            return
+        runtime = self._runtime()
+        if runtime is None:
+            self._set_error("Benchmark requires a llama.cpp runtime recommendation.")
+            return
+
+        app = self._app()
+        self._clear_result()
+        self._log_messages.clear()
+        self._set_error("")
+        self._set_busy(True)
+        self._record_step("Preparing benchmark")
+        self._future = self._executor.submit(
+            self._benchmark_worker,
+            app.advisor,
+            app.hardware_profile,
+            runtime,
+        )
+
+    def _benchmark_worker(
+        self,
+        advisor: AdvisorService,
+        hardware: HardwareProfile | None,
+        runtime: RuntimeRecommendation,
+    ) -> None:
+        try:
+            artifact = prepare_recommendation_artifact(
+                advisor=advisor,
+                recommendation=self._recommendation,
+                report_step=self._post_step,
+            )
+            if hardware is None:
+                self._post_step("Scanning hardware")
+                hardware = advisor.scan_hardware()
+            self._post_step("Selecting compute backend")
+            selection = advisor.select_runtime_backend(hardware)
+            self._post_step("Checking llama.cpp devices")
+            runtime_capability = advisor.inspect_llama_cpp_runtime()
+            self._post_step(
+                "Running llama-bench: "
+                + _benchmark_configuration_label(selection, runtime_capability)
+            )
+            request = BenchmarkMatrixRequest(
+                hardware=hardware,
+                artifact=artifact,
+                runtime=runtime,
+                backend_selection=selection,
+                runtime_capability=runtime_capability,
+                include_cpu=selection.selected_backend is ComputeBackend.CPU,
+                include_selected_backend=True,
+                selected_gpu_layers=(
+                    ()
+                    if selection.selected_backend is ComputeBackend.CPU
+                    else (BenchmarkGpuLayers.full(),)
+                ),
+            )
+            result = advisor.run_benchmark_matrix(request)
+        except (
+            InvalidModelReferenceError,
+            QuantizationNotFoundError,
+            ArtifactError,
+            BenchmarkRunnerError,
+            JaullError,
+            OSError,
+            ValueError,
+        ) as exc:
+            self._post_failed(str(exc))
+            return
+        if not self._benchmark_closing.is_set():
+            self.post_message(_BenchmarkDone(result))
+
+    @on(_BenchmarkStep)
+    def _benchmark_step_message(self, message: _BenchmarkStep) -> None:
+        if self._benchmark_closing.is_set():
+            return
+        self._record_step(message.message)
+
+    @on(_BenchmarkDone)
+    def _benchmark_done_message(self, message: _BenchmarkDone) -> None:
+        if self._benchmark_closing.is_set():
+            return
+        self._last_result = message.result
+        self._set_busy(False)
+        self._render_result(message.result)
+
+    @on(_BenchmarkFailed)
+    def _benchmark_failed_message(self, message: _BenchmarkFailed) -> None:
+        if self._benchmark_closing.is_set():
+            return
+        self._set_busy(False)
+        self._set_error(message.message)
+
+    def _post_step(self, message: str) -> None:
+        if not self._benchmark_closing.is_set():
+            self.post_message(_BenchmarkStep(message))
+
+    def _post_failed(self, message: str) -> None:
+        if not self._benchmark_closing.is_set():
+            self.post_message(_BenchmarkFailed(message))
+
+    def _record_step(self, message: str) -> None:
+        self._log_messages.append(message)
+        self._set_status("\n".join(f"- {item}" for item in self._log_messages[-8:]))
+
+    def _set_busy(self, busy: bool) -> None:
+        self.query_one("#benchmark-start", Button).disabled = busy
+        self.query_one("#benchmark-details", Button).disabled = (
+            busy or self._last_result is None
+        )
+
+    def _set_error(self, message: str) -> None:
+        widget = self.query_one("#benchmark-error", Static)
+        widget.update(message)
+        widget.display = bool(message)
+
+    def _set_status(self, message: str) -> None:
+        widget = self.query_one("#benchmark-status", Static)
+        widget.update(message)
+        widget.display = bool(message)
+
+    def _clear_result(self) -> None:
+        for node in list(self.query(".benchmark-result-node")):
+            node.remove()
+        self._last_result = None
+        self.query_one("#benchmark-details", Button).disabled = True
+
+    def _render_result(self, result: BenchmarkMatrixResult) -> None:
+        self._clear_result()
+        self._last_result = result
+        body = self.query_one("#benchmark-body", VerticalScroll)
+        heading = (
+            "Benchmark complete"
+            if result.completed
+            else "Benchmark finished without successful configurations"
+        )
+        body.mount(Static(heading, classes="section-title benchmark-result-node"))
+        if result.completed:
+            body.mount(_result_table(result.completed).add_class("benchmark-result-node"))
+            aggregate = aggregate_benchmark_records([item.record for item in result.completed])
+            if aggregate.comparisons:
+                body.mount(
+                    SummaryCard(
+                        "Comparison",
+                        [
+                            (
+                                _metric_label(comparison.kind, comparison.tokens),
+                                (
+                                    f"{comparison.candidate_label} "
+                                    f"{comparison.speedup:.2f}x vs "
+                                    f"{comparison.baseline_label}"
+                                ),
+                            )
+                            for comparison in aggregate.comparisons
+                        ],
+                        plain=True,
+                    ).add_class("benchmark-result-node")
+                )
+        warnings = _warnings(result)
+        if warnings:
+            body.mount(
+                SummaryCard(
+                    "Warnings",
+                    [(str(index), warning) for index, warning in enumerate(warnings, 1)],
+                    plain=True,
+                ).add_class("benchmark-result-node")
+            )
+        self.query_one("#benchmark-details", Button).disabled = False
+
+    def _runtime(self) -> RuntimeRecommendation | None:
+        estimate = self._estimate()
+        if estimate is None or estimate.runtime_recommendation is None:
+            return None
+        runtime = estimate.runtime_recommendation
+        if runtime.runtime is not RuntimeName.LLAMA_CPP:
+            return None
+        return runtime
+
+    def _estimate(self) -> MemoryEstimate | None:
+        return self._recommendation.evaluated.memory_estimate
+
+    def _app(self) -> JaullApp:
+        from jaull.tui.app import JaullApp
+
+        assert isinstance(self.app, JaullApp)
+        return self.app
+
+
+class BenchmarkDetailsScreen(Screen[None]):
+    BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
+
+    def __init__(self, result: BenchmarkMatrixResult) -> None:
+        super().__init__()
+        self._result = result
+
+    def compose(self) -> ComposeResult:
+        yield Static("Benchmark details", classes="section-title")
+        with VerticalScroll(id="benchmark-details-body"):
+            for run in self._result.completed:
+                yield SummaryCard(
+                    _config_label(run.record),
+                    _technical_rows(run.record, run.persisted_path),
+                    plain=True,
+                )
+            for failure in self._result.failed:
+                rows = [("Error", failure.message)]
+                if failure.record is not None:
+                    rows.extend(_technical_rows(failure.record, failure.persisted_path))
+                title = _request_label(
+                    failure.request.backend.value,
+                    failure.request.device,
+                )
+                yield SummaryCard(
+                    f"Failed: {title}",
+                    rows,
+                    plain=True,
+                )
+            if self._result.skipped:
+                yield SummaryCard(
+                    "Skipped",
+                    [
+                        (
+                            _request_label(skip.backend.value, skip.device),
+                            skip.reason,
+                        )
+                        for skip in self._result.skipped
+                    ],
+                    plain=True,
+                )
+            yield Button("Back", id="benchmark-details-back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "benchmark-details-back":
+            self.app.pop_screen()
+
+
+class _BenchmarkHeader(Static):
+    def __init__(self, recommendation: ModelRecommendation) -> None:
+        config = recommendation.evaluated.selected_configuration
+        quantization = config.quantization if config is not None else "default"
+        estimate = recommendation.evaluated.memory_estimate
+        runtime = estimate.runtime_recommendation if estimate is not None else None
+        runtime_label = runtime.runtime.value if runtime is not None else "unknown"
+        super().__init__(
+            f"[bold]{recommendation.repo_id}[/bold]\n"
+            f"{quantization} · {runtime_label}",
+            id="benchmark-header",
+        )
+
+
+def _result_table(results: list[BenchmarkRunResult]) -> DataTable[str]:
+    table: DataTable[str] = DataTable()
+    labels = [_config_label(result.record) for result in results]
+    table.add_columns("Test", *labels)
+    keys = sorted(
+        {
+            (measurement.kind, measurement.tokens)
+            for result in results
+            for measurement in result.record.observation.measurements
+        },
+        key=lambda item: (0 if item[0] is BenchmarkMeasurementKind.PREFILL else 1, item[1]),
+    )
+    maps = [
+        {
+            (measurement.kind, measurement.tokens): measurement
+            for measurement in result.record.observation.measurements
+        }
+        for result in results
+    ]
+    for key in keys:
+        table.add_row(
+            _metric_label(key[0], key[1]),
+            *[
+                (
+                    f"{measurement.mean_tokens_per_second:.1f} ± "
+                    f"{measurement.stddev_tokens_per_second:.1f} t/s"
+                    if (measurement := mapping.get(key)) is not None
+                    else "-"
+                )
+                for mapping in maps
+            ],
+        )
+    return table
+
+
+def _warnings(result: BenchmarkMatrixResult) -> list[str]:
+    warnings = [skip.reason for skip in result.skipped]
+    warnings.extend(failure.message for failure in result.failed)
+    return warnings
+
+
+def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[str, str]]:
+    artifact = record.artifact
+    capability = record.llama_bench_capability
+    return [
+        ("ID", record.identity.benchmark_id),
+        ("Created", record.identity.created_at.isoformat()),
+        ("Schema", str(record.schema_version)),
+        ("Artifact", f"{artifact.repo_id} / {artifact.filename}"),
+        ("Revision", artifact.revision or "unknown"),
+        ("Quantization", artifact.quantization or "unknown"),
+        ("SHA-256", artifact.sha256 or "unknown"),
+        ("llama-bench", capability.binary_path or "unknown"),
+        ("llama-bench status", capability.binary_status.value),
+        ("llama-bench version", capability.version_text or "unknown"),
+        ("Backend", record.requested_backend.value),
+        ("Device", record.requested_device or "none"),
+        ("GPU layers", record.gpu_layers.label),
+        ("Repetitions", str(record.request.repetitions)),
+        ("Status", "success" if record.observation.success else "failure"),
+        ("Saved", str(path) if path else "not saved"),
+    ]
+
+
+def _config_label(record: BenchmarkRecord) -> str:
+    if record.requested_backend.value == "cpu":
+        return "CPU"
+    return _request_label(record.requested_backend.value, record.requested_device)
+
+
+def _request_label(backend: str, device: str | None) -> str:
+    if backend == "cpu":
+        return "CPU"
+    return f"{backend.title()} {device or 'unknown'}"
+
+
+def _metric_label(kind: BenchmarkMeasurementKind, tokens: int) -> str:
+    prefix = "Prefill" if kind is BenchmarkMeasurementKind.PREFILL else "Generation"
+    return f"{prefix} {tokens}"
+
+
+def _benchmark_configuration_label(
+    selection: RuntimeBackendSelection,
+    capability: LlamaCppRuntimeCapability,
+) -> str:
+    backend = selection.selected_backend
+    if backend is ComputeBackend.CPU:
+        return "CPU · device none · ngl 0"
+    device = next(
+        (
+            runtime_device.runtime_id
+            for backend_capability in capability.backend_capabilities
+            if backend_capability.backend is backend
+            for runtime_device in backend_capability.devices
+        ),
+        None,
+    )
+    device_label = device or "no runtime device"
+    return f"{backend.value} · device {device_label} · ngl all"
+
+
+__all__ = [
+    "BenchmarkDetailsScreen",
+    "RecommendationBenchmarkScreen",
+]

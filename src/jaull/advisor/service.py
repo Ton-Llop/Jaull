@@ -18,6 +18,11 @@ from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.benchmarks import (
+    BenchmarkRecord,
+    BenchmarkRequest,
+    BenchmarkRunResult,
+)
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.execution import ExecutionObservation, InferenceResult
 from jaull.domain.experiments import (
@@ -52,9 +57,16 @@ from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
+    from jaull.benchmarks.matrix import (
+        BenchmarkMatrixRequest,
+        BenchmarkMatrixResult,
+        BenchmarkMatrixRunner,
+    )
+    from jaull.benchmarks.storage import BenchmarkStore
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
+    from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
@@ -76,8 +88,13 @@ class AdvisorService:
     llama_cpp_runner: LlamaCppRunner | None = field(default=None)
     experiment_runner: ExperimentRunner | None = field(default=None)
     experiment_store: ExperimentStore | None = field(default=None)
+    llama_bench_runner: LlamaBenchRunner | None = field(default=None)
+    benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
+    benchmark_store: BenchmarkStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
+    llama_bench_path: str | Path | None = field(default=None)
+    llama_bench_timeout_seconds: float = field(default=900.0)
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -274,6 +291,45 @@ class AdvisorService:
     def run_experiment(self, request: ExperimentRequest) -> ExperimentRunResult:
         return self._experiment_runner().run(request)
 
+    def run_benchmark(
+        self,
+        request: BenchmarkRequest,
+        *,
+        hardware: HardwareProfile,
+        persist: bool = True,
+    ) -> BenchmarkRunResult:
+        from jaull.runtime.llama_bench_capability import inspect_llama_bench
+
+        observation = self._llama_bench_runner().run(request)
+        capability = inspect_llama_bench(
+            backend=self._host_execution_backend(),
+            llama_bench_path=self.llama_bench_path,
+            timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
+        )
+        record = BenchmarkRecord.create(
+            hardware=hardware,
+            request=request,
+            observation=observation,
+            llama_bench_capability=capability,
+        )
+        persisted_path = self._benchmark_store().save(record) if persist else None
+        return BenchmarkRunResult(record=record, persisted_path=persisted_path)
+
+    def run_benchmark_matrix(
+        self,
+        request: BenchmarkMatrixRequest,
+    ) -> BenchmarkMatrixResult:
+        return self._benchmark_matrix_runner().run(request)
+
+    def save_benchmark_record(self, record: BenchmarkRecord) -> Path:
+        return self._benchmark_store().save(record)
+
+    def load_benchmark_record(self, benchmark_id: str) -> BenchmarkRecord:
+        return self._benchmark_store().load(benchmark_id)
+
+    def list_benchmark_ids(self) -> list[str]:
+        return self._benchmark_store().list_ids()
+
     # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
@@ -310,6 +366,11 @@ class AdvisorService:
         object.__setattr__(self, "llama_cpp_runner", fresh)
         return fresh
 
+    def _host_execution_backend(self) -> ExecutionBackendProtocol:
+        from jaull.execution.host import HostExecutionBackend
+
+        return HostExecutionBackend()
+
     def _experiment_store(self) -> ExperimentStore:
         if self.experiment_store is not None:
             return self.experiment_store
@@ -335,6 +396,42 @@ class AdvisorService:
         object.__setattr__(self, "experiment_runner", fresh)
         return fresh
 
+    def _llama_bench_runner(self) -> LlamaBenchRunner:
+        if self.llama_bench_runner is not None:
+            return self.llama_bench_runner
+        from jaull.runtime.llama_bench_runner import LlamaBenchRunner
+
+        fresh = LlamaBenchRunner(
+            backend=self._host_execution_backend(),
+            llama_bench_path=self.llama_bench_path,
+        )
+        object.__setattr__(self, "llama_bench_runner", fresh)
+        return fresh
+
+    def _benchmark_store(self) -> BenchmarkStore:
+        if self.benchmark_store is not None:
+            return self.benchmark_store
+        from jaull.benchmarks.storage import BenchmarkStore
+
+        fresh = BenchmarkStore()
+        object.__setattr__(self, "benchmark_store", fresh)
+        return fresh
+
+    def _benchmark_matrix_runner(self) -> BenchmarkMatrixRunner:
+        if self.benchmark_matrix_runner is not None:
+            return self.benchmark_matrix_runner
+        from jaull.benchmarks.matrix import BenchmarkMatrixRunner
+
+        fresh = BenchmarkMatrixRunner(
+            execution_backend=self._host_execution_backend(),
+            llama_bench_runner=self._llama_bench_runner(),
+            store=self._benchmark_store(),
+            llama_bench_path=self.llama_bench_path,
+            capability_timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
+        )
+        object.__setattr__(self, "benchmark_matrix_runner", fresh)
+        return fresh
+
     def _make_range_client(self) -> HttpRangeClient | None:
         factory = self.services.range_client_factory
         if factory is None:
@@ -351,6 +448,8 @@ class AdvisorService:
         *,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        llama_bench_path: str | Path | None = None,
+        llama_bench_timeout_seconds: float = 900.0,
     ) -> AdvisorService:
         """Production wiring: real HF client, real hardware probes, real estimator."""
         services = ServiceContainer.default()
@@ -363,6 +462,8 @@ class AdvisorService:
             artifacts=artifacts,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            llama_bench_path=llama_bench_path,
+            llama_bench_timeout_seconds=llama_bench_timeout_seconds,
         )
 
     @classmethod
@@ -378,8 +479,13 @@ class AdvisorService:
         llama_cpp_runner: LlamaCppRunner | None = None,
         experiment_runner: ExperimentRunner | None = None,
         experiment_store: ExperimentStore | None = None,
+        llama_bench_runner: LlamaBenchRunner | None = None,
+        benchmark_matrix_runner: BenchmarkMatrixRunner | None = None,
+        benchmark_store: BenchmarkStore | None = None,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        llama_bench_path: str | Path | None = None,
+        llama_bench_timeout_seconds: float = 900.0,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -401,8 +507,13 @@ class AdvisorService:
             llama_cpp_runner=llama_cpp_runner,
             experiment_runner=experiment_runner,
             experiment_store=experiment_store,
+            llama_bench_runner=llama_bench_runner,
+            benchmark_matrix_runner=benchmark_matrix_runner,
+            benchmark_store=benchmark_store,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            llama_bench_path=llama_bench_path,
+            llama_bench_timeout_seconds=llama_bench_timeout_seconds,
         )
 
 

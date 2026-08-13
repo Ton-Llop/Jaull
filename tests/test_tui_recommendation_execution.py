@@ -1133,7 +1133,8 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
                 message = screen.query_one("#run-error-message", Static)
                 await _wait_until(
                     pilot,
-                    lambda expected=str(failure): expected in _widget_text(message),
+                    lambda expected=str(failure), widget=message: expected
+                    in _widget_text(widget),
                 )
                 assert str(failure) in _widget_text(message)
 

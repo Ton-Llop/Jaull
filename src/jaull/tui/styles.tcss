@@ -709,8 +709,17 @@ ExportReportModal {
     border-bottom: solid #1f2937;
 }
 
+#benchmark-header {
+    padding: 0 2;
+    height: auto;
+    margin: 0 0 1 0;
+    border-bottom: solid #1f2937;
+}
+
 #validation-body,
-#validation-details-body {
+#validation-details-body,
+#benchmark-body,
+#benchmark-details-body {
     height: 1fr;
     padding: 0 2;
 }
@@ -720,7 +729,16 @@ ExportReportModal {
     height: auto;
 }
 
+#benchmark-status {
+    color: #b3bac6;
+    height: auto;
+}
+
 #validation-error {
+    height: auto;
+}
+
+#benchmark-error {
     height: auto;
 }
 
@@ -729,11 +747,24 @@ ExportReportModal {
     margin: 0 0 1 0;
 }
 
+#benchmark-actions {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
 #validation-actions Button {
     margin: 0 1 0 0;
 }
 
+#benchmark-actions Button {
+    margin: 0 1 0 0;
+}
+
 .validation-result-node {
+    height: auto;
+}
+
+.benchmark-result-node {
     height: auto;
 }
 
