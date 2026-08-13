@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import gc
 import sys
 import textwrap
@@ -8,7 +9,6 @@ from pathlib import Path
 
 import psutil
 import pytest
-import contextlib
 
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
 from jaull.execution.errors import (
