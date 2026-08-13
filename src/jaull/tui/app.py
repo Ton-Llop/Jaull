@@ -20,6 +20,9 @@ from jaull.tui.screens.recommendation_execution import (
 from jaull.tui.screens.recommendation_results import (
     RecommendationResultsScreen,
 )
+from jaull.tui.screens.recommendation_validation import (
+    RecommendationValidationScreen,
+)
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.scan import ScanScreen
 from jaull.tui.screens.welcome import WelcomeScreen
@@ -116,6 +119,12 @@ class JaullApp(App[None]):
 
         assert isinstance(recommendation, ModelRecommendation)
         self.push_screen(RecommendationExecutionScreen(recommendation))
+
+    def validate_recommendation(self, recommendation: object) -> None:
+        from jaull.recommendation.models import ModelRecommendation
+
+        assert isinstance(recommendation, ModelRecommendation)
+        self.push_screen(RecommendationValidationScreen(recommendation))
 
     def restart_workflow(self) -> None:
         """Drop every guided screen and return to a fresh welcome menu.

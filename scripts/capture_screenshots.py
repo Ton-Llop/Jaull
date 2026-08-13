@@ -39,7 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from textual.widgets import Button, Input, TextArea  # noqa: E402
+from textual.widgets import Button, Input, Static, TextArea  # noqa: E402
 
 from _workflow_fixtures import (  # noqa: E402
     GIB,
@@ -54,13 +54,27 @@ from jaull.advisor.service import AdvisorService  # noqa: E402
 from jaull.domain.artifacts import ModelArtifact  # noqa: E402
 from jaull.domain.estimation import MemoryEstimate  # noqa: E402
 from jaull.domain.execution import ExecutionObservation, InferenceResult  # noqa: E402
+from jaull.domain.experiments import (  # noqa: E402
+    ExperimentBackendTrace,
+    ExperimentRequest,
+    ExperimentRunResult,
+)
+from jaull.domain.hardware import ComputeBackend  # noqa: E402
 from jaull.domain.runtime import (  # noqa: E402
+    LlamaCppBackendCapability,
+    LlamaCppBackendCapabilityState,
+    LlamaCppBinaryStatus,
+    LlamaCppCapabilityReason,
+    LlamaCppRuntimeCapability,
+    LlamaCppRuntimeDevice,
     RuntimeFlag,
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.evaluation.experiments import build_experiment_record  # noqa: E402
 from jaull.execution.errors import ExecutionTimeoutError  # noqa: E402
+from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness  # noqa: E402
 from jaull.tui.app import JaullApp  # noqa: E402
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen  # noqa: E402
 from jaull.tui.screens.recommendation_execution import (  # noqa: E402
@@ -69,6 +83,9 @@ from jaull.tui.screens.recommendation_execution import (  # noqa: E402
 from jaull.tui.screens.recommendation_results import (  # noqa: E402
     ExportReportModal,
     RecommendationResultsScreen,
+)
+from jaull.tui.screens.recommendation_validation import (  # noqa: E402
+    RecommendationValidationScreen,
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # noqa: E402
 from jaull.tui.widgets.logo import Logo  # noqa: E402
@@ -90,6 +107,9 @@ SCREENSHOTS = (
     "tui-search.svg",
     "tui-results.svg",
     "tui-export.svg",
+    "tui-validation-running.svg",
+    "tui-validation-success.svg",
+    "tui-validation-failure.svg",
     "tui-run-empty.svg",
     "tui-run-loading.svg",
     "tui-run-history.svg",
@@ -253,12 +273,16 @@ class _ScriptAdvisor(AdvisorService):
         object.__setattr__(self, "_gate", artifact_gate)
         object.__setattr__(self, "fail_run", None)
         object.__setattr__(self, "response_text", "")
+        object.__setattr__(self, "validation_success", True)
 
     def set_failure(self, error: Exception | None) -> None:
         object.__setattr__(self, "fail_run", error)
 
     def set_response(self, text: str) -> None:
         object.__setattr__(self, "response_text", text)
+
+    def set_validation_success(self, success: bool) -> None:
+        object.__setattr__(self, "validation_success", success)
 
     def resolve_artifact(
         self,
@@ -322,6 +346,70 @@ class _ScriptAdvisor(AdvisorService):
             ),
         )
 
+    def run_experiment(self, request: ExperimentRequest) -> ExperimentRunResult:
+        backend = request.backend_selection.selected_backend
+        capability = _runtime_capability_for(backend)
+        readiness = evaluate_execution_readiness(
+            selection=request.backend_selection,
+            runtime_capability=capability,
+        )
+        success = bool(self.validation_success)  # type: ignore[attr-defined]
+        record = build_experiment_record(
+            hardware=request.hardware,
+            artifact=request.artifact,
+            workload=request.workload,
+            backend_trace=ExperimentBackendTrace(
+                requested_backend=request.requested_backend,
+                observed_backend=None,
+                observed_source=None,
+            ),
+            runtime=request.runtime,
+            prediction=request.prediction,
+            runtime_capability=capability,
+            execution_readiness=readiness,
+            observation=ExecutionObservation(
+                success=success,
+                duration_seconds=1.24 if success else 0.73,
+                peak_ram_bytes=6 * GIB,
+                peak_vram_bytes=3 * GIB if backend is not ComputeBackend.CPU else None,
+                exit_code=0 if success else 2,
+                failure_reason=None,
+            ),
+        )
+        return ExperimentRunResult(
+            record=record,
+            persisted_path=Path("experiments") / f"{record.identity.experiment_id}.json",
+        )
+
+
+def _runtime_capability_for(backend: ComputeBackend) -> LlamaCppRuntimeCapability:
+    devices: list[LlamaCppRuntimeDevice] = []
+    if backend is not ComputeBackend.CPU:
+        devices.append(
+            LlamaCppRuntimeDevice(
+                backend=backend,
+                runtime_id=f"{backend.value.title()}0",
+                name="NVIDIA GeForce RTX 4070",
+            )
+        )
+    return LlamaCppRuntimeCapability(
+        binary_path="/usr/local/bin/llama-cli",
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        version_text="llama-cli b10369",
+        backend_capabilities=[
+            LlamaCppBackendCapability(
+                backend=backend,
+                state=LlamaCppBackendCapabilityState.CONFIRMED,
+                devices=devices,
+                reason=LlamaCppCapabilityReason.RUNTIME_AVAILABLE
+                if backend is ComputeBackend.CPU
+                else LlamaCppCapabilityReason.BACKEND_EXPOSED,
+                source="capture",
+            )
+        ],
+        probe_source="llama-cli --list-devices",
+    )
+
 
 def build_app(gates: Gates | None = None) -> JaullApp:
     """A `JaullApp` wired to the offline fakes these screenshots run on.
@@ -377,6 +465,14 @@ async def _settle(pilot, seconds: float = 0.4) -> None:  # type: ignore[no-untyp
 def _save(app: JaullApp, out_dir: Path, filename: str) -> None:
     path = app.save_screenshot(filename=filename, path=str(out_dir))
     print(f"  -> {path}")
+
+
+def _screen_text(app: JaullApp) -> str:
+    parts: list[str] = []
+    for widget in app.screen.query(Static):
+        renderable = getattr(widget, "renderable", None)
+        parts.append(str(renderable if renderable is not None else widget.render()))
+    return "\n".join(parts)
 
 
 async def _capture_welcome(app: JaullApp, pilot, out_dir: Path) -> None:  # type: ignore[no-untyped-def]
@@ -450,6 +546,44 @@ async def _capture_export(app: JaullApp, pilot, out_dir: Path) -> None:  # type:
     await pilot.pause()
     _save(app, out_dir, "tui-export.svg")
     app.screen.query_one("#res-export-cancel", Button).press()
+    await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationResultsScreen))
+
+
+async def _capture_validation(  # type: ignore[no-untyped-def]
+    app: JaullApp,
+    pilot,
+    out_dir: Path,
+    advisor: _ScriptAdvisor,
+    artifact_gate: _Gate,
+) -> None:
+    app.screen.query_one("#res-validate-0", Button).press()
+    await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationValidationScreen))
+    screen = app.screen
+    assert isinstance(screen, RecommendationValidationScreen)
+
+    artifact_gate.hold()
+    screen.query_one("#validation-start", Button).press()
+    try:
+        await _wait_for(pilot, lambda: "Resolve artifact" in _screen_text(app))
+        _save(app, out_dir, "tui-validation-running.svg")
+    finally:
+        artifact_gate.release()
+
+    await _wait_for(pilot, lambda: "Configuration validated" in _screen_text(app))
+    await _settle(pilot)
+    _save(app, out_dir, "tui-validation-success.svg")
+
+    advisor.set_validation_success(False)
+    screen.query_one("#validation-start", Button).press()
+    await _wait_for(
+        pilot,
+        lambda: "Validation failed during execution" in _screen_text(app),
+    )
+    await _settle(pilot)
+    _save(app, out_dir, "tui-validation-failure.svg")
+    advisor.set_validation_success(True)
+
+    await pilot.press("escape")
     await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationResultsScreen))
 
 
@@ -555,6 +689,9 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
 
             print("Capturing export...")
             await _capture_export(app, pilot, out_dir)
+
+            print("Capturing validation...")
+            await _capture_validation(app, pilot, out_dir, advisor, artifact_gate)
 
             print("Capturing run...")
             await _capture_run(app, pilot, out_dir, advisor, artifact_gate)

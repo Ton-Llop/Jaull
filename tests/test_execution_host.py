@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import sys
 import textwrap
 from dataclasses import dataclass
@@ -130,17 +131,25 @@ def test_host_backend_raises_failed_with_captured_result() -> None:
     )
 
 
-_MIN_DELTA_BYTES = 16 * 1024 * 1024
-# 32 MiB of pages, all touched, so RSS reflects the allocation even on
-# Windows (which does not commit untouched pages).
+_MIN_DELTA_BYTES = 8 * 1024 * 1024
+# 32 MiB of pages, rewritten in a loop until the sampler has had time to
+# poll several times. Windows' working set is trimmed aggressively between
+# touches, so a one-shot allocation does not stay resident long enough for
+# psutil's `memory_info().rss` (which returns WorkingSetSize) to catch the
+# peak.
 _TOUCH_PAGES_SNIPPET = textwrap.dedent(
     """
     import time
     _size = 32 * 1024 * 1024
     _payload = bytearray(_size)
-    for _offset in range(0, _size, 4096):
-        _payload[_offset] = 1
-    time.sleep(0.15)
+    _deadline = time.monotonic() + 0.25
+    _counter = 0
+    while time.monotonic() < _deadline:
+        _offset = 0
+        while _offset < _size:
+            _payload[_offset] = _counter & 0xFF
+            _offset += 4096
+        _counter += 1
     """
 )
 
@@ -273,7 +282,7 @@ def test_host_backend_timeout_kills_process_without_zombie(tmp_path: Path) -> No
                     ),
                     str(pid_file),
                 ),
-                timeout_seconds=0.05,
+                timeout_seconds=0.5,
             )
         )
 
@@ -283,6 +292,14 @@ def test_host_backend_timeout_kills_process_without_zombie(tmp_path: Path) -> No
     assert observation.peak_ram_bytes is not None
 
     child_pid = int(pid_file.read_text(encoding="utf-8"))
+    # Drop the exception traceback so Popen (which holds the Windows process
+    # handle) can be garbage-collected. Windows keeps the PID slot reserved
+    # until every handle to the terminated process is closed, so without this
+    # `psutil.pid_exists` would still see the dead child.
+    ctx.value.__traceback__ = None
+    del ctx
+    gc.collect()
+
     assert not _pid_is_live_or_zombie(child_pid)
 
 

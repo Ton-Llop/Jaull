@@ -70,6 +70,11 @@ class RecommendationResultsScreen(Screen[None]):
             if 0 <= index < len(self._state.recommendations):
                 app.run_recommendation(self._state.recommendations[index])
             return
+        if button_id.startswith("res-validate-"):
+            index = int(button_id.removeprefix("res-validate-"))
+            if 0 <= index < len(self._state.recommendations):
+                app.validate_recommendation(self._state.recommendations[index])
+            return
 
         match button_id:
             case "res-compare":
@@ -302,6 +307,11 @@ class _PrimaryRecommendationPanel(Vertical):
             yield Static(f"✓ {reason}", classes="reason-line")
         with Horizontal(classes="actions-right"):
             yield Button("Run model", id="res-run-0", classes="-primary")
+            yield Button(
+                "Validate",
+                id="res-validate-0",
+                disabled=not _can_validate(rec),
+            )
 
 
 class _AlternativeRecommendationRow(Horizontal):
@@ -324,6 +334,12 @@ class _AlternativeRecommendationRow(Horizontal):
             classes=f"results-alt-fit {_fit_class(rec)}",
         )
         yield Button("Run", id=f"res-run-{self._index}", classes="-compact")
+        yield Button(
+            "Validate",
+            id=f"res-validate-{self._index}",
+            classes="-compact",
+            disabled=not _can_validate(rec),
+        )
 
 
 def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[str]:
@@ -390,6 +406,15 @@ def _memory_label(rec: ModelRecommendation) -> str:
 
 def _status_label(rec: ModelRecommendation) -> str:
     return rec.status.value.replace("_", " ").capitalize()
+
+
+def _can_validate(rec: ModelRecommendation) -> bool:
+    from jaull.domain.runtime import RuntimeName
+
+    estimate = rec.evaluated.memory_estimate
+    if estimate is None or estimate.runtime_recommendation is None:
+        return False
+    return estimate.runtime_recommendation.runtime is RuntimeName.LLAMA_CPP
 
 
 # Green comfortable, amber tight, red insufficient — the same reading the rest

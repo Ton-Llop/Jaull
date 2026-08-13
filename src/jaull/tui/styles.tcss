@@ -699,6 +699,44 @@ ExportReportModal {
     margin: 0 0 0 1;
 }
 
+/* ---------------------------------------------------------------------
+   Validation screen.
+   --------------------------------------------------------------------- */
+#validation-header {
+    padding: 0 2;
+    height: auto;
+    margin: 0 0 1 0;
+    border-bottom: solid #1f2937;
+}
+
+#validation-body,
+#validation-details-body {
+    height: 1fr;
+    padding: 0 2;
+}
+
+#validation-status {
+    color: #b3bac6;
+    height: auto;
+}
+
+#validation-error {
+    height: auto;
+}
+
+#validation-actions {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+#validation-actions Button {
+    margin: 0 1 0 0;
+}
+
+.validation-result-node {
+    height: auto;
+}
+
 .inference-entry {
     height: auto;
     margin: 0 0 1 0;

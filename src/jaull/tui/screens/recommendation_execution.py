@@ -20,6 +20,7 @@ from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundErr
 from jaull.execution.errors import ExecutionError
 from jaull.presentation.execution_report import inline_observation_summary
 from jaull.recommendation.models import ModelRecommendation
+from jaull.tui.artifact_preparation import prepare_recommendation_artifact
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -178,29 +179,11 @@ class RecommendationExecutionScreen(Screen[None]):
             self.post_message(_GenerationDone(artifact, result))
 
     def _prepare_artifact_from_worker(self, advisor: AdvisorService) -> ModelArtifact:
-        rec = self._recommendation
-        config = rec.evaluated.selected_configuration
-        quantization = config.quantization if config is not None else None
-
-        self._post_step(
-            f"Resolve artifact for {rec.repo_id}"
-            + (f" ({quantization})" if quantization else ""),
+        return prepare_recommendation_artifact(
+            advisor=advisor,
+            recommendation=self._recommendation,
+            report_step=self._post_step,
         )
-        artifact = advisor.resolve_artifact(
-            rec.repo_id,
-            quantization=quantization,
-            revision=None,
-        )
-        if not artifact.is_downloaded:
-            self._post_step("Downloading artifact")
-            artifact = advisor.download_artifact(artifact)
-        else:
-            self._post_step(f"Reuse local artifact {artifact.filename}")
-
-        self._post_step("Verifying artifact")
-        artifact = advisor.verify_artifact(artifact)
-        self._post_step("Model ready")
-        return artifact
 
     @on(_GenerationStep)
     def _generation_step_message(self, message: _GenerationStep) -> None:

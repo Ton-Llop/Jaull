@@ -19,20 +19,42 @@ from jaull.domain.execution import (
     ExecutionResult,
     InferenceResult,
 )
+from jaull.domain.experiments import (
+    ExperimentRecord,
+    ExperimentRequest,
+    ExperimentRunResult,
+    ExperimentWorkload,
+)
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.runtime import (
+    ExecutionReadinessStatus,
+    LlamaCppBackendCapability,
+    LlamaCppBackendCapabilityState,
+    LlamaCppBinaryStatus,
+    LlamaCppCapabilityReason,
+    LlamaCppRuntimeCapability,
+    LlamaCppRuntimeDevice,
+    RuntimeBackendSelection,
+    RuntimeBackendSelectionReason,
     RuntimeFlag,
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.evaluation.experiments import build_experiment_record
 from jaull.execution.errors import (
     ExecutableNotFoundError,
     ExecutionFailedError,
     ExecutionTimeoutError,
 )
+from jaull.experiments.errors import (
+    ExperimentNotReadyError,
+    ExperimentPersistenceError,
+)
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
+from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_execution import (
     InferencePrompt,
@@ -45,12 +67,16 @@ from jaull.tui.screens.recommendation_results import (
     RecommendationDetailsScreen,
     RecommendationResultsScreen,
 )
+from jaull.tui.screens.recommendation_validation import (
+    RecommendationValidationScreen,
+)
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.state import RecommendationWorkflowState
 from tests._workflow_fixtures import (
     GIB,
     candidate,
     gguf_analysis,
+    hardware,
     memory_estimate,
 )
 
@@ -181,19 +207,30 @@ class _FakeAdvisor:
         prepare_delay: float = 0.0,
         response_text: str = "generated from tui",
         observation: ExecutionObservation | None = None,
+        experiment_observation: ExecutionObservation | None = None,
+        experiment_error: Exception | None = None,
+        experiment_persisted_path: Path | None = Path("/tmp/jaull-experiment.json"),
+        backend_selection: RuntimeBackendSelection | None = None,
     ) -> None:
         self.services = _services()
         self.artifact = artifact or _artifact()
         self.fail_download = fail_download
         self.fail_run = fail_run
+        self.experiment_error = experiment_error
         self.prepare_delay = prepare_delay
         self.response_text = response_text
         self.observation = observation or _observation()
+        self.experiment_observation = experiment_observation or _observation()
+        self.experiment_persisted_path = experiment_persisted_path
+        self.hardware = hardware()
+        self.backend_selection = backend_selection or _backend_selection(ComputeBackend.CPU)
         self.operations: list[str] = []
         self.resolved: list[tuple[str, str | None, str | None]] = []
         self.downloaded: list[ModelArtifact] = []
         self.verified: list[ModelArtifact] = []
         self.runs: list[tuple[ModelArtifact, str, RuntimeRecommendation | None]] = []
+        self.experiment_requests: list[object] = []
+        self.experiment_records: list[ExperimentRecord] = []
 
     def resolve_artifact(
         self,
@@ -245,6 +282,158 @@ class _FakeAdvisor:
             observation=self.observation,
         )
 
+    def scan_hardware(self) -> object:
+        self.operations.append("hardware")
+        return self.hardware
+
+    def select_runtime_backend(self, hardware_profile: object) -> RuntimeBackendSelection:
+        del hardware_profile
+        self.operations.append("select_backend")
+        return self.backend_selection
+
+    def run_experiment(self, request: object) -> ExperimentRunResult:
+        from jaull.domain.experiments import ExperimentRequest
+
+        assert isinstance(request, ExperimentRequest)
+        self.operations.append("experiment")
+        self.experiment_requests.append(request)
+        if self.experiment_error is not None:
+            raise self.experiment_error
+        record = _experiment_record(
+            request,
+            observation=self.experiment_observation,
+        )
+        self.experiment_records.append(record)
+        return ExperimentRunResult(
+            record=record,
+            persisted_path=self.experiment_persisted_path,
+        )
+
+
+def _backend_selection(backend: ComputeBackend) -> RuntimeBackendSelection:
+    return RuntimeBackendSelection(
+        selected_backend=backend,
+        reason=RuntimeBackendSelectionReason.CPU_FALLBACK
+        if backend is ComputeBackend.CPU
+        else RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
+    )
+
+
+def _runtime_capability(backend: ComputeBackend) -> LlamaCppRuntimeCapability:
+    devices: list[LlamaCppRuntimeDevice] = []
+    if backend is not ComputeBackend.CPU:
+        devices.append(
+            LlamaCppRuntimeDevice(
+                backend=backend,
+                runtime_id=f"{backend.value.title()}0",
+                name="test accelerator",
+            )
+        )
+    return LlamaCppRuntimeCapability(
+        binary_path="/tmp/llama-cli",
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        version_text="llama-cli test",
+        backend_capabilities=[
+            LlamaCppBackendCapability(
+                backend=backend,
+                state=LlamaCppBackendCapabilityState.CONFIRMED,
+                devices=devices,
+                reason=LlamaCppCapabilityReason.RUNTIME_AVAILABLE
+                if backend is ComputeBackend.CPU
+                else LlamaCppCapabilityReason.BACKEND_EXPOSED,
+                source="test",
+            )
+        ],
+        probe_source="test",
+    )
+
+
+def _experiment_record(
+    request: object,
+    *,
+    observation: ExecutionObservation,
+) -> ExperimentRecord:
+    from jaull.domain.experiments import ExperimentRequest
+
+    assert isinstance(request, ExperimentRequest)
+    capability = _runtime_capability(request.backend_selection.selected_backend)
+    readiness = evaluate_execution_readiness(
+        selection=request.backend_selection,
+        runtime_capability=capability,
+    )
+    return build_experiment_record(
+        hardware=request.hardware,
+        artifact=request.artifact,
+        workload=request.workload,
+        backend_trace=None,
+        runtime=request.runtime,
+        prediction=request.prediction,
+        runtime_capability=capability,
+        execution_readiness=readiness,
+        observation=observation,
+    )
+
+
+def _not_ready_error(status: ExecutionReadinessStatus) -> ExperimentNotReadyError:
+    selection = _backend_selection(ComputeBackend.VULKAN)
+    capability = LlamaCppRuntimeCapability(
+        binary_path="/tmp/llama-cli",
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        backend_capabilities=[
+            LlamaCppBackendCapability(
+                backend=ComputeBackend.VULKAN,
+                state=LlamaCppBackendCapabilityState.UNKNOWN,
+                reason=LlamaCppCapabilityReason.CAPABILITY_UNKNOWN,
+                source="test",
+            )
+        ],
+        probe_source="test",
+        message="test readiness unavailable",
+    )
+    readiness = evaluate_execution_readiness(
+        selection=selection,
+        runtime_capability=capability,
+    )
+    if status is ExecutionReadinessStatus.NOT_READY:
+        missing_capability = LlamaCppRuntimeCapability(
+            binary_path=None,
+            binary_status=LlamaCppBinaryStatus.MISSING,
+            backend_capabilities=[],
+            probe_source="test",
+            message="runtime missing",
+        )
+        readiness = evaluate_execution_readiness(
+            selection=selection,
+            runtime_capability=missing_capability,
+        )
+        capability = missing_capability
+    assert readiness.status is status
+    return ExperimentNotReadyError(
+        "not ready",
+        readiness=readiness,
+        runtime_capability=capability,
+    )
+
+
+def _persistence_error() -> ExperimentPersistenceError:
+    recommendation = _recommendation()
+    estimate = recommendation.evaluated.memory_estimate
+    assert estimate is not None
+    runtime = estimate.runtime_recommendation
+    assert runtime is not None
+    request = ExperimentRequest(
+        hardware=hardware(),
+        artifact=_artifact(is_downloaded=True, is_verified=True),
+        runtime=runtime,
+        prediction=estimate,
+        backend_selection=_backend_selection(ComputeBackend.CPU),
+        workload=ExperimentWorkload(prompt="test"),
+    )
+    return ExperimentPersistenceError(
+        "save failed",
+        record=_experiment_record(request, observation=_observation()),
+    )
+
 
 def _visible_text(screen: object) -> str:
     parts: list[str] = []
@@ -266,7 +455,7 @@ def _widget_text(widget: Static) -> str:
 
 def _run_workers_inline(
     app: JaullApp,
-    screen: RecommendationExecutionScreen,
+    screen: object,
     monkeypatch: Any,
 ) -> None:
     del app
@@ -311,6 +500,223 @@ def test_results_screen_runs_an_alternative_recommendation() -> None:
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
             assert run_screen.recommendation.repo_id == "org/Second-GGUF"
+
+    _run(scenario())
+
+
+def test_results_screen_can_open_validation_for_selected_recommendation() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation()
+        state = RecommendationWorkflowState(recommendations=[recommendation])
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            assert screen.query_one("#res-validate-0", Button).disabled is False
+
+            screen.query_one("#res-validate-0", Button).press()
+            await pilot.pause()
+
+            validation = pilot.app.screen
+            assert isinstance(validation, RecommendationValidationScreen)
+            assert validation.recommendation is recommendation
+
+    _run(scenario())
+
+
+def test_results_validation_button_is_disabled_without_llama_cpp_runtime() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation(
+            runtime=RuntimeRecommendation(
+                runtime=RuntimeName.TRANSFORMERS,
+                confidence=EstimationConfidence.LOW,
+            )
+        )
+        state = RecommendationWorkflowState(recommendations=[recommendation])
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            assert screen.query_one("#res-validate-0", Button).disabled is True
+
+    _run(scenario())
+
+
+def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            assert advisor.operations == [
+                "resolve",
+                "download",
+                "verify",
+                "hardware",
+                "select_backend",
+                "experiment",
+            ]
+            assert len(advisor.experiment_requests) == 1
+            assert len(advisor.experiment_records) == 1
+            text = _visible_text(screen)
+            assert "Configuration validated" in text
+            assert "Prediction vs Observation" in text
+            assert "Not verified" in text
+            assert "/tmp/jaull-experiment.json" in text
+            assert screen.query_one("#validation-details", Button).disabled is False
+
+    _run(scenario())
+
+
+def test_validation_screen_preserves_failed_execution_record(monkeypatch: Any) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor(
+            experiment_observation=_observation(
+                success=False,
+                duration_seconds=0.4,
+                exit_code=2,
+                failure_reason=ExecutionFailureReason.NON_ZERO_EXIT,
+            )
+        )
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            assert len(advisor.experiment_records) == 1
+            assert advisor.experiment_records[0].observation.success is False
+            text = _visible_text(screen)
+            assert "Validation failed during execution" in text
+            assert "failure" in text
+
+    _run(scenario())
+
+
+def test_validation_screen_does_not_execute_when_not_ready(monkeypatch: Any) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor(
+            experiment_error=_not_ready_error(ExecutionReadinessStatus.NOT_READY)
+        )
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            assert advisor.operations == [
+                "resolve",
+                "download",
+                "verify",
+                "hardware",
+                "select_backend",
+                "experiment",
+            ]
+            assert advisor.experiment_records == []
+            assert "Validation unavailable" in _visible_text(screen)
+
+    _run(scenario())
+
+
+def test_validation_screen_does_not_execute_when_readiness_unknown(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor(
+            experiment_error=_not_ready_error(ExecutionReadinessStatus.UNKNOWN)
+        )
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            assert advisor.experiment_records == []
+            assert "Could not verify runtime readiness" in _visible_text(screen)
+
+    _run(scenario())
+
+
+def test_validation_screen_keeps_result_visible_when_persistence_fails(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor(experiment_error=_persistence_error())
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            text = _visible_text(screen)
+            assert "could not be saved" in text
+            assert "Configuration validated (not saved)" in text
+            assert "Prediction vs Observation" in text
+
+    _run(scenario())
+
+
+def test_validation_screen_can_repeat_without_duplicate_ids(monkeypatch: Any) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+            first_id = advisor.experiment_records[-1].identity.experiment_id
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+            second_id = advisor.experiment_records[-1].identity.experiment_id
+
+            assert first_id != second_id
+            assert len(advisor.experiment_records) == 2
+            assert "Configuration validated" in _visible_text(screen)
 
     _run(scenario())
 
@@ -487,7 +893,7 @@ def test_execution_screen_keeps_visual_history_across_prompts(
 
             _set_prompt(screen, "Say hi")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _settle(pilot)
 
             prompt_input = screen.query_one("#run-prompt-input", TextArea)
             assert prompt_input.text == ""
@@ -501,7 +907,7 @@ def test_execution_screen_keeps_visual_history_across_prompts(
             )
             _set_prompt(screen, "Say bye")
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _settle(pilot)
 
             assert advisor.runs[-1][1] == "Say bye"
             assert len(screen.query(InferencePrompt)) == 2
@@ -728,7 +1134,7 @@ def test_generate_runs_long_operations_without_blocking_ui() -> None:
             screen.query_one("#run-generate", Button).press()
             await pilot.pause()
 
-            assert time.perf_counter() - started < 0.3
+            assert time.perf_counter() - started < advisor.prepare_delay
             assert screen.query_one("#run-generate", Button).disabled is True
             assert screen.query_one("#run-prompt-input", TextArea).disabled is True
 

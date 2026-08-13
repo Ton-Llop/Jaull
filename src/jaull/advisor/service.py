@@ -19,7 +19,16 @@ from jaull.artifacts.storage import ArtifactStorage
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import MemoryEstimate
-from jaull.domain.execution import InferenceResult
+from jaull.domain.execution import ExecutionObservation, InferenceResult
+from jaull.domain.experiments import (
+    ExperimentBackendTrace,
+    ExperimentEnvironment,
+    ExperimentIdentity,
+    ExperimentRecord,
+    ExperimentRequest,
+    ExperimentRunResult,
+    ExperimentWorkload,
+)
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
@@ -44,6 +53,8 @@ from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
     from jaull.execution.ports import ExecutionBackendProtocol
+    from jaull.experiments.runner import ExperimentRunner
+    from jaull.experiments.storage import ExperimentStore
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
@@ -63,6 +74,8 @@ class AdvisorService:
     collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
     artifacts: ArtifactService | None = field(default=None)
     llama_cpp_runner: LlamaCppRunner | None = field(default=None)
+    experiment_runner: ExperimentRunner | None = field(default=None)
+    experiment_store: ExperimentStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
 
@@ -216,6 +229,51 @@ class AdvisorService:
             runtime_capability=effective_capability,
         )
 
+    def build_experiment_record(
+        self,
+        *,
+        hardware: HardwareProfile,
+        artifact: ModelArtifact,
+        workload: ExperimentWorkload | None = None,
+        backend_trace: ExperimentBackendTrace | None = None,
+        runtime: RuntimeRecommendation,
+        prediction: MemoryEstimate,
+        runtime_capability: LlamaCppRuntimeCapability,
+        execution_readiness: ExecutionReadiness,
+        observation: ExecutionObservation,
+        identity: ExperimentIdentity | None = None,
+        environment: ExperimentEnvironment | None = None,
+        notes: list[str] | None = None,
+    ) -> ExperimentRecord:
+        from jaull.evaluation.experiments import build_experiment_record
+
+        return build_experiment_record(
+            hardware=hardware,
+            artifact=artifact,
+            workload=workload,
+            backend_trace=backend_trace,
+            runtime=runtime,
+            prediction=prediction,
+            runtime_capability=runtime_capability,
+            execution_readiness=execution_readiness,
+            observation=observation,
+            identity=identity,
+            environment=environment,
+            notes=notes,
+        )
+
+    def save_experiment_record(self, record: ExperimentRecord) -> Path:
+        return self._experiment_store().save(record)
+
+    def load_experiment_record(self, experiment_id: str) -> ExperimentRecord:
+        return self._experiment_store().load(experiment_id)
+
+    def list_experiment_ids(self) -> list[str]:
+        return self._experiment_store().list_ids()
+
+    def run_experiment(self, request: ExperimentRequest) -> ExperimentRunResult:
+        return self._experiment_runner().run(request)
+
     # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
@@ -250,6 +308,31 @@ class AdvisorService:
             timeout_seconds=self.llama_cli_timeout_seconds,
         )
         object.__setattr__(self, "llama_cpp_runner", fresh)
+        return fresh
+
+    def _experiment_store(self) -> ExperimentStore:
+        if self.experiment_store is not None:
+            return self.experiment_store
+        from jaull.experiments.storage import ExperimentStore
+
+        fresh = ExperimentStore()
+        object.__setattr__(self, "experiment_store", fresh)
+        return fresh
+
+    def _experiment_runner(self) -> ExperimentRunner:
+        if self.experiment_runner is not None:
+            return self.experiment_runner
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.experiments.runner import ExperimentRunner
+
+        fresh = ExperimentRunner(
+            execution_backend=HostExecutionBackend(),
+            llama_cpp_runner=self._llama_cpp_runner(),
+            store=self._experiment_store(),
+            llama_cli_path=self.llama_cli_path,
+            capability_timeout_seconds=self.llama_cli_timeout_seconds,
+        )
+        object.__setattr__(self, "experiment_runner", fresh)
         return fresh
 
     def _make_range_client(self) -> HttpRangeClient | None:
@@ -293,6 +376,8 @@ class AdvisorService:
         collect_diagnostics: DiagnosticsFn = _default_diagnostics,
         artifacts: ArtifactService | None = None,
         llama_cpp_runner: LlamaCppRunner | None = None,
+        experiment_runner: ExperimentRunner | None = None,
+        experiment_store: ExperimentStore | None = None,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
     ) -> AdvisorService:
@@ -314,6 +399,8 @@ class AdvisorService:
             collect_diagnostics=collect_diagnostics,
             artifacts=artifacts,
             llama_cpp_runner=llama_cpp_runner,
+            experiment_runner=experiment_runner,
+            experiment_store=experiment_store,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
         )
