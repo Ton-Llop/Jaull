@@ -577,7 +577,8 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert "Configuration validated" in text
             assert "Prediction vs Observation" in text
             assert "Not verified" in text
-            assert "/tmp/jaull-experiment.json" in text
+            assert advisor.experiment_persisted_path is not None
+            assert str(advisor.experiment_persisted_path) in text
             assert screen.query_one("#validation-details", Button).disabled is False
 
     _run(scenario())
@@ -944,8 +945,13 @@ def test_execution_screen_survives_three_prompts_without_duplicate_ids(
             for index in range(3):
                 advisor.response_text = f"response {index}"
                 _set_prompt(screen, f"prompt {index}")
+
                 screen.query_one("#run-generate", Button).press()
-                await pilot.pause()
+
+                await _wait_until(
+                    pilot,
+                    lambda: len(screen.query(InferenceResponse)) == index + 1,
+                )
 
             assert len(screen.query(InferencePrompt)) == 3
             assert len(screen.query(InferenceResponse)) == 3
@@ -961,6 +967,23 @@ def test_execution_screen_survives_three_prompts_without_duplicate_ids(
 
     _run(scenario())
 
+async def _wait_until(
+    pilot: Any,
+    predicate: Any,
+    *,
+    timeout_seconds: float = 2.0,
+) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+
+    while not predicate():
+        if loop.time() >= deadline:
+            raise AssertionError(
+                "Timed out waiting for TUI state"
+            )
+
+        await pilot.pause()
+        await asyncio.sleep(0.01)
 
 def test_execution_screen_reuses_local_artifact_without_downloading(
     monkeypatch: Any,

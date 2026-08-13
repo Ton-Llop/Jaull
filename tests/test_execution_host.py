@@ -130,62 +130,64 @@ def test_host_backend_raises_failed_with_captured_result() -> None:
         is ExecutionFailureReason.NON_ZERO_EXIT
     )
 
-
-_MIN_DELTA_BYTES = 8 * 1024 * 1024
-# 32 MiB of pages, rewritten in a loop until the sampler has had time to
-# poll several times. Windows' working set is trimmed aggressively between
-# touches, so a one-shot allocation does not stay resident long enough for
-# psutil's `memory_info().rss` (which returns WorkingSetSize) to catch the
-# peak.
-_TOUCH_PAGES_SNIPPET = textwrap.dedent(
-    """
-    import time
-    _size = 32 * 1024 * 1024
-    _payload = bytearray(_size)
-    _deadline = time.monotonic() + 0.25
-    _counter = 0
-    while time.monotonic() < _deadline:
-        _offset = 0
-        while _offset < _size:
-            _payload[_offset] = _counter & 0xFF
-            _offset += 4096
-        _counter += 1
-    """
-)
+@dataclass
+class _MemoryInfo:
+    rss: int
 
 
-def _baseline_peak_ram(backend: HostExecutionBackend) -> int:
-    baseline = backend.execute(
-        ExecutionRequest(
-            command=(sys.executable, "-c", "import time; time.sleep(0.1)"),
-            timeout_seconds=5,
-        )
+class _SequenceRssProcess:
+    """Deterministic psutil.Process double for sampling tests."""
+
+    def __init__(self, values: list[int]) -> None:
+        self._values = iter(values)
+        self._last = 0
+
+    def memory_info(self) -> _MemoryInfo:
+        try:
+            self._last = next(self._values)
+        except StopIteration:
+            pass
+        return _MemoryInfo(rss=self._last)
+
+
+def _patch_rss_sequence(monkeypatch: pytest.MonkeyPatch) -> None:
+    process = _SequenceRssProcess(
+        [
+            4 * 1024**2,
+            12 * 1024**2,
+            24 * 1024**2,
+            20 * 1024**2,
+        ]
     )
-    peak = baseline.observation.peak_ram_bytes
-    assert peak is not None
-    return peak
 
+    monkeypatch.setattr(
+        "jaull.execution.host._psutil_process",
+        lambda pid: process,
+    )
 
-def test_host_backend_observes_peak_ram_and_duration() -> None:
+def test_host_backend_observes_peak_ram_and_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_rss_sequence(monkeypatch)
+
     backend = HostExecutionBackend(sample_interval_seconds=0.01)
-    baseline = _baseline_peak_ram(backend)
 
     result = backend.execute(
         ExecutionRequest(
             command=(
                 sys.executable,
                 "-c",
-                _TOUCH_PAGES_SNIPPET + 'print("done")\n',
+                'import time; time.sleep(0.08); print("done")',
             ),
             timeout_seconds=5,
         )
     )
 
     assert result.stdout == "done\n"
-    assert result.observation.duration_seconds >= 0.1
+    assert result.observation.duration_seconds >= 0.05
     assert result.observation.duration_seconds < 5
-    assert result.observation.peak_ram_bytes is not None
-    assert result.observation.peak_ram_bytes > baseline + _MIN_DELTA_BYTES
+
+    assert result.observation.peak_ram_bytes == 24 * 1024**2
 
 
 def test_host_backend_drains_large_stdout_and_stderr_while_sampling() -> None:
@@ -233,9 +235,12 @@ def test_host_backend_observes_peak_vram_with_fake_nvml_provider() -> None:
     assert result.observation.peak_vram_bytes >= 1024
 
 
-def test_host_backend_failed_process_keeps_observation() -> None:
+def test_host_backend_failed_process_keeps_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_rss_sequence(monkeypatch)
+
     backend = HostExecutionBackend(sample_interval_seconds=0.01)
-    baseline = _baseline_peak_ram(backend)
 
     with pytest.raises(ExecutionFailedError) as ctx:
         backend.execute(
@@ -243,20 +248,23 @@ def test_host_backend_failed_process_keeps_observation() -> None:
                 command=(
                     sys.executable,
                     "-c",
-                    _TOUCH_PAGES_SNIPPET
-                    + 'import sys\nprint("failing")\nsys.exit(3)\n',
+                    'import sys, time; time.sleep(0.08); print("failing"); sys.exit(3)',
                 ),
                 timeout_seconds=5,
             )
         )
 
-    observation = ctx.value.result.observation
+    observation = ctx.value.observation
+
     assert observation.success is False
     assert observation.exit_code == 3
-    assert observation.failure_reason is ExecutionFailureReason.NON_ZERO_EXIT
+    assert (
+        observation.failure_reason
+        is ExecutionFailureReason.NON_ZERO_EXIT
+    )
     assert observation.duration_seconds >= 0.05
-    assert observation.peak_ram_bytes is not None
-    assert observation.peak_ram_bytes > baseline + _MIN_DELTA_BYTES
+
+    assert observation.peak_ram_bytes == 24 * 1024**2
 
 
 def test_host_backend_timeout_kills_process_without_zombie(tmp_path: Path) -> None:
