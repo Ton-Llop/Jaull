@@ -82,6 +82,8 @@ class BenchmarkMeasurement(BaseModel):
     tokens: int = Field(gt=0)
     mean_tokens_per_second: float = Field(ge=0.0)
     stddev_tokens_per_second: float = Field(ge=0.0)
+    mean_duration_seconds: float | None = Field(default=None, ge=0.0)
+    stddev_duration_seconds: float | None = Field(default=None, ge=0.0)
     repetitions: int | None = Field(default=None, ge=1)
     source_label: str
     raw_backend: str | None = None
@@ -100,7 +102,9 @@ class BenchmarkObservation(BaseModel):
     model_load_seconds: float | None = Field(default=None, ge=0.0)
     warmup_seconds: float | None = Field(default=None, ge=0.0)
     time_to_first_token_seconds: float | None = Field(default=None, ge=0.0)
+    time_to_first_token_stddev_seconds: float | None = Field(default=None, ge=0.0)
     generation_latency_seconds: float | None = Field(default=None, ge=0.0)
+    generation_latency_stddev_seconds: float | None = Field(default=None, ge=0.0)
     peak_ram_bytes: int | None = Field(default=None, ge=0)
     peak_vram_bytes: int | None = Field(default=None, ge=0)
     command: tuple[str, ...] = Field(default_factory=tuple)

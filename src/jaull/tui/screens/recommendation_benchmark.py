@@ -340,6 +340,24 @@ class RecommendationBenchmarkScreen(Screen[None]):
         body.mount(Static(heading, classes="section-title benchmark-result-node"))
         if result.completed:
             body.mount(_result_table(result.completed).add_class("benchmark-result-node"))
+            startup_rows = _startup_rows(result.completed)
+            if startup_rows:
+                body.mount(
+                    SummaryCard(
+                        "Startup",
+                        startup_rows,
+                        plain=True,
+                    ).add_class("benchmark-result-node")
+                )
+            memory_rows = _memory_rows(result.completed)
+            if memory_rows:
+                body.mount(
+                    SummaryCard(
+                        "Memory",
+                        memory_rows,
+                        plain=True,
+                    ).add_class("benchmark-result-node")
+                )
             aggregate = aggregate_benchmark_records([item.record for item in result.completed])
             if aggregate.comparisons:
                 body.mount(
@@ -511,7 +529,20 @@ def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[st
         ("Methodology", record.observation.methodology or "unknown"),
         ("Model load", _seconds(record.observation.model_load_seconds)),
         ("Warmup", _seconds(record.observation.warmup_seconds)),
+        (
+            "TTFT",
+            _seconds_with_stddev(
+                record.observation.time_to_first_token_seconds,
+                record.observation.time_to_first_token_stddev_seconds,
+            ),
+        ),
         ("Generation latency", _seconds(record.observation.generation_latency_seconds)),
+        (
+            "Generation latency stddev",
+            _seconds(record.observation.generation_latency_stddev_seconds),
+        ),
+        ("Peak RAM", _bytes(record.observation.peak_ram_bytes)),
+        ("Peak VRAM", _bytes(record.observation.peak_vram_bytes)),
         ("Status", "success" if record.observation.success else "failure"),
         ("Saved", str(path) if path else "not saved"),
     ]
@@ -541,8 +572,59 @@ def _request_label(backend: str, device: str | None) -> str:
 
 
 def _metric_label(kind: BenchmarkMeasurementKind, tokens: int) -> str:
-    prefix = "Prefill" if kind is BenchmarkMeasurementKind.PREFILL else "Generation"
+    prefix = "Prompt processing" if kind is BenchmarkMeasurementKind.PREFILL else "Generation"
     return f"{prefix} {tokens}"
+
+
+def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for result in results:
+        observation = result.record.observation
+        if (
+            observation.model_load_seconds is None
+            and observation.warmup_seconds is None
+            and observation.time_to_first_token_seconds is None
+            and observation.generation_latency_seconds is None
+        ):
+            continue
+        label = _config_label(result.record)
+        rows.extend(
+            [
+                (f"{label} model load", _seconds(observation.model_load_seconds)),
+                (f"{label} warmup", _seconds(observation.warmup_seconds)),
+                (
+                    f"{label} TTFT",
+                    _seconds_with_stddev(
+                        observation.time_to_first_token_seconds,
+                        observation.time_to_first_token_stddev_seconds,
+                    ),
+                ),
+                (
+                    f"{label} generation latency",
+                    _seconds_with_stddev(
+                        observation.generation_latency_seconds,
+                        observation.generation_latency_stddev_seconds,
+                    ),
+                ),
+            ]
+        )
+    return rows
+
+
+def _memory_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for result in results:
+        observation = result.record.observation
+        if observation.peak_ram_bytes is None and observation.peak_vram_bytes is None:
+            continue
+        label = _config_label(result.record)
+        rows.extend(
+            [
+                (f"{label} peak RAM", _bytes(observation.peak_ram_bytes)),
+                (f"{label} peak VRAM", _bytes(observation.peak_vram_bytes)),
+            ]
+        )
+    return rows
 
 
 def _benchmark_configuration_label(
@@ -584,6 +666,24 @@ def _seconds(value: float | None) -> str:
     if value is None:
         return "unavailable"
     return f"{value:.2f} s"
+
+
+def _seconds_with_stddev(value: float | None, stddev: float | None) -> str:
+    if value is None:
+        return "unavailable"
+    if stddev is None:
+        return f"{value:.2f} s"
+    return f"{value:.2f} ± {stddev:.2f} s"
+
+
+def _bytes(value: int | None) -> str:
+    if value is None:
+        return "unavailable"
+    gib = value / 1024**3
+    if gib >= 1:
+        return f"{gib:.2f} GiB"
+    mib = value / 1024**2
+    return f"{mib:.1f} MiB"
 
 
 __all__ = [

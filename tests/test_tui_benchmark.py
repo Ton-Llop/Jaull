@@ -90,7 +90,7 @@ def test_benchmark_screen_shows_successful_matrix(
 
             text = _visible_text(screen)
             assert screen.query(DataTable)
-            assert "Prefill 512" in text
+            assert "Prompt processing 512" in text
             assert "1.98x" in text
             assert advisor.matrix_calls == 1
             assert advisor.last_matrix_request is not None
@@ -154,6 +154,8 @@ def test_benchmark_screen_runs_transformers_single_benchmark(
             text = _visible_text(screen)
             assert screen.query(DataTable)
             assert "Running Transformers benchmark: cpu" in text
+            assert "Startup" in text
+            assert "Memory" in text
 
     _run(scenario())
 
@@ -317,10 +319,14 @@ def _transformers_observation() -> BenchmarkObservation:
         success=True,
         repetitions=3,
         duration_seconds=20.0,
-        methodology="transformers_generate_steady_state_v1",
+        methodology="transformers_isolated_inference_v2",
         model_load_seconds=12.0,
         warmup_seconds=1.0,
+        time_to_first_token_seconds=0.31,
+        time_to_first_token_stddev_seconds=0.02,
         generation_latency_seconds=4.0,
+        generation_latency_stddev_seconds=0.3,
+        peak_ram_bytes=2_600_000_000,
         exit_code=0,
         measurements=[
             BenchmarkMeasurement(
@@ -328,6 +334,8 @@ def _transformers_observation() -> BenchmarkObservation:
                 tokens=128,
                 mean_tokens_per_second=40.0,
                 stddev_tokens_per_second=2.0,
+                mean_duration_seconds=3.2,
+                stddev_duration_seconds=0.2,
                 repetitions=3,
                 source_label="pp128",
             ),
@@ -336,6 +344,8 @@ def _transformers_observation() -> BenchmarkObservation:
                 tokens=64,
                 mean_tokens_per_second=9.0,
                 stddev_tokens_per_second=0.5,
+                mean_duration_seconds=7.1,
+                stddev_duration_seconds=0.3,
                 repetitions=3,
                 source_label="tg64",
             ),

@@ -120,8 +120,14 @@ class TransformersBenchmarkRunner:
             time_to_first_token_seconds=_float_or_none(
                 payload.get("time_to_first_token_seconds")
             ),
+            time_to_first_token_stddev_seconds=_float_or_none(
+                payload.get("time_to_first_token_stddev_seconds")
+            ),
             generation_latency_seconds=_float_or_none(
                 payload.get("generation_latency_seconds")
+            ),
+            generation_latency_stddev_seconds=_float_or_none(
+                payload.get("generation_latency_stddev_seconds")
             ),
             peak_ram_bytes=result.observation.peak_ram_bytes,
             peak_vram_bytes=result.observation.peak_vram_bytes,
@@ -243,6 +249,8 @@ def _measurement_from_payload(payload: object) -> BenchmarkMeasurement:
         tokens=int(payload["tokens"]),
         mean_tokens_per_second=float(payload["mean_tokens_per_second"]),
         stddev_tokens_per_second=float(payload["stddev_tokens_per_second"]),
+        mean_duration_seconds=_float_or_none(payload.get("mean_duration_seconds")),
+        stddev_duration_seconds=_float_or_none(payload.get("stddev_duration_seconds")),
         repetitions=_int_or_none(payload.get("repetitions")),
         source_label=str(payload["source_label"]),
         raw_backend=RuntimeName.TRANSFORMERS.value,
@@ -283,7 +291,7 @@ def _failed_observation(
         measurements=[],
         repetitions=request.repetitions,
         duration_seconds=duration_seconds,
-        methodology="transformers_generate_steady_state_v1",
+        methodology="transformers_isolated_inference_v2",
         peak_ram_bytes=peak_ram_bytes,
         peak_vram_bytes=peak_vram_bytes,
         command=command,

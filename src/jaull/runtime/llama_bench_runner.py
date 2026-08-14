@@ -76,6 +76,8 @@ class LlamaBenchRunner:
                 stderr=exc.result.stderr,
                 duration_seconds=exc.result.duration_seconds,
                 exit_code=exc.result.exit_code,
+                peak_ram_bytes=exc.result.observation.peak_ram_bytes,
+                peak_vram_bytes=exc.result.observation.peak_vram_bytes,
             )
         except ExecutionFailedError as exc:
             return _failed_observation(
@@ -87,6 +89,8 @@ class LlamaBenchRunner:
                 stderr=exc.result.stderr,
                 duration_seconds=exc.result.duration_seconds,
                 exit_code=exc.result.exit_code,
+                peak_ram_bytes=exc.result.observation.peak_ram_bytes,
+                peak_vram_bytes=exc.result.observation.peak_vram_bytes,
             )
         except ExecutionError as exc:
             if exc.observation is None:
@@ -100,6 +104,8 @@ class LlamaBenchRunner:
                 stderr="",
                 duration_seconds=exc.observation.duration_seconds,
                 exit_code=exc.observation.exit_code,
+                peak_ram_bytes=exc.observation.peak_ram_bytes,
+                peak_vram_bytes=exc.observation.peak_vram_bytes,
             )
 
         raw_output = "\n".join((result.stdout, result.stderr))
@@ -119,6 +125,8 @@ class LlamaBenchRunner:
             duration_seconds=result.duration_seconds,
             command=command,
             exit_code=result.exit_code,
+            peak_ram_bytes=result.observation.peak_ram_bytes,
+            peak_vram_bytes=result.observation.peak_vram_bytes,
             raw_stdout=result.stdout,
             raw_stderr=result.stderr,
         )
@@ -192,12 +200,16 @@ def _failed_observation(
     stderr: str,
     duration_seconds: float,
     exit_code: int | None,
+    peak_ram_bytes: int | None,
+    peak_vram_bytes: int | None,
 ) -> BenchmarkObservation:
     return BenchmarkObservation(
         success=False,
         measurements=[],
         repetitions=request.repetitions,
         duration_seconds=duration_seconds,
+        peak_ram_bytes=peak_ram_bytes,
+        peak_vram_bytes=peak_vram_bytes,
         command=command,
         exit_code=exit_code,
         failure_reason=failure_reason,

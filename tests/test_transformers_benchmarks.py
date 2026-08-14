@@ -81,10 +81,13 @@ def test_runner_parses_successful_transformers_benchmark(tmp_path: Path) -> None
     observation = runner.run(_request())
 
     assert observation.success is True
-    assert observation.methodology == "transformers_generate_steady_state_v1"
+    assert observation.methodology == "transformers_isolated_inference_v2"
     assert observation.model_load_seconds == 12.5
     assert observation.warmup_seconds == 0.7
+    assert observation.time_to_first_token_seconds == 0.4
+    assert observation.time_to_first_token_stddev_seconds == 0.03
     assert observation.generation_latency_seconds == 3.2
+    assert observation.generation_latency_stddev_seconds == 0.2
     assert observation.peak_ram_bytes == 2_000
     assert [(item.kind, item.tokens) for item in observation.measurements] == [
         (BenchmarkMeasurementKind.PREFILL, 128),
@@ -92,6 +95,8 @@ def test_runner_parses_successful_transformers_benchmark(tmp_path: Path) -> None
         (BenchmarkMeasurementKind.GENERATION, 64),
     ]
     assert observation.measurements[0].mean_tokens_per_second == 50.0
+    assert observation.measurements[0].mean_duration_seconds == 2.56
+    assert observation.measurements[0].stddev_duration_seconds == 0.1
     assert backend.requests[0].command[1:3] == (
         "-m",
         "jaull.runtime.transformers_benchmark_worker",
@@ -168,17 +173,21 @@ def _worker_json() -> str:
     return json.dumps(
         {
             "success": True,
-            "methodology": "transformers_generate_steady_state_v1",
+            "methodology": "transformers_isolated_inference_v2",
             "model_load_seconds": 12.5,
             "warmup_seconds": 0.7,
-            "time_to_first_token_seconds": None,
+            "time_to_first_token_seconds": 0.4,
+            "time_to_first_token_stddev_seconds": 0.03,
             "generation_latency_seconds": 3.2,
+            "generation_latency_stddev_seconds": 0.2,
             "measurements": [
                 {
                     "kind": "prefill",
                     "tokens": 128,
                     "mean_tokens_per_second": 50.0,
                     "stddev_tokens_per_second": 1.5,
+                    "mean_duration_seconds": 2.56,
+                    "stddev_duration_seconds": 0.1,
                     "source_label": "pp128",
                 },
                 {
@@ -186,6 +195,8 @@ def _worker_json() -> str:
                     "tokens": 512,
                     "mean_tokens_per_second": 47.0,
                     "stddev_tokens_per_second": 1.0,
+                    "mean_duration_seconds": 10.89,
+                    "stddev_duration_seconds": 0.2,
                     "source_label": "pp512",
                 },
                 {
@@ -193,6 +204,8 @@ def _worker_json() -> str:
                     "tokens": 64,
                     "mean_tokens_per_second": 12.0,
                     "stddev_tokens_per_second": 0.2,
+                    "mean_duration_seconds": 5.33,
+                    "stddev_duration_seconds": 0.1,
                     "source_label": "tg64",
                 },
             ],
