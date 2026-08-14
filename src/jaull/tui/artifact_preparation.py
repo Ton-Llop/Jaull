@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from jaull.advisor.service import AdvisorService
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.runtime import RuntimeName
 from jaull.recommendation.models import ModelRecommendation
 
 
@@ -39,4 +40,28 @@ def prepare_recommendation_artifact(
     return artifact
 
 
-__all__ = ["prepare_recommendation_artifact"]
+def transformers_recommendation_artifact(
+    recommendation: ModelRecommendation,
+) -> ModelArtifact:
+    """Represent a Transformers repository as the executable model reference.
+
+    Transformers execution still delegates actual model file resolution/cache
+    handling to ``from_pretrained`` inside the isolated worker. These flags
+    therefore remain false: ArtifactService has not downloaded or verified a
+    concrete local safetensors artifact for this runtime yet.
+    """
+
+    config = recommendation.evaluated.selected_configuration
+    return ModelArtifact(
+        repo_id=recommendation.repo_id,
+        revision="main",
+        filename=recommendation.repo_id,
+        format=RuntimeName.TRANSFORMERS.value,
+        quantization=config.quantization if config is not None else None,
+    )
+
+
+__all__ = [
+    "prepare_recommendation_artifact",
+    "transformers_recommendation_artifact",
+]

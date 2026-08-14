@@ -14,11 +14,16 @@ from textual.widgets import Button, DataTable, Footer, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.benchmarks.errors import BenchmarkRunnerError
-from jaull.benchmarks.matrix import BenchmarkMatrixRequest, BenchmarkMatrixResult
+from jaull.benchmarks.matrix import (
+    BenchmarkMatrixFailure,
+    BenchmarkMatrixRequest,
+    BenchmarkMatrixResult,
+)
 from jaull.domain.benchmarks import (
     BenchmarkGpuLayers,
     BenchmarkMeasurementKind,
     BenchmarkRecord,
+    BenchmarkRequest,
     BenchmarkRunResult,
 )
 from jaull.domain.estimation import MemoryEstimate
@@ -36,7 +41,10 @@ from jaull.exceptions import (
     QuantizationNotFoundError,
 )
 from jaull.recommendation.models import ModelRecommendation
-from jaull.tui.artifact_preparation import prepare_recommendation_artifact
+from jaull.tui.artifact_preparation import (
+    prepare_recommendation_artifact,
+    transformers_recommendation_artifact,
+)
 from jaull.tui.widgets.summary_card import SummaryCard
 
 if TYPE_CHECKING:
@@ -63,7 +71,7 @@ class _BenchmarkFailed(Message):
 
 
 class RecommendationBenchmarkScreen(Screen[None]):
-    """Run reproducible llama-bench measurements for a recommendation."""
+    """Run reproducible runtime-specific measurements for a recommendation."""
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
@@ -87,8 +95,9 @@ class RecommendationBenchmarkScreen(Screen[None]):
         yield _BenchmarkHeader(self._recommendation)
         with VerticalScroll(id="benchmark-body"):
             yield Static(
-                "Benchmark runs llama-bench and stores reproducible performance "
-                "records. Run and Validate remain separate workflows.",
+                "Benchmark runs a runtime-specific controlled measurement and "
+                "stores reproducible performance records. Run and Validate remain "
+                "separate workflows.",
                 id="benchmark-intro",
                 classes="text-muted",
             )
@@ -111,7 +120,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         start = self.query_one("#benchmark-start", Button)
         if self._runtime() is None:
             start.disabled = True
-            self._set_error("Benchmark requires a llama.cpp runtime recommendation.")
+            self._set_error("Benchmark requires an executable runtime recommendation.")
         else:
             start.focus()
         self._set_status("")
@@ -139,7 +148,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             return
         runtime = self._runtime()
         if runtime is None:
-            self._set_error("Benchmark requires a llama.cpp runtime recommendation.")
+            self._set_error("Benchmark requires an executable runtime recommendation.")
             return
 
         app = self._app()
@@ -162,37 +171,14 @@ class RecommendationBenchmarkScreen(Screen[None]):
         runtime: RuntimeRecommendation,
     ) -> None:
         try:
-            artifact = prepare_recommendation_artifact(
-                advisor=advisor,
-                recommendation=self._recommendation,
-                report_step=self._post_step,
-            )
-            if hardware is None:
-                self._post_step("Scanning hardware")
-                hardware = advisor.scan_hardware()
-            self._post_step("Selecting compute backend")
-            selection = advisor.select_runtime_backend(hardware)
-            self._post_step("Checking llama.cpp devices")
-            runtime_capability = advisor.inspect_llama_cpp_runtime()
-            self._post_step(
-                "Running llama-bench: "
-                + _benchmark_configuration_label(selection, runtime_capability)
-            )
-            request = BenchmarkMatrixRequest(
-                hardware=hardware,
-                artifact=artifact,
-                runtime=runtime,
-                backend_selection=selection,
-                runtime_capability=runtime_capability,
-                include_cpu=selection.selected_backend is ComputeBackend.CPU,
-                include_selected_backend=True,
-                selected_gpu_layers=(
-                    ()
-                    if selection.selected_backend is ComputeBackend.CPU
-                    else (BenchmarkGpuLayers.full(),)
-                ),
-            )
-            result = advisor.run_benchmark_matrix(request)
+            if runtime.runtime is RuntimeName.TRANSFORMERS:
+                result = self._transformers_benchmark_worker(
+                    advisor,
+                    hardware,
+                    runtime,
+                )
+            else:
+                result = self._llama_cpp_benchmark_worker(advisor, hardware, runtime)
         except (
             InvalidModelReferenceError,
             QuantizationNotFoundError,
@@ -206,6 +192,86 @@ class RecommendationBenchmarkScreen(Screen[None]):
             return
         if not self._benchmark_closing.is_set():
             self.post_message(_BenchmarkDone(result))
+
+    def _llama_cpp_benchmark_worker(
+        self,
+        advisor: AdvisorService,
+        hardware: HardwareProfile | None,
+        runtime: RuntimeRecommendation,
+    ) -> BenchmarkMatrixResult:
+        artifact = prepare_recommendation_artifact(
+            advisor=advisor,
+            recommendation=self._recommendation,
+            report_step=self._post_step,
+        )
+        if hardware is None:
+            self._post_step("Scanning hardware")
+            hardware = advisor.scan_hardware()
+        self._post_step("Selecting compute backend")
+        selection = advisor.select_runtime_backend(hardware)
+        self._post_step("Checking llama.cpp devices")
+        runtime_capability = advisor.inspect_llama_cpp_runtime()
+        self._post_step(
+            "Running llama-bench: "
+            + _benchmark_configuration_label(selection, runtime_capability)
+        )
+        request = BenchmarkMatrixRequest(
+            hardware=hardware,
+            artifact=artifact,
+            runtime=runtime,
+            backend_selection=selection,
+            runtime_capability=runtime_capability,
+            include_cpu=selection.selected_backend is ComputeBackend.CPU,
+            include_selected_backend=True,
+            selected_gpu_layers=(
+                ()
+                if selection.selected_backend is ComputeBackend.CPU
+                else (BenchmarkGpuLayers.full(),)
+            ),
+        )
+        return advisor.run_benchmark_matrix(request)
+
+    def _transformers_benchmark_worker(
+        self,
+        advisor: AdvisorService,
+        hardware: HardwareProfile | None,
+        runtime: RuntimeRecommendation,
+    ) -> BenchmarkMatrixResult:
+        self._post_step("Preparing Transformers runtime")
+        artifact = transformers_recommendation_artifact(self._recommendation)
+        if hardware is None:
+            self._post_step("Scanning hardware")
+            hardware = advisor.scan_hardware()
+        self._post_step("Selecting compute backend")
+        selection = advisor.select_runtime_backend(hardware)
+        backend = _transformers_backend(runtime, selection.selected_backend)
+        self._post_step(f"Running Transformers benchmark: {backend.value}")
+        request = BenchmarkRequest(
+            artifact=artifact,
+            runtime=runtime,
+            backend=backend,
+            device="none" if backend is ComputeBackend.CPU else None,
+            gpu_layers=BenchmarkGpuLayers.count_layers(0),
+            prefill_sizes=(128, 512),
+            generation_sizes=(64,),
+            repetitions=3,
+            timeout_seconds=900.0,
+        )
+        run = advisor.run_benchmark(request, hardware=hardware)
+        if run.record.observation.success:
+            return BenchmarkMatrixResult(completed=[run], records=[run.record])
+        return BenchmarkMatrixResult(
+            failed=[
+                BenchmarkMatrixFailure(
+                    request=request,
+                    message=run.record.observation.message
+                    or "Transformers benchmark failed.",
+                    record=run.record,
+                    persisted_path=run.persisted_path,
+                )
+            ],
+            records=[run.record],
+        )
 
     @on(_BenchmarkStep)
     def _benchmark_step_message(self, message: _BenchmarkStep) -> None:
@@ -309,7 +375,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         if estimate is None or estimate.runtime_recommendation is None:
             return None
         runtime = estimate.runtime_recommendation
-        if runtime.runtime is not RuntimeName.LLAMA_CPP:
+        if runtime.runtime not in {RuntimeName.LLAMA_CPP, RuntimeName.TRANSFORMERS}:
             return None
         return runtime
 
@@ -430,7 +496,7 @@ def _warnings(result: BenchmarkMatrixResult) -> list[str]:
 def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[str, str]]:
     artifact = record.artifact
     capability = record.llama_bench_capability
-    return [
+    rows = [
         ("ID", record.identity.benchmark_id),
         ("Created", record.identity.created_at.isoformat()),
         ("Schema", str(record.schema_version)),
@@ -438,16 +504,28 @@ def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[st
         ("Revision", artifact.revision or "unknown"),
         ("Quantization", artifact.quantization or "unknown"),
         ("SHA-256", artifact.sha256 or "unknown"),
-        ("llama-bench", capability.binary_path or "unknown"),
-        ("llama-bench status", capability.binary_status.value),
-        ("llama-bench version", capability.version_text or "unknown"),
         ("Backend", record.requested_backend.value),
         ("Device", record.requested_device or "none"),
         ("GPU layers", record.gpu_layers.label),
         ("Repetitions", str(record.request.repetitions)),
+        ("Methodology", record.observation.methodology or "unknown"),
+        ("Model load", _seconds(record.observation.model_load_seconds)),
+        ("Warmup", _seconds(record.observation.warmup_seconds)),
+        ("Generation latency", _seconds(record.observation.generation_latency_seconds)),
         ("Status", "success" if record.observation.success else "failure"),
         ("Saved", str(path) if path else "not saved"),
     ]
+    if capability is not None:
+        rows[8:8] = [
+            ("llama-bench", capability.binary_path or "unknown"),
+            ("llama-bench status", capability.binary_status.value),
+            ("llama-bench version", capability.version_text or "unknown"),
+        ]
+    elif record.runtime_capability is not None:
+        rows[8:8] = [
+            ("Runtime capability", record.runtime_capability.runtime_family.value),
+        ]
+    return rows
 
 
 def _config_label(record: BenchmarkRecord) -> str:
@@ -485,6 +563,27 @@ def _benchmark_configuration_label(
     )
     device_label = device or "no runtime device"
     return f"{backend.value} · device {device_label} · ngl all"
+
+
+def _transformers_backend(
+    runtime: RuntimeRecommendation,
+    selected_backend: ComputeBackend,
+) -> ComputeBackend:
+    device_map = next(
+        (flag.value for flag in runtime.flags if flag.name == "device_map"),
+        "cpu",
+    )
+    if device_map == "cuda":
+        return ComputeBackend.CUDA
+    if selected_backend in {ComputeBackend.CPU, ComputeBackend.CUDA, ComputeBackend.HIP}:
+        return selected_backend
+    return ComputeBackend.CPU
+
+
+def _seconds(value: float | None) -> str:
+    if value is None:
+        return "unavailable"
+    return f"{value:.2f} s"
 
 
 __all__ = [

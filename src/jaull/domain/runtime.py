@@ -22,6 +22,11 @@ class RuntimeName(StrEnum):
     UNKNOWN = "unknown"
 
 
+class RuntimeFamily(StrEnum):
+    LLAMA_CPP = "llama_cpp"
+    PYTORCH_TRANSFORMERS = "pytorch_transformers"
+
+
 class RuntimeExecutability(StrEnum):
     """Can the recommended runtime actually load this artifact here?"""
 
@@ -162,12 +167,83 @@ class LlamaCppBackendCapability(BaseModel):
 class LlamaCppRuntimeCapability(BaseModel):
     model_config = ConfigDict(frozen=True)
 
+    runtime_family: RuntimeFamily = RuntimeFamily.LLAMA_CPP
     binary_path: str | None = None
     binary_status: LlamaCppBinaryStatus
     version_text: str | None = None
     backend_capabilities: list[LlamaCppBackendCapability] = Field(default_factory=list)
     probe_source: str | None = None
     message: str | None = None
+
+
+class PyTorchRuntimeStatus(StrEnum):
+    AVAILABLE = "available"
+    PYTHON_MISSING = "python_missing"
+    TORCH_MISSING = "torch_missing"
+    TRANSFORMERS_MISSING = "transformers_missing"
+    IMPORT_FAILED = "import_failed"
+    PROBE_FAILED = "probe_failed"
+    UNKNOWN = "unknown"
+
+
+class PyTorchBackendCapabilityState(StrEnum):
+    CONFIRMED = "confirmed"
+    NOT_OBSERVED = "not_observed"
+    UNKNOWN = "unknown"
+
+
+class PyTorchCapabilityReason(StrEnum):
+    RUNTIME_AVAILABLE = "runtime_available"
+    PYTHON_MISSING = "python_missing"
+    TORCH_MISSING = "torch_missing"
+    TRANSFORMERS_MISSING = "transformers_missing"
+    IMPORT_FAILED = "import_failed"
+    PROBE_FAILED = "probe_failed"
+    BACKEND_EXPOSED = "backend_exposed"
+    BACKEND_NOT_OBSERVED = "backend_not_observed"
+    CAPABILITY_UNKNOWN = "capability_unknown"
+
+
+class PyTorchRuntimeDevice(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    backend: ComputeBackend
+    runtime_id: str
+    index: int | None = None
+    name: str | None = None
+    memory_total_bytes: int | None = None
+    memory_free_bytes: int | None = None
+
+
+class PyTorchBackendCapability(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    backend: ComputeBackend
+    state: PyTorchBackendCapabilityState
+    devices: list[PyTorchRuntimeDevice] = Field(default_factory=list)
+    reason: PyTorchCapabilityReason
+    source: str | None = None
+    detail: str | None = None
+
+
+class PyTorchRuntimeCapability(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    runtime_family: RuntimeFamily = RuntimeFamily.PYTORCH_TRANSFORMERS
+    python_executable: str | None = None
+    runtime_status: PyTorchRuntimeStatus
+    torch_version: str | None = None
+    transformers_version: str | None = None
+    torch_cuda_version: str | None = None
+    torch_hip_version: str | None = None
+    backend_capabilities: list[PyTorchBackendCapability] = Field(default_factory=list)
+    probe_source: str | None = None
+    message: str | None = None
+    raw_probe: dict[str, object] | None = None
+
+
+RuntimeCapability = LlamaCppRuntimeCapability | PyTorchRuntimeCapability
+RuntimeBackendCapability = LlamaCppBackendCapability | PyTorchBackendCapability
 
 
 class ExecutionReadinessStatus(StrEnum):
@@ -180,6 +256,7 @@ class ExecutionReadinessReason(StrEnum):
     RUNTIME_AVAILABLE = "runtime_available"
     RUNTIME_MISSING = "runtime_missing"
     RUNTIME_NOT_EXECUTABLE = "runtime_not_executable"
+    RUNTIME_IMPORT_FAILED = "runtime_import_failed"
     PROBE_FAILED = "probe_failed"
     SELECTED_BACKEND_EXPOSED = "selected_backend_exposed"
     SELECTED_BACKEND_NOT_EXPOSED = "selected_backend_not_exposed"
@@ -190,9 +267,9 @@ class ExecutionReadiness(BaseModel):
     """Preflight decision for attempting execution with a selected backend.
 
     ``READY`` means Jaull has not found a blocking mismatch between the
-    hardware backend selection and the observed ``llama-cli`` capability. It is
-    not proof that inference will succeed; the definitive execution outcome
-    remains ``ExecutionObservation.success``.
+    hardware backend selection and the observed runtime capability. It is not
+    proof that inference will succeed; the definitive execution outcome remains
+    ``ExecutionObservation.success``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -200,8 +277,8 @@ class ExecutionReadiness(BaseModel):
     status: ExecutionReadinessStatus
     reason: ExecutionReadinessReason
     selection: RuntimeBackendSelection
-    runtime_capability: LlamaCppRuntimeCapability
-    selected_backend_capability: LlamaCppBackendCapability | None = None
+    runtime_capability: RuntimeCapability
+    selected_backend_capability: RuntimeBackendCapability | None = None
     message: str | None = None
 
 

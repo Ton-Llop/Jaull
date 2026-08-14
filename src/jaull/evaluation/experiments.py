@@ -16,7 +16,7 @@ from jaull.domain.experiments import (
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadiness,
-    LlamaCppRuntimeCapability,
+    RuntimeCapability,
     RuntimeRecommendation,
 )
 from jaull.evaluation.comparison import (
@@ -33,7 +33,7 @@ def build_experiment_record(
     backend_trace: ExperimentBackendTrace | None = None,
     runtime: RuntimeRecommendation,
     prediction: MemoryEstimate,
-    runtime_capability: LlamaCppRuntimeCapability,
+    runtime_capability: RuntimeCapability,
     execution_readiness: ExecutionReadiness,
     observation: ExecutionObservation,
     comparison: PredictionComparison | None = None,

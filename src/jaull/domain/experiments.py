@@ -19,8 +19,8 @@ from jaull.domain.execution import ExecutionObservation
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadiness,
-    LlamaCppRuntimeCapability,
     RuntimeBackendSelection,
+    RuntimeCapability,
     RuntimeRecommendation,
 )
 
@@ -86,7 +86,7 @@ class ExperimentEnvironment(BaseModel):
 class ExperimentPreflight(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    runtime_capability: LlamaCppRuntimeCapability
+    runtime_capability: RuntimeCapability
     execution_readiness: ExecutionReadiness
 
 
@@ -169,7 +169,7 @@ class ExperimentRecord(BaseModel):
         backend_trace: ExperimentBackendTrace | None = None,
         runtime: RuntimeRecommendation,
         prediction: MemoryEstimate,
-        runtime_capability: LlamaCppRuntimeCapability,
+        runtime_capability: RuntimeCapability,
         execution_readiness: ExecutionReadiness,
         observation: ExecutionObservation,
         comparison: PredictionComparison,

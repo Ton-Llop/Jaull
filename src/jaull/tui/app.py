@@ -88,13 +88,22 @@ class JaullApp(App[None]):
     @property
     def services(self) -> ServiceContainer:
         if self._services is None:
-            self._services = ServiceContainer.default()
+            self._services = self.advisor.services
         return self._services
 
     @property
     def advisor(self) -> AdvisorService:
         if self._advisor is None:
-            self._advisor = AdvisorService(services=self.services)
+            if self._services is not None:
+                # Explicitly injected services, mainly tests/custom composition.
+                # Ho he ficat pq no em detecta al portatil ara, ja que no te
+                # la mateixa source que el CLI doctor.
+                self._advisor = AdvisorService(services=self._services)
+            else:
+                # Real application: use the canonical production wiring.
+                self._advisor = AdvisorService.default()
+                self._services = self._advisor.services
+
         return self._advisor
 
     def on_mount(self) -> None:

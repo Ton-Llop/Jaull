@@ -24,6 +24,8 @@ from jaull.domain.experiments import (
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
+    LlamaCppRuntimeCapability,
+    PyTorchRuntimeCapability,
     RuntimeName,
     RuntimeRecommendation,
 )
@@ -40,7 +42,10 @@ from jaull.experiments.errors import (
 )
 from jaull.presentation.console import format_bytes
 from jaull.recommendation.models import ModelRecommendation
-from jaull.tui.artifact_preparation import prepare_recommendation_artifact
+from jaull.tui.artifact_preparation import (
+    prepare_recommendation_artifact,
+    transformers_recommendation_artifact,
+)
 from jaull.tui.widgets.summary_card import SummaryCard
 
 if TYPE_CHECKING:
@@ -133,7 +138,7 @@ class RecommendationValidationScreen(Screen[None]):
         start = self.query_one("#validation-start", Button)
         if runtime is None:
             start.disabled = True
-            self._set_error("Validation requires a llama.cpp runtime recommendation.")
+            self._set_error("Validation requires an executable runtime recommendation.")
         else:
             start.focus()
         self._set_status("")
@@ -192,11 +197,15 @@ class RecommendationValidationScreen(Screen[None]):
         runtime: RuntimeRecommendation,
     ) -> None:
         try:
-            artifact = prepare_recommendation_artifact(
-                advisor=advisor,
-                recommendation=self._recommendation,
-                report_step=self._post_step,
-            )
+            if runtime.runtime is RuntimeName.TRANSFORMERS:
+                self._post_step("Preparing Transformers runtime")
+                artifact = transformers_recommendation_artifact(self._recommendation)
+            else:
+                artifact = prepare_recommendation_artifact(
+                    advisor=advisor,
+                    recommendation=self._recommendation,
+                    report_step=self._post_step,
+                )
             if hardware is None:
                 self._post_step("Scanning hardware")
                 hardware = advisor.scan_hardware()
@@ -391,7 +400,7 @@ class RecommendationValidationScreen(Screen[None]):
         if estimate is None or estimate.runtime_recommendation is None:
             return None
         runtime = estimate.runtime_recommendation
-        if runtime.runtime is not RuntimeName.LLAMA_CPP:
+        if runtime.runtime not in {RuntimeName.LLAMA_CPP, RuntimeName.TRANSFORMERS}:
             return None
         return runtime
 
@@ -509,11 +518,8 @@ def _technical_runtime_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
     runtime = record.runtime
     capability = record.preflight.runtime_capability
     flags = ", ".join(f"{flag.name}={flag.value}" for flag in runtime.flags) or "none"
-    return [
+    rows = [
         ("Runtime", runtime.runtime.value),
-        ("Binary", capability.binary_path or "unknown"),
-        ("Binary status", capability.binary_status.value),
-        ("Version", capability.version_text or "unknown"),
         ("Requested", record.backend_trace.requested_backend.value),
         (
             "Selected",
@@ -527,6 +533,20 @@ def _technical_runtime_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
         ),
         ("Flags", flags),
     ]
+    if isinstance(capability, LlamaCppRuntimeCapability):
+        rows[1:1] = [
+            ("Binary", capability.binary_path or "unknown"),
+            ("Binary status", capability.binary_status.value),
+            ("Version", capability.version_text or "unknown"),
+        ]
+    elif isinstance(capability, PyTorchRuntimeCapability):
+        rows[1:1] = [
+            ("Python", capability.python_executable or "unknown"),
+            ("Runtime status", capability.runtime_status.value),
+            ("Torch", capability.torch_version or "unknown"),
+            ("Transformers", capability.transformers_version or "unknown"),
+        ]
+    return rows
 
 
 def _technical_observation_rows(record: ExperimentRecord) -> list[tuple[str, str]]:

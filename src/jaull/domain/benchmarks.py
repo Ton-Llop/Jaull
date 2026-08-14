@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from jaull import __version__ as jaull_version
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
-from jaull.domain.runtime import RuntimeRecommendation
+from jaull.domain.runtime import RuntimeCapability, RuntimeRecommendation
 
 BENCHMARK_RECORD_SCHEMA_VERSION = 1
 DEFAULT_PREFILL_SIZES = (128, 512, 2048)
@@ -96,6 +96,13 @@ class BenchmarkObservation(BaseModel):
     measurements: list[BenchmarkMeasurement] = Field(default_factory=list)
     repetitions: int = Field(ge=1)
     duration_seconds: float = Field(ge=0.0)
+    methodology: str | None = None
+    model_load_seconds: float | None = Field(default=None, ge=0.0)
+    warmup_seconds: float | None = Field(default=None, ge=0.0)
+    time_to_first_token_seconds: float | None = Field(default=None, ge=0.0)
+    generation_latency_seconds: float | None = Field(default=None, ge=0.0)
+    peak_ram_bytes: int | None = Field(default=None, ge=0)
+    peak_vram_bytes: int | None = Field(default=None, ge=0)
     command: tuple[str, ...] = Field(default_factory=tuple)
     exit_code: int | None = None
     failure_reason: BenchmarkFailureReason | None = None
@@ -221,7 +228,8 @@ class BenchmarkRecord(BaseModel):
     gpu_layers: BenchmarkGpuLayers
     request: BenchmarkRequest
     observation: BenchmarkObservation
-    llama_bench_capability: LlamaBenchCapability
+    llama_bench_capability: LlamaBenchCapability | None = None
+    runtime_capability: RuntimeCapability | None = None
     notes: list[str] = Field(default_factory=list)
 
     @classmethod
@@ -231,7 +239,8 @@ class BenchmarkRecord(BaseModel):
         hardware: HardwareProfile,
         request: BenchmarkRequest,
         observation: BenchmarkObservation,
-        llama_bench_capability: LlamaBenchCapability,
+        llama_bench_capability: LlamaBenchCapability | None = None,
+        runtime_capability: RuntimeCapability | None = None,
         identity: BenchmarkIdentity | None = None,
         environment: BenchmarkEnvironment | None = None,
         notes: list[str] | None = None,
@@ -248,6 +257,7 @@ class BenchmarkRecord(BaseModel):
             request=request,
             observation=observation,
             llama_bench_capability=llama_bench_capability,
+            runtime_capability=runtime_capability,
             notes=notes or request.notes,
         )
 

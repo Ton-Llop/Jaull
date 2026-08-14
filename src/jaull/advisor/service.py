@@ -41,7 +41,10 @@ from jaull.domain.requirements import UserAnswers
 from jaull.domain.runtime import (
     ExecutionReadiness,
     LlamaCppRuntimeCapability,
+    PyTorchRuntimeCapability,
     RuntimeBackendSelection,
+    RuntimeCapability,
+    RuntimeName,
     RuntimeRecommendation,
 )
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
@@ -68,6 +71,8 @@ if TYPE_CHECKING:
     from jaull.experiments.storage import ExperimentStore
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+    from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
+    from jaull.runtime.transformers_runner import TransformersRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
 CancelCheck = Callable[[], bool]
@@ -86,13 +91,17 @@ class AdvisorService:
     collect_diagnostics: DiagnosticsFn = field(default=_default_diagnostics)
     artifacts: ArtifactService | None = field(default=None)
     llama_cpp_runner: LlamaCppRunner | None = field(default=None)
+    transformers_runner: TransformersRunner | None = field(default=None)
     experiment_runner: ExperimentRunner | None = field(default=None)
     experiment_store: ExperimentStore | None = field(default=None)
     llama_bench_runner: LlamaBenchRunner | None = field(default=None)
+    transformers_benchmark_runner: TransformersBenchmarkRunner | None = field(default=None)
     benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
     benchmark_store: BenchmarkStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
+    python_executable: str | Path | None = field(default=None)
+    pytorch_probe_timeout_seconds: float = field(default=10.0)
     llama_bench_path: str | Path | None = field(default=None)
     llama_bench_timeout_seconds: float = field(default=900.0)
 
@@ -199,6 +208,12 @@ class AdvisorService:
         prompt: str,
         runtime: RuntimeRecommendation | None = None,
     ) -> InferenceResult:
+        if runtime is not None and runtime.runtime is RuntimeName.TRANSFORMERS:
+            return self._transformers_runner().run(
+                artifact=artifact,
+                prompt=prompt,
+                runtime=runtime,
+            )
         return self._llama_cpp_runner().run(
             artifact=artifact,
             prompt=prompt,
@@ -246,6 +261,41 @@ class AdvisorService:
             runtime_capability=effective_capability,
         )
 
+    def inspect_pytorch_runtime(
+        self,
+        *,
+        backend: ExecutionBackendProtocol | None = None,
+    ) -> PyTorchRuntimeCapability:
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.runtime.pytorch_capability import inspect_pytorch_runtime
+
+        return inspect_pytorch_runtime(
+            backend=backend or HostExecutionBackend(),
+            python_executable=self.python_executable,
+            timeout_seconds=self.pytorch_probe_timeout_seconds,
+        )
+
+    def evaluate_pytorch_execution_readiness(
+        self,
+        *,
+        selection: RuntimeBackendSelection | None = None,
+        runtime_capability: PyTorchRuntimeCapability | None = None,
+        hardware: HardwareProfile | None = None,
+        backend: ExecutionBackendProtocol | None = None,
+    ) -> ExecutionReadiness:
+        from jaull.runtime.pytorch_capability import (
+            evaluate_pytorch_execution_readiness,
+        )
+
+        effective_selection = selection or self.select_runtime_backend(hardware)
+        effective_capability = runtime_capability or self.inspect_pytorch_runtime(
+            backend=backend
+        )
+        return evaluate_pytorch_execution_readiness(
+            selection=effective_selection,
+            runtime_capability=effective_capability,
+        )
+
     def build_experiment_record(
         self,
         *,
@@ -255,7 +305,7 @@ class AdvisorService:
         backend_trace: ExperimentBackendTrace | None = None,
         runtime: RuntimeRecommendation,
         prediction: MemoryEstimate,
-        runtime_capability: LlamaCppRuntimeCapability,
+        runtime_capability: RuntimeCapability,
         execution_readiness: ExecutionReadiness,
         observation: ExecutionObservation,
         identity: ExperimentIdentity | None = None,
@@ -298,6 +348,13 @@ class AdvisorService:
         hardware: HardwareProfile,
         persist: bool = True,
     ) -> BenchmarkRunResult:
+        if request.runtime.runtime is RuntimeName.TRANSFORMERS:
+            return self._run_transformers_benchmark(
+                request,
+                hardware=hardware,
+                persist=persist,
+            )
+
         from jaull.runtime.llama_bench_capability import inspect_llama_bench
 
         observation = self._llama_bench_runner().run(request)
@@ -311,6 +368,32 @@ class AdvisorService:
             request=request,
             observation=observation,
             llama_bench_capability=capability,
+        )
+        persisted_path = self._benchmark_store().save(record) if persist else None
+        return BenchmarkRunResult(record=record, persisted_path=persisted_path)
+
+    def _run_transformers_benchmark(
+        self,
+        request: BenchmarkRequest,
+        *,
+        hardware: HardwareProfile,
+        persist: bool,
+    ) -> BenchmarkRunResult:
+        from jaull.benchmarks.errors import BenchmarkUnavailableError
+        from jaull.domain.runtime import PyTorchRuntimeStatus
+
+        capability = self.inspect_pytorch_runtime()
+        if capability.runtime_status is not PyTorchRuntimeStatus.AVAILABLE:
+            raise BenchmarkUnavailableError(
+                capability.message
+                or f"PyTorch runtime is {capability.runtime_status.value}."
+            )
+        observation = self._transformers_benchmark_runner().run(request)
+        record = BenchmarkRecord.create(
+            hardware=hardware,
+            request=request,
+            observation=observation,
+            runtime_capability=capability,
         )
         persisted_path = self._benchmark_store().save(record) if persist else None
         return BenchmarkRunResult(record=record, persisted_path=persisted_path)
@@ -366,6 +449,20 @@ class AdvisorService:
         object.__setattr__(self, "llama_cpp_runner", fresh)
         return fresh
 
+    def _transformers_runner(self) -> TransformersRunner:
+        """Return a configured Transformers runner, constructing it only when used."""
+        if self.transformers_runner is not None:
+            return self.transformers_runner
+        from jaull.runtime.transformers_runner import TransformersRunner
+
+        fresh = TransformersRunner(
+            backend=self._host_execution_backend(),
+            python_executable=self.python_executable,
+            timeout_seconds=self.llama_cli_timeout_seconds,
+        )
+        object.__setattr__(self, "transformers_runner", fresh)
+        return fresh
+
     def _host_execution_backend(self) -> ExecutionBackendProtocol:
         from jaull.execution.host import HostExecutionBackend
 
@@ -389,8 +486,10 @@ class AdvisorService:
         fresh = ExperimentRunner(
             execution_backend=HostExecutionBackend(),
             llama_cpp_runner=self._llama_cpp_runner(),
+            transformers_runner=self._transformers_runner(),
             store=self._experiment_store(),
             llama_cli_path=self.llama_cli_path,
+            python_executable=self.python_executable,
             capability_timeout_seconds=self.llama_cli_timeout_seconds,
         )
         object.__setattr__(self, "experiment_runner", fresh)
@@ -406,6 +505,20 @@ class AdvisorService:
             llama_bench_path=self.llama_bench_path,
         )
         object.__setattr__(self, "llama_bench_runner", fresh)
+        return fresh
+
+    def _transformers_benchmark_runner(self) -> TransformersBenchmarkRunner:
+        if self.transformers_benchmark_runner is not None:
+            return self.transformers_benchmark_runner
+        from jaull.runtime.transformers_benchmark_runner import (
+            TransformersBenchmarkRunner,
+        )
+
+        fresh = TransformersBenchmarkRunner(
+            backend=self._host_execution_backend(),
+            python_executable=self.python_executable,
+        )
+        object.__setattr__(self, "transformers_benchmark_runner", fresh)
         return fresh
 
     def _benchmark_store(self) -> BenchmarkStore:
@@ -448,6 +561,8 @@ class AdvisorService:
         *,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        python_executable: str | Path | None = None,
+        pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
     ) -> AdvisorService:
@@ -462,6 +577,8 @@ class AdvisorService:
             artifacts=artifacts,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            python_executable=python_executable,
+            pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
         )
@@ -477,13 +594,17 @@ class AdvisorService:
         collect_diagnostics: DiagnosticsFn = _default_diagnostics,
         artifacts: ArtifactService | None = None,
         llama_cpp_runner: LlamaCppRunner | None = None,
+        transformers_runner: TransformersRunner | None = None,
         experiment_runner: ExperimentRunner | None = None,
         experiment_store: ExperimentStore | None = None,
         llama_bench_runner: LlamaBenchRunner | None = None,
+        transformers_benchmark_runner: TransformersBenchmarkRunner | None = None,
         benchmark_matrix_runner: BenchmarkMatrixRunner | None = None,
         benchmark_store: BenchmarkStore | None = None,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        python_executable: str | Path | None = None,
+        pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
     ) -> AdvisorService:
@@ -505,13 +626,17 @@ class AdvisorService:
             collect_diagnostics=collect_diagnostics,
             artifacts=artifacts,
             llama_cpp_runner=llama_cpp_runner,
+            transformers_runner=transformers_runner,
             experiment_runner=experiment_runner,
             experiment_store=experiment_store,
             llama_bench_runner=llama_bench_runner,
+            transformers_benchmark_runner=transformers_benchmark_runner,
             benchmark_matrix_runner=benchmark_matrix_runner,
             benchmark_store=benchmark_store,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            python_executable=python_executable,
+            pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
         )

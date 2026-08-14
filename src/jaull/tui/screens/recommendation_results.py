@@ -430,11 +430,22 @@ def _can_validate(rec: ModelRecommendation) -> bool:
     estimate = rec.evaluated.memory_estimate
     if estimate is None or estimate.runtime_recommendation is None:
         return False
-    return estimate.runtime_recommendation.runtime is RuntimeName.LLAMA_CPP
+    return estimate.runtime_recommendation.runtime in {
+        RuntimeName.LLAMA_CPP,
+        RuntimeName.TRANSFORMERS,
+    }
 
 
 def _can_benchmark(rec: ModelRecommendation) -> bool:
-    return _can_validate(rec)
+    from jaull.domain.runtime import RuntimeName
+
+    estimate = rec.evaluated.memory_estimate
+    if estimate is None or estimate.runtime_recommendation is None:
+        return False
+    return estimate.runtime_recommendation.runtime in {
+        RuntimeName.LLAMA_CPP,
+        RuntimeName.TRANSFORMERS,
+    }
 
 
 # Green comfortable, amber tight, red insufficient — the same reading the rest

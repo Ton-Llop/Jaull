@@ -2,25 +2,158 @@ Jaull analiza tu hardware, busca modelos, estima cuáles encajan, los recomienda
 
 Aunque tengas 18 carpetas, en realidad son 4 bloques grandes:
 
-                    JAULL
-                      │
-       ┌──────────────┼───────────────┐
-       │              │               │
-       ▼              ▼               ▼
-   ANALIZAR       RECOMENDAR       EJECUTAR
-       │              │               │
- Hardware         Discovery        Artifacts
- HF metadata      Ranking          llama.cpp
- Estimator        Workflow         subprocess
- Runtime
-       │              │               │
-       └──────────────┴───────────────┘
-                      │
-                AdvisorService
-                      │
-               ┌──────┴──────┐
-               ▼             ▼
-              CLI           TUI
+                                             JAULL
+                                             │
+                              ┌──────────────┼───────────────┐
+                              │              │               │
+                              ▼              ▼               ▼
+                         ANALIZAR       RECOMENDAR       EJECUTAR
+     Primero Validate
+
+Aquí reutilizaría al máximo lo que ya tenemos:
+
+ExperimentRunner
+      ↓
+runtime_family = pytorch_transformers
+      ↓
+TransformersRunner
+      ↓
+ExecutionObservation
+      ↓
+PredictionComparison
+      ↓
+ExperimentRecord
+
+La idea es que pulsar Validate sobre un modelo Transformers haga una ejecución controlada y guarde evidencia igual que hacemos con llama.cpp:
+
+Runtime       Transformers / PyTorch
+Backend       CPU
+Artifact      safetensors
+Success       yes
+Duration      13.4 s
+Peak RAM      2.5 GiB
+Peak VRAM     unavailable
+
+Y mantener la semántica importante:
+
+READY = no conocemos blockers.
+Validate SUCCESS = lo hemos ejecutado realmente.
+
+Eso ya permitiría comparar predicción vs realidad para Transformers.
+
+2. Después Benchmark
+
+Aquí no intentaría meter Transformers dentro de llama-bench, porque llama-bench pertenece a llama.cpp.
+
+Haría algo como:
+
+BenchmarkRunner
+├── LlamaBenchRunner
+└── TransformersBenchmarkRunner
+
+Pero compartiendo, si nuestro dominio actual lo permite:
+
+BenchmarkRequest
+BenchmarkObservation
+BenchmarkRecord
+BenchmarkStore
+
+El runner de Transformers podría ejecutar un worker PyTorch dedicado.
+
+Métricas que sí me interesan
+
+Para Transformers mediría al menos:
+
+Model load time
+Peak RAM
+Peak VRAM
+
+
+Prompt processing / prefill
+tokens/s
+
+
+Generation
+tokens/s
+
+
+Time to first token
+ms
+
+
+Total generation latency
+s
+
+Y posiblemente warm-up/repeticiones para obtener dispersión.
+
+Hay algo MUY evidente en tu prueba de ahora
+
+Tus ejecuciones fueron aproximadamente:
+
+1ª   127 s
+2ª    15 s
+3ª    13 s
+
+Esto nos está enseñando precisamente por qué no podemos benchmarkear simplemente cronometrando el botón Generate.
+
+Tenemos que separar:
+
+COLD START
+download/cache/model load/init
+
+de:
+
+STEADY-STATE INFERENCE
+modelo ya cargado
+→ prompt
+→ generación
+
+Porque si mezclamos ambos, Jaull podría concluir absurdamente que el modelo genera durante 127 segundos cuando gran parte de ese tiempo probablemente pertenece a preparación/carga inicial.
+
+Yo incluso conservaría ambas métricas:
+
+Startup / model load    110 s
+Warm inference           14 s
+Generation               X tok/s
+
+Eso tiene bastante valor para decidir despliegues.
+
+Y cuidado al comparar con llama.cpp
+
+Quiero que eventualmente podamos ver:
+
+Qwen2.5 0.5B · CPU
+
+
+                     llama.cpp       Transformers
+Prompt processing     XXX tok/s       YYY tok/s
+Generation             XX tok/s        YY tok/s
+Peak RAM               X.X GiB        X.X GiB
+Startup                  X s            Y s
+
+Pero solo cuando la metodología sea comparable.
+
+No asumiría automáticamente:
+
+llama-bench pp512
+==
+Transformers generate benchmark
+
+porque no necesariamente están midiendo exactamente el mismo recorrido.
+
+Primero definimos un protocolo común; luego comparamos. Hasta entonces guardamos methodology/runtime junto con la observación.                         │              │               │
+                         Hardware         Discovery        Artifacts
+                         HF metadata      Ranking          llama.cpp
+                         Estimator        Workflow         subprocess
+                         Runtime
+                              │              │               │
+                              └──────────────┴───────────────┘
+                                             │
+                                        AdvisorService
+                                             │
+                                        ┌──────┴──────┐
+                                        ▼             ▼
+                                   CLI           TUI
 
 Ese es el dibujo que yo tendría siempre en la cabeza.
 

@@ -24,7 +24,14 @@ from jaull.domain.benchmarks import (
     LlamaBenchBinaryStatus,
     LlamaBenchCapability,
 )
+from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.hardware import ComputeBackend
+from jaull.domain.runtime import (
+    RuntimeFlag,
+    RuntimeFlagSource,
+    RuntimeName,
+    RuntimeRecommendation,
+)
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_benchmark import RecommendationBenchmarkScreen
 from jaull.tui.screens.recommendation_results import RecommendationResultsScreen
@@ -85,7 +92,7 @@ def test_benchmark_screen_shows_successful_matrix(
             assert screen.query(DataTable)
             assert "Prefill 512" in text
             assert "1.98x" in text
-            assert advisor.benchmark_calls == 1
+            assert advisor.matrix_calls == 1
             assert advisor.last_matrix_request is not None
             assert advisor.last_matrix_request.include_cpu is False
             assert advisor.last_matrix_request.include_selected_backend is True
@@ -93,6 +100,60 @@ def test_benchmark_screen_shows_successful_matrix(
                 BenchmarkGpuLayers.full(),
             )
             assert "Running llama-bench: vulkan · device Vulkan0 · ngl all" in text
+
+    _run(scenario())
+
+
+def test_benchmark_screen_runs_transformers_single_benchmark(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        runtime = RuntimeRecommendation(
+            runtime=RuntimeName.TRANSFORMERS,
+            flags=[
+                RuntimeFlag(
+                    name="device_map",
+                    value="cpu",
+                    source=RuntimeFlagSource.HARDWARE,
+                    explanation="test",
+                )
+            ],
+            confidence=EstimationConfidence.HIGH,
+        )
+        advisor = _BenchmarkAdvisor(tmp_path)
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(
+                RecommendationBenchmarkScreen(
+                    _recommendation(
+                        repo_id="Qwen/Qwen2.5-0.5B-Instruct",
+                        quantization="float32",
+                        runtime=runtime,
+                    )
+                )
+            )
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationBenchmarkScreen)
+            _run_workers_inline(screen, monkeypatch)
+
+            screen.query_one("#benchmark-start", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: "Benchmark complete" in _visible_text(screen),
+            )
+
+            assert advisor.benchmark_calls == 1
+            assert advisor.matrix_calls == 0
+            assert advisor.last_benchmark_request is not None
+            assert advisor.last_benchmark_request.runtime is runtime
+            assert advisor.last_benchmark_request.artifact.format == "transformers"
+            assert advisor.operations == ["hardware", "select_backend"]
+            text = _visible_text(screen)
+            assert screen.query(DataTable)
+            assert "Running Transformers benchmark: cpu" in text
 
     _run(scenario())
 
@@ -168,6 +229,8 @@ class _BenchmarkAdvisor(_FakeAdvisor):
         self.failure = failure
         self.partial_failure = partial_failure
         self.benchmark_calls = 0
+        self.matrix_calls = 0
+        self.last_benchmark_request: BenchmarkRequest | None = None
         self.last_matrix_request: BenchmarkMatrixRequest | None = None
 
     def inspect_llama_cpp_runtime(self) -> object:
@@ -177,7 +240,7 @@ class _BenchmarkAdvisor(_FakeAdvisor):
         self,
         request: BenchmarkMatrixRequest,
     ) -> BenchmarkMatrixResult:
-        self.benchmark_calls += 1
+        self.matrix_calls += 1
         self.last_matrix_request = request
         if self.failure is not None:
             raise self.failure
@@ -226,6 +289,58 @@ class _BenchmarkAdvisor(_FakeAdvisor):
             failed=failed,
             records=[cpu, vulkan],
         )
+
+    def run_benchmark(
+        self,
+        request: BenchmarkRequest,
+        *,
+        hardware: object,
+        persist: bool = True,
+    ) -> BenchmarkRunResult:
+        del hardware, persist
+        self.benchmark_calls += 1
+        self.last_benchmark_request = request
+        record = BenchmarkRecord.create(
+            hardware=self.hardware,
+            request=request,
+            observation=_transformers_observation(),
+            runtime_capability=None,
+        )
+        return BenchmarkRunResult(
+            record=record,
+            persisted_path=self.tmp_path / f"{record.identity.benchmark_id}.json",
+        )
+
+
+def _transformers_observation() -> BenchmarkObservation:
+    return BenchmarkObservation(
+        success=True,
+        repetitions=3,
+        duration_seconds=20.0,
+        methodology="transformers_generate_steady_state_v1",
+        model_load_seconds=12.0,
+        warmup_seconds=1.0,
+        generation_latency_seconds=4.0,
+        exit_code=0,
+        measurements=[
+            BenchmarkMeasurement(
+                kind=BenchmarkMeasurementKind.PREFILL,
+                tokens=128,
+                mean_tokens_per_second=40.0,
+                stddev_tokens_per_second=2.0,
+                repetitions=3,
+                source_label="pp128",
+            ),
+            BenchmarkMeasurement(
+                kind=BenchmarkMeasurementKind.GENERATION,
+                tokens=64,
+                mean_tokens_per_second=9.0,
+                stddev_tokens_per_second=0.5,
+                repetitions=3,
+                source_label="tg64",
+            ),
+        ],
+    )
 
 
 class _InlineExecutor:

@@ -97,11 +97,14 @@ def assert_prediction_runtime_matches(
     larger experiment-record model.
     """
 
-    if runtime.runtime is not RuntimeName.LLAMA_CPP:
+    if runtime.runtime not in {RuntimeName.LLAMA_CPP, RuntimeName.TRANSFORMERS}:
         raise PredictionRuntimeMismatchError(
-            f"Expected {RuntimeName.LLAMA_CPP.value!r} runtime, got "
+            "Expected a comparable runtime "
+            f"({RuntimeName.LLAMA_CPP.value!r} or {RuntimeName.TRANSFORMERS.value!r}), got "
             f"{runtime.runtime.value!r}."
         )
+    if runtime.runtime is RuntimeName.TRANSFORMERS:
+        return
 
     ctx_size = _int_runtime_flag(runtime, "--ctx-size")
     if (

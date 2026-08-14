@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.model import ModelAnalysis, ModelRepositoryInfo, SafetensorsSummary
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
+    PyTorchRuntimeStatus,
     RuntimeBackendSelection,
     RuntimeBackendSelectionReason,
     RuntimeFlag,
@@ -115,6 +117,40 @@ def test_successful_accelerator_experiment_produces_record(tmp_path: Path) -> No
     assert result.persisted_path is None
 
 
+def test_successful_transformers_cpu_experiment_produces_record(tmp_path: Path) -> None:
+    llama_runner = _FakeArtifactRunner()
+    transformers_runner = _FakeArtifactRunner()
+    runner = _experiment_runner(
+        tmp_path,
+        devices="Available devices:\n",
+        artifact_runner=llama_runner,
+        transformers_runner=transformers_runner,
+        pytorch_probe=_pytorch_probe_json(),
+    )
+    request = _request(
+        tmp_path,
+        backend=ComputeBackend.CPU,
+        runtime=_transformers_runtime(),
+        artifact=_transformers_artifact(),
+        prediction=_transformers_estimate(_transformers_runtime()),
+        persist=True,
+    )
+
+    result = runner.run(request)
+
+    assert llama_runner.calls == []
+    assert len(transformers_runner.calls) == 1
+    assert result.record.runtime.runtime is RuntimeName.TRANSFORMERS
+    assert result.record.artifact.format == "safetensors"
+    assert result.record.preflight.runtime_capability.runtime_status is (
+        PyTorchRuntimeStatus.AVAILABLE
+    )
+    assert result.record.preflight.execution_readiness.status is (
+        ExecutionReadinessStatus.READY
+    )
+    assert result.persisted_path is not None
+
+
 def test_failed_execution_still_produces_experiment_record(tmp_path: Path) -> None:
     failed_observation = _observation(
         success=False,
@@ -131,6 +167,54 @@ def test_failed_execution_still_produces_experiment_record(tmp_path: Path) -> No
 
     assert result.record.observation.success is False
     assert result.record.comparison.compatibility.observed_success is False
+
+
+def test_transformers_not_ready_does_not_invoke_runner(tmp_path: Path) -> None:
+    transformers_runner = _FakeArtifactRunner()
+    runner = _experiment_runner(
+        tmp_path,
+        devices="Available devices:\n",
+        transformers_runner=transformers_runner,
+        pytorch_probe=_pytorch_probe_json(runtime_status="torch_missing"),
+    )
+    runtime = _transformers_runtime()
+
+    with pytest.raises(ExperimentNotReadyError) as captured:
+        runner.run(
+            _request(
+                tmp_path,
+                backend=ComputeBackend.CPU,
+                runtime=runtime,
+                artifact=_transformers_artifact(),
+                prediction=_transformers_estimate(runtime),
+            )
+        )
+
+    assert transformers_runner.calls == []
+    assert captured.value.readiness.status is ExecutionReadinessStatus.NOT_READY
+
+
+def test_transformers_experiment_requires_configured_transformers_runner(
+    tmp_path: Path,
+) -> None:
+    runtime = _transformers_runtime()
+    runner = _experiment_runner(
+        tmp_path,
+        devices="Available devices:\n",
+        transformers_runner=None,
+        pytorch_probe=_pytorch_probe_json(),
+    )
+
+    with pytest.raises(ExperimentRunnerError, match="no TransformersRunner"):
+        runner.run(
+            _request(
+                tmp_path,
+                backend=ComputeBackend.CPU,
+                runtime=runtime,
+                artifact=_transformers_artifact(),
+                prediction=_transformers_estimate(runtime),
+            )
+        )
 
 
 def test_not_ready_does_not_invoke_llama_runner(tmp_path: Path) -> None:
@@ -267,6 +351,8 @@ class _FakeExecutionBackend:
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         self.requests.append(request)
         outcome = self.outputs.get(request.command)
+        if outcome is None and _is_pytorch_probe(request.command):
+            outcome = self.outputs.get(("PYTORCH_PROBE",))
         if isinstance(outcome, Exception):
             raise outcome
         if isinstance(outcome, str):
@@ -302,7 +388,7 @@ class _FakeArtifactRunner:
             )
         return InferenceResult(
             text="response",
-            runtime=RuntimeName.LLAMA_CPP.value,
+            runtime=runtime.runtime.value if runtime is not None else RuntimeName.LLAMA_CPP.value,
             model_path=artifact.local_path or Path("/tmp/model.gguf"),
             observation=_observation(),
         )
@@ -324,17 +410,21 @@ def _experiment_runner(
     *,
     devices: str,
     artifact_runner: _FakeArtifactRunner | None = None,
+    transformers_runner: _FakeArtifactRunner | None = None,
+    pytorch_probe: str | None = None,
     store: ExperimentStore | None = None,
 ) -> ExperimentRunner:
     binary = _fake_binary(tmp_path)
+    outputs: dict[tuple[str, ...], object] = {
+        (str(binary), "--list-devices"): devices,
+        (str(binary), "--version"): "llama-cli b123",
+    }
+    if pytorch_probe is not None:
+        outputs[("PYTORCH_PROBE",)] = pytorch_probe
     return ExperimentRunner(
-        execution_backend=_FakeExecutionBackend(
-            {
-                (str(binary), "--list-devices"): devices,
-                (str(binary), "--version"): "llama-cli b123",
-            }
-        ),
+        execution_backend=_FakeExecutionBackend(outputs),
         llama_cpp_runner=artifact_runner or _FakeArtifactRunner(),
+        transformers_runner=transformers_runner,
         store=store if store is not None else ExperimentStore(root=tmp_path / "store"),
         llama_cli_path=binary,
     )
@@ -353,6 +443,7 @@ def _request(
     backend: ComputeBackend,
     runtime: RuntimeRecommendation | None = None,
     prediction: MemoryEstimate | None = None,
+    artifact: ModelArtifact | None = None,
     hardware: HardwareProfile | None = None,
     prediction_device: TargetDevice = TargetDevice.CPU,
     persist: bool = True,
@@ -360,7 +451,7 @@ def _request(
     effective_runtime = runtime or _runtime(n_gpu_layers=0)
     return ExperimentRequest(
         hardware=hardware or _hardware(),
-        artifact=_artifact(tmp_path),
+        artifact=artifact or _artifact(tmp_path),
         runtime=effective_runtime,
         prediction=prediction
         or _estimate(effective_runtime, effective_device=prediction_device),
@@ -453,6 +544,27 @@ def _runtime(
     )
 
 
+def _transformers_runtime() -> RuntimeRecommendation:
+    return RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        flags=[
+            RuntimeFlag(
+                name="device_map",
+                value="cpu",
+                source=RuntimeFlagSource.USER_INPUT,
+                explanation="test",
+            ),
+            RuntimeFlag(
+                name="torch_dtype",
+                value="torch.float32",
+                source=RuntimeFlagSource.USER_INPUT,
+                explanation="test",
+            ),
+        ],
+        confidence=EstimationConfidence.HIGH,
+    )
+
+
 def _estimate(
     runtime: RuntimeRecommendation,
     *,
@@ -526,6 +638,29 @@ def _estimate(
     )
 
 
+def _transformers_artifact() -> ModelArtifact:
+    return ModelArtifact(
+        repo_id="Qwen/Qwen2.5-0.5B-Instruct",
+        revision="main",
+        filename="Qwen/Qwen2.5-0.5B-Instruct",
+        format="safetensors",
+    )
+
+
+def _transformers_estimate(runtime: RuntimeRecommendation) -> MemoryEstimate:
+    return _estimate(runtime).model_copy(
+        update={
+            "repository": ModelRepositoryInfo(repo_id="Qwen/Qwen2.5-0.5B-Instruct"),
+            "repository_type": RepositoryType.TRANSFORMERS,
+            "inference_configuration": InferenceConfiguration(
+                context_length=4096,
+                target_device=TargetDevice.CPU,
+                precision=None,
+            ),
+        }
+    )
+
+
 def _observation(
     *,
     success: bool = True,
@@ -540,6 +675,29 @@ def _observation(
         exit_code=exit_code,
         failure_reason=failure_reason,
     )
+
+
+def _pytorch_probe_json(*, runtime_status: str = "available") -> str:
+    payload: dict[str, object] = {
+        "runtime_status": runtime_status,
+    }
+    if runtime_status == "available":
+        payload.update(
+            {
+                "torch_version": "2.8.0",
+                "transformers_version": "4.55.0",
+                "torch_cuda_version": None,
+                "torch_hip_version": None,
+                "cuda_available": False,
+                "cuda_device_count": 0,
+                "devices": [],
+            }
+        )
+    return json.dumps(payload)
+
+
+def _is_pytorch_probe(command: tuple[str, ...]) -> bool:
+    return len(command) == 3 and command[1] == "-c" and "importlib" in command[2]
 
 
 def _execution_result(

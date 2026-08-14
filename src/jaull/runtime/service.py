@@ -1,5 +1,8 @@
-"""Dispatch estimate + hardware into a per-runtime recommendation."""
+"""Dispatch estimate + hardware into a per-runtime recommendation.
 
+Aqui decidim basicament si l'artifact es Transformers o GGUF i fem la
+recomanació de runtime corresponent.
+"""
 from __future__ import annotations
 
 from jaull.domain.enums import RepositoryType

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from jaull.domain.experiments import ExperimentRecord
-from jaull.domain.runtime import ExecutionReadiness, LlamaCppRuntimeCapability
+from jaull.domain.runtime import ExecutionReadiness, RuntimeCapability
 from jaull.exceptions import JaullError
 
 
@@ -35,7 +35,7 @@ class ExperimentNotReadyError(ExperimentRunnerError):
         message: str,
         *,
         readiness: ExecutionReadiness,
-        runtime_capability: LlamaCppRuntimeCapability,
+        runtime_capability: RuntimeCapability,
     ) -> None:
         self.readiness = readiness
         self.runtime_capability = runtime_capability

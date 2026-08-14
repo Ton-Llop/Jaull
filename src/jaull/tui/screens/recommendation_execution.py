@@ -20,7 +20,10 @@ from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundErr
 from jaull.execution.errors import ExecutionError
 from jaull.presentation.execution_report import inline_observation_summary
 from jaull.recommendation.models import ModelRecommendation
-from jaull.tui.artifact_preparation import prepare_recommendation_artifact
+from jaull.tui.artifact_preparation import (
+    prepare_recommendation_artifact,
+    transformers_recommendation_artifact,
+)
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -103,7 +106,7 @@ class RecommendationExecutionScreen(Screen[None]):
         self._clear_error()
         if self._runtime() is None:
             self._render_error(
-                "This recommendation has no executable llama.cpp runtime configuration."
+                "This recommendation has no executable runtime configuration."
             )
             self.query_one("#run-generate", Button).disabled = True
             return
@@ -133,7 +136,7 @@ class RecommendationExecutionScreen(Screen[None]):
         runtime = self._runtime()
         if runtime is None:
             self._render_error(
-                "This recommendation has no executable llama.cpp runtime configuration."
+                "This recommendation has no executable runtime configuration."
             )
             return
 
@@ -159,7 +162,13 @@ class RecommendationExecutionScreen(Screen[None]):
         prepared_artifact = artifact
         try:
             if artifact is None:
-                artifact = self._prepare_artifact_from_worker(advisor)
+                if runtime.runtime is RuntimeName.TRANSFORMERS:
+                    self._post_step("Preparing Transformers runtime")
+                    artifact = transformers_recommendation_artifact(
+                        self._recommendation
+                    )
+                else:
+                    artifact = self._prepare_artifact_from_worker(advisor)
                 prepared_artifact = artifact
             self._post_step("Generating")
             result = advisor.run_artifact(
@@ -263,7 +272,13 @@ class RecommendationExecutionScreen(Screen[None]):
 
     def _record_step(self, message: str) -> None:
         self._log_messages.append(message)
-        if message in {"Downloading artifact", "Generating", "Verifying artifact", "Model ready"}:
+        if message in {
+            "Downloading artifact",
+            "Generating",
+            "Preparing Transformers runtime",
+            "Verifying artifact",
+            "Model ready",
+        }:
             self._set_status(("✓ " if message == "Model ready" else "● ") + message)
 
     def _runtime(self) -> RuntimeRecommendation | None:
@@ -271,7 +286,7 @@ class RecommendationExecutionScreen(Screen[None]):
         if estimate is None or estimate.runtime_recommendation is None:
             return None
         runtime = estimate.runtime_recommendation
-        if runtime.runtime is not RuntimeName.LLAMA_CPP:
+        if runtime.runtime not in {RuntimeName.LLAMA_CPP, RuntimeName.TRANSFORMERS}:
             return None
         return runtime
 

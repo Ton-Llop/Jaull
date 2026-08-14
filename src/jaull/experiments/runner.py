@@ -13,7 +13,13 @@ from jaull.domain.experiments import (
     ExperimentRequest,
     ExperimentRunResult,
 )
-from jaull.domain.runtime import ExecutionReadinessStatus, RuntimeRecommendation
+from jaull.domain.runtime import (
+    ExecutionReadiness,
+    ExecutionReadinessStatus,
+    RuntimeCapability,
+    RuntimeName,
+    RuntimeRecommendation,
+)
 from jaull.evaluation.comparison import (
     PredictionRuntimeMismatchError,
     assert_prediction_runtime_matches,
@@ -33,9 +39,24 @@ from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
 )
+from jaull.runtime.pytorch_capability import (
+    evaluate_pytorch_execution_readiness,
+    inspect_pytorch_runtime,
+)
 
 
 class LlamaCppExperimentRunnerProtocol(Protocol):
+    def run(
+        self,
+        *,
+        artifact: ModelArtifact,
+        prompt: str,
+        runtime: RuntimeRecommendation | None = None,
+    ) -> InferenceResult:
+        ...
+
+
+class TransformersExperimentRunnerProtocol(Protocol):
     def run(
         self,
         *,
@@ -52,21 +73,15 @@ class ExperimentRunner:
 
     execution_backend: ExecutionBackendProtocol
     llama_cpp_runner: LlamaCppExperimentRunnerProtocol
+    transformers_runner: TransformersExperimentRunnerProtocol | None = None
     store: ExperimentStore | None = None
     llama_cli_path: str | Path | None = None
+    python_executable: str | Path | None = None
     capability_timeout_seconds: float = 10.0
 
     def run(self, request: ExperimentRequest) -> ExperimentRunResult:
         _validate_request(request)
-        runtime_capability = inspect_llama_cpp_runtime(
-            backend=self.execution_backend,
-            llama_cli_path=self.llama_cli_path,
-            timeout_seconds=self.capability_timeout_seconds,
-        )
-        readiness = evaluate_execution_readiness(
-            selection=request.backend_selection,
-            runtime_capability=runtime_capability,
-        )
+        runtime_capability, readiness, artifact_runner = self._preflight(request)
         if readiness.status is not ExecutionReadinessStatus.READY:
             raise ExperimentNotReadyError(
                 "Experiment preflight is not ready; execution was not attempted "
@@ -76,7 +91,7 @@ class ExperimentRunner:
             )
 
         try:
-            inference = self.llama_cpp_runner.run(
+            inference = artifact_runner.run(
                 artifact=request.artifact,
                 prompt=request.workload.prompt,
                 runtime=request.runtime,
@@ -119,6 +134,42 @@ class ExperimentRunner:
                 ) from exc
         return ExperimentRunResult(record=record, persisted_path=persisted_path)
 
+    def _preflight(
+        self,
+        request: ExperimentRequest,
+    ) -> tuple[
+        RuntimeCapability,
+        ExecutionReadiness,
+        LlamaCppExperimentRunnerProtocol | TransformersExperimentRunnerProtocol,
+    ]:
+        if request.runtime.runtime is RuntimeName.TRANSFORMERS:
+            if self.transformers_runner is None:
+                raise ExperimentRunnerError(
+                    "Transformers experiment requested but no TransformersRunner "
+                    "is configured."
+                )
+            pytorch_capability = inspect_pytorch_runtime(
+                backend=self.execution_backend,
+                python_executable=self.python_executable,
+                timeout_seconds=self.capability_timeout_seconds,
+            )
+            pytorch_readiness = evaluate_pytorch_execution_readiness(
+                selection=request.backend_selection,
+                runtime_capability=pytorch_capability,
+            )
+            return pytorch_capability, pytorch_readiness, self.transformers_runner
+
+        llama_capability = inspect_llama_cpp_runtime(
+            backend=self.execution_backend,
+            llama_cli_path=self.llama_cli_path,
+            timeout_seconds=self.capability_timeout_seconds,
+        )
+        llama_readiness = evaluate_execution_readiness(
+            selection=request.backend_selection,
+            runtime_capability=llama_capability,
+        )
+        return llama_capability, llama_readiness, self.llama_cpp_runner
+
 
 def _validate_request(request: ExperimentRequest) -> None:
     try:
@@ -133,4 +184,5 @@ def _validate_request(request: ExperimentRequest) -> None:
 __all__ = [
     "ExperimentRunner",
     "LlamaCppExperimentRunnerProtocol",
+    "TransformersExperimentRunnerProtocol",
 ]

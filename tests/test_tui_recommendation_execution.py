@@ -35,6 +35,8 @@ from jaull.domain.runtime import (
     LlamaCppCapabilityReason,
     LlamaCppRuntimeCapability,
     LlamaCppRuntimeDevice,
+    PyTorchRuntimeCapability,
+    PyTorchRuntimeStatus,
     RuntimeBackendSelection,
     RuntimeBackendSelectionReason,
     RuntimeFlag,
@@ -55,6 +57,7 @@ from jaull.experiments.errors import (
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
+from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_execution import (
     InferencePrompt,
@@ -277,7 +280,7 @@ class _FakeAdvisor:
             raise self.fail_run
         return InferenceResult(
             text=self.response_text,
-            runtime="llama.cpp",
+            runtime=runtime.runtime.value if runtime is not None else "llama.cpp",
             model_path=artifact.local_path or Path("/tmp/tiny-q4_k_m.gguf"),
             observation=self.observation,
         )
@@ -348,6 +351,16 @@ def _runtime_capability(backend: ComputeBackend) -> LlamaCppRuntimeCapability:
     )
 
 
+def _pytorch_runtime_capability() -> PyTorchRuntimeCapability:
+    return PyTorchRuntimeCapability(
+        python_executable="/tmp/python",
+        runtime_status=PyTorchRuntimeStatus.AVAILABLE,
+        torch_version="2.8.0",
+        transformers_version="4.55.0",
+        probe_source="test",
+    )
+
+
 def _experiment_record(
     request: object,
     *,
@@ -356,11 +369,18 @@ def _experiment_record(
     from jaull.domain.experiments import ExperimentRequest
 
     assert isinstance(request, ExperimentRequest)
-    capability = _runtime_capability(request.backend_selection.selected_backend)
-    readiness = evaluate_execution_readiness(
-        selection=request.backend_selection,
-        runtime_capability=capability,
-    )
+    if request.runtime.runtime is RuntimeName.TRANSFORMERS:
+        capability = _pytorch_runtime_capability()
+        readiness = evaluate_pytorch_execution_readiness(
+            selection=request.backend_selection,
+            runtime_capability=capability,
+        )
+    else:
+        capability = _runtime_capability(request.backend_selection.selected_backend)
+        readiness = evaluate_execution_readiness(
+            selection=request.backend_selection,
+            runtime_capability=capability,
+        )
     return build_experiment_record(
         hardware=request.hardware,
         artifact=request.artifact,
@@ -527,7 +547,7 @@ def test_results_screen_can_open_validation_for_selected_recommendation() -> Non
     _run(scenario())
 
 
-def test_results_validation_button_is_disabled_without_llama_cpp_runtime() -> None:
+def test_results_validation_and_benchmark_support_transformers_runtime() -> None:
     async def scenario() -> None:
         recommendation = _recommendation(
             runtime=RuntimeRecommendation(
@@ -543,7 +563,8 @@ def test_results_validation_button_is_disabled_without_llama_cpp_runtime() -> No
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
-            assert screen.query_one("#res-validate-0", Button).disabled is True
+            assert screen.query_one("#res-validate-0", Button).disabled is False
+            assert screen.query_one("#res-benchmark-0", Button).disabled is False
 
     _run(scenario())
 
@@ -580,6 +601,60 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert advisor.experiment_persisted_path is not None
             assert str(advisor.experiment_persisted_path) in text
             assert screen.query_one("#validation-details", Button).disabled is False
+
+    _run(scenario())
+
+
+def test_validation_screen_runs_transformers_experiment_without_gguf_resolution(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        runtime = RuntimeRecommendation(
+            runtime=RuntimeName.TRANSFORMERS,
+            flags=[
+                RuntimeFlag(
+                    name="device_map",
+                    value="cpu",
+                    source=RuntimeFlagSource.HARDWARE,
+                    explanation="CPU validation",
+                )
+            ],
+            confidence=EstimationConfidence.HIGH,
+        )
+        recommendation = _recommendation(
+            repo_id="Qwen/Qwen2.5-0.5B-Instruct",
+            quantization="float32",
+            runtime=runtime,
+        )
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(recommendation))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            screen.query_one("#validation-start", Button).press()
+            await pilot.pause()
+
+            assert advisor.operations == [
+                "hardware",
+                "select_backend",
+                "experiment",
+            ]
+            request = advisor.experiment_requests[0]
+            assert isinstance(request, ExperimentRequest)
+            assert request.artifact.repo_id == "Qwen/Qwen2.5-0.5B-Instruct"
+            assert request.artifact.format == RuntimeName.TRANSFORMERS.value
+            assert request.artifact.local_path is None
+            assert request.runtime is runtime
+            assert len(advisor.experiment_records) == 1
+            assert advisor.experiment_records[0].runtime.runtime is RuntimeName.TRANSFORMERS
+            text = _visible_text(screen)
+            assert "Configuration validated" in text
+            assert "Runtime status" not in text
 
     _run(scenario())
 
@@ -870,6 +945,68 @@ def test_execution_screen_prepares_artifact_automatically_and_runs_selected_runt
             assert "Resolve artifact for org/Tiny-GGUF (Q4_K_M)" in screen.log_messages
             assert "Verifying artifact" in screen.log_messages
             assert "Generating" in screen.log_messages
+
+    _run(scenario())
+
+
+def test_execution_screen_runs_transformers_runtime_without_gguf_artifact_resolution(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        runtime = RuntimeRecommendation(
+            runtime=RuntimeName.TRANSFORMERS,
+            flags=[
+                RuntimeFlag(
+                    name="device_map",
+                    value="cpu",
+                    source=RuntimeFlagSource.HARDWARE,
+                    explanation="CPU test",
+                ),
+                RuntimeFlag(
+                    name="torch_dtype",
+                    value="torch.float32",
+                    source=RuntimeFlagSource.ESTIMATE,
+                    explanation="dtype test",
+                ),
+            ],
+            confidence=EstimationConfidence.HIGH,
+        )
+        recommendation = _recommendation(
+            repo_id="Qwen/Qwen2.5-0.5B-Instruct",
+            quantization="float32",
+            runtime=runtime,
+        )
+        advisor = _FakeAdvisor(response_text="generated with transformers")
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationExecutionScreen(recommendation))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationExecutionScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+
+            _set_prompt(screen, "Say hi")
+            screen.query_one("#run-generate", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 1,
+            )
+
+            assert advisor.operations == ["run"]
+            artifact, prompt, used_runtime = advisor.runs[0]
+            assert artifact.repo_id == "Qwen/Qwen2.5-0.5B-Instruct"
+            assert artifact.format == RuntimeName.TRANSFORMERS.value
+            assert artifact.local_path is None
+            assert artifact.is_downloaded is False
+            assert artifact.is_verified is False
+            assert prompt == "Say hi"
+            assert used_runtime is runtime
+            text = _visible_text(screen)
+            assert "generated with transformers" in text
+            assert "transformers" in text
+            assert "Preparing Transformers runtime" in screen.log_messages
+            assert "Resolve artifact for Qwen/Qwen2.5-0.5B-Instruct" not in screen.log_messages
 
     _run(scenario())
 

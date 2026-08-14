@@ -19,6 +19,9 @@ dependencies = [
     "psutil>=5.9",
     "nvidia-ml-py>=12.560.30",
     "textual>=0.85",
+    "torch>=2.13.0",
+    "transformers>=5.15.0",
+    "accelerate>=1.14.0",
 ]
 
 # Development tooling is a dependency *group*, not an optional feature: it is
