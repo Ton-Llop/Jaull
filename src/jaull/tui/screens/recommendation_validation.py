@@ -14,6 +14,7 @@ from textual.widgets import Button, Footer, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.experiments import (
     ExperimentRecord,
     ExperimentRequest,
@@ -91,9 +92,14 @@ class RecommendationValidationScreen(Screen[None]):
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._execution_plan = execution_plan
         self._log_messages: list[str] = []
         self._last_result: ExperimentRunResult | None = None
         self._last_record: ExperimentRecord | None = None
@@ -110,7 +116,7 @@ class RecommendationValidationScreen(Screen[None]):
         return self._recommendation
 
     def compose(self) -> ComposeResult:
-        yield _ValidationHeader(self._recommendation)
+        yield _ValidationHeader(self._recommendation, self._execution_plan)
         with VerticalScroll(id="validation-body"):
             yield Static(
                 "Validate runs a fixed, controlled prompt and stores one "
@@ -171,7 +177,7 @@ class RecommendationValidationScreen(Screen[None]):
             return
         estimate = self._estimate()
         runtime = self._runtime()
-        if estimate is None or runtime is None:
+        if runtime is None or (estimate is None and self._execution_plan is None):
             self._set_error("Validation requires a complete memory/runtime estimate.")
             return
 
@@ -187,17 +193,34 @@ class RecommendationValidationScreen(Screen[None]):
             app.hardware_profile,
             estimate,
             runtime,
+            self._execution_plan,
         )
 
     def _validation_worker(
         self,
         advisor: AdvisorService,
         hardware: HardwareProfile | None,
-        estimate: MemoryEstimate,
+        estimate: MemoryEstimate | None,
         runtime: RuntimeRecommendation,
+        execution_plan: ExecutionPlan | None,
     ) -> None:
         try:
-            if runtime.runtime is RuntimeName.TRANSFORMERS:
+            if execution_plan is not None:
+                prepared = advisor.prepare_execution_plan(
+                    execution_plan,
+                    hardware=hardware,
+                    on_progress=self._post_step,
+                )
+                artifact = prepared.artifact
+                runtime = prepared.plan.runtime
+                estimate = prepared.plan.memory_prediction
+                hardware = prepared.plan.hardware or hardware
+                selection = prepared.plan.backend_selection
+                if estimate is None or hardware is None or selection is None:
+                    raise ExperimentConfigurationError(
+                        "Prepared execution plan is missing required validation data."
+                    )
+            elif runtime.runtime is RuntimeName.TRANSFORMERS:
                 self._post_step("Preparing Transformers runtime")
                 artifact = transformers_recommendation_artifact(self._recommendation)
             else:
@@ -209,8 +232,14 @@ class RecommendationValidationScreen(Screen[None]):
             if hardware is None:
                 self._post_step("Scanning hardware")
                 hardware = advisor.scan_hardware()
-            self._post_step("Selecting compute backend")
-            selection = advisor.select_runtime_backend(hardware)
+            if execution_plan is None:
+                assert estimate is not None
+                self._post_step("Selecting compute backend")
+                selection = advisor.select_runtime_backend(hardware)
+            if estimate is None or selection is None:
+                raise ExperimentConfigurationError(
+                    "Selected execution path is missing prediction or backend data."
+                )
             self._post_step("Checking runtime readiness")
             request = ExperimentRequest(
                 hardware=hardware,
@@ -393,9 +422,13 @@ class RecommendationValidationScreen(Screen[None]):
         self.query_one("#validation-details", Button).disabled = False
 
     def _estimate(self) -> MemoryEstimate | None:
+        if self._execution_plan is not None:
+            return self._execution_plan.memory_prediction
         return self._recommendation.evaluated.memory_estimate
 
     def _runtime(self) -> RuntimeRecommendation | None:
+        if self._execution_plan is not None:
+            return self._execution_plan.runtime
         estimate = self._estimate()
         if estimate is None or estimate.runtime_recommendation is None:
             return None
@@ -439,17 +472,48 @@ class ValidationDetailsScreen(Screen[None]):
 
 
 class _ValidationHeader(Static):
-    def __init__(self, recommendation: ModelRecommendation) -> None:
-        config = recommendation.evaluated.selected_configuration
-        quantization = config.quantization if config is not None else "default"
-        estimate = recommendation.evaluated.memory_estimate
-        runtime = estimate.runtime_recommendation if estimate is not None else None
-        runtime_label = runtime.runtime.value if runtime is not None else "unknown"
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
+        if execution_plan is not None:
+            title = execution_plan.model_identity.model_name
+            subtitle = " · ".join(
+                [
+                    execution_plan.runtime.runtime.value,
+                    _backend_hint(execution_plan.runtime),
+                    execution_plan.artifact.label,
+                ]
+            )
+        else:
+            config = recommendation.evaluated.selected_configuration
+            quantization = config.quantization if config is not None else "default"
+            estimate = recommendation.evaluated.memory_estimate
+            runtime = estimate.runtime_recommendation if estimate is not None else None
+            runtime_label = runtime.runtime.value if runtime is not None else "unknown"
+            title = recommendation.repo_id
+            subtitle = f"{quantization} · {runtime_label}"
         super().__init__(
-            f"[bold]{recommendation.repo_id}[/bold]\n"
-            f"{quantization} · {runtime_label}",
+            f"[bold]{title}[/bold]\n"
+            f"{subtitle}",
             id="validation-header",
         )
+
+
+def _backend_hint(runtime: RuntimeRecommendation) -> str:
+    if runtime.runtime is RuntimeName.TRANSFORMERS:
+        return next(
+            (flag.value for flag in runtime.flags if flag.name == "device_map"),
+            "cpu",
+        )
+    gpu_layers = next(
+        (flag.value for flag in runtime.flags if flag.name == "--n-gpu-layers"),
+        None,
+    )
+    if gpu_layers in {None, "0"}:
+        return "CPU"
+    return "accelerated"
 
 
 def _backend_rows(record: ExperimentRecord) -> list[tuple[str, str]]:

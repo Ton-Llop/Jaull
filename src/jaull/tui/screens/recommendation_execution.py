@@ -15,6 +15,8 @@ from textual.widgets import Button, Footer, Static, TextArea
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import InferenceResult
+from jaull.domain.execution_plans import ExecutionPlan, PreparedExecutionPlan
+from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
@@ -37,10 +39,16 @@ class _GenerationStep(Message):
 
 
 class _GenerationDone(Message):
-    def __init__(self, artifact: ModelArtifact, result: InferenceResult) -> None:
+    def __init__(
+        self,
+        artifact: ModelArtifact,
+        result: InferenceResult,
+        prepared_plan: PreparedExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self.artifact = artifact
         self.result = result
+        self.prepared_plan = prepared_plan
 
 
 class _GenerationFailed(Message):
@@ -55,9 +63,15 @@ class RecommendationExecutionScreen(Screen[None]):
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._execution_plan = execution_plan
+        self._prepared_plan: PreparedExecutionPlan | None = None
         self._artifact: ModelArtifact | None = None
         self._log_messages: list[str] = []
         self._run_closing = Event()
@@ -78,7 +92,7 @@ class RecommendationExecutionScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         # Three zones: a compact header, the history (which owns the screen),
         # and the composer with a one-line status above it.
-        yield _RunHeader(self._recommendation)
+        yield _RunHeader(self._recommendation, self._execution_plan)
         with VerticalScroll(id="run-history"):
             yield Static(
                 "Enter a prompt to prepare the local artifact and run a single-turn generation.",
@@ -144,25 +158,39 @@ class RecommendationExecutionScreen(Screen[None]):
         self._append_prompt(prompt)
         composer.clear()
         self._set_busy(True, "Preparing model" if self._artifact is None else "Generating")
+        app = self._app()
         self._future = self._executor.submit(
             self._generate_worker,
-            self._app().advisor,
+            app.advisor,
+            app.hardware_profile,
             prompt,
             runtime,
             self._artifact,
+            self._execution_plan,
         )
 
     def _generate_worker(
         self,
         advisor: AdvisorService,
+        hardware: HardwareProfile | None,
         prompt: str,
         runtime: RuntimeRecommendation,
         artifact: ModelArtifact | None,
+        execution_plan: ExecutionPlan | None,
     ) -> None:
         prepared_artifact = artifact
+        prepared_plan: PreparedExecutionPlan | None = None
         try:
             if artifact is None:
-                if runtime.runtime is RuntimeName.TRANSFORMERS:
+                if execution_plan is not None:
+                    prepared_plan = advisor.prepare_execution_plan(
+                        execution_plan,
+                        hardware=hardware,
+                        on_progress=self._post_step,
+                    )
+                    artifact = prepared_plan.artifact
+                    runtime = prepared_plan.plan.runtime
+                elif runtime.runtime is RuntimeName.TRANSFORMERS:
                     self._post_step("Preparing Transformers runtime")
                     artifact = transformers_recommendation_artifact(
                         self._recommendation
@@ -185,7 +213,7 @@ class RecommendationExecutionScreen(Screen[None]):
             self._post_generation_failed(str(exc), prepared_artifact)
             return
         if not self._run_closing.is_set():
-            self.post_message(_GenerationDone(artifact, result))
+            self.post_message(_GenerationDone(artifact, result, prepared_plan))
 
     def _prepare_artifact_from_worker(self, advisor: AdvisorService) -> ModelArtifact:
         return prepare_recommendation_artifact(
@@ -204,6 +232,8 @@ class RecommendationExecutionScreen(Screen[None]):
     def _generation_done_message(self, message: _GenerationDone) -> None:
         if self._run_closing.is_set():
             return
+        if message.prepared_plan is not None:
+            self._prepared_plan = message.prepared_plan
         self._generation_done(message.artifact, message.result)
 
     @on(_GenerationFailed)
@@ -283,6 +313,10 @@ class RecommendationExecutionScreen(Screen[None]):
 
     def _runtime(self) -> RuntimeRecommendation | None:
         estimate = self._recommendation.evaluated.memory_estimate
+        if self._prepared_plan is not None:
+            return self._prepared_plan.plan.runtime
+        if self._execution_plan is not None:
+            return self._execution_plan.runtime
         if estimate is None or estimate.runtime_recommendation is None:
             return None
         runtime = estimate.runtime_recommendation
@@ -310,14 +344,18 @@ class _RunHeader(Vertical):
 
     DEFAULT_CLASSES = "run-header"
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._execution_plan = execution_plan
 
     def compose(self) -> ComposeResult:
-        rec = self._recommendation
-        yield Static(rec.repo_id, classes="run-title")
-        meta = " · ".join(_run_metadata(rec))
+        yield Static(_run_title(self._recommendation, self._execution_plan), classes="run-title")
+        meta = " · ".join(_run_metadata(self._recommendation, self._execution_plan))
         if meta:
             yield Static(meta, classes="run-meta")
 
@@ -359,7 +397,26 @@ class InferenceResponse(Vertical):
         )
 
 
-def _run_metadata(rec: ModelRecommendation) -> list[str]:
+def _run_title(
+    rec: ModelRecommendation,
+    execution_plan: ExecutionPlan | None = None,
+) -> str:
+    if execution_plan is not None:
+        return execution_plan.model_identity.model_name
+    return rec.repo_id
+
+
+def _run_metadata(
+    rec: ModelRecommendation,
+    execution_plan: ExecutionPlan | None = None,
+) -> list[str]:
+    if execution_plan is not None:
+        artifact = execution_plan.artifact
+        return [
+            execution_plan.runtime.runtime.value,
+            _backend_hint(execution_plan.runtime),
+            artifact.label,
+        ]
     config = rec.evaluated.selected_configuration
     estimate = rec.evaluated.memory_estimate
     runtime = estimate.runtime_recommendation if estimate is not None else None
@@ -383,6 +440,18 @@ def _flag_value(runtime: RuntimeRecommendation | None, name: str) -> str | None:
     if runtime is None:
         return None
     return next((flag.value for flag in runtime.flags if flag.name == name), None)
+
+
+def _backend_hint(runtime: RuntimeRecommendation) -> str:
+    if runtime.runtime is RuntimeName.TRANSFORMERS:
+        return next(
+            (flag.value for flag in runtime.flags if flag.name == "device_map"),
+            "cpu",
+        )
+    gpu_layers = _flag_value(runtime, "--n-gpu-layers")
+    if gpu_layers in {None, "0"}:
+        return "CPU"
+    return "accelerated"
 
 
 def _response_text(text: str) -> str:

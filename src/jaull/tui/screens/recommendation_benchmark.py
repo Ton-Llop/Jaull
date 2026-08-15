@@ -27,6 +27,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRunResult,
 )
 from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     LlamaCppRuntimeCapability,
@@ -75,9 +76,14 @@ class RecommendationBenchmarkScreen(Screen[None]):
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._execution_plan = execution_plan
         self._log_messages: list[str] = []
         self._last_result: BenchmarkMatrixResult | None = None
         self._benchmark_closing = Event()
@@ -92,7 +98,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         return self._recommendation
 
     def compose(self) -> ComposeResult:
-        yield _BenchmarkHeader(self._recommendation)
+        yield _BenchmarkHeader(self._recommendation, self._execution_plan)
         with VerticalScroll(id="benchmark-body"):
             yield Static(
                 "Benchmark runs a runtime-specific controlled measurement and "
@@ -162,6 +168,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             app.advisor,
             app.hardware_profile,
             runtime,
+            self._execution_plan,
         )
 
     def _benchmark_worker(
@@ -169,9 +176,16 @@ class RecommendationBenchmarkScreen(Screen[None]):
         advisor: AdvisorService,
         hardware: HardwareProfile | None,
         runtime: RuntimeRecommendation,
+        execution_plan: ExecutionPlan | None,
     ) -> None:
         try:
-            if runtime.runtime is RuntimeName.TRANSFORMERS:
+            if execution_plan is not None:
+                result = self._plan_benchmark_worker(
+                    advisor,
+                    hardware,
+                    execution_plan,
+                )
+            elif runtime.runtime is RuntimeName.TRANSFORMERS:
                 result = self._transformers_benchmark_worker(
                     advisor,
                     hardware,
@@ -192,6 +206,50 @@ class RecommendationBenchmarkScreen(Screen[None]):
             return
         if not self._benchmark_closing.is_set():
             self.post_message(_BenchmarkDone(result))
+
+    def _plan_benchmark_worker(
+        self,
+        advisor: AdvisorService,
+        hardware: HardwareProfile | None,
+        execution_plan: ExecutionPlan,
+    ) -> BenchmarkMatrixResult:
+        self._post_step("Preparing selected execution path")
+        prepared = advisor.prepare_execution_plan(
+            execution_plan,
+            hardware=hardware,
+            on_progress=self._post_step,
+        )
+        plan = prepared.plan
+        if plan.hardware is None or plan.backend_selection is None:
+            raise BenchmarkRunnerError("Prepared execution plan is incomplete.")
+        backend = _benchmark_backend(plan.runtime, plan.backend_selection.selected_backend)
+        device = _benchmark_device(backend, plan)
+        self._post_step(f"Running selected benchmark: {backend.value}")
+        request = BenchmarkRequest(
+            artifact=prepared.artifact,
+            runtime=plan.runtime,
+            backend=backend,
+            device=device,
+            gpu_layers=_benchmark_gpu_layers(backend, plan.runtime),
+            prefill_sizes=(128, 512),
+            generation_sizes=(64,),
+            repetitions=3,
+            timeout_seconds=900.0,
+        )
+        run = advisor.run_benchmark(request, hardware=plan.hardware)
+        if run.record.observation.success:
+            return BenchmarkMatrixResult(completed=[run], records=[run.record])
+        return BenchmarkMatrixResult(
+            failed=[
+                BenchmarkMatrixFailure(
+                    request=request,
+                    message=run.record.observation.message or "Benchmark failed.",
+                    record=run.record,
+                    persisted_path=run.persisted_path,
+                )
+            ],
+            records=[run.record],
+        )
 
     def _llama_cpp_benchmark_worker(
         self,
@@ -389,6 +447,8 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self.query_one("#benchmark-details", Button).disabled = False
 
     def _runtime(self) -> RuntimeRecommendation | None:
+        if self._execution_plan is not None:
+            return self._execution_plan.runtime
         estimate = self._estimate()
         if estimate is None or estimate.runtime_recommendation is None:
             return None
@@ -457,17 +517,48 @@ class BenchmarkDetailsScreen(Screen[None]):
 
 
 class _BenchmarkHeader(Static):
-    def __init__(self, recommendation: ModelRecommendation) -> None:
-        config = recommendation.evaluated.selected_configuration
-        quantization = config.quantization if config is not None else "default"
-        estimate = recommendation.evaluated.memory_estimate
-        runtime = estimate.runtime_recommendation if estimate is not None else None
-        runtime_label = runtime.runtime.value if runtime is not None else "unknown"
+    def __init__(
+        self,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
+    ) -> None:
+        if execution_plan is not None:
+            title = execution_plan.model_identity.model_name
+            subtitle = " · ".join(
+                [
+                    execution_plan.runtime.runtime.value,
+                    _backend_hint(execution_plan.runtime),
+                    execution_plan.artifact.label,
+                ]
+            )
+        else:
+            config = recommendation.evaluated.selected_configuration
+            quantization = config.quantization if config is not None else "default"
+            estimate = recommendation.evaluated.memory_estimate
+            runtime = estimate.runtime_recommendation if estimate is not None else None
+            runtime_label = runtime.runtime.value if runtime is not None else "unknown"
+            title = recommendation.repo_id
+            subtitle = f"{quantization} · {runtime_label}"
         super().__init__(
-            f"[bold]{recommendation.repo_id}[/bold]\n"
-            f"{quantization} · {runtime_label}",
+            f"[bold]{title}[/bold]\n"
+            f"{subtitle}",
             id="benchmark-header",
         )
+
+
+def _backend_hint(runtime: RuntimeRecommendation) -> str:
+    if runtime.runtime is RuntimeName.TRANSFORMERS:
+        return next(
+            (flag.value for flag in runtime.flags if flag.name == "device_map"),
+            "cpu",
+        )
+    gpu_layers = next(
+        (flag.value for flag in runtime.flags if flag.name == "--n-gpu-layers"),
+        None,
+    )
+    if gpu_layers in {None, "0"}:
+        return "CPU"
+    return "accelerated"
 
 
 def _result_table(results: list[BenchmarkRunResult]) -> DataTable[str]:
@@ -660,6 +751,44 @@ def _transformers_backend(
     if selected_backend in {ComputeBackend.CPU, ComputeBackend.CUDA, ComputeBackend.HIP}:
         return selected_backend
     return ComputeBackend.CPU
+
+
+def _benchmark_backend(
+    runtime: RuntimeRecommendation,
+    selected_backend: ComputeBackend,
+) -> ComputeBackend:
+    if runtime.runtime is RuntimeName.TRANSFORMERS:
+        return _transformers_backend(runtime, selected_backend)
+    return selected_backend
+
+
+def _benchmark_device(backend: ComputeBackend, plan: ExecutionPlan) -> str | None:
+    if backend is ComputeBackend.CPU:
+        return "none"
+    readiness = plan.execution_readiness
+    if readiness is None or readiness.selected_backend_capability is None:
+        return None
+    devices = readiness.selected_backend_capability.devices
+    if not devices:
+        return None
+    return devices[0].runtime_id
+
+
+def _benchmark_gpu_layers(
+    backend: ComputeBackend,
+    runtime: RuntimeRecommendation,
+) -> BenchmarkGpuLayers:
+    if backend is ComputeBackend.CPU:
+        return BenchmarkGpuLayers.count_layers(0)
+    raw = next(
+        (flag.value for flag in runtime.flags if flag.name == "--n-gpu-layers"),
+        None,
+    )
+    if raw is None:
+        return BenchmarkGpuLayers.full()
+    if raw in {"-1", "all"}:
+        return BenchmarkGpuLayers.full()
+    return BenchmarkGpuLayers.count_layers(max(0, int(raw)))
 
 
 def _seconds(value: float | None) -> str:

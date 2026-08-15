@@ -124,23 +124,41 @@ class JaullApp(App[None]):
     def show_recommendations(self, state: RecommendationWorkflowState) -> None:
         self.push_screen(RecommendationResultsScreen(state))
 
-    def run_recommendation(self, recommendation: object) -> None:
+    def run_recommendation(
+        self,
+        recommendation: object,
+        execution_plan: object | None = None,
+    ) -> None:
+        from jaull.domain.execution_plans import ExecutionPlan
         from jaull.recommendation.models import ModelRecommendation
 
         assert isinstance(recommendation, ModelRecommendation)
-        self.push_screen(RecommendationExecutionScreen(recommendation))
+        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
+        self.push_screen(RecommendationExecutionScreen(recommendation, execution_plan))
 
-    def validate_recommendation(self, recommendation: object) -> None:
+    def validate_recommendation(
+        self,
+        recommendation: object,
+        execution_plan: object | None = None,
+    ) -> None:
+        from jaull.domain.execution_plans import ExecutionPlan
         from jaull.recommendation.models import ModelRecommendation
 
         assert isinstance(recommendation, ModelRecommendation)
-        self.push_screen(RecommendationValidationScreen(recommendation))
+        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
+        self.push_screen(RecommendationValidationScreen(recommendation, execution_plan))
 
-    def benchmark_recommendation(self, recommendation: object) -> None:
+    def benchmark_recommendation(
+        self,
+        recommendation: object,
+        execution_plan: object | None = None,
+    ) -> None:
+        from jaull.domain.execution_plans import ExecutionPlan
         from jaull.recommendation.models import ModelRecommendation
 
         assert isinstance(recommendation, ModelRecommendation)
-        self.push_screen(RecommendationBenchmarkScreen(recommendation))
+        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
+        self.push_screen(RecommendationBenchmarkScreen(recommendation, execution_plan))
 
     def restart_workflow(self) -> None:
         """Drop every guided screen and return to a fresh welcome menu.

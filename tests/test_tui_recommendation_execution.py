@@ -10,6 +10,14 @@ from textual.widgets import Button, DataTable, Input, Static, TextArea
 
 from jaull.artifacts.errors import ArtifactDownloadError
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.benchmarks import (
+    BenchmarkGpuLayers,
+    BenchmarkMeasurement,
+    BenchmarkMeasurementKind,
+    BenchmarkObservation,
+    BenchmarkRecord,
+    BenchmarkRequest,
+)
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
@@ -18,6 +26,11 @@ from jaull.domain.execution import (
     ExecutionObservation,
     ExecutionResult,
     InferenceResult,
+)
+from jaull.domain.execution_plans import (
+    ArtifactVariantFormat,
+    ExecutionPlan,
+    PreparedExecutionPlan,
 )
 from jaull.domain.experiments import (
     ExperimentRecord,
@@ -44,12 +57,17 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.evaluation.benchmark_comparison import (
+    BenchmarkComparison,
+    compare_benchmark_records,
+)
 from jaull.evaluation.experiments import build_experiment_record
 from jaull.execution.errors import (
     ExecutableNotFoundError,
     ExecutionFailedError,
     ExecutionTimeoutError,
 )
+from jaull.execution_plans import execution_plan_for_recommendation
 from jaull.experiments.errors import (
     ExperimentNotReadyError,
     ExperimentPersistenceError,
@@ -65,6 +83,8 @@ from jaull.tui.screens.recommendation_execution import (
     RecommendationExecutionScreen,
 )
 from jaull.tui.screens.recommendation_results import (
+    ExecutionPathBenchmarkCompareScreen,
+    ExecutionPathsScreen,
     ExportReportModal,
     RecommendationCompareScreen,
     RecommendationDetailsScreen,
@@ -214,6 +234,8 @@ class _FakeAdvisor:
         experiment_error: Exception | None = None,
         experiment_persisted_path: Path | None = Path("/tmp/jaull-experiment.json"),
         backend_selection: RuntimeBackendSelection | None = None,
+        execution_plans: list[ExecutionPlan] | None = None,
+        benchmark_comparison: BenchmarkComparison | None = None,
     ) -> None:
         self.services = _services()
         self.artifact = artifact or _artifact()
@@ -227,6 +249,8 @@ class _FakeAdvisor:
         self.experiment_persisted_path = experiment_persisted_path
         self.hardware = hardware()
         self.backend_selection = backend_selection or _backend_selection(ComputeBackend.CPU)
+        self.execution_plans = execution_plans
+        self.benchmark_comparison = benchmark_comparison
         self.operations: list[str] = []
         self.resolved: list[tuple[str, str | None, str | None]] = []
         self.downloaded: list[ModelArtifact] = []
@@ -234,6 +258,7 @@ class _FakeAdvisor:
         self.runs: list[tuple[ModelArtifact, str, RuntimeRecommendation | None]] = []
         self.experiment_requests: list[object] = []
         self.experiment_records: list[ExperimentRecord] = []
+        self.prepared_plans: list[object] = []
 
     def resolve_artifact(
         self,
@@ -294,6 +319,32 @@ class _FakeAdvisor:
         self.operations.append("select_backend")
         return self.backend_selection
 
+    def execution_plans_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+    ) -> list[ExecutionPlan]:
+        self.operations.append("plans")
+        if self.execution_plans is not None:
+            return self.execution_plans
+        return [execution_plan_for_recommendation(recommendation)]
+
+    def prepare_execution_plan(
+        self,
+        plan: object,
+        *,
+        hardware: object | None = None,
+        on_progress: object | None = None,
+    ) -> PreparedExecutionPlan:
+        del hardware
+        self.operations.append("prepare_plan")
+        self.prepared_plans.append(plan)
+        if callable(on_progress):
+            on_progress("Preparing selected execution path")
+        prepared_artifact = self.artifact.model_copy(
+            update={"is_downloaded": True, "is_verified": True}
+        )
+        return PreparedExecutionPlan(plan=plan, artifact=prepared_artifact)  # type: ignore[arg-type]
+
     def run_experiment(self, request: object) -> ExperimentRunResult:
         from jaull.domain.experiments import ExperimentRequest
 
@@ -311,6 +362,15 @@ class _FakeAdvisor:
             record=record,
             persisted_path=self.experiment_persisted_path,
         )
+
+    def compare_saved_benchmarks_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+    ) -> BenchmarkComparison:
+        self.operations.append("compare_saved_benchmarks")
+        if self.benchmark_comparison is not None:
+            return self.benchmark_comparison
+        return _benchmark_comparison(recommendation)
 
 
 def _backend_selection(backend: ComputeBackend) -> RuntimeBackendSelection:
@@ -390,6 +450,110 @@ def _experiment_record(
         prediction=request.prediction,
         runtime_capability=capability,
         execution_readiness=readiness,
+        observation=observation,
+    )
+
+
+def _benchmark_comparison(recommendation: ModelRecommendation) -> BenchmarkComparison:
+    plan = execution_plan_for_recommendation(recommendation)
+    llama_record = _benchmark_record(
+        artifact=_artifact(
+            repo_id="org/Qwen2.5-0.5B-Instruct-GGUF",
+            filename="qwen2.5-0.5b-q4_k_m.gguf",
+            format="gguf",
+            quantization="Q4_K_M",
+        ),
+        runtime=_runtime(ctx_size=4096, n_gpu_layers=0),
+        methodology="llama_bench_v1",
+        prefill_128=250.4,
+        prefill_512=237.2,
+        generation_128=65.6,
+        peak_ram_bytes=505 * 1024**2,
+    )
+    transformers_runtime = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        flags=[
+            RuntimeFlag(
+                name="device_map",
+                value="cpu",
+                source=RuntimeFlagSource.HARDWARE,
+                explanation="CPU test runtime",
+            )
+        ],
+        confidence=EstimationConfidence.HIGH,
+    )
+    transformers_record = _benchmark_record(
+        artifact=_artifact(
+            repo_id="Qwen/Qwen2.5-0.5B-Instruct",
+            filename="model.safetensors",
+            format="safetensors",
+            quantization=None,
+            sha256=None,
+        ),
+        runtime=transformers_runtime,
+        methodology="transformers_isolated_inference_v2",
+        prefill_128=44.1,
+        prefill_512=45.4,
+        generation_128=14.6,
+        peak_ram_bytes=int(2.61 * 1024**3),
+    )
+    return compare_benchmark_records(
+        model_identity=plan.model_identity,
+        records=[llama_record, transformers_record],
+    )
+
+
+def _benchmark_record(
+    *,
+    artifact: ModelArtifact,
+    runtime: RuntimeRecommendation,
+    methodology: str,
+    prefill_128: float,
+    prefill_512: float,
+    generation_128: float,
+    peak_ram_bytes: int,
+) -> BenchmarkRecord:
+    request = BenchmarkRequest(
+        artifact=artifact,
+        runtime=runtime,
+        backend=ComputeBackend.CPU,
+        device=None,
+        gpu_layers=BenchmarkGpuLayers.count_layers(0),
+        repetitions=3,
+    )
+    observation = BenchmarkObservation(
+        success=True,
+        repetitions=3,
+        duration_seconds=10.0,
+        methodology=methodology,
+        peak_ram_bytes=peak_ram_bytes,
+        measurements=[
+            BenchmarkMeasurement(
+                kind=BenchmarkMeasurementKind.PREFILL,
+                tokens=128,
+                mean_tokens_per_second=prefill_128,
+                stddev_tokens_per_second=1.0,
+                source_label="test",
+            ),
+            BenchmarkMeasurement(
+                kind=BenchmarkMeasurementKind.PREFILL,
+                tokens=512,
+                mean_tokens_per_second=prefill_512,
+                stddev_tokens_per_second=1.0,
+                source_label="test",
+            ),
+            BenchmarkMeasurement(
+                kind=BenchmarkMeasurementKind.GENERATION,
+                tokens=128,
+                mean_tokens_per_second=generation_128,
+                stddev_tokens_per_second=1.0,
+                source_label="test",
+            ),
+        ],
+    )
+    return BenchmarkRecord.create(
+        hardware=hardware(),
+        request=request,
         observation=observation,
     )
 
@@ -887,6 +1051,7 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
         async with app.run_test(size=(120, 50)) as pilot:
             app.show_recommendations(state)
             await pilot.pause()
+            assert "Execution paths" in _visible_text(pilot.app.screen)
 
             for _ in range(2):
                 pilot.app.screen.query_one("#res-compare", Button).press()
@@ -901,9 +1066,153 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
                 await pilot.pause()
                 assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
                 assert "Technical details" in _visible_text(pilot.app.screen)
+                assert "preflight not checked" in _visible_text(pilot.app.screen)
                 pilot.app.screen.query_one("#details-back", Button).press()
                 await pilot.pause()
                 assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+    _run(scenario())
+
+
+def test_execution_path_compare_uses_saved_benchmark_records() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation(repo_id="Qwen/Qwen2.5-0.5B-Instruct")
+        advisor = _FakeAdvisor(benchmark_comparison=_benchmark_comparison(recommendation))
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(130, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+            results.query_one("#res-compare-paths", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(
+                    pilot.app.screen,
+                    ExecutionPathBenchmarkCompareScreen,
+                )
+                and "Measured differences" in _visible_text(pilot.app.screen),
+            )
+
+            text = _visible_text(pilot.app.screen)
+            assert "Qwen2.5-0.5B-Instruct" in text
+            assert "Methodology warnings" in text
+            assert advisor.operations == ["compare_saved_benchmarks"]
+
+    _run(scenario())
+
+
+def test_execution_paths_selects_plan_and_run_uses_prepared_plan(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation()
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+            results.query_one("#res-paths-0", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
+                and bool(pilot.app.screen.query("#paths-gguf")),
+            )
+            paths = pilot.app.screen
+            assert isinstance(paths, ExecutionPathsScreen)
+            assert advisor.operations == ["plans"]
+
+            paths.query_one("#paths-run", Button).press()
+            await pilot.pause()
+            run_screen = pilot.app.screen
+            assert isinstance(run_screen, RecommendationExecutionScreen)
+            _run_workers_inline(pilot.app, run_screen, monkeypatch)
+
+            _set_prompt(run_screen, "Say hi")
+            run_screen.query_one("#run-generate", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: "generated from tui" in _visible_text(run_screen),
+            )
+
+            assert "prepare_plan" in advisor.operations
+            assert advisor.runs[0][0].is_verified is True
+            expected_runtime = (
+                recommendation.evaluated.memory_estimate.runtime_recommendation
+            )
+            assert advisor.runs[0][2] is expected_runtime
+
+    _run(scenario())
+
+
+def test_execution_paths_quantization_selection_does_not_prepare() -> None:
+    def plan_for(quantization: str) -> ExecutionPlan:
+        recommendation = _recommendation(quantization=quantization)
+        plan = execution_plan_for_recommendation(recommendation)
+        artifact = plan.artifact.model_copy(
+            update={
+                "repo_id": "org/Tiny-GGUF",
+                "format": ArtifactVariantFormat.GGUF,
+                "quantization": quantization,
+                "filename": f"tiny-{quantization.lower()}.gguf",
+            }
+        )
+        return plan.model_copy(
+            update={
+                "plan_id": f"org/Tiny-GGUF:{quantization}",
+                "artifact": artifact,
+            }
+        )
+
+    async def scenario() -> None:
+        recommendation = _recommendation()
+        advisor = _FakeAdvisor(
+            execution_plans=[
+                plan_for("Q4_K_M"),
+                plan_for("Q5_K_M"),
+                plan_for("Q8_0"),
+            ]
+        )
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+            results.query_one("#res-paths-0", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
+                and bool(pilot.app.screen.query("#paths-quant-1")),
+            )
+            paths = pilot.app.screen
+            assert isinstance(paths, ExecutionPathsScreen)
+            assert advisor.operations == ["plans"]
+            assert "Quantization: Q4_K_M" in _visible_text(paths)
+            assert not paths.query("#paths-quant-2")
+
+            paths.query_one("#paths-quant-1", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: "Quantization: Q5_K_M" in _visible_text(paths),
+            )
+
+            assert advisor.operations == ["plans"]
+            assert "prepare_plan" not in advisor.operations
 
     _run(scenario())
 

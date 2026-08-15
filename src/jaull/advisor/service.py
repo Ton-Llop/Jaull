@@ -23,8 +23,15 @@ from jaull.domain.benchmarks import (
     BenchmarkRequest,
     BenchmarkRunResult,
 )
-from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.execution import ExecutionObservation, InferenceResult
+from jaull.domain.execution_plans import (
+    ArtifactVariant,
+    ArtifactVariantFormat,
+    ExecutionPlan,
+    ModelIdentity,
+    PreparedExecutionPlan,
+)
 from jaull.domain.experiments import (
     ExperimentBackendTrace,
     ExperimentEnvironment,
@@ -35,7 +42,7 @@ from jaull.domain.experiments import (
     ExperimentWorkload,
 )
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.inference import InferenceConfiguration, WeightPrecision
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
 from jaull.domain.runtime import (
@@ -44,6 +51,8 @@ from jaull.domain.runtime import (
     PyTorchRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeCapability,
+    RuntimeFlag,
+    RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
@@ -66,9 +75,11 @@ if TYPE_CHECKING:
         BenchmarkMatrixRunner,
     )
     from jaull.benchmarks.storage import BenchmarkStore
+    from jaull.evaluation.benchmark_comparison import BenchmarkComparison
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
+    from jaull.recommendation.models import ModelRecommendation
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
@@ -413,6 +424,234 @@ class AdvisorService:
     def list_benchmark_ids(self) -> list[str]:
         return self._benchmark_store().list_ids()
 
+    def benchmark_records_for_model(
+        self,
+        model_identity: ModelIdentity,
+    ) -> list[BenchmarkRecord]:
+        records: list[BenchmarkRecord] = []
+        for benchmark_id in self.list_benchmark_ids():
+            record = self.load_benchmark_record(benchmark_id)
+            if self._benchmark_matches_model(record, model_identity):
+                records.append(record)
+        return sorted(records, key=lambda item: item.identity.created_at)
+
+    def resolve_model_identity(
+        self,
+        recommendation: ModelRecommendation,
+    ) -> ModelIdentity:
+        from jaull.execution_plans import resolve_model_identity
+
+        return resolve_model_identity(
+            candidate=recommendation.evaluated.candidate,
+            analysis=recommendation.evaluated.analysis,
+        )
+
+    def artifact_variant_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+    ) -> ArtifactVariant:
+        from jaull.execution_plans import variant_from_recommendation
+
+        return variant_from_recommendation(
+            recommendation,
+            identity=self.resolve_model_identity(recommendation),
+        )
+
+    def discover_artifact_variants(
+        self,
+        *,
+        recommendation: ModelRecommendation,
+        include_uncertain: bool = False,
+        limit: int = 20,
+    ) -> list[ArtifactVariant]:
+        from jaull.execution_plans import discover_artifact_variants
+
+        identity = self.resolve_model_identity(recommendation)
+        current = self.artifact_variant_for_recommendation(recommendation)
+        return discover_artifact_variants(
+            identity=identity,
+            current=current,
+            search_client=self.services.search_client,
+            inspect_model=self.inspect_model,
+            include_uncertain=include_uncertain,
+            limit=limit,
+        )
+
+    def execution_plan_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+        *,
+        hardware: HardwareProfile | None = None,
+        backend_selection: RuntimeBackendSelection | None = None,
+        runtime_capability: RuntimeCapability | None = None,
+        execution_readiness: ExecutionReadiness | None = None,
+    ) -> ExecutionPlan:
+        from jaull.execution_plans import execution_plan_for_recommendation
+
+        return execution_plan_for_recommendation(
+            recommendation,
+            hardware=hardware,
+            backend_selection=backend_selection,
+            runtime_capability=runtime_capability,
+            execution_readiness=execution_readiness,
+        )
+
+    def execution_plans_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+        *,
+        include_uncertain: bool = False,
+        limit: int = 20,
+    ) -> list[ExecutionPlan]:
+        from jaull.execution_plans import build_execution_plan
+
+        current = self.execution_plan_for_recommendation(recommendation)
+        try:
+            variants = self.discover_artifact_variants(
+                recommendation=recommendation,
+                include_uncertain=include_uncertain,
+                limit=limit,
+            )
+        except Exception:
+            variants = [current.artifact]
+
+        plans: list[ExecutionPlan] = []
+        for variant in variants:
+            runtime = (
+                current.runtime
+                if variant == current.artifact
+                else _runtime_for_variant(variant)
+            )
+            memory = current.memory_prediction if variant == current.artifact else None
+            plans.append(
+                build_execution_plan(
+                    model_identity=current.model_identity,
+                    artifact=variant,
+                    runtime=runtime,
+                    memory_prediction=memory,
+                )
+            )
+        return plans or [current]
+
+    def prepare_execution_plan(
+        self,
+        plan: ExecutionPlan,
+        *,
+        hardware: HardwareProfile | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> PreparedExecutionPlan:
+        from jaull.execution_plans import build_execution_plan
+
+        def report(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        hw = hardware
+        if hw is None:
+            report("Scanning hardware")
+            hw = self.scan_hardware()
+        report(f"Inspecting {plan.artifact.repo_id}")
+        analysis = self.inspect_model(plan.artifact.repo_id)
+        config = _config_for_plan(plan)
+        report("Estimating selected execution path")
+        estimate = self.estimate_model(
+            analysis,
+            hw,
+            config,
+            resolve_base_model=True,
+            recommend_runtime=True,
+        )
+        runtime = estimate.runtime_recommendation or _runtime_for_variant(plan.artifact)
+        artifact = self._prepare_plan_artifact(plan, runtime, report)
+        report("Selecting compute backend")
+        selection = self.select_runtime_backend(hw)
+        report("Checking runtime readiness")
+        if runtime.runtime is RuntimeName.TRANSFORMERS:
+            pytorch_capability = self.inspect_pytorch_runtime()
+            readiness = self.evaluate_pytorch_execution_readiness(
+                selection=selection,
+                runtime_capability=pytorch_capability,
+            )
+            runtime_capability: RuntimeCapability = pytorch_capability
+        else:
+            llama_capability = self.inspect_llama_cpp_runtime()
+            runtime_capability = llama_capability
+            readiness = self.evaluate_execution_readiness(
+                selection=selection,
+                runtime_capability=llama_capability,
+            )
+        variant = plan.artifact.model_copy(
+            update={
+                "revision": artifact.revision,
+                "filename": artifact.filename,
+                "size_bytes": artifact.size_bytes,
+                "quantization": artifact.quantization or plan.artifact.quantization,
+            }
+        )
+        prepared = build_execution_plan(
+            model_identity=plan.model_identity,
+            artifact=variant,
+            runtime=runtime,
+            memory_prediction=estimate,
+            hardware=hw,
+            backend_selection=selection,
+            runtime_capability=runtime_capability,
+            execution_readiness=readiness,
+        )
+        return PreparedExecutionPlan(plan=prepared, artifact=artifact)
+
+    def _prepare_plan_artifact(
+        self,
+        plan: ExecutionPlan,
+        runtime: RuntimeRecommendation,
+        report_step: Callable[[str], None],
+    ) -> ModelArtifact:
+        if runtime.runtime is RuntimeName.TRANSFORMERS:
+            report_step("Preparing Transformers runtime")
+            return plan.artifact.to_model_artifact()
+
+        report_step(
+            f"Resolve artifact for {plan.artifact.repo_id}"
+            + (f" ({plan.artifact.quantization})" if plan.artifact.quantization else "")
+        )
+        artifact = self.resolve_artifact(
+            repo_id=plan.artifact.repo_id,
+            quantization=plan.artifact.quantization,
+            revision=plan.artifact.revision,
+        )
+        if not artifact.is_downloaded:
+            report_step("Downloading artifact")
+            artifact = self.download_artifact(artifact)
+        else:
+            report_step(f"Reuse local artifact {artifact.filename}")
+        report_step("Verifying artifact")
+        artifact = self.verify_artifact(artifact)
+        report_step("Model ready")
+        return artifact
+
+    def compare_benchmarks(
+        self,
+        *,
+        model_identity: ModelIdentity,
+        records: list[BenchmarkRecord],
+    ) -> BenchmarkComparison:
+        from jaull.evaluation.benchmark_comparison import compare_benchmark_records
+
+        return compare_benchmark_records(
+            model_identity=model_identity,
+            records=records,
+        )
+
+    def compare_saved_benchmarks_for_recommendation(
+        self,
+        recommendation: ModelRecommendation,
+    ) -> BenchmarkComparison:
+        model_identity = self.resolve_model_identity(recommendation)
+        return self.compare_benchmarks(
+            model_identity=model_identity,
+            records=self.benchmark_records_for_model(model_identity),
+        )
+
     # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
@@ -433,6 +672,21 @@ class AdvisorService:
         )
         object.__setattr__(self, "artifacts", fresh)
         return fresh
+
+    @staticmethod
+    def _benchmark_matches_model(
+        record: BenchmarkRecord,
+        model_identity: ModelIdentity,
+    ) -> bool:
+        artifact = record.artifact
+        if artifact.repo_id == model_identity.canonical_repo_id:
+            return True
+        model_name = model_identity.model_name.casefold()
+        values = [
+            artifact.repo_id.casefold(),
+            artifact.filename.casefold(),
+        ]
+        return any(model_name in value for value in values)
 
     def _llama_cpp_runner(self) -> LlamaCppRunner:
         """Return a configured llama.cpp runner, constructing it only when used."""
@@ -640,6 +894,62 @@ class AdvisorService:
             llama_bench_path=llama_bench_path,
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
         )
+
+
+def _runtime_for_variant(variant: ArtifactVariant) -> RuntimeRecommendation:
+    if variant.format is ArtifactVariantFormat.GGUF:
+        return RuntimeRecommendation(
+            runtime=RuntimeName.LLAMA_CPP,
+            flags=[
+                RuntimeFlag(
+                    name="--n-gpu-layers",
+                    value="0",
+                    source=RuntimeFlagSource.POLICY,
+                    explanation="Discovered GGUF plan defaults to CPU until prepared.",
+                )
+            ],
+            confidence=EstimationConfidence.UNKNOWN,
+            reasons=["Discovered GGUF artifact variant."],
+        )
+    return RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        flags=[
+            RuntimeFlag(
+                name="device_map",
+                value="cpu",
+                source=RuntimeFlagSource.POLICY,
+                explanation=(
+                    "Discovered Transformers plan defaults to CPU until prepared."
+                ),
+            )
+        ],
+        confidence=EstimationConfidence.UNKNOWN,
+        reasons=["Discovered Transformers artifact variant."],
+    )
+
+
+def _config_for_plan(plan: ExecutionPlan) -> InferenceConfiguration:
+    base = (
+        plan.memory_prediction.inference_configuration
+        if plan.memory_prediction is not None
+        else InferenceConfiguration(context_length=4096)
+    )
+    precision = _precision(plan.artifact.precision)
+    return base.model_copy(
+        update={
+            "quantization": plan.artifact.quantization,
+            "precision": precision,
+        }
+    )
+
+
+def _precision(value: str | None) -> WeightPrecision | None:
+    if value is None:
+        return None
+    try:
+        return WeightPrecision(value)
+    except ValueError:
+        return None
 
 
 __all__ = ["AdvisorService", "CancelCheck", "DiagnosticsFn"]
