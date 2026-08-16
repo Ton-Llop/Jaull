@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,6 +11,7 @@ from jaull.domain.execution import ExecutionRequest, InferenceResult
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _DEFAULT_CONTEXT_SIZE = 4096
 _DEFAULT_GPU_LAYERS = 0
@@ -90,31 +90,15 @@ class LlamaCppRunner:
 
 
 def _resolve_llama_cli(configured: str | Path | None) -> str:
-    if configured is None:
-        found = shutil.which(_LLAMA_CLI)
-        if found is None:
-            raise ExecutableNotFoundError(
-                "llama-cli executable not found. Install or build llama.cpp and "
-                "ensure llama-cli is available in PATH."
-            )
-        return found
-
-    configured_str = str(configured)
-    configured_path = Path(configured).expanduser()
-    if configured_path.parent != Path("."):
-        if not configured_path.is_file():
-            raise ExecutableNotFoundError(
-                f"llama-cli executable not found at {configured_path}."
-            )
-        return str(configured_path)
-
-    found = shutil.which(configured_str)
-    if found is None:
+    installation = RuntimeLocator(
+        config=RuntimeLocatorConfig(llama_cli_path=configured),
+    ).resolve_llama_cpp()
+    if installation.llama_cli is None or not Path(installation.llama_cli).is_file():
         raise ExecutableNotFoundError(
-            f"llama-cli executable not found: {configured_str!r}. Install or build "
-            "llama.cpp and ensure llama-cli is available in PATH."
+            installation.discovery.message
+            or "llama-cli executable not found. Install or build llama.cpp."
         )
-    return found
+    return installation.llama_cli
 
 
 def _validate_artifact(artifact: ModelArtifact) -> Path:

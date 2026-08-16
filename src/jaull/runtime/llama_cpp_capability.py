@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 from pathlib import Path
 
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
@@ -20,6 +19,7 @@ from jaull.domain.runtime import (
     LlamaCppRuntimeCapability,
     LlamaCppRuntimeDevice,
     RuntimeBackendSelection,
+    RuntimeResolutionStatus,
 )
 from jaull.execution.errors import (
     ExecutableNotFoundError,
@@ -28,6 +28,7 @@ from jaull.execution.errors import (
     ExecutionTimeoutError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _LIST_DEVICES_SOURCE = "llama-cli --list-devices"
 _VERSION_SOURCE = "llama-cli --version"
@@ -247,41 +248,30 @@ class _ResolvedBinary:
 
 
 def _resolve_llama_cli(path: str | Path | None) -> _ResolvedBinary:
-    if path is None:
-        resolved = shutil.which("llama-cli")
-        if resolved is None:
-            return _ResolvedBinary(
-                path=None,
-                status=LlamaCppBinaryStatus.MISSING,
-                message=(
-                    "llama-cli executable not found. Install or build llama.cpp "
-                    "and ensure llama-cli is available in PATH."
-                ),
-            )
-        return _ResolvedBinary(path=resolved, status=LlamaCppBinaryStatus.UNKNOWN)
-
-    configured_str = str(path)
-    candidate = Path(path).expanduser()
-    if candidate.parent == Path("."):
-        resolved = shutil.which(configured_str)
-        if resolved is None:
-            return _ResolvedBinary(
-                path=None,
-                status=LlamaCppBinaryStatus.MISSING,
-                message=(
-                    f"llama-cli executable not found: {configured_str!r}. Install "
-                    "or build llama.cpp and ensure llama-cli is available in PATH."
-                ),
-            )
-        return _ResolvedBinary(path=resolved, status=LlamaCppBinaryStatus.UNKNOWN)
-
-    if not candidate.exists():
+    installation = RuntimeLocator(
+        config=RuntimeLocatorConfig(llama_cli_path=path),
+    ).resolve_llama_cpp()
+    if installation.llama_cli is None:
         return _ResolvedBinary(
-            path=str(candidate),
+            path=None,
             status=LlamaCppBinaryStatus.MISSING,
-            message=f"llama-cli executable not found at {candidate}",
+            message=installation.discovery.message
+            or "llama-cli executable was not found.",
         )
-    if candidate.is_dir() or (os.name != "nt" and not os.access(candidate, os.X_OK)):
+    candidate = Path(installation.llama_cli)
+    if installation.status in {
+        RuntimeResolutionStatus.CONFIGURED_RUNTIME_MISSING,
+        RuntimeResolutionStatus.RUNTIME_NOT_FOUND,
+    }:
+        return _ResolvedBinary(
+            path=str(candidate) if str(candidate) else None,
+            status=LlamaCppBinaryStatus.MISSING,
+            message=installation.discovery.message
+            or f"llama-cli executable not found at {candidate}",
+        )
+    if installation.status is RuntimeResolutionStatus.RUNTIME_NOT_EXECUTABLE or (
+        candidate.is_dir() or (os.name != "nt" and not os.access(candidate, os.X_OK))
+    ):
         return _ResolvedBinary(
             path=str(candidate),
             status=LlamaCppBinaryStatus.NOT_EXECUTABLE,

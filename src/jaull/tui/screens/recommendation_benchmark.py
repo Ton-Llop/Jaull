@@ -268,7 +268,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self._post_step("Selecting compute backend")
         selection = advisor.select_runtime_backend(hardware)
         self._post_step("Checking llama.cpp devices")
-        runtime_capability = advisor.inspect_llama_cpp_runtime()
+        runtime_capability = advisor.inspect_llama_cpp_runtime(selection=selection)
         self._post_step(
             "Running llama-bench: "
             + _benchmark_configuration_label(selection, runtime_capability)

@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from jaull.domain.execution import (
     ExecutionFailureReason,
     ExecutionObservation,
@@ -21,7 +19,6 @@ from jaull.domain.runtime import (
     RuntimeBackendSelectionReason,
 )
 from jaull.execution.errors import ExecutionError, ExecutionFailedError
-from jaull.runtime import llama_cpp_capability
 from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
@@ -65,11 +62,11 @@ def test_missing_binary_returns_missing_without_backend_call(tmp_path: Path) -> 
     assert backend.requests == []
 
 
-def test_not_executable_spawn_error_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(llama_cpp_capability.shutil, "which", lambda _: "llama-cli")
+def test_not_executable_spawn_error_is_reported(tmp_path: Path) -> None:
+    binary = _fake_binary(tmp_path)
     backend = _FakeExecutionBackend(
         {
-            ("llama-cli", "--list-devices"): ExecutionError(
+            (str(binary), "--list-devices"): ExecutionError(
                 "spawn failed",
                 observation=_observation(
                     success=False,
@@ -80,7 +77,7 @@ def test_not_executable_spawn_error_is_reported(monkeypatch: pytest.MonkeyPatch)
         }
     )
 
-    capability = inspect_llama_cpp_runtime(backend=backend, llama_cli_path=None)
+    capability = inspect_llama_cpp_runtime(backend=backend, llama_cli_path=binary)
 
     assert capability.binary_status is LlamaCppBinaryStatus.NOT_EXECUTABLE
 

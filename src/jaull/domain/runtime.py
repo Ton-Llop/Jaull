@@ -27,6 +27,54 @@ class RuntimeFamily(StrEnum):
     PYTORCH_TRANSFORMERS = "pytorch_transformers"
 
 
+class RuntimeSource(StrEnum):
+    EXPLICIT = "explicit"
+    REGISTERED = "registered"
+    MANAGED = "managed"
+    SIBLING = "sibling"
+    PATH = "path"
+    DISCOVERED = "discovered"
+    CURRENT_ENVIRONMENT = "current_environment"
+
+
+class RuntimeResolutionStatus(StrEnum):
+    FOUND = "found"
+    RUNTIME_NOT_FOUND = "runtime_not_found"
+    CONFIGURED_RUNTIME_MISSING = "configured_runtime_missing"
+    RUNTIME_NOT_EXECUTABLE = "runtime_not_executable"
+    RUNTIME_PROBE_FAILED = "runtime_probe_failed"
+    REQUESTED_BACKEND_NOT_AVAILABLE = "requested_backend_not_available"
+
+
+class RuntimeDiscoveryMetadata(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    detail: str | None = None
+    searched: list[str] = Field(default_factory=list)
+    message: str | None = None
+
+
+class LlamaCppInstallation(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    root: str
+    llama_cli: str | None = None
+    llama_bench: str | None = None
+    source: RuntimeSource
+    status: RuntimeResolutionStatus = RuntimeResolutionStatus.FOUND
+    discovery: RuntimeDiscoveryMetadata = Field(default_factory=RuntimeDiscoveryMetadata)
+    version_text: str | None = None
+
+
+class PyTorchInstallation(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    python_executable: str | None = None
+    source: RuntimeSource
+    status: RuntimeResolutionStatus = RuntimeResolutionStatus.FOUND
+    discovery: RuntimeDiscoveryMetadata = Field(default_factory=RuntimeDiscoveryMetadata)
+
+
 class RuntimeExecutability(StrEnum):
     """Can the recommended runtime actually load this artifact here?"""
 

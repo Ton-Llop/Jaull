@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +22,7 @@ from jaull.domain.runtime import (
     PyTorchRuntimeDevice,
     PyTorchRuntimeStatus,
     RuntimeBackendSelection,
+    RuntimeResolutionStatus,
 )
 from jaull.execution.errors import (
     ExecutableNotFoundError,
@@ -32,6 +31,7 @@ from jaull.execution.errors import (
     ExecutionTimeoutError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _PROBE_SOURCE = "python -c pytorch_runtime_probe"
 
@@ -355,33 +355,26 @@ class _ResolvedPython:
 
 
 def _resolve_python(path: str | Path | None) -> _ResolvedPython:
-    if path is None:
-        executable = sys.executable or shutil.which("python3") or shutil.which("python")
-        if executable is None:
-            return _ResolvedPython(
-                path=None,
-                status=PyTorchRuntimeStatus.PYTHON_MISSING,
-                message="Python executable was not found.",
-            )
-        return _ResolvedPython(path=executable, status=PyTorchRuntimeStatus.UNKNOWN)
-
-    configured = str(path)
-    candidate = Path(path).expanduser()
-    if candidate.parent == Path("."):
-        resolved = shutil.which(configured)
-        if resolved is None:
-            return _ResolvedPython(
-                path=None,
-                status=PyTorchRuntimeStatus.PYTHON_MISSING,
-                message=f"Python executable was not found: {configured!r}.",
-            )
-        return _ResolvedPython(path=resolved, status=PyTorchRuntimeStatus.UNKNOWN)
-
-    if not candidate.exists():
+    installation = RuntimeLocator(
+        config=RuntimeLocatorConfig(python_executable=path),
+    ).resolve_pytorch()
+    if installation.python_executable is None:
+        return _ResolvedPython(
+            path=None,
+            status=PyTorchRuntimeStatus.PYTHON_MISSING,
+            message=installation.discovery.message or "Python executable was not found.",
+        )
+    candidate = Path(installation.python_executable)
+    if installation.status in {
+        RuntimeResolutionStatus.CONFIGURED_RUNTIME_MISSING,
+        RuntimeResolutionStatus.RUNTIME_NOT_FOUND,
+        RuntimeResolutionStatus.RUNTIME_NOT_EXECUTABLE,
+    }:
         return _ResolvedPython(
             path=str(candidate),
             status=PyTorchRuntimeStatus.PYTHON_MISSING,
-            message=f"Python executable was not found at {candidate}.",
+            message=installation.discovery.message
+            or f"Python executable was not found at {candidate}.",
         )
     if candidate.is_dir() or (os.name != "nt" and not os.access(candidate, os.X_OK)):
         return _ResolvedPython(

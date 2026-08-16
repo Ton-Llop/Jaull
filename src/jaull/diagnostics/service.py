@@ -25,6 +25,8 @@ from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     LlamaCppBinaryStatus,
     LlamaCppRuntimeCapability,
+    PyTorchRuntimeCapability,
+    PyTorchRuntimeStatus,
     RuntimeBackendSelection,
 )
 from jaull.execution.host import HostExecutionBackend
@@ -35,6 +37,8 @@ from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
 )
+from jaull.runtime.locator import RuntimeLocator
+from jaull.runtime.pytorch_capability import inspect_pytorch_runtime
 
 _REQUIRED_DEPENDENCIES = (
     "typer",
@@ -45,7 +49,35 @@ _REQUIRED_DEPENDENCIES = (
 )
 
 
-def collect_diagnostics() -> list[DiagnosticResult]:
+def collect_diagnostics(
+    *,
+    runtime_locator: RuntimeLocator | None = None,
+) -> list[DiagnosticResult]:
+    locator = runtime_locator or RuntimeLocator()
+    execution_backend = HostExecutionBackend()
+    hardware = _runtime_hardware_profile()
+    selection = select_runtime_backend(hardware)
+    llama_installation = locator.resolve_llama_cpp()
+    llama_capability = (
+        inspect_llama_cpp_runtime(
+            backend=execution_backend,
+            llama_cli_path=llama_installation.llama_cli,
+        )
+        if llama_installation.llama_cli is not None
+        else LlamaCppRuntimeCapability(
+            binary_status=LlamaCppBinaryStatus.MISSING,
+            message=llama_installation.discovery.message,
+        )
+    )
+    llama_readiness = evaluate_execution_readiness(
+        selection=selection,
+        runtime_capability=llama_capability,
+    )
+    pytorch_installation = locator.resolve_pytorch()
+    pytorch_capability = inspect_pytorch_runtime(
+        backend=execution_backend,
+        python_executable=pytorch_installation.python_executable,
+    )
     return [
         _check_python(),
         _check_internet(),
@@ -53,9 +85,10 @@ def collect_diagnostics() -> list[DiagnosticResult]:
         _check_nvml(),
         _check_nvidia_gpu(),
         _check_accelerators(),
-        _check_preferred_backend(),
-        _check_llama_cpp_runtime(),
-        _check_execution_readiness(),
+        _check_preferred_backend(selection),
+        _check_llama_cpp_runtime(llama_capability, source=llama_installation.source.value),
+        _check_execution_readiness(llama_readiness),
+        _check_pytorch_runtime(pytorch_capability, source=pytorch_installation.source.value),
         _check_cpu_fallback(),
         _check_cache_writable(),
         *_check_dependencies(),
@@ -163,8 +196,7 @@ def _check_accelerators() -> DiagnosticResult:
     )
 
 
-def _check_preferred_backend() -> DiagnosticResult:
-    selection = select_runtime_backend(_runtime_hardware_profile())
+def _check_preferred_backend(selection: RuntimeBackendSelection) -> DiagnosticResult:
     return DiagnosticResult(
         name="Preferred backend",
         status=DiagnosticStatus.OK,
@@ -172,8 +204,11 @@ def _check_preferred_backend() -> DiagnosticResult:
     )
 
 
-def _check_llama_cpp_runtime() -> DiagnosticResult:
-    capability = inspect_llama_cpp_runtime(backend=HostExecutionBackend())
+def _check_llama_cpp_runtime(
+    capability: LlamaCppRuntimeCapability,
+    *,
+    source: str,
+) -> DiagnosticResult:
     status = (
         DiagnosticStatus.OK
         if capability.binary_status is LlamaCppBinaryStatus.AVAILABLE
@@ -182,15 +217,11 @@ def _check_llama_cpp_runtime() -> DiagnosticResult:
     return DiagnosticResult(
         name="llama.cpp runtime",
         status=status,
-        detail=_runtime_capability_detail(capability),
+        detail=f"source={source}; {_runtime_capability_detail(capability)}",
     )
 
 
-def _check_execution_readiness() -> DiagnosticResult:
-    readiness = evaluate_execution_readiness(
-        selection=select_runtime_backend(_runtime_hardware_profile()),
-        runtime_capability=inspect_llama_cpp_runtime(backend=HostExecutionBackend()),
-    )
+def _check_execution_readiness(readiness: ExecutionReadiness) -> DiagnosticResult:
     status = (
         DiagnosticStatus.OK
         if readiness.status is ExecutionReadinessStatus.READY
@@ -200,6 +231,23 @@ def _check_execution_readiness() -> DiagnosticResult:
         name="Execution ready",
         status=status,
         detail=_readiness_detail(readiness),
+    )
+
+
+def _check_pytorch_runtime(
+    capability: PyTorchRuntimeCapability,
+    *,
+    source: str,
+) -> DiagnosticResult:
+    status = (
+        DiagnosticStatus.OK
+        if capability.runtime_status is PyTorchRuntimeStatus.AVAILABLE
+        else DiagnosticStatus.WARN
+    )
+    return DiagnosticResult(
+        name="Transformers runtime",
+        status=status,
+        detail=f"source={source}; {_pytorch_capability_detail(capability)}",
     )
 
 
@@ -254,6 +302,17 @@ def _readiness_detail(readiness: ExecutionReadiness) -> str:
         ExecutionReadinessStatus.UNKNOWN: "unknown",
     }[readiness.status]
     return f"{label} · {readiness.reason.value}"
+
+
+def _pytorch_capability_detail(capability: PyTorchRuntimeCapability) -> str:
+    if capability.runtime_status is not PyTorchRuntimeStatus.AVAILABLE:
+        return capability.message or capability.runtime_status.value
+    versions = [
+        f"python={capability.python_executable or 'unknown'}",
+        f"torch={capability.torch_version or 'unknown'}",
+        f"transformers={capability.transformers_version or 'unknown'}",
+    ]
+    return "; ".join(versions)
 
 
 def _accelerator_detail(accelerator: AcceleratorProfile) -> str:

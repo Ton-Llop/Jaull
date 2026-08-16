@@ -39,6 +39,7 @@ from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
 )
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 from jaull.runtime.pytorch_capability import (
     evaluate_pytorch_execution_readiness,
     inspect_pytorch_runtime,
@@ -77,6 +78,7 @@ class ExperimentRunner:
     store: ExperimentStore | None = None
     llama_cli_path: str | Path | None = None
     python_executable: str | Path | None = None
+    runtime_locator: RuntimeLocator | None = None
     capability_timeout_seconds: float = 10.0
 
     def run(self, request: ExperimentRequest) -> ExperimentRunResult:
@@ -150,7 +152,7 @@ class ExperimentRunner:
                 )
             pytorch_capability = inspect_pytorch_runtime(
                 backend=self.execution_backend,
-                python_executable=self.python_executable,
+                python_executable=self._pytorch_python(),
                 timeout_seconds=self.capability_timeout_seconds,
             )
             pytorch_readiness = evaluate_pytorch_execution_readiness(
@@ -161,7 +163,7 @@ class ExperimentRunner:
 
         llama_capability = inspect_llama_cpp_runtime(
             backend=self.execution_backend,
-            llama_cli_path=self.llama_cli_path,
+            llama_cli_path=self._llama_cli_for_request(request),
             timeout_seconds=self.capability_timeout_seconds,
         )
         llama_readiness = evaluate_execution_readiness(
@@ -169,6 +171,42 @@ class ExperimentRunner:
             runtime_capability=llama_capability,
         )
         return llama_capability, llama_readiness, self.llama_cpp_runner
+
+    def _runtime_locator(self) -> RuntimeLocator:
+        if self.runtime_locator is not None:
+            return self.runtime_locator
+        return RuntimeLocator(
+            config=RuntimeLocatorConfig(
+                llama_cli_path=self.llama_cli_path,
+                python_executable=self.python_executable,
+            )
+        )
+
+    def _pytorch_python(self) -> str | None:
+        return self._runtime_locator().resolve_pytorch().python_executable
+
+    def _llama_cli_for_request(self, request: ExperimentRequest) -> str | None:
+        readiness_by_cli: dict[str, ExecutionReadinessStatus] = {}
+        fallback: str | None = None
+        for installation in self._runtime_locator().discover_llama_cpp():
+            if installation.llama_cli is None:
+                continue
+            fallback = fallback or installation.llama_cli
+            capability = inspect_llama_cpp_runtime(
+                backend=self.execution_backend,
+                llama_cli_path=installation.llama_cli,
+                timeout_seconds=self.capability_timeout_seconds,
+            )
+            readiness = evaluate_execution_readiness(
+                selection=request.backend_selection,
+                runtime_capability=capability,
+            )
+            readiness_by_cli[installation.llama_cli] = readiness.status
+        selected = self._runtime_locator().select_llama_cpp(
+            requested_backend=request.backend_selection.selected_backend,
+            readiness_by_cli=readiness_by_cli,
+        )
+        return selected.llama_cli or fallback
 
 
 def _validate_request(request: ExperimentRequest) -> None:

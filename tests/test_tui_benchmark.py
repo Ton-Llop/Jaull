@@ -235,7 +235,8 @@ class _BenchmarkAdvisor(_FakeAdvisor):
         self.last_benchmark_request: BenchmarkRequest | None = None
         self.last_matrix_request: BenchmarkMatrixRequest | None = None
 
-    def inspect_llama_cpp_runtime(self) -> object:
+    def inspect_llama_cpp_runtime(self, **kwargs: object) -> object:
+        del kwargs
         return _runtime_capability(ComputeBackend.VULKAN)
 
     def run_benchmark_matrix(

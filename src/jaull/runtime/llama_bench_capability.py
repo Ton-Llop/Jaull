@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 from jaull.domain.benchmarks import (
@@ -11,6 +10,7 @@ from jaull.domain.benchmarks import (
     LlamaBenchCapability,
 )
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
+from jaull.domain.runtime import RuntimeResolutionStatus
 from jaull.execution.errors import (
     ExecutableNotFoundError,
     ExecutionError,
@@ -18,6 +18,7 @@ from jaull.execution.errors import (
     ExecutionTimeoutError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _LLAMA_BENCH = "llama-bench"
 _VERSION_SOURCE = "llama-bench --version"
@@ -88,43 +89,25 @@ def inspect_llama_bench(
 def resolve_llama_bench_binary(
     path: str | Path | None,
 ) -> LlamaBenchCapability:
-    if path is None:
-        resolved = shutil.which(_LLAMA_BENCH)
-        if resolved is None:
-            return LlamaBenchCapability(
-                binary_status=LlamaBenchBinaryStatus.MISSING,
-                message=(
-                    "llama-bench executable not found. Install or build llama.cpp "
-                    "and ensure llama-bench is available in PATH."
-                ),
-            )
+    installation = RuntimeLocator(
+        config=RuntimeLocatorConfig(llama_bench_path=path),
+    ).resolve_llama_cpp()
+    if installation.llama_bench is None:
         return LlamaBenchCapability(
-            binary_path=resolved,
-            binary_status=LlamaBenchBinaryStatus.UNKNOWN,
+            binary_status=LlamaBenchBinaryStatus.MISSING,
+            message=installation.discovery.message
+            or "llama-bench executable was not found.",
         )
-
-    configured = str(path)
-    candidate = Path(path).expanduser()
-    if candidate.parent == Path("."):
-        resolved = shutil.which(configured)
-        if resolved is None:
-            return LlamaBenchCapability(
-                binary_status=LlamaBenchBinaryStatus.MISSING,
-                message=(
-                    f"llama-bench executable not found: {configured!r}. Install "
-                    "or build llama.cpp and ensure llama-bench is available in PATH."
-                ),
-            )
-        return LlamaBenchCapability(
-            binary_path=resolved,
-            binary_status=LlamaBenchBinaryStatus.UNKNOWN,
-        )
-
-    if not candidate.exists():
+    candidate = Path(installation.llama_bench)
+    if installation.status in {
+        RuntimeResolutionStatus.CONFIGURED_RUNTIME_MISSING,
+        RuntimeResolutionStatus.RUNTIME_NOT_FOUND,
+    }:
         return LlamaBenchCapability(
             binary_path=str(candidate),
             binary_status=LlamaBenchBinaryStatus.MISSING,
-            message=f"llama-bench executable not found at {candidate}.",
+            message=installation.discovery.message
+            or f"llama-bench executable not found at {candidate}.",
         )
     if candidate.is_dir() or (os.name != "nt" and not os.access(candidate, os.X_OK)):
         return LlamaBenchCapability(

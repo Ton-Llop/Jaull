@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +15,7 @@ from jaull.execution.errors import (
     ExecutionFailedError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _DEFAULT_DEVICE_MAP = "cpu"
 _DEFAULT_MAX_NEW_TOKENS = 64
@@ -95,24 +94,16 @@ class TransformersRunner:
 
 
 def _resolve_python(configured: str | Path | None) -> str:
-    if configured is None:
-        return sys.executable
-
-    configured_str = str(configured)
-    configured_path = Path(configured).expanduser()
-    if configured_path.parent != Path("."):
-        if not configured_path.is_file():
-            raise ExecutableNotFoundError(
-                f"Python executable not found at {configured_path}."
-            )
-        return str(configured_path)
-
-    found = shutil.which(configured_str)
-    if found is None:
+    installation = RuntimeLocator(
+        config=RuntimeLocatorConfig(python_executable=configured),
+    ).resolve_pytorch()
+    if installation.python_executable is None or not Path(
+        installation.python_executable
+    ).is_file():
         raise ExecutableNotFoundError(
-            f"Python executable not found: {configured_str!r}."
+            installation.discovery.message or "Python executable not found."
         )
-    return found
+    return installation.python_executable
 
 
 def _model_ref(artifact: ModelArtifact) -> str:

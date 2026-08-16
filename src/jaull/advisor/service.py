@@ -47,6 +47,7 @@ from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
 from jaull.domain.runtime import (
     ExecutionReadiness,
+    ExecutionReadinessStatus,
     LlamaCppRuntimeCapability,
     PyTorchRuntimeCapability,
     RuntimeBackendSelection,
@@ -75,6 +76,7 @@ if TYPE_CHECKING:
         BenchmarkMatrixRunner,
     )
     from jaull.benchmarks.storage import BenchmarkStore
+    from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
@@ -82,6 +84,7 @@ if TYPE_CHECKING:
     from jaull.recommendation.models import ModelRecommendation
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+    from jaull.runtime.locator import RuntimeLocator
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
     from jaull.runtime.transformers_runner import TransformersRunner
 
@@ -115,6 +118,9 @@ class AdvisorService:
     pytorch_probe_timeout_seconds: float = field(default=10.0)
     llama_bench_path: str | Path | None = field(default=None)
     llama_bench_timeout_seconds: float = field(default=900.0)
+    runtime_locator: RuntimeLocator | None = field(default=None)
+    llama_cpp_installation: LlamaCppInstallation | None = field(default=None)
+    pytorch_installation: PyTorchInstallation | None = field(default=None)
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -133,6 +139,8 @@ class AdvisorService:
         return orchestrator.scan_hardware(self.services, on_progress=on_progress)
 
     def diagnostics(self) -> list[DiagnosticResult]:
+        if self.collect_diagnostics is _default_diagnostics:
+            return _default_diagnostics(runtime_locator=self._runtime_locator())
         return self.collect_diagnostics()
 
     def inspect_model(self, repo_id: str) -> ModelAnalysis:
@@ -243,13 +251,48 @@ class AdvisorService:
         self,
         *,
         backend: ExecutionBackendProtocol | None = None,
+        selection: RuntimeBackendSelection | None = None,
+        hardware: HardwareProfile | None = None,
     ) -> LlamaCppRuntimeCapability:
+        from jaull.domain.runtime import LlamaCppBinaryStatus, RuntimeResolutionStatus
         from jaull.execution.host import HostExecutionBackend
         from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
 
+        effective_selection = selection
+        if effective_selection is None and hardware is not None:
+            effective_selection = self.select_runtime_backend(hardware)
+        installation = (
+            self._select_llama_cpp_installation(
+                selection=effective_selection,
+                backend=backend or HostExecutionBackend(),
+            )
+            if effective_selection is not None
+            else self._resolved_llama_cpp_installation()
+        )
+        if installation.llama_cli is None:
+            return LlamaCppRuntimeCapability(
+                binary_path=None,
+                binary_status=LlamaCppBinaryStatus.MISSING,
+                message=installation.discovery.message,
+            )
+        if installation.status is RuntimeResolutionStatus.RUNTIME_NOT_EXECUTABLE:
+            return LlamaCppRuntimeCapability(
+                binary_path=installation.llama_cli,
+                binary_status=LlamaCppBinaryStatus.NOT_EXECUTABLE,
+                message=installation.discovery.message,
+            )
+        if installation.status in {
+            RuntimeResolutionStatus.CONFIGURED_RUNTIME_MISSING,
+            RuntimeResolutionStatus.RUNTIME_NOT_FOUND,
+        }:
+            return LlamaCppRuntimeCapability(
+                binary_path=installation.llama_cli,
+                binary_status=LlamaCppBinaryStatus.MISSING,
+                message=installation.discovery.message,
+            )
         return inspect_llama_cpp_runtime(
             backend=backend or HostExecutionBackend(),
-            llama_cli_path=self.llama_cli_path,
+            llama_cli_path=installation.llama_cli,
             timeout_seconds=self.llama_cli_timeout_seconds,
         )
 
@@ -265,7 +308,8 @@ class AdvisorService:
 
         effective_selection = selection or self.select_runtime_backend(hardware)
         effective_capability = runtime_capability or self.inspect_llama_cpp_runtime(
-            backend=backend
+            backend=backend,
+            selection=effective_selection,
         )
         return evaluate_execution_readiness(
             selection=effective_selection,
@@ -280,9 +324,10 @@ class AdvisorService:
         from jaull.execution.host import HostExecutionBackend
         from jaull.runtime.pytorch_capability import inspect_pytorch_runtime
 
+        installation = self._resolved_pytorch_installation()
         return inspect_pytorch_runtime(
             backend=backend or HostExecutionBackend(),
-            python_executable=self.python_executable,
+            python_executable=installation.python_executable,
             timeout_seconds=self.pytorch_probe_timeout_seconds,
         )
 
@@ -368,10 +413,11 @@ class AdvisorService:
 
         from jaull.runtime.llama_bench_capability import inspect_llama_bench
 
+        installation = self._resolved_llama_cpp_installation()
         observation = self._llama_bench_runner().run(request)
         capability = inspect_llama_bench(
             backend=self._host_execution_backend(),
-            llama_bench_path=self.llama_bench_path,
+            llama_bench_path=installation.llama_bench,
             timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
         )
         record = BenchmarkRecord.create(
@@ -574,7 +620,7 @@ class AdvisorService:
             )
             runtime_capability: RuntimeCapability = pytorch_capability
         else:
-            llama_capability = self.inspect_llama_cpp_runtime()
+            llama_capability = self.inspect_llama_cpp_runtime(selection=selection)
             runtime_capability = llama_capability
             readiness = self.evaluate_execution_readiness(
                 selection=selection,
@@ -692,12 +738,18 @@ class AdvisorService:
         """Return a configured llama.cpp runner, constructing it only when used."""
         if self.llama_cpp_runner is not None:
             return self.llama_cpp_runner
+        from jaull.execution.errors import ExecutableNotFoundError
         from jaull.execution.host import HostExecutionBackend
         from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 
+        installation = self._resolved_llama_cpp_installation()
+        if installation.llama_cli is None:
+            raise ExecutableNotFoundError(
+                installation.discovery.message or "llama-cli executable not found."
+            )
         fresh = LlamaCppRunner(
             backend=HostExecutionBackend(),
-            llama_cli_path=self.llama_cli_path,
+            llama_cli_path=installation.llama_cli,
             timeout_seconds=self.llama_cli_timeout_seconds,
         )
         object.__setattr__(self, "llama_cpp_runner", fresh)
@@ -709,9 +761,10 @@ class AdvisorService:
             return self.transformers_runner
         from jaull.runtime.transformers_runner import TransformersRunner
 
+        installation = self._resolved_pytorch_installation()
         fresh = TransformersRunner(
             backend=self._host_execution_backend(),
-            python_executable=self.python_executable,
+            python_executable=installation.python_executable,
             timeout_seconds=self.llama_cli_timeout_seconds,
         )
         object.__setattr__(self, "transformers_runner", fresh)
@@ -742,8 +795,9 @@ class AdvisorService:
             llama_cpp_runner=self._llama_cpp_runner(),
             transformers_runner=self._transformers_runner(),
             store=self._experiment_store(),
-            llama_cli_path=self.llama_cli_path,
-            python_executable=self.python_executable,
+            llama_cli_path=self._resolved_llama_cpp_installation().llama_cli,
+            python_executable=self._resolved_pytorch_installation().python_executable,
+            runtime_locator=self._runtime_locator(),
             capability_timeout_seconds=self.llama_cli_timeout_seconds,
         )
         object.__setattr__(self, "experiment_runner", fresh)
@@ -752,11 +806,17 @@ class AdvisorService:
     def _llama_bench_runner(self) -> LlamaBenchRunner:
         if self.llama_bench_runner is not None:
             return self.llama_bench_runner
+        from jaull.benchmarks.errors import BenchmarkUnavailableError
         from jaull.runtime.llama_bench_runner import LlamaBenchRunner
 
+        installation = self._resolved_llama_cpp_installation()
+        if installation.llama_bench is None:
+            raise BenchmarkUnavailableError(
+                installation.discovery.message or "llama-bench executable not found."
+            )
         fresh = LlamaBenchRunner(
             backend=self._host_execution_backend(),
-            llama_bench_path=self.llama_bench_path,
+            llama_bench_path=installation.llama_bench,
         )
         object.__setattr__(self, "llama_bench_runner", fresh)
         return fresh
@@ -768,9 +828,10 @@ class AdvisorService:
             TransformersBenchmarkRunner,
         )
 
+        installation = self._resolved_pytorch_installation()
         fresh = TransformersBenchmarkRunner(
             backend=self._host_execution_backend(),
-            python_executable=self.python_executable,
+            python_executable=installation.python_executable,
         )
         object.__setattr__(self, "transformers_benchmark_runner", fresh)
         return fresh
@@ -793,11 +854,73 @@ class AdvisorService:
             execution_backend=self._host_execution_backend(),
             llama_bench_runner=self._llama_bench_runner(),
             store=self._benchmark_store(),
-            llama_bench_path=self.llama_bench_path,
+            llama_bench_path=self._resolved_llama_cpp_installation().llama_bench,
             capability_timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
         )
         object.__setattr__(self, "benchmark_matrix_runner", fresh)
         return fresh
+
+    def _runtime_locator(self) -> RuntimeLocator:
+        if self.runtime_locator is not None:
+            return self.runtime_locator
+        from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
+
+        fresh = RuntimeLocator(
+            config=RuntimeLocatorConfig(
+                llama_cli_path=self.llama_cli_path,
+                llama_bench_path=self.llama_bench_path,
+                python_executable=self.python_executable,
+            )
+        )
+        object.__setattr__(self, "runtime_locator", fresh)
+        return fresh
+
+    def _resolved_llama_cpp_installation(self) -> LlamaCppInstallation:
+        if self.llama_cpp_installation is not None:
+            return self.llama_cpp_installation
+        installation = self._runtime_locator().resolve_llama_cpp()
+        object.__setattr__(self, "llama_cpp_installation", installation)
+        return installation
+
+    def _resolved_pytorch_installation(self) -> PyTorchInstallation:
+        if self.pytorch_installation is not None:
+            return self.pytorch_installation
+        installation = self._runtime_locator().resolve_pytorch()
+        object.__setattr__(self, "pytorch_installation", installation)
+        return installation
+
+    def _select_llama_cpp_installation(
+        self,
+        *,
+        selection: RuntimeBackendSelection,
+        backend: ExecutionBackendProtocol,
+    ) -> LlamaCppInstallation:
+        from jaull.runtime.llama_cpp_capability import (
+            evaluate_execution_readiness,
+            inspect_llama_cpp_runtime,
+        )
+
+        readiness_by_cli: dict[str, ExecutionReadinessStatus] = {}
+        for installation in self._runtime_locator().discover_llama_cpp():
+            if installation.llama_cli is None:
+                continue
+            capability = inspect_llama_cpp_runtime(
+                backend=backend,
+                llama_cli_path=installation.llama_cli,
+                timeout_seconds=self.llama_cli_timeout_seconds,
+            )
+            readiness = evaluate_execution_readiness(
+                selection=selection,
+                runtime_capability=capability,
+            )
+            readiness_by_cli[installation.llama_cli] = readiness.status
+        selected = self._runtime_locator().select_llama_cpp(
+            requested_backend=selection.selected_backend,
+            readiness_by_cli=readiness_by_cli,
+        )
+        if selected.llama_cli is not None:
+            object.__setattr__(self, "llama_cpp_installation", selected)
+        return selected
 
     def _make_range_client(self) -> HttpRangeClient | None:
         factory = self.services.range_client_factory
@@ -819,6 +942,7 @@ class AdvisorService:
         pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
+        runtime_locator: RuntimeLocator | None = None,
     ) -> AdvisorService:
         """Production wiring: real HF client, real hardware probes, real estimator."""
         services = ServiceContainer.default()
@@ -835,6 +959,7 @@ class AdvisorService:
             pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
+            runtime_locator=runtime_locator,
         )
 
     @classmethod
@@ -861,6 +986,7 @@ class AdvisorService:
         pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
+        runtime_locator: RuntimeLocator | None = None,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -893,6 +1019,7 @@ class AdvisorService:
             pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
+            runtime_locator=runtime_locator,
         )
 
 
