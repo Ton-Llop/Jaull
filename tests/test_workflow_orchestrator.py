@@ -323,6 +323,19 @@ def test_progress_is_reported_for_every_discovery_step() -> None:
     assert {"queries", "search", "filter", "inspect", "rank"} <= keys
 
 
+def test_completed_search_progress_does_not_keep_last_query_detail() -> None:
+    snapshots = []
+    services = _container(_search_with("org/Coder-7B"))
+    orchestrator.run_workflow(
+        answers(), hardware(), services, on_progress=snapshots.append
+    )
+
+    final_search = next(step for step in snapshots[-1].steps if step.key == "search")
+
+    assert final_search.status is StepStatus.DONE
+    assert final_search.detail == "1 unique repositories"
+
+
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------

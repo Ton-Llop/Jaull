@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
+from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Static
 
 from jaull.artifacts.errors import ArtifactError
@@ -27,7 +28,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRunResult,
 )
 from jaull.domain.estimation import MemoryEstimate
-from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     LlamaCppRuntimeCapability,
@@ -41,12 +42,20 @@ from jaull.exceptions import (
     JaullError,
     QuantizationNotFoundError,
 )
+from jaull.presentation.plan_labels import backend_hint, model_display_name
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
+from jaull.tui.widgets.action_button import ActionButton
+from jaull.tui.widgets.bars import ratio_bar
+from jaull.tui.widgets.context_bar import ContextBar
+from jaull.tui.widgets.metric_list import MetricList, MetricRow
+from jaull.tui.widgets.progress_step import format_step_log
 from jaull.tui.widgets.summary_card import SummaryCard
+from jaull.tui.widgets.technical_details import TechnicalDetails
+from jaull.tui.widgets.warnings_panel import WarningsPanel
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -109,13 +118,17 @@ class RecommendationBenchmarkScreen(Screen[None]):
             )
             yield Static("", id="benchmark-status", classes="status-line")
             yield Static("", id="benchmark-error", classes="warning-line")
+            # Results land here, above the actions: the outcome is what the
+            # user came back for, and it used to appear below the buttons and
+            # below the fold.
+            yield Vertical(id="benchmark-result")
             with Horizontal(id="benchmark-actions"):
                 yield Button(
                     "Benchmark on this machine",
                     id="benchmark-start",
                     classes="-primary",
                 )
-                yield Button(
+                yield ActionButton(
                     "Technical details",
                     id="benchmark-details",
                     disabled=True,
@@ -362,7 +375,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
 
     def _record_step(self, message: str) -> None:
         self._log_messages.append(message)
-        self._set_status("\n".join(f"- {item}" for item in self._log_messages[-8:]))
+        self._set_status(format_step_log(self._log_messages))
 
     def _set_busy(self, busy: bool) -> None:
         self.query_one("#benchmark-start", Button).disabled = busy
@@ -387,63 +400,78 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self.query_one("#benchmark-details", Button).disabled = True
 
     def _render_result(self, result: BenchmarkMatrixResult) -> None:
+        """Result first, mechanism last.
+
+        The order is deliberate: whether it worked, how fast it was, what it
+        cost in memory, and only then the reproducibility fields. The step log
+        that dominated this screen while the benchmark ran collapses into the
+        technical details once there is a real result to show.
+        """
         self._clear_result()
         self._last_result = result
-        body = self.query_one("#benchmark-body", VerticalScroll)
+        body = self.query_one("#benchmark-result", Vertical)
+        # The blurb explained what the button would do; it has now done it.
+        self.query_one("#benchmark-intro", Static).display = False
+        succeeded = bool(result.completed)
         heading = (
             "Benchmark complete"
-            if result.completed
+            if succeeded
             else "Benchmark finished without successful configurations"
         )
-        body.mount(Static(heading, classes="section-title benchmark-result-node"))
-        if result.completed:
-            body.mount(_result_table(result.completed).add_class("benchmark-result-node"))
+        body.mount(
+            Static(
+                heading,
+                classes=(
+                    "result-headline benchmark-result-node "
+                    f"{'-ok' if succeeded else '-fail'}"
+                ),
+            )
+        )
+        if succeeded:
+            body.mount(
+                _performance_block(result.completed).add_class("benchmark-result-node")
+            )
+            memory_block = _memory_block(result.completed, self._estimate())
+            if memory_block is not None:
+                body.mount(memory_block.add_class("benchmark-result-node"))
+
             startup_rows = _startup_rows(result.completed)
             if startup_rows:
                 body.mount(
-                    SummaryCard(
-                        "Startup",
-                        startup_rows,
-                        plain=True,
-                    ).add_class("benchmark-result-node")
+                    MetricList("Startup", startup_rows).add_class(
+                        "benchmark-result-node"
+                    )
                 )
-            memory_rows = _memory_rows(result.completed)
-            if memory_rows:
-                body.mount(
-                    SummaryCard(
-                        "Memory",
-                        memory_rows,
-                        plain=True,
-                    ).add_class("benchmark-result-node")
-                )
+
             aggregate = aggregate_benchmark_records([item.record for item in result.completed])
             if aggregate.comparisons:
                 body.mount(
-                    SummaryCard(
-                        "Comparison",
+                    MetricList(
+                        "Measured differences",
                         [
                             (
                                 _metric_label(comparison.kind, comparison.tokens),
-                                (
-                                    f"{comparison.candidate_label} "
-                                    f"{comparison.speedup:.2f}x vs "
-                                    f"{comparison.baseline_label}"
-                                ),
+                                f"~{comparison.speedup:.1f}x",
                             )
                             for comparison in aggregate.comparisons
                         ],
-                        plain=True,
                     ).add_class("benchmark-result-node")
                 )
         warnings = _warnings(result)
         if warnings:
             body.mount(
-                SummaryCard(
-                    "Warnings",
-                    [(str(index), warning) for index, warning in enumerate(warnings, 1)],
-                    plain=True,
+                WarningsPanel(warnings).add_class("benchmark-result-node")
+            )
+        # The verbose progress log has served its purpose; it is reproducibility
+        # detail now, not the headline.
+        if self._log_messages:
+            body.mount(
+                TechnicalDetails(
+                    [(str(index), step) for index, step in enumerate(self._log_messages, 1)],
+                    title="Run log",
                 ).add_class("benchmark-result-node")
             )
+            self._set_status("")
         self.query_one("#benchmark-details", Button).disabled = False
 
     def _runtime(self) -> RuntimeRecommendation | None:
@@ -481,7 +509,6 @@ class BenchmarkDetailsScreen(Screen[None]):
                 yield SummaryCard(
                     _config_label(run.record),
                     _technical_rows(run.record, run.persisted_path),
-                    plain=True,
                 )
             for failure in self._result.failed:
                 rows = [("Error", failure.message)]
@@ -494,7 +521,6 @@ class BenchmarkDetailsScreen(Screen[None]):
                 yield SummaryCard(
                     f"Failed: {title}",
                     rows,
-                    plain=True,
                 )
             if self._result.skipped:
                 yield SummaryCard(
@@ -506,9 +532,8 @@ class BenchmarkDetailsScreen(Screen[None]):
                         )
                         for skip in self._result.skipped
                     ],
-                    plain=True,
                 )
-            yield Button("Back", id="benchmark-details-back")
+            yield ActionButton("Back", id="benchmark-details-back")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -516,55 +541,155 @@ class BenchmarkDetailsScreen(Screen[None]):
             self.app.pop_screen()
 
 
-class _BenchmarkHeader(Static):
+class _BenchmarkHeader(ContextBar):
+    """The model and the execution path being measured.
+
+    Whatever is on screen below must describe the plan named here — that is the
+    first of `PRODUCT.md`'s design principles, and the reason every screen now
+    opens with the same bar rather than its own header.
+    """
+
     def __init__(
         self,
         recommendation: ModelRecommendation,
         execution_plan: ExecutionPlan | None = None,
     ) -> None:
         if execution_plan is not None:
-            title = execution_plan.model_identity.model_name
-            subtitle = " · ".join(
-                [
-                    execution_plan.runtime.runtime.value,
-                    _backend_hint(execution_plan.runtime),
-                    execution_plan.artifact.label,
-                ]
-            )
+            title = model_display_name(execution_plan.model_identity)
+            subtitle = _execution_plan_label(execution_plan)
         else:
             config = recommendation.evaluated.selected_configuration
             quantization = config.quantization if config is not None else "default"
             estimate = recommendation.evaluated.memory_estimate
             runtime = estimate.runtime_recommendation if estimate is not None else None
             runtime_label = runtime.runtime.value if runtime is not None else "unknown"
-            title = recommendation.repo_id
+            title = model_display_name(
+                ModelIdentity(model_name=recommendation.repo_id.split("/")[-1]),
+                fallback=recommendation.repo_id,
+            )
             subtitle = f"{quantization} · {runtime_label}"
-        super().__init__(
-            f"[bold]{title}[/bold]\n"
-            f"{subtitle}",
-            id="benchmark-header",
-        )
+        super().__init__(title, subtitle, aside="Benchmark", id="benchmark-header")
 
 
-def _backend_hint(runtime: RuntimeRecommendation) -> str:
-    if runtime.runtime is RuntimeName.TRANSFORMERS:
-        return next(
-            (flag.value for flag in runtime.flags if flag.name == "device_map"),
-            "cpu",
-        )
-    gpu_layers = next(
-        (flag.value for flag in runtime.flags if flag.name == "--n-gpu-layers"),
-        None,
+def _execution_plan_label(plan: ExecutionPlan) -> str:
+    runtime = (
+        "Transformers · PyTorch"
+        if plan.runtime.runtime is RuntimeName.TRANSFORMERS
+        else plan.runtime.runtime.value
     )
-    if gpu_layers in {None, "0"}:
-        return "CPU"
-    return "accelerated"
+    artifact = plan.artifact.quantization or plan.artifact.precision or plan.artifact.format.value
+    return f"{runtime} · {backend_hint(plan.runtime)} · {artifact}"
+
+
+_BAR_WIDTH = 18
+
+
+def _performance_block(results: list[BenchmarkRunResult]) -> Widget:
+    """Throughput, grouped by what is being measured.
+
+    One configuration gets bars on a single scale across prompt processing and
+    generation, so the gap between them — usually the most useful thing on the
+    screen — is visible without arithmetic. Several configurations get the
+    table instead, because comparing columns is what a table is for.
+
+    Bars never replace the figure. Every row carries its exact tok/s.
+    """
+    children: list[Widget] = [Static("Performance", classes="section-title")]
+    measurements = (
+        sorted(
+            results[0].record.observation.measurements,
+            key=lambda m: (
+                0 if m.kind is BenchmarkMeasurementKind.PREFILL else 1,
+                m.tokens,
+            ),
+        )
+        if len(results) == 1
+        else []
+    )
+    if not measurements:
+        children.append(_result_table(results))
+        return Vertical(*children, classes="section")
+
+    peak = max(m.mean_tokens_per_second for m in measurements)
+    current_kind: BenchmarkMeasurementKind | None = None
+    for measurement in measurements:
+        if measurement.kind is not current_kind:
+            first_group = current_kind is None
+            current_kind = measurement.kind
+            heading = Static(_kind_label(measurement.kind), classes="metric-group")
+            if not first_group:
+                heading.add_class("-spaced")
+            children.append(heading)
+        children.append(
+            MetricRow(
+                f"{measurement.tokens} tokens",
+                f"{measurement.mean_tokens_per_second:.1f} tok/s",
+                bar=ratio_bar(measurement.mean_tokens_per_second, peak, _BAR_WIDTH),
+                emphasis="measured",
+            ).add_class("-indented")
+        )
+    return Vertical(*children, classes="section")
+
+
+def _kind_label(kind: BenchmarkMeasurementKind) -> str:
+    return "Prompt processing" if kind is BenchmarkMeasurementKind.PREFILL else "Generation"
+
+
+def _memory_block(
+    results: list[BenchmarkRunResult],
+    estimate: MemoryEstimate | None,
+) -> Widget | None:
+    """Predicted against observed, with the observed figure carrying weight.
+
+    A prediction and a measurement are not the same kind of claim, so they do
+    not get the same typography: the estimate reads quiet, the measured peak
+    reads bold. The delta between them is the point of the block.
+    """
+    rows = _memory_rows(results, estimate)
+    if not rows:
+        return None
+    children: list[Widget] = [Static("Memory", classes="section-title")]
+    for label, value in rows:
+        emphasis = None
+        if label == "Estimated":
+            emphasis = "estimated"
+        elif label in {"Measured"} or label.endswith("peak RAM"):
+            emphasis = "measured"
+        children.append(MetricRow(label, value, emphasis=emphasis))
+    return Vertical(*children, classes="section")
+
+
+def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
+    """Load and first-token timings — Transformers only.
+
+    ``llama_bench_runner`` never populates these, so for a GGUF benchmark they
+    are absent rather than "unavailable": a row of blanks would imply the
+    measurement was attempted and failed.
+    """
+    rows: list[tuple[str, str]] = []
+    for result in results:
+        observation = result.record.observation
+        if observation.model_load_seconds is None and (
+            observation.time_to_first_token_seconds is None
+        ):
+            continue
+        prefix = f"{_config_label(result.record)} " if len(results) > 1 else ""
+        if observation.model_load_seconds is not None:
+            rows.append((f"{prefix}Model load", _seconds(observation.model_load_seconds)))
+        if observation.time_to_first_token_seconds is not None:
+            rows.append(
+                (
+                    f"{prefix}Time to first token",
+                    _seconds(observation.time_to_first_token_seconds),
+                )
+            )
+    return rows
 
 
 def _result_table(results: list[BenchmarkRunResult]) -> DataTable[str]:
     table: DataTable[str] = DataTable()
     labels = [_config_label(result.record) for result in results]
-    table.add_columns("Test", *labels)
+    table.add_columns("", *labels)
     keys = sorted(
         {
             (measurement.kind, measurement.tokens)
@@ -585,8 +710,7 @@ def _result_table(results: list[BenchmarkRunResult]) -> DataTable[str]:
             _metric_label(key[0], key[1]),
             *[
                 (
-                    f"{measurement.mean_tokens_per_second:.1f} ± "
-                    f"{measurement.stddev_tokens_per_second:.1f} t/s"
+                    f"{measurement.mean_tokens_per_second:.1f} tok/s"
                     if (measurement := mapping.get(key)) is not None
                     else "-"
                 )
@@ -667,55 +791,46 @@ def _metric_label(kind: BenchmarkMeasurementKind, tokens: int) -> str:
     return f"{prefix} {tokens}"
 
 
-def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
+def _memory_rows(
+    results: list[BenchmarkRunResult],
+    estimate: MemoryEstimate | None,
+) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
-    for result in results:
-        observation = result.record.observation
-        if (
-            observation.model_load_seconds is None
-            and observation.warmup_seconds is None
-            and observation.time_to_first_token_seconds is None
-            and observation.generation_latency_seconds is None
-        ):
-            continue
-        label = _config_label(result.record)
+    measured_values = [
+        result.record.observation.peak_ram_bytes
+        for result in results
+        if result.record.observation.peak_ram_bytes is not None
+    ]
+    if estimate is not None and estimate.total_bytes is not None and measured_values:
+        measured = max(measured_values)
         rows.extend(
             [
-                (f"{label} model load", _seconds(observation.model_load_seconds)),
-                (f"{label} warmup", _seconds(observation.warmup_seconds)),
-                (
-                    f"{label} TTFT",
-                    _seconds_with_stddev(
-                        observation.time_to_first_token_seconds,
-                        observation.time_to_first_token_stddev_seconds,
-                    ),
-                ),
-                (
-                    f"{label} generation latency",
-                    _seconds_with_stddev(
-                        observation.generation_latency_seconds,
-                        observation.generation_latency_stddev_seconds,
-                    ),
-                ),
+                ("Estimated", _bytes(estimate.total_bytes)),
+                ("Measured", _bytes(measured)),
+                ("Difference", _memory_delta(estimate.total_bytes, measured)),
             ]
         )
-    return rows
-
-
-def _memory_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
-    rows: list[tuple[str, str]] = []
     for result in results:
         observation = result.record.observation
         if observation.peak_ram_bytes is None and observation.peak_vram_bytes is None:
             continue
         label = _config_label(result.record)
-        rows.extend(
-            [
-                (f"{label} peak RAM", _bytes(observation.peak_ram_bytes)),
-                (f"{label} peak VRAM", _bytes(observation.peak_vram_bytes)),
-            ]
-        )
+        # A row reading "unavailable" implies the measurement was attempted and
+        # failed. On a CPU-only run there is no VRAM to measure, so the row
+        # simply does not exist.
+        if observation.peak_ram_bytes is not None:
+            rows.append((f"{label} peak RAM", _bytes(observation.peak_ram_bytes)))
+        if observation.peak_vram_bytes is not None:
+            rows.append((f"{label} peak VRAM", _bytes(observation.peak_vram_bytes)))
     return rows
+
+
+def _memory_delta(estimated: int, measured: int) -> str:
+    if estimated <= 0:
+        return "unavailable"
+    delta = (measured - estimated) / estimated
+    sign = "+" if delta >= 0 else "-"
+    return f"{sign}{abs(delta) * 100:.0f}%"
 
 
 def _benchmark_configuration_label(
@@ -724,18 +839,15 @@ def _benchmark_configuration_label(
 ) -> str:
     backend = selection.selected_backend
     if backend is ComputeBackend.CPU:
-        return "CPU · device none · ngl 0"
-    device = next(
-        (
-            runtime_device.runtime_id
-            for backend_capability in capability.backend_capabilities
-            if backend_capability.backend is backend
-            for runtime_device in backend_capability.devices
-        ),
-        None,
-    )
-    device_label = device or "no runtime device"
-    return f"{backend.value} · device {device_label} · ngl all"
+        return "CPU"
+    if any(
+        runtime_device.runtime_id
+        for backend_capability in capability.backend_capabilities
+        if backend_capability.backend is backend
+        for runtime_device in backend_capability.devices
+    ):
+        return backend.value
+    return f"{backend.value} · no ready device"
 
 
 def _transformers_backend(

@@ -1,33 +1,90 @@
 /* Sober palette for the jaull TUI.
 
-   Design tokens
-   -------------
-   Text hierarchy — three levels, used consistently:
-     primary    #e5e7eb   titles, model names, answers, response bodies
-     secondary  #b3bac6   subtitles, metadata lines, footer
-     muted      #8b95a5   timings, hints, pending steps, CLI labels
+   Everything below is built from the tokens declared first. A colour literal
+   anywhere else in this file is a bug: it means a concept escaped the palette.
 
-   Colour carries one meaning each:
-     #3a7bd5 blue   action / current step / focus
-     #10b981 green  success / comfortable
-     #f59e0b amber  warning / tight
-     #ef4444 red    failure
+   The house style is an instrument, not a dashboard. Rules and whitespace do
+   the separating; a border is reserved for what is genuinely modal or
+   genuinely selected. Density comes from alignment, not from removing air.
 
-   Surface hierarchy — reach for the lightest one that works:
-     .surface-strong  bordered + tinted. Primary recommendation, modals,
-                      focused inputs. Nothing else.
-     .surface-subtle  tinted, at most one edge rule. Model responses,
-                      key/value blocks.
-     .section         plain: a title and whitespace. The default.
-     .rule            one hairline, for separating zones (header, composer).
+   Border vocabulary
+   -----------------
+   Nothing is enclosed in a rounded rectangle any more. An edge means one of
+   four things, and its weight says which:
 
-   .card / .banner keep the older boxed look and stay in the advanced tools,
-   which are deliberately a denser, expert-facing mode.
+     █  thick left     selected — the row you act on
+     ▌  outer left     a callout beside the content: a warning, a command
+     ─  solid bottom   a field you can type in, or a zone rule
+     ━  heavy bottom   that field has focus
+     ▊…▎ panel         a surface genuinely on top of the page: modals, the
+                       open dropdown. The solid top bar reads as a window.
+
+   These are block-element glyphs. They render on every terminal this app
+   targets, and each distinction is carried by shape as well as colour, so a
+   monochrome terminal loses nothing.
    --------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------
+   Tokens.
+
+   Text hierarchy — three levels, used consistently:
+     $ink      titles, model names, answers, response bodies
+     $ink-2    subtitles, metadata lines, footer
+     $ink-3    timings, hints, pending steps, CLI labels
+
+   Colour carries one meaning each. Four is the budget; a fifth state must
+   reuse one of these rather than introduce a new hue.
+
+   Names avoid Textual's reserved theme variables. `$text` and `$panel` in
+   particular are built-ins that expand to a colour *plus a percentage*, and
+   shadowing them breaks Textual's own stylesheet (`hatch: right $panel`),
+   which is why the tokens here are `$ink` and `$chrome`.
+   --------------------------------------------------------------------- */
+/* Near-black with a cold cast, so a saturated accent on top reads as if it
+   were emitting rather than painted. The surfaces sit very close to the
+   ground: contrast comes from the accent, not from stacked greys. */
+$bg:         #070a10;
+$surface:    #0d131c;
+$surface-2:  #0b111a;
+$surface-3:  #16202e;
+$chrome:     #0a1018;
+$line:       #1b2735;
+$line-2:     #274156;
+$well:       #04070c;
+
+$ink:        #d8e6f0;
+$ink-2:      #8fa8bd;
+$ink-3:      #6d8599;
+
+/* Still one accent and three states — the same four meanings, turned up. A
+   fifth hue would be decoration, and the point of a neon palette is that the
+   few colours in it each mean something. */
+$accent:     #00e5ff;
+$accent-lit: #7df9ff;
+$accent-deep: #0091a7;
+$ok:         #00ff9c;
+$warn:       #ffc400;
+$warn-lit:   #ffe066;
+$bad:        #ff2e63;
+
+/* Neon is bright enough that text sits *on* it in near-black, not in white:
+   #ffffff on #00e5ff is barely legible, and dark-on-glow is the whole look. */
+$on-accent:  #04121a;
+
+/* Tinted grounds for badges and warning panels. Dark enough that the
+   foreground token keeps its contrast on top. */
+$ok-tint:    #002419;
+$warn-tint:  #241c00;
+$bad-tint:   #2a0713;
+$warn-well:  #14100a;
+
+/* The logo burns the accent; its shimmer fades toward the deep end. */
+$logo:       #00e5ff;
+$logo-dim:   #0091a7;
+
 Screen {
-    background: #0e1116;
-    color: #e5e7eb;
+    background: $bg;
+    color: $ink;
 }
 
 /* ---------------------------------------------------------------------
@@ -49,11 +106,11 @@ ListView {
 }
 
 Header {
-    background: #111827;
-    color: #e5e7eb;
+    background: $chrome;
+    color: $ink;
     text-style: bold;
     height: 1;
-    border-bottom: solid #1f2937;
+    border-bottom: solid $line;
 }
 
 /* The default header icon is U+2B58, which most terminal fonts lack and which
@@ -63,252 +120,661 @@ HeaderIcon {
 }
 
 Footer {
-    background: #111827;
-    color: #b3bac6;
+    background: $chrome;
+    color: $ink-2;
 }
 
 Footer > .footer--key {
-    color: #3a7bd5;
+    color: $accent;
     text-style: bold;
 }
 
 /* ---------------------------------------------------------------------
    Text hierarchy.
    --------------------------------------------------------------------- */
-.text-primary   { color: #e5e7eb; }
-.text-secondary { color: #b3bac6; }
+.text-secondary { color: $ink-2; }
 
 /* Secondary information, not decoration: readable, but clearly below the
    primary level. */
 .text-muted {
-    color: #8b95a5;
+    color: $ink-3;
     padding: 0 0 1 0;
 }
 
+/* Same colour, no trailing row: muted text inside a tight block rather than
+   closing one. */
+.text-muted-tight {
+    color: $ink-3;
+}
+
+/* ---------------------------------------------------------------------
+   Structure. A section is a title and whitespace — the default grouping, and
+   the one to reach for before any bordered surface.
+   --------------------------------------------------------------------- */
 .section {
     height: auto;
     margin: 0 0 1 0;
 }
 
 .section-title {
-    color: #e5e7eb;
+    color: $ink;
     text-style: bold;
     padding: 0 0 1 0;
 }
 
-/* An eyebrow above a block: small, blue, uppercase at the call site. */
-.kicker {
-    color: #3a7bd5;
+/* An eyebrow above a block: short, accented, uppercase at the call site. */
+.eyebrow {
+    color: $accent;
     text-style: bold;
 }
 
+/* One hairline, for separating zones (header, composer). */
 .rule {
-    border-bottom: solid #1f2937;
+    border-bottom: solid $line;
 }
 
+/* ---------------------------------------------------------------------
+   Metrics.
+
+   A measured value earns a real two-column row: label left, value right, so a
+   column of numbers lines up instead of relying on ljust inside one string.
+   Both halves stay separate Static widgets.
+   --------------------------------------------------------------------- */
+.metric {
+    height: auto;
+    layout: horizontal;
+}
+
+/* `1fr` alone is what broke the old alternatives row: beside fixed-width
+   siblings it collapsed to one column and wrapped a repo id one letter per
+   line. A floor plus nowrap makes a narrow terminal truncate instead. */
+.metric-label {
+    color: $ink-2;
+    width: 1fr;
+    min-width: 12;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+.metric-value {
+    color: $ink;
+    width: auto;
+    max-width: 70%;
+    text-align: right;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* A value with no evidence behind it reads quieter than a measured one. */
+.metric-value.-estimated {
+    color: $ink-3;
+}
+
+.metric-value.-measured {
+    color: $ink;
+    text-style: bold;
+}
+
+/* Bars never replace the number; they sit beside it in the same row. */
+.metric-bar {
+    color: $accent;
+    width: auto;
+    padding: 0 1 0 0;
+}
+
+/* A sub-heading inside a metric block: "Prompt processing", "Generation".
+   Textual has no sibling combinators, so the rows under it carry `-indented`
+   rather than being selected relative to the heading. */
+.metric-group {
+    color: $ink-2;
+    text-style: bold;
+}
+
+/* Space between groups, not above the first one — the section title already
+   provides that gap. */
+.metric-group.-spaced {
+    padding: 1 0 0 0;
+}
+
+.metric.-indented {
+    padding: 0 0 0 2;
+}
+
+/* A caveat on how to read the numbers above — present, not shouting. The
+   amber warning panel would outweigh the measurements it qualifies. */
+.comparison-note {
+    color: $warn;
+}
+
+/* ---------------------------------------------------------------------
+   Evidence vocabulary.
+
+   Four states, ordered by how much they are worth trusting. Each carries a
+   glyph at the call site as well, so the distinction survives a monochrome
+   terminal and colour-blind readers.
+   --------------------------------------------------------------------- */
+.status-estimated   { color: $ink-3; }
+.status-ready       { color: $ink-2; }
+.status-validated   { color: $ok; }
+.status-benchmarked { color: $ok; text-style: bold; }
+
+.status-ok    { color: $ok;   text-style: bold; }
+.status-warn  { color: $warn; text-style: bold; }
+.status-fail  { color: $bad;  text-style: bold; }
+
+/* The progress line every long-running screen owns. It was applied on four
+   screens and defined nowhere, so it inherited whatever the id rule said. */
+.status-line {
+    color: $ink-2;
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+.warning-line {
+    color: $warn;
+    padding: 0 0 0 1;
+}
+
+.reason-line {
+    color: $ok;
+    padding: 0 0 0 1;
+}
+
+.fit-good    { color: $ok; }
+.fit-warn    { color: $warn; }
+.fit-bad     { color: $bad; }
+.fit-unknown { color: $ink-3; }
+
+/* ---------------------------------------------------------------------
+   Selection.
+
+   One idiom everywhere: a left accent bar plus accented text. `blank` on the
+   unselected state reserves the same cell, so selecting a row never shifts
+   its content sideways.
+   --------------------------------------------------------------------- */
+.selectable {
+    height: auto;
+    border-left: blank;
+    padding: 0 0 0 1;
+}
+
+.selectable:hover {
+    background: $surface-2;
+}
+
+.selectable.-selected {
+    border-left: thick $accent;
+    background: $surface;
+}
+
+/* ---------------------------------------------------------------------
+   Chips: compact, inline filter controls. A chip is a Button, so it keeps
+   keyboard focus for free; the active one is filled rather than outlined.
+   --------------------------------------------------------------------- */
+.chip {
+    height: 1;
+    min-width: 0;
+    padding: 0 2;
+    margin: 0 1 0 0;
+    background: transparent;
+    color: $ink-3;
+    border: none;
+}
+
+.chip:hover {
+    color: $ink-2;
+}
+
+.chip:focus {
+    color: $ink;
+    text-style: underline;
+}
+
+.chip.-active {
+    background: $accent;
+    color: $ink;
+    text-style: bold;
+}
+
+.chip.-active:hover,
+.chip.-active:focus {
+    background: $accent-lit;
+}
+
+/* ---------------------------------------------------------------------
+   Technical details: present, never competing. Collapsed by default, so the
+   raw backend and reproducibility fields stay one keystroke away.
+   --------------------------------------------------------------------- */
+.technical-details {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+Collapsible {
+    background: transparent;
+    border: none;
+    padding: 0;
+    height: auto;
+}
+
+Collapsible > CollapsibleTitle {
+    color: $ink-3;
+    background: transparent;
+    padding: 0;
+}
+
+Collapsible > CollapsibleTitle:hover,
+Collapsible > CollapsibleTitle:focus {
+    color: $accent;
+    background: transparent;
+}
+
+Collapsible > Contents {
+    padding: 1 0 0 2;
+    height: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Surfaces. Reach for the lightest one that works.
+
+   .surface-strong  bordered + tinted. Modals and focused inputs. Nothing
+                    else — a border around ordinary content is noise.
+   .surface-subtle  tinted, no border. Model responses, key/value blocks.
+   .section         plain: a title and whitespace. The default.
+   --------------------------------------------------------------------- */
+/* The one surface that is genuinely on top of the page. `panel` puts a solid
+   accent bar along its top edge, so it reads as a raised window rather than as
+   a rectangle someone drew around some text. */
 .surface-strong {
-    background: #131922;
-    border: round #3a7bd5;
+    background: $surface;
+    border: panel $accent;
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
 
 .surface-subtle {
-    background: #121821;
+    background: $surface-2;
     padding: 0 1;
     height: auto;
 }
 
 /* ---------------------------------------------------------------------
-   Boxed surfaces, kept for the advanced tools and the detail drill-downs.
+   Controls.
+
+   Fields are underlined, not boxed. A rounded rectangle around a text input
+   is the default every terminal framework ships, it costs two columns and two
+   rows per field, and it says nothing — the app had one around an input that
+   was itself inside two more boxes. A rule under the field marks where you
+   type, and thickening it to `heavy` on focus makes the focused field
+   unmistakable without moving a single cell of layout.
    --------------------------------------------------------------------- */
-.banner {
-    background: #111827;
-    color: #e5e7eb;
-    padding: 0 2;
-    border: round #1f2937;
-    margin: 0 0 1 0;
-    height: auto;
-}
-
-.banner-title {
-    text-style: bold;
-    color: #3a7bd5;
-}
-
-.banner-subtitle {
-    color: #b3bac6;
-}
-
-.card {
-    background: #131922;
-    border: round #1f2937;
-    padding: 0 2;
-    margin: 0 0 1 0;
-    height: auto;
-}
-
-.card-title {
-    text-style: bold;
-    color: #3a7bd5;
-    padding: 0 0 1 0;
-}
-
-.menu {
-    background: #131922;
-    border: round #1f2937;
-    padding: 0 2;
-    margin: 0 0 1 0;
-    height: auto;
-}
-
-.menu > .menu-item {
-    padding: 0 1;
-    color: #e5e7eb;
-}
-
-.menu > .menu-item:hover,
-.menu > .menu-item.-current {
-    background: #1f2937;
-    text-style: bold;
-}
-
-.status-ok    { color: #10b981; text-style: bold; }
-.status-warn  { color: #f59e0b; text-style: bold; }
-.status-fail  { color: #ef4444; text-style: bold; }
-
+/* Textual's Input ships `height: 3` to make room for a border on all four
+   edges. With only a bottom rule the other two rows are dead space between
+   the text and its own underline. */
 Input {
-    background: #131922;
-    border: round #1f2937;
-    color: #e5e7eb;
+    background: $surface;
+    border: none;
+    border-bottom: solid $line;
+    height: 2;
+    padding: 0 1;
+    color: $ink;
 }
 Input:focus {
-    border: round #3a7bd5;
+    border: none;
+    border-bottom: heavy $accent;
+    background: $surface-3;
 }
 
 TextArea {
-    background: #0b0f16;
-    border: round #1f2937;
-    color: #e5e7eb;
+    background: $well;
+    border: none;
+    border-bottom: solid $line;
+    padding: 0 1;
+    color: $ink;
     height: 5;
 }
 
 TextArea:focus {
-    border: round #3a7bd5;
+    border: none;
+    border-bottom: heavy $accent;
 }
 
-Button {
-    background: #1f2937;
-    color: #e5e7eb;
-    border: none;
-    padding: 0 3;
-    height: 3;
+Select {
+    background: $surface;
+    height: auto;
+    width: auto;
+    min-width: 24;
 }
-Button.-primary {
-    background: #3a7bd5;
-    color: #ffffff;
+
+Select > SelectCurrent {
+    background: $surface;
+    border: none;
+    border-bottom: solid $line;
+    height: 2;
+    padding: 0 1;
+    color: $ink;
+}
+
+Select:focus > SelectCurrent {
+    border: none;
+    border-bottom: heavy $accent;
+}
+
+/* The open dropdown is a floating surface, so it keeps a full edge — but the
+   `tall` half-blocks read as a raised panel rather than as a drawn rectangle. */
+Select > SelectOverlay {
+    background: $surface-3;
+    border: tall $accent;
+}
+
+/* ---------------------------------------------------------------------
+   Actions.
+
+   Textual's Button is a filled slab: `height: 3` and `min-width: 16`, so a
+   four-word toolbar cost three rows and spread "Compare" across sixteen
+   columns. Six of those rows on the results screen were blank.
+
+   Here an action row reads as a toolbar of labels. Only the primary action is
+   filled; the rest are text over a hairline that thickens and takes the accent
+   when focused. That gives the row one obvious entry point instead of four
+   equal-weight rectangles, and it costs two rows instead of three.
+   --------------------------------------------------------------------- */
+/* The bare Button is the primary's base; every secondary action is an
+   `ActionButton`, styled by `.action` below. */
+Button {
+    background: $line;
+    color: $ink;
+    border: none;
+    height: 1;
+    min-width: 0;
+    padding: 0 2;
+}
+
+Button:hover {
+    background: $line-2;
+    color: $ink;
+}
+
+Button:focus {
+    background: $line-2;
+    color: $accent;
     text-style: bold;
 }
-Button:focus, Button:hover {
-    background: #2b3748;
-}
-Button.-primary:focus, Button.-primary:hover {
-    background: #4a8be5;
+
+/* `[ Compare ]` — the brackets are the affordance, so there is no face and no
+   border to draw. One row, and a row of four actions reads as four actions
+   rather than as four rectangles competing with the content above them. */
+Button.action {
+    background: transparent;
+    color: $ink;
+    border: none;
+    height: 1;
+    min-width: 0;
+    padding: 0 1;
 }
 
-/* One-line button for dense rows. Textual's Button ships `min-width: 16`,
-   which is what makes a "Run" button as wide as a sentence. */
+Button.action:hover {
+    background: transparent;
+    color: $accent-lit;
+}
+
+/* Focus turns the label the same cyan the brackets already wear, so the whole
+   thing lights up as one object. */
+Button.action:focus {
+    background: transparent;
+    color: $accent;
+    text-style: bold;
+}
+
+Button.action:disabled {
+    background: transparent;
+    color: $ink-3;
+    text-style: none;
+}
+
+/* The one action the screen exists for: a solid slab of accent with near-black
+   text on it. No border — on a one-row button an edge would consume the only
+   row it has and the label would render into nothing. */
+Button.-primary {
+    background: $accent;
+    color: $on-accent;
+    text-style: bold;
+    border: none;
+    padding: 0 3;
+}
+Button.-primary:hover,
+Button.-primary:focus {
+    background: $accent-lit;
+    border: none;
+    color: $on-accent;
+}
+
+/* Unpressable: no face at all — it should not look like something to press.
+   Textual dims disabled widgets on top of whatever is set here, so the colour
+   starts one step brighter than it ends up. */
+Button:disabled {
+    background: transparent;
+    color: $ink-3;
+    border: none;
+    text-style: none;
+}
+Button.-primary:disabled {
+    background: transparent;
+    color: $ink-3;
+    border: none;
+}
+
+/* Inside a dense row — a recommendation, a path — a two-row key per action
+   would out-shout the row itself, so these are single-row chips. */
 Button.-compact {
     height: 1;
-    min-width: 6;
+    background: $line;
+    border: none;
     padding: 0 2;
+}
+Button.-compact:hover {
+    background: $line-2;
+}
+Button.-compact:focus {
+    background: $line-2;
+    border: none;
+    color: $accent;
+    text-style: bold;
+}
+/* `.-compact` is declared after `.-primary`, so without this the chip's
+   neutral face would win and the primary action inside a row would lose its
+   accent — the one thing that marks it as the row's main action. */
+Button.-primary.-compact {
+    background: $accent;
+    color: $on-accent;
+}
+Button.-primary.-compact:hover,
+Button.-primary.-compact:focus {
+    background: $accent-lit;
+    color: $on-accent;
+}
+
+Button.-compact:disabled {
+    background: transparent;
+    color: $ink-3;
 }
 
 /* Tertiary action: present, never competing. */
 Button.-quiet {
     height: 1;
-    min-width: 0;
+    border: none;
     padding: 0 2;
     background: transparent;
-    color: #8b95a5;
+    color: $ink-3;
 }
 Button.-quiet:focus, Button.-quiet:hover {
     background: transparent;
-    color: #b3bac6;
+    border: none;
+    color: $ink-2;
     text-style: underline;
 }
 
+RadioSet {
+    background: transparent;
+    border: none;
+    height: auto;
+}
+
+Checkbox {
+    background: transparent;
+    border: none;
+}
+
 DataTable {
-    background: #131922;
-    color: #e5e7eb;
+    background: $surface;
+    color: $ink;
+    margin: 0 0 1 0;
 }
 DataTable > .datatable--header {
-    background: #1f2937;
-    color: #b3bac6;
+    background: $line;
+    color: $ink-2;
     text-style: bold;
 }
 
+/* ---------------------------------------------------------------------
+   Warnings, hints, badges.
+   --------------------------------------------------------------------- */
+/* A callout, not an enclosure: the amber rectangle outweighed the result it
+   was qualifying. The bar marks the edge, the tint carries the meaning. */
 .warnings {
-    background: #1a1207;
-    border: round #f59e0b;
-    color: #fbbf24;
+    background: $warn-well;
+    border: none;
+    border-left: outer $warn;
+    color: $warn-lit;
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
 
-/* Inside a warnings panel the heading is part of the warning, not a blue
-   section title. */
-.warnings .card-title {
-    color: #f59e0b;
+/* Inside a warnings panel the heading is part of the warning, not a section
+   title in the ordinary hierarchy. */
+.warnings .card-title,
+.warnings .section-title {
+    color: $warn;
 }
 
+/* A command to copy reads as a block of code: sunken ground, one edge. */
 .cli-hint {
-    background: #131922;
-    border: round #1f2937;
-    color: #b3bac6;
+    background: $well;
+    border: none;
+    border-left: outer $line-2;
+    color: $ink-2;
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
 }
 
 .cli-hint-label {
-    color: #8b95a5;
+    color: $ink-3;
     text-style: italic;
 }
 
 /* Badges size to their label; without this the background stripe runs the
-   full width of the card. */
+   full width of the block. */
 .badge {
     width: auto;
     padding: 0 2;
     margin: 0 0 1 0;
     text-style: bold;
 }
-.badge-comfortable        { color: #10b981; background: #052e21; }
-.badge-compatible         { color: #10b981; background: #052e21; }
-.badge-tight              { color: #f59e0b; background: #2a1e05; }
-.badge-offloading         { color: #f59e0b; background: #2a1e05; }
-.badge-insufficient       { color: #ef4444; background: #2a0808; }
-.badge-unknown            { color: #b3bac6; background: #1f2937; }
+.badge-comfortable        { color: $ok;     background: $ok-tint; }
+.badge-compatible         { color: $ok;     background: $ok-tint; }
+.badge-tight              { color: $warn;   background: $warn-tint; }
+.badge-offloading         { color: $warn;   background: $warn-tint; }
+.badge-insufficient       { color: $bad;    background: $bad-tint; }
+.badge-unknown            { color: $ink-2; background: $line; }
 
-.usage-bar {
+/* ---------------------------------------------------------------------
+   Context bar: the two-line identity + status block every screen opens with.
+   --------------------------------------------------------------------- */
+.context-bar {
+    height: auto;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    border-bottom: solid $line;
+}
+
+.context-title-row {
     height: 1;
-    background: #1f2937;
-    color: #3a7bd5;
+    layout: horizontal;
+}
+
+.context-title {
+    color: $ink;
+    text-style: bold;
+    width: 1fr;
+    min-width: 16;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+.context-aside {
+    color: $ink-3;
+    width: auto;
+    text-align: right;
+    padding: 0 0 0 2;
+}
+
+.context-status {
+    color: $ink-2;
+    height: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Progress steps.
+   --------------------------------------------------------------------- */
+.step-done    { color: $ok; }
+.step-running { color: $accent; text-style: bold; }
+.step-pending { color: $ink-3; }
+.step-failed  { color: $bad; text-style: bold; }
+
+/* A row whose actions sit on the right edge. */
+.actions-right {
+    height: auto;
+    align-horizontal: right;
     margin: 0 0 1 0;
 }
 
-.logo {
-    background: #060d14;
-    padding: 1 2 0 2;
+/* A row of actions in reading order, primary first. */
+.actions-row {
+    height: auto;
     margin: 0 0 1 0;
+}
+
+.actions-row Button {
+    margin: 0 1 0 0;
+}
+
+/* ---------------------------------------------------------------------
+   Menus.
+   --------------------------------------------------------------------- */
+.menu-label {
+    color: $ink;
+    text-style: bold;
+}
+
+.menu-hint {
+    color: $ink-3;
+}
+
+/* ---------------------------------------------------------------------
+   Logo.
+   --------------------------------------------------------------------- */
+.logo {
+    background: $bg;
+    padding: 0 2;
+    margin: 0;
     height: auto;
     align: center top;
 }
 .logo-ascii {
-    color: #7fb8c3;
+    color: $logo;
     text-style: bold;
     content-align: center middle;
     width: auto;
@@ -317,7 +783,7 @@ DataTable > .datatable--header {
 }
 
 .logo-subtitle {
-    color: #5b7d86;
+    color: $logo-dim;
     text-style: bold;
     content-align: center middle;
     width: auto;
@@ -325,135 +791,137 @@ DataTable > .datatable--header {
     margin-top: 0;
 }
 
-.runtime-card {
-    background: #131922;
-    border: round #3a7bd5;
+/* ---------------------------------------------------------------------
+   Screen bodies. One padding rule rather than one per screen.
+   --------------------------------------------------------------------- */
+#welcome-body,
+#wizard-body,
+#hardware-content,
+#hardware-summary,
+#discovery-body,
+#results-body,
+#compare-body,
+#details-body,
+#paths-body,
+#path-compare-body,
+#validation-body,
+#validation-details-body,
+#benchmark-body,
+#benchmark-details-body,
+#scan-content,
+#inspect-content,
+#doctor-content,
+#est-form,
+#est-result {
     padding: 0 2;
-    margin: 0 0 1 0;
+}
+
+#validation-body,
+#validation-details-body,
+#benchmark-body,
+#benchmark-details-body {
+    height: 1fr;
+}
+
+#hardware-content,
+#hardware-summary,
+#discovery-body,
+#discovery-messages,
+#wizard-errors,
+#paths-list,
+#path-compare-content,
+#results-actions,
+#results-actions-secondary,
+#discovery-actions,
+#wizard-actions,
+#paths-actions,
+#paths-filters,
+#validation-actions,
+#benchmark-actions,
+#validation-error,
+#benchmark-error,
+#paths-error,
+#path-compare-error,
+#res-export-actions {
     height: auto;
 }
-.runtime-title {
-    color: #3a7bd5;
-    text-style: bold;
+
+/* Every action row spaces its buttons the same way. */
+#results-actions Button,
+#results-actions-secondary Button,
+#discovery-actions Button,
+#paths-actions Button,
+#validation-actions Button,
+#benchmark-actions Button,
+#res-export-actions Button {
+    margin: 0 1 0 0;
 }
-.runtime-code {
-    background: #0b0f16;
-    color: #e5e7eb;
-    padding: 0 2;
+
+#validation-actions,
+#benchmark-actions,
+#paths-actions {
     margin: 0 0 1 0;
-    border: round #1f2937;
+}
+
+/* The path screens were the only ones whose ids had no rule at all, so their
+   status and empty states inherited nothing. */
+#paths-status,
+#path-compare-status {
+    color: $ink-2;
+    height: auto;
+}
+
+#paths-empty,
+#path-compare-empty {
+    color: $ink-3;
+    height: auto;
 }
 
 /* ---------------------------------------------------------------------
    Welcome.
    --------------------------------------------------------------------- */
-#welcome-body {
-    padding: 0 2;
-}
-
 #welcome-tagline {
-    color: #b3bac6;
+    color: $ink-2;
     padding: 0 0 1 0;
 }
 
-#welcome-menu {
+#welcome-menu,
+#advanced-menu {
     background: transparent;
     height: auto;
 }
 
-#welcome-menu > ListItem {
+#welcome-menu > ListItem,
+#advanced-menu > ListItem {
     background: transparent;
     padding: 0 0 1 1;
 }
 
-#welcome-menu > ListItem.-highlight {
-    background: #1b2432;
+#welcome-menu > ListItem.-highlight,
+#advanced-menu > ListItem.-highlight {
+    background: $surface-3;
 }
 
-.menu-label {
-    color: #e5e7eb;
-    text-style: bold;
-}
-
-#welcome-menu > ListItem.-highlight .menu-label {
-    color: #3a7bd5;
-}
-
-.menu-hint {
-    color: #8b95a5;
-}
-
-/* ---------------------------------------------------------------------
-   Guided workflow header: a heading, not a panel.
-   --------------------------------------------------------------------- */
-.workflow-header {
-    height: auto;
-    padding: 0 2;
-    margin: 0 0 1 0;
-    border-bottom: solid #1f2937;
-}
-
-.workflow-title {
-    color: #e5e7eb;
-    text-style: bold;
-    width: 1fr;
-}
-
-.workflow-step-count {
-    color: #8b95a5;
-    width: auto;
-    text-align: right;
-}
-
-.workflow-subtitle {
-    color: #b3bac6;
-    padding: 0 0 1 0;
-}
-
-.workflow-breadcrumb {
-    color: #b3bac6;
-}
-
-.step-done    { color: #10b981; }
-.step-running { color: #3a7bd5; text-style: bold; }
-.step-pending { color: #8b95a5; }
-.step-failed  { color: #ef4444; text-style: bold; }
-
-/* A row whose single action sits on the right edge. */
-.actions-right {
-    height: auto;
-    align-horizontal: right;
-    margin: 0 0 1 0;
-}
-
-/* ---------------------------------------------------------------------
-   Hardware.
-   --------------------------------------------------------------------- */
-#hardware-content,
-#hardware-summary {
-    height: auto;
-    padding: 0 2;
+#welcome-menu > ListItem.-highlight .menu-label,
+#advanced-menu > ListItem.-highlight .menu-label {
+    color: $accent;
 }
 
 /* ---------------------------------------------------------------------
    Requirements wizard: questions separated by whitespace, not by boxes.
    --------------------------------------------------------------------- */
-#wizard-body {
-    padding: 0 2;
-}
-
 .question {
     height: auto;
     margin: 0 0 1 0;
 }
 
 .question-title {
-    color: #e5e7eb;
+    color: $ink;
     text-style: bold;
 }
 
 .question-note {
-    color: #8b95a5;
+    color: $ink-3;
     padding: 0 0 0 3;
 }
 
@@ -468,138 +936,84 @@ DataTable > .datatable--header {
     width: 60;
 }
 
-#wizard-errors {
-    height: auto;
-}
-
-RadioSet {
-    background: transparent;
-    border: none;
-    height: auto;
-}
-
-Checkbox {
-    background: transparent;
-    border: none;
-}
-
 /* ---------------------------------------------------------------------
-   Results.
+   Recommendations.
    --------------------------------------------------------------------- */
-#results-body,
-#compare-body,
-#details-body {
-    padding: 0 2;
-}
-
-.results-primary {
-    background: #131922;
-    border: round #3a7bd5;
-    padding: 0 2;
+.rec-list-head {
+    height: 1;
     margin: 0 0 1 0;
-    height: auto;
 }
 
-.results-kicker,
-.results-section-title {
-    color: #3a7bd5;
-    text-style: bold;
-}
-
-.results-section-title {
-    padding: 1 0 0 0;
-}
-
-.results-model-name {
-    color: #e5e7eb;
-    text-style: bold;
-}
-
-.results-score-line {
-    color: #10b981;
+.rec-list-head .section-title {
     width: 1fr;
+    padding: 0;
 }
 
-.results-fit {
+.rec-list-aside {
     width: auto;
     text-align: right;
+    text-style: bold;
+    padding: 0 0 0 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
-.fit-good    { color: #10b981; }
-.fit-warn    { color: #f59e0b; }
-.fit-bad     { color: #ef4444; }
-.fit-unknown { color: #8b95a5; }
-
-.results-meta-line {
-    color: #8b95a5;
-    padding: 0 0 1 0;
-}
-
-.results-alternative {
+.rec-row {
     height: auto;
-    padding: 0 1;
     margin: 0 0 1 0;
-    background: #121821;
 }
 
-.results-alt-rank {
+.rec-row:focus-within {
+    background: $surface-2;
+}
+
+.rec-headline {
+    height: 1;
+    layout: horizontal;
+}
+
+.rec-rank {
     width: 4;
-    color: #8b95a5;
+    color: $ink-3;
 }
 
-.results-alt-name {
+.rec-name {
     width: 1fr;
-    color: #e5e7eb;
+    min-width: 16;
+    color: $ink;
+    text-style: bold;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
-.results-alt-score {
-    width: 8;
-    color: #b3bac6;
+.selectable.-selected .rec-name {
+    color: $accent;
 }
 
-.results-alt-fit {
-    width: 16;
+.rec-fit {
+    width: auto;
+    text-align: right;
+    padding: 0 0 0 2;
 }
 
-.reason-line {
-    color: #10b981;
-    padding: 0 0 0 1;
+.rec-plan,
+.rec-reason {
+    color: $ink-2;
+    padding: 0 0 0 4;
 }
 
-.warning-line {
-    color: #f59e0b;
-    padding: 0 0 0 1;
+.rec-evidence {
+    padding: 0 0 0 4;
 }
 
-.score-row {
-    color: #b3bac6;
-}
-
-#results-actions,
-#results-actions-secondary,
-#discovery-actions,
-#wizard-actions {
+.rec-actions {
     height: auto;
+    padding: 0 0 0 4;
+    margin: 1 0 0 0;
 }
 
-/* The panel closes on its action; a margin under it only adds dead rows. */
-.results-primary .actions-right {
-    margin: 0;
-}
-
-#results-actions Button,
-#results-actions-secondary Button,
-#discovery-actions Button {
+.rec-actions Button {
     margin: 0 1 0 0;
-}
-
-#discovery-messages,
-#discovery-body {
-    height: auto;
-}
-
-#discovery-body {
-    padding: 0 2;
 }
 
 /* A modal should read as something on top of the results, not as a new page. */
@@ -608,59 +1022,68 @@ ExportReportModal {
 }
 
 #export-modal {
-    background: #131922;
-    border: round #3a7bd5;
+    background: $surface;
+    border: panel $accent;
     padding: 1 2;
     width: 80;
     max-width: 100%;
     height: auto;
 }
 
-#res-export-actions {
-    height: auto;
-}
-
-#res-export-actions Button {
-    margin: 0 1 0 0;
-}
-
 /* --------------------------------------------------------------------
-   Tier headings + compact score strip.
+   Tier headings and score rows.
    -------------------------------------------------------------------- */
-.tier-best-match     { color: #10b981; }
-.tier-recommended    { color: #3a7bd5; }
-.tier-closest-option { color: #f59e0b; }
-.tier-best-effort    { color: #b3bac6; }
+.tier-best-match     { color: $ok; }
+.tier-recommended    { color: $accent; }
+.tier-closest-option { color: $warn; }
+.tier-best-effort    { color: $ink-2; }
 
-.compact-score-strip {
-    background: #131922;
-    border: round #1f2937;
-    padding: 0 1;
-    margin: 0 0 1 0;
+.score-total    { color: $ink; }
+.score-penalty  { color: $warn; }
+.score-row      { color: $ink-2; }
+
+/* ---------------------------------------------------------------------
+   Execution paths.
+   --------------------------------------------------------------------- */
+.path-option {
     height: auto;
+    margin: 0 0 1 0;
 }
-.score-total    { color: #e5e7eb; }
-.score-penalty  { color: #f59e0b; }
+
+.path-option-title {
+    color: $ink;
+    text-style: bold;
+}
+
+.selectable.-selected .path-option-title {
+    color: $accent;
+}
+
+.path-option-meta {
+    color: $ink-2;
+    padding: 0 0 0 2;
+}
+
+.path-quant {
+    height: auto;
+    padding: 0 0 0 2;
+    margin: 0 0 1 0;
+}
+
+.path-quant-label {
+    color: $ink-3;
+}
+
+/* A dropdown holding quantization names has no business being as wide as the
+   terminal; `width: auto` on a Select still fills its container. */
+#paths-quant {
+    width: 34;
+    max-width: 100%;
+}
 
 /* ---------------------------------------------------------------------
    Run screen: header, history, composer. History is the dominant zone.
    --------------------------------------------------------------------- */
-.run-header {
-    padding: 0 2;
-    height: auto;
-    margin: 0 0 1 0;
-    border-bottom: solid #1f2937;
-}
-
-.run-title {
-    color: #e5e7eb;
-    text-style: bold;
-}
-
-.run-meta {
-    color: #b3bac6;
-}
-
 #run-history {
     height: 1fr;
     padding: 0 2;
@@ -668,18 +1091,18 @@ ExportReportModal {
 
 #run-console {
     height: auto;
-    border-top: solid #1f2937;
+    border-top: solid $line;
     padding: 0 2;
 }
 
 .run-status {
-    color: #b3bac6;
+    color: $ink-2;
     height: 1;
 }
 
 .run-error-message {
-    color: #fbbf24;
-    border-left: solid #f59e0b;
+    color: $warn-lit;
+    border-left: solid $warn;
     padding: 0 0 0 1;
     height: auto;
 }
@@ -699,104 +1122,173 @@ ExportReportModal {
     margin: 0 0 0 1;
 }
 
-/* ---------------------------------------------------------------------
-   Validation screen.
-   --------------------------------------------------------------------- */
-#validation-header {
-    padding: 0 2;
-    height: auto;
-    margin: 0 0 1 0;
-    border-bottom: solid #1f2937;
-}
-
-#benchmark-header {
-    padding: 0 2;
-    height: auto;
-    margin: 0 0 1 0;
-    border-bottom: solid #1f2937;
-}
-
-#validation-body,
-#validation-details-body,
-#benchmark-body,
-#benchmark-details-body {
-    height: 1fr;
-    padding: 0 2;
-}
-
-#validation-status {
-    color: #b3bac6;
-    height: auto;
-}
-
-#benchmark-status {
-    color: #b3bac6;
-    height: auto;
-}
-
-#validation-error {
-    height: auto;
-}
-
-#benchmark-error {
-    height: auto;
-}
-
-#validation-actions {
-    height: auto;
-    margin: 0 0 1 0;
-}
-
-#benchmark-actions {
-    height: auto;
-    margin: 0 0 1 0;
-}
-
-#validation-actions Button {
-    margin: 0 1 0 0;
-}
-
-#benchmark-actions Button {
-    margin: 0 1 0 0;
-}
-
-.validation-result-node {
-    height: auto;
-}
-
-.benchmark-result-node {
-    height: auto;
-}
-
 .inference-entry {
     height: auto;
     margin: 0 0 1 0;
 }
 
 .inference-prompt {
-    border-left: solid #2b3748;
+    border-left: solid $line-2;
     padding: 0 0 0 1;
 }
 
 .inference-response {
-    background: #121821;
-    border-left: solid #3a7bd5;
+    background: $surface-2;
+    border-left: solid $accent;
     padding: 0 0 0 1;
 }
 
 .message-label {
-    color: #8b95a5;
+    color: $ink-3;
     text-style: bold;
 }
 
 .inference-response .message-label {
-    color: #3a7bd5;
+    color: $accent;
 }
 
 .message-text {
-    color: #e5e7eb;
+    color: $ink;
 }
 
 .message-meta {
-    color: #8b95a5;
+    color: $ink-3;
+}
+
+/* ---------------------------------------------------------------------
+   Validation and benchmark result blocks.
+   --------------------------------------------------------------------- */
+.validation-result-node,
+.benchmark-result-node {
+    height: auto;
+}
+
+.result-headline {
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+.result-headline.-ok   { color: $ok; }
+.result-headline.-fail { color: $bad; }
+
+/* ---------------------------------------------------------------------
+   Advanced tools.
+
+   These were the last screens still drawing a full-width rounded border
+   around every block — three nested borders to show one text field in the
+   estimate flow. `.card` and `.banner` now resolve to the same flat grouping
+   the rest of the app uses, so the advanced tools stay denser and more
+   expert-facing without being a visually separate application.
+   --------------------------------------------------------------------- */
+.banner {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 2 1 2;
+    border-bottom: solid $line;
+}
+
+/* The advanced tools yield their body as an anonymous scroll region, so the
+   gutter is applied to the screen rather than to an id. Without it their text
+   sat flush against column 0 while every guided screen had a margin — the
+   boxes used to supply it. */
+AdvancedToolsScreen VerticalScroll,
+ScanScreen VerticalScroll,
+InspectScreen VerticalScroll,
+DoctorScreen VerticalScroll,
+EstimateScreen VerticalScroll {
+    padding: 0 2;
+}
+
+/* The estimate and inspect forms are yielded at screen level, outside any
+   scroll region, so they need the gutter themselves. Direct-child only: the
+   cards mounted inside an already-padded body must not indent twice. */
+EstimateScreen > .card,
+InspectScreen > .card {
+    padding: 0 2;
+}
+
+.banner-title {
+    text-style: bold;
+    color: $ink;
+}
+
+.banner-subtitle {
+    color: $ink-2;
+}
+
+.card {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+.card-title {
+    text-style: bold;
+    color: $ink;
+    padding: 0 0 1 0;
+}
+
+/* The runnable command keeps a ground, because it is a literal thing to copy
+   rather than prose — the one place a box still earns itself here. */
+.runtime-card {
+    height: auto;
+    margin: 0 0 1 0;
+}
+.runtime-title {
+    color: $ink;
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+.runtime-code {
+    background: $well;
+    color: $ink;
+    padding: 0 2;
+    margin: 0 0 1 0;
+}
+
+/* =====================================================================
+   TRANSITIONAL.
+
+   Rules below serve markup that has not been moved onto the shared system
+   yet. Nothing new should be written against them.
+   ===================================================================== */
+
+/* Guided workflow header, superseded by .context-bar. */
+.workflow-header {
+    height: auto;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    border-bottom: solid $line;
+}
+
+.workflow-title {
+    color: $ink;
+    text-style: bold;
+    width: 1fr;
+    min-width: 12;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The machine, right-aligned. Truncates before the title does: on a narrow
+   terminal the step you are on matters more than the CPU model. */
+.workflow-machine {
+    color: $ink-3;
+    width: auto;
+    max-width: 60%;
+    text-align: right;
+    padding: 0 0 0 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+.workflow-breadcrumb {
+    color: $ink-2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#validation-status,
+#benchmark-status {
+    color: $ink-2;
+    height: auto;
 }

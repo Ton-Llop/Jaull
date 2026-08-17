@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
-from textual.widgets import Button, DataTable, Input, Static, TextArea
+from textual.widgets import Button, DataTable, Input, Select, Static, TextArea
 
 from jaull.artifacts.errors import ArtifactDownloadError
 from jaull.domain.artifacts import ModelArtifact
@@ -760,8 +761,14 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert len(advisor.experiment_records) == 1
             text = _visible_text(screen)
             assert "Configuration validated" in text
-            assert "Prediction vs Observation" in text
-            assert "Not verified" in text
+            # Result before mechanism: what happened, then estimated against
+            # measured, then how it ran. Raw backend trace fields moved into
+            # the technical details screen.
+            assert "Result" in text
+            assert "Prediction" in text
+            assert "Estimated RAM" in text
+            assert "Measured RAM" in text
+            assert "Execution" in text
             assert advisor.experiment_persisted_path is not None
             assert str(advisor.experiment_persisted_path) in text
             assert screen.query_one("#validation-details", Button).disabled is False
@@ -849,7 +856,7 @@ def test_validation_screen_preserves_failed_execution_record(monkeypatch: Any) -
             assert advisor.experiment_records[0].observation.success is False
             text = _visible_text(screen)
             assert "Validation failed during execution" in text
-            assert "failure" in text
+            assert "Failed" in text
 
     _run(scenario())
 
@@ -930,7 +937,7 @@ def test_validation_screen_keeps_result_visible_when_persistence_fails(
             text = _visible_text(screen)
             assert "could not be saved" in text
             assert "Configuration validated (not saved)" in text
-            assert "Prediction vs Observation" in text
+            assert "Prediction" in text
 
     _run(scenario())
 
@@ -1051,7 +1058,10 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
         async with app.run_test(size=(120, 50)) as pilot:
             app.show_recommendations(state)
             await pilot.pause()
-            assert "Execution paths" in _visible_text(pilot.app.screen)
+            # The list names the model and how it would execute; the execution
+            # paths themselves live on their own screen behind "Paths".
+            assert "Recommendations" in _visible_text(pilot.app.screen)
+            assert "llama.cpp" in _visible_text(pilot.app.screen)
 
             for _ in range(2):
                 pilot.app.screen.query_one("#res-compare", Button).press()
@@ -1099,8 +1109,16 @@ def test_execution_path_compare_uses_saved_benchmark_records() -> None:
             )
 
             text = _visible_text(pilot.app.screen)
-            assert "Qwen2.5-0.5B-Instruct" in text
-            assert "Methodology warnings" in text
+            # The title is the model's name, not its repository path.
+            assert "Qwen2.5 0.5B Instruct" in text
+            assert "Comparison notes" in text
+            # Ratios come from BenchmarkComparison.relative_throughput and name
+            # both sides. The screen must never declare a winner, score the
+            # plans, or call one of them better.
+            assert "Measured differences" in text
+            assert re.search(r"\d\.\dx (llama\.cpp|PyTorch)", text)
+            assert "Winner" not in text
+            assert "better" not in text.lower()
             assert advisor.operations == ["compare_saved_benchmarks"]
 
     _run(scenario())
@@ -1133,7 +1151,10 @@ def test_execution_paths_selects_plan_and_run_uses_prepared_plan(
             assert advisor.operations == ["plans"]
 
             paths.query_one("#paths-run", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+            )
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, run_screen, monkeypatch)
@@ -1197,18 +1218,24 @@ def test_execution_paths_quantization_selection_does_not_prepare() -> None:
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-quant-1")),
+                and bool(pilot.app.screen.query("#paths-quant")),
             )
             paths = pilot.app.screen
             assert isinstance(paths, ExecutionPathsScreen)
             assert advisor.operations == ["plans"]
-            assert "Quantization: Q4_K_M" in _visible_text(paths)
-            assert not paths.query("#paths-quant-2")
+            assert "GGUF · Q4_K_M" in _visible_text(paths)
 
-            paths.query_one("#paths-quant-1", Button).press()
+            # Quantization is a setting on the llama.cpp option, not a peer
+            # path: one control, opening on the suggested quantizations with
+            # the rest behind the advanced toggle.
+            picker = paths.query_one("#paths-quant", Select)
+            offered = [value for _, value in picker._options]
+            assert offered == ["org/Tiny-GGUF:Q4_K_M", "org/Tiny-GGUF:Q5_K_M"]
+
+            picker.value = "org/Tiny-GGUF:Q5_K_M"
             await _wait_until(
                 pilot,
-                lambda: "Quantization: Q5_K_M" in _visible_text(paths),
+                lambda: "GGUF · Q5_K_M" in _visible_text(paths),
             )
 
             assert advisor.operations == ["plans"]
@@ -1372,7 +1399,11 @@ def test_execution_screen_keeps_visual_history_across_prompts(
             assert "second response" in text
             assert "0.22 s" in text
             assert "RAM 768.0 MiB" in text
-            assert "VRAM unavailable" in text
+            # The second run measured no VRAM, so the history line omits it
+            # rather than printing "VRAM unavailable" under the answer.
+            assert "unavailable" not in text
+            second = screen.query(InferenceResponse).last()
+            assert "VRAM" not in _widget_text(second.query_one(".message-meta"))
 
     _run(scenario())
 
@@ -1742,5 +1773,87 @@ def test_tui_results_execution_export_details_stress_flow(
             second_run = pilot.app.screen
             assert isinstance(second_run, RecommendationExecutionScreen)
             assert second_run.recommendation.repo_id == "org/Second-GGUF"
+
+    _run(scenario())
+
+
+def test_selecting_a_recommendation_expands_it_and_collapses_the_others() -> None:
+    """Selection is a state on the row, not a separate card for the winner."""
+
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation(rank=1, repo_id="org/First-GGUF"),
+                _recommendation(rank=2, repo_id="org/Second-GGUF"),
+            ]
+        )
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+
+            first = screen.query_one("#rec-row-0")
+            second = screen.query_one("#rec-row-1")
+
+            def actions_shown(row: Any) -> bool:
+                return row.query_one(".rec-actions").display
+
+            assert first.has_class("-selected")
+            assert not second.has_class("-selected")
+            assert actions_shown(first) is True
+            assert actions_shown(second) is False
+
+            await pilot.press("down")
+            await pilot.pause()
+
+            assert not first.has_class("-selected")
+            assert second.has_class("-selected")
+            assert actions_shown(first) is False
+            assert actions_shown(second) is True
+
+            # The buttons themselves are never unmounted, so their ids stay
+            # stable across selections — this is what keeps repeated navigation
+            # free of duplicate-id collisions.
+            assert screen.query_one("#res-run-0", Button)
+            assert screen.query_one("#res-run-1", Button)
+
+    _run(scenario())
+
+
+def test_compare_paths_uses_the_selected_recommendation() -> None:
+    """It used to always compare recommendations[0], whatever was highlighted."""
+
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation(rank=1, repo_id="org/First-GGUF"),
+                _recommendation(rank=2, repo_id="org/Second-GGUF"),
+            ]
+        )
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+
+            await pilot.press("down")
+            await pilot.pause()
+            screen.query_one("#res-compare-paths", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(
+                    pilot.app.screen,
+                    ExecutionPathBenchmarkCompareScreen,
+                ),
+            )
+
+            compare = pilot.app.screen
+            assert isinstance(compare, ExecutionPathBenchmarkCompareScreen)
+            assert compare.recommendation.repo_id == "org/Second-GGUF"
 
     _run(scenario())

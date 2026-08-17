@@ -6,30 +6,21 @@ from textual.widgets import ProgressBar, Static
 
 
 class MemoryUsageBar(Vertical):
-    """Simple labelled bar showing `used / total` for RAM or VRAM.
-
-    ``plain`` drops the box, for the guided screens.
-    """
+    """Simple labelled bar showing `used / total` for RAM or VRAM."""
 
     def __init__(
         self,
         label: str,
         used_bytes: int | None,
         total_bytes: int | None,
-        *,
-        plain: bool = False,
     ) -> None:
-        super().__init__(classes="section" if plain else "card")
+        super().__init__(classes="section")
         self._label = label
         self._used = used_bytes
         self._total = total_bytes
-        self._plain = plain
 
     def compose(self) -> ComposeResult:
-        yield Static(
-            self._label,
-            classes="section-title" if self._plain else "card-title",
-        )
+        yield Static(self._label, classes="section-title")
         if self._total is None or self._total == 0:
             yield Static("capacity unknown", classes="text-muted")
             return

@@ -281,6 +281,8 @@ def test_advisor_uses_same_python_for_probe_run_and_benchmark(tmp_path: Path) ->
 
 
 def _exe(path: Path) -> Path:
+    if os.name == "nt" and path.suffix == "":
+        path = path.with_suffix(".exe")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("fake", encoding="utf-8")
     if os.name != "nt":

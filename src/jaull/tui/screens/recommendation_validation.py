@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
+from textual.widget import Widget
 from textual.widgets import Button, Footer, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
-from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.experiments import (
     ExperimentRecord,
     ExperimentRequest,
@@ -42,12 +43,18 @@ from jaull.experiments.errors import (
     ExperimentRunnerError,
 )
 from jaull.presentation.console import format_bytes
+from jaull.presentation.plan_labels import backend_hint, model_display_name
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
+from jaull.tui.widgets.action_button import ActionButton
+from jaull.tui.widgets.context_bar import ContextBar
+from jaull.tui.widgets.metric_list import MetricList, MetricRow
+from jaull.tui.widgets.progress_step import format_step_log
 from jaull.tui.widgets.summary_card import SummaryCard
+from jaull.tui.widgets.technical_details import TechnicalDetails
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -126,13 +133,17 @@ class RecommendationValidationScreen(Screen[None]):
             )
             yield Static("", id="validation-status", classes="status-line")
             yield Static("", id="validation-error", classes="warning-line")
+            # The result lands above the actions. It used to be mounted at the
+            # end of the body, so the outcome of the run sat below the button
+            # that started it, under a fully expanded progress log.
+            yield Vertical(id="validation-result")
             with Horizontal(id="validation-actions"):
                 yield Button(
                     "Validate on this machine",
                     id="validation-start",
                     classes="-primary",
                 )
-                yield Button(
+                yield ActionButton(
                     "Technical details",
                     id="validation-details",
                     disabled=True,
@@ -348,7 +359,7 @@ class RecommendationValidationScreen(Screen[None]):
 
     def _record_step(self, message: str) -> None:
         self._log_messages.append(message)
-        self._set_status("\n".join(f"- {item}" for item in self._log_messages[-8:]))
+        self._set_status(format_step_log(self._log_messages))
 
     def _set_busy(self, busy: bool) -> None:
         self.query_one("#validation-start", Button).disabled = busy
@@ -384,41 +395,50 @@ class RecommendationValidationScreen(Screen[None]):
         self._clear_result()
         self._last_record = record
         self._last_persisted_path = persisted_path
-        body = self.query_one("#validation-body", VerticalScroll)
+        body = self.query_one("#validation-result", Vertical)
+        self.query_one("#validation-intro", Static).display = False
+        succeeded = record.observation.success
         heading = (
-            "Configuration validated"
-            if record.observation.success
-            else "Validation failed during execution"
+            "Configuration validated" if succeeded else "Validation failed during execution"
         )
         if persistence_failed:
             heading = f"{heading} (not saved)"
-        body.mount(Static(heading, classes="section-title validation-result-node"))
         body.mount(
-            SummaryCard(
-                "Backend",
-                _backend_rows(record),
-                plain=True,
-            ).add_class("validation-result-node")
+            Static(
+                heading,
+                classes=(
+                    "result-headline validation-result-node "
+                    f"{'-ok' if succeeded else '-fail'}"
+                ),
+            )
+        )
+        # Result: what actually happened, in the units a person cares about.
+        body.mount(
+            MetricList("Result", _result_rows(record), emphasis="measured").add_class(
+                "validation-result-node"
+            )
         )
         body.mount(
-            SummaryCard(
-                "Prediction vs Observation",
-                _comparison_rows(record),
-                plain=True,
-            ).add_class("validation-result-node")
+            _prediction_block(record).add_class("validation-result-node")
         )
         body.mount(
-            SummaryCard(
-                "Experiment",
-                [
-                    ("ID", record.identity.experiment_id),
-                    ("Status", "success" if record.observation.success else "failure"),
-                    ("Duration", _duration(record.observation.duration_seconds)),
-                    ("Saved", str(persisted_path) if persisted_path else "not saved"),
-                ],
-                plain=True,
-            ).add_class("validation-result-node")
+            MetricList("Execution", _execution_rows(record)).add_class(
+                "validation-result-node"
+            )
         )
+        # Record id, storage path and the step log are reproducibility detail,
+        # not the outcome. They stay one keystroke away rather than competing
+        # with the result for the top of the screen.
+        detail_rows = [
+            ("Experiment ID", record.identity.experiment_id),
+            ("Saved", str(persisted_path) if persisted_path else "not saved"),
+        ]
+        detail_rows.extend(
+            (f"Step {index}", step)
+            for index, step in enumerate(self._log_messages, start=1)
+        )
+        body.mount(TechnicalDetails(detail_rows).add_class("validation-result-node"))
+        self._set_status("")
         self.query_one("#validation-details", Button).disabled = False
 
     def _estimate(self) -> MemoryEstimate | None:
@@ -458,12 +478,11 @@ class ValidationDetailsScreen(Screen[None]):
             yield SummaryCard(
                 "Experiment",
                 _technical_experiment_rows(self._record, self._path),
-                plain=True,
             )
-            yield SummaryCard("Artifact", _technical_artifact_rows(self._record), plain=True)
-            yield SummaryCard("Runtime", _technical_runtime_rows(self._record), plain=True)
-            yield SummaryCard("Observation", _technical_observation_rows(self._record), plain=True)
-            yield Button("Back", id="validation-details-back")
+            yield SummaryCard("Artifact", _technical_artifact_rows(self._record))
+            yield SummaryCard("Runtime", _technical_runtime_rows(self._record))
+            yield SummaryCard("Observation", _technical_observation_rows(self._record))
+            yield ActionButton("Back", id="validation-details-back")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -471,18 +490,20 @@ class ValidationDetailsScreen(Screen[None]):
             self.app.pop_screen()
 
 
-class _ValidationHeader(Static):
+class _ValidationHeader(ContextBar):
+    """The model and the execution path being validated."""
+
     def __init__(
         self,
         recommendation: ModelRecommendation,
         execution_plan: ExecutionPlan | None = None,
     ) -> None:
         if execution_plan is not None:
-            title = execution_plan.model_identity.model_name
+            title = model_display_name(execution_plan.model_identity)
             subtitle = " · ".join(
                 [
                     execution_plan.runtime.runtime.value,
-                    _backend_hint(execution_plan.runtime),
+                    backend_hint(execution_plan.runtime),
                     execution_plan.artifact.label,
                 ]
             )
@@ -492,64 +513,82 @@ class _ValidationHeader(Static):
             estimate = recommendation.evaluated.memory_estimate
             runtime = estimate.runtime_recommendation if estimate is not None else None
             runtime_label = runtime.runtime.value if runtime is not None else "unknown"
-            title = recommendation.repo_id
+            title = model_display_name(
+                ModelIdentity(model_name=recommendation.repo_id.split("/")[-1]),
+                fallback=recommendation.repo_id,
+            )
             subtitle = f"{quantization} · {runtime_label}"
-        super().__init__(
-            f"[bold]{title}[/bold]\n"
-            f"{subtitle}",
-            id="validation-header",
-        )
+        super().__init__(title, subtitle, aside="Validate", id="validation-header")
 
 
-def _backend_hint(runtime: RuntimeRecommendation) -> str:
-    if runtime.runtime is RuntimeName.TRANSFORMERS:
-        return next(
-            (flag.value for flag in runtime.flags if flag.name == "device_map"),
-            "cpu",
+def _humanise(value: str) -> str:
+    """An enum value as a phrase — "correct_success" is a wire format."""
+    return value.replace("_", " ").capitalize()
+
+
+def _result_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
+    """What the run actually did, before anything about how it was configured."""
+    observation = record.observation
+    rows = [
+        ("Outcome", "Success" if observation.success else "Failed"),
+        ("Duration", _duration(observation.duration_seconds)),
+    ]
+    if observation.peak_ram_bytes is not None:
+        rows.append(("Peak RAM", format_bytes(observation.peak_ram_bytes)))
+    if observation.peak_vram_bytes is not None:
+        rows.append(("Peak VRAM", format_bytes(observation.peak_vram_bytes)))
+    if observation.failure_reason is not None:
+        rows.append(("Failure", observation.failure_reason.value))
+    return rows
+
+
+def _prediction_block(record: ExperimentRecord) -> Widget:
+    """Estimated against measured, and why the two sometimes cannot be compared.
+
+    The domain writes an explanatory sentence into ``unavailable_reason`` — VRAM
+    is never predicted, and RAM is not predicted under GPU offload. The screen
+    used to show only the bare enum, so "comparison unavailable" appeared with
+    no way to find out why.
+    """
+    comparison = record.comparison
+    children: list[Widget] = [Static("Prediction", classes="section-title")]
+    children.append(
+        MetricRow(
+            "Estimated RAM",
+            format_bytes(comparison.ram.predicted_bytes),
+            emphasis="estimated",
         )
-    gpu_layers = next(
-        (flag.value for flag in runtime.flags if flag.name == "--n-gpu-layers"),
-        None,
     )
-    if gpu_layers in {None, "0"}:
-        return "CPU"
-    return "accelerated"
+    children.append(
+        MetricRow(
+            "Measured RAM",
+            format_bytes(comparison.ram.measured_bytes),
+            emphasis="measured",
+        )
+    )
+    children.append(MetricRow("Difference", _metric_error(comparison.ram.error_percent)))
+    children.append(
+        MetricRow("Compatibility", _humanise(comparison.compatibility.outcome.value))
+    )
+    for reason in (comparison.ram.unavailable_reason, comparison.vram.unavailable_reason):
+        if reason:
+            children.append(Static(reason, classes="text-muted-tight"))
+    return Vertical(*children, classes="section")
 
 
-def _backend_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
+def _execution_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
+    """How it ran. Raw capability and readiness reasons stay in the details."""
     readiness = record.preflight.execution_readiness
     accelerator = readiness.selection.selected_accelerator
     return [
-        ("Requested", record.backend_trace.requested_backend.value),
-        ("Selected", readiness.selection.selected_backend.value),
+        ("Runtime", record.runtime.runtime.value),
+        ("Backend", readiness.selection.selected_backend.value),
         (
             "Accelerator",
             accelerator.name if accelerator is not None else "CPU fallback",
         ),
-        (
-            "Observed",
-            record.backend_trace.observed_backend.value
-            if record.backend_trace.observed_backend is not None
-            else "Not verified",
-        ),
         ("Readiness", readiness.status.value),
     ]
-
-
-def _comparison_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
-    comparison = record.comparison
-    rows = [
-        ("Predicted RAM", format_bytes(comparison.ram.predicted_bytes)),
-        ("Observed RAM", format_bytes(comparison.ram.measured_bytes)),
-        ("RAM error", _metric_error(comparison.ram.error_percent)),
-        ("Peak VRAM", format_bytes(record.observation.peak_vram_bytes)),
-        ("Compatibility", comparison.compatibility.outcome.value),
-    ]
-    if comparison.ram.unavailable_reason is not None:
-        rows.append(("RAM comparison", comparison.ram.availability.value))
-    if comparison.vram.unavailable_reason is not None:
-        rows.append(("VRAM comparison", comparison.vram.availability.value))
-    return rows
 
 
 def _technical_experiment_rows(

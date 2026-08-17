@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Static
 
 from jaull.domain.requirements import UserAnswers
+from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
@@ -34,6 +35,12 @@ class _DiscoveryFinished(Message):
     def __init__(self, state: RecommendationWorkflowState) -> None:
         super().__init__()
         self.state = state
+
+
+class _DiscoveryFailed(Message):
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
 
 
 class ModelDiscoveryScreen(Screen[None]):
@@ -64,11 +71,10 @@ class ModelDiscoveryScreen(Screen[None]):
             yield ProgressStepList(
                 "Searching Hugging Face",
                 initial_progress(DISCOVERY_STEPS),
-                plain=True,
             )
             yield Vertical(id="discovery-messages")
             with Horizontal(id="discovery-actions"):
-                yield Button("Cancel", id="discovery-cancel")
+                yield ActionButton("Cancel", id="discovery-cancel")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -102,12 +108,17 @@ class ModelDiscoveryScreen(Screen[None]):
 
         app = self._app()
         hardware = app.hardware_profile
-        state = advisor.recommend(
-            self._answers,
-            hardware=hardware,
-            on_progress=report,
-            is_cancelled=self._cancel.is_set,
-        )
+        try:
+            state = advisor.recommend(
+                self._answers,
+                hardware=hardware,
+                on_progress=report,
+                is_cancelled=self._cancel.is_set,
+            )
+        except Exception as exc:
+            if not self._discovery_closing.is_set():
+                self.post_message(_DiscoveryFailed(str(exc)))
+            return
         if hardware is None:
             app.hardware_profile = state.hardware
         if self._discovery_closing.is_set():
@@ -125,6 +136,18 @@ class ModelDiscoveryScreen(Screen[None]):
         if self._discovery_closing.is_set():
             return
         self._finish(message.state)
+
+    @on(_DiscoveryFailed)
+    def _failed_message(self, message: _DiscoveryFailed) -> None:
+        if self._discovery_closing.is_set():
+            return
+        state = RecommendationWorkflowState(
+            answers=self._answers,
+            hardware=self._app().hardware_profile,
+            current_step=WorkflowStep.FAILED,
+            errors=[message.message or "Search failed unexpectedly."],
+        )
+        self._finish(state)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:
         self.query_one(ProgressStepList).update_progress(progress)
@@ -149,7 +172,7 @@ class ModelDiscoveryScreen(Screen[None]):
         self._replace_actions(
             [
                 Button("Start again", id="discovery-restart", classes="-primary"),
-                Button("Advanced tools", id="discovery-advanced"),
+                ActionButton("Advanced tools", id="discovery-advanced"),
             ]
         )
 
@@ -169,8 +192,8 @@ class ModelDiscoveryScreen(Screen[None]):
         self._replace_actions(
             [
                 Button("Retry", id="discovery-retry", classes="-primary"),
-                Button("Advanced tools", id="discovery-advanced"),
-                Button("Start again", id="discovery-restart"),
+                ActionButton("Advanced tools", id="discovery-advanced"),
+                ActionButton("Start again", id="discovery-restart"),
             ]
         )
 
@@ -191,7 +214,7 @@ class ModelDiscoveryScreen(Screen[None]):
                 initial_progress(DISCOVERY_STEPS)
             )
             self.query_one("#discovery-messages", Vertical).remove_children()
-            self._replace_actions([Button("Cancel", id="discovery-cancel")])
+            self._replace_actions([ActionButton("Cancel", id="discovery-cancel")])
             self._start_discovery()
         elif button_id == "discovery-restart":
             app.restart_workflow()

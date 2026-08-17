@@ -15,17 +15,23 @@ from textual.widgets import Button, Footer, Static, TextArea
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import InferenceResult
-from jaull.domain.execution_plans import ExecutionPlan, PreparedExecutionPlan
+from jaull.domain.execution_plans import (
+    ExecutionPlan,
+    ModelIdentity,
+    PreparedExecutionPlan,
+)
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
 from jaull.presentation.execution_report import inline_observation_summary
+from jaull.presentation.plan_labels import backend_hint, model_display_name
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
+from jaull.tui.widgets.context_bar import ContextBar
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -335,29 +341,23 @@ class RecommendationExecutionScreen(Screen[None]):
         return self.app
 
 
-class _RunHeader(Vertical):
-    """Which model is loaded and how it is configured. Two lines, no box.
+class _RunHeader(ContextBar):
+    """Which model is loaded and how it is configured.
 
     The guided breadcrumb is gone: running is not one of the four steps, and
     repeating the path here only added a row.
     """
-
-    DEFAULT_CLASSES = "run-header"
 
     def __init__(
         self,
         recommendation: ModelRecommendation,
         execution_plan: ExecutionPlan | None = None,
     ) -> None:
-        super().__init__()
-        self._recommendation = recommendation
-        self._execution_plan = execution_plan
-
-    def compose(self) -> ComposeResult:
-        yield Static(_run_title(self._recommendation, self._execution_plan), classes="run-title")
-        meta = " · ".join(_run_metadata(self._recommendation, self._execution_plan))
-        if meta:
-            yield Static(meta, classes="run-meta")
+        super().__init__(
+            _run_title(recommendation, execution_plan),
+            " · ".join(_run_metadata(recommendation, execution_plan)),
+            aside="Run",
+        )
 
 
 class InferencePrompt(Vertical):
@@ -391,8 +391,9 @@ class InferenceResponse(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("MODEL", classes="message-label")
         yield Static(Text(_response_text(self._result.text)), classes="message-text")
+        summary = inline_observation_summary(self._result.observation, omit_missing=True)
         yield Static(
-            f"{inline_observation_summary(self._result.observation)} · {self._result.runtime}",
+            f"{summary} · {self._result.runtime}",
             classes="message-meta",
         )
 
@@ -402,8 +403,11 @@ def _run_title(
     execution_plan: ExecutionPlan | None = None,
 ) -> str:
     if execution_plan is not None:
-        return execution_plan.model_identity.model_name
-    return rec.repo_id
+        return model_display_name(execution_plan.model_identity)
+    return model_display_name(
+        ModelIdentity(model_name=rec.repo_id.split("/")[-1]),
+        fallback=rec.repo_id,
+    )
 
 
 def _run_metadata(
@@ -414,7 +418,7 @@ def _run_metadata(
         artifact = execution_plan.artifact
         return [
             execution_plan.runtime.runtime.value,
-            _backend_hint(execution_plan.runtime),
+            backend_hint(execution_plan.runtime),
             artifact.label,
         ]
     config = rec.evaluated.selected_configuration
@@ -440,18 +444,6 @@ def _flag_value(runtime: RuntimeRecommendation | None, name: str) -> str | None:
     if runtime is None:
         return None
     return next((flag.value for flag in runtime.flags if flag.name == name), None)
-
-
-def _backend_hint(runtime: RuntimeRecommendation) -> str:
-    if runtime.runtime is RuntimeName.TRANSFORMERS:
-        return next(
-            (flag.value for flag in runtime.flags if flag.name == "device_map"),
-            "cpu",
-        )
-    gpu_layers = _flag_value(runtime, "--n-gpu-layers")
-    if gpu_layers in {None, "0"}:
-        return "CPU"
-    return "accelerated"
 
 
 def _response_text(text: str) -> str:

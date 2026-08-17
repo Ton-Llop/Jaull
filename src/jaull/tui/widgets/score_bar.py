@@ -5,7 +5,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from jaull.recommendation.models import ScoreBreakdown
-from jaull.tui.widgets.compact_score_strip import bar_markup
+from jaull.tui.widgets.bars import bar_markup
 
 _BAR_WIDTH = 24
 

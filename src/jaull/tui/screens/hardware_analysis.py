@@ -124,7 +124,7 @@ class HardwareAnalysisScreen(Screen[None]):
         # required to see what came back, and no leftover progress UI.
         content = self.query_one("#hardware-content", Vertical)
         content.remove_children()
-        content.mount(SummaryCard("This machine", _summary_rows(profile), plain=True))
+        content.mount(SummaryCard("This machine", _summary_rows(profile)))
 
         if profile.warnings:
             # A missing NVIDIA GPU is a warning, never a failure: CPU-only
@@ -161,7 +161,6 @@ class _ScanChecklist(Vertical):
         yield ProgressStepList(
             "Analyzing this machine",
             initial_progress(HARDWARE_STEPS),
-            plain=True,
         )
 
     def update_progress(self, progress: WorkflowProgress) -> None:

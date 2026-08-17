@@ -35,9 +35,11 @@ from jaull.tui.screens.recommendation_results import (  # noqa: E402
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # noqa: E402
 
-# The two sizes the interface is designed against: a comfortable terminal and a
-# small one. Anything narrower is out of scope.
-SIZES = [(110, 32), (90, 28)]
+# The sizes the interface is designed against: a comfortable terminal, a
+# medium one, and 80x24 — the classic default, and the width at which the old
+# results row collapsed its model-name column to one character and wrapped a
+# repository id one letter per line. Anything narrower is out of scope.
+SIZES = [(110, 32), (90, 28), (80, 24)]
 
 
 def _run(coro: Any) -> None:

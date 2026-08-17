@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event
 
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
@@ -12,6 +13,7 @@ from textual.widgets import DataTable, Footer, Header, LoadingIndicator
 
 from jaull.domain.enums import DiagnosticStatus
 from jaull.domain.model import DiagnosticResult
+from jaull.tui import palette
 from jaull.tui.widgets.banner import Banner
 
 
@@ -75,18 +77,30 @@ class DoctorScreen(Screen[None]):
     def _populate(self, results: list[DiagnosticResult]) -> None:
         self._shutdown_doctor_executor()
         self.query_one("#doctor-loading", LoadingIndicator).display = False
-        table: DataTable[str] = DataTable(zebra_stripes=True)
+        table: DataTable[Text] = DataTable(zebra_stripes=True)
         table.add_columns("Check", "Status", "Detail")
         for result in results:
-            table.add_row(result.name, _pretty_status(result.status), result.detail)
+            table.add_row(
+                Text(result.name),
+                _pretty_status(result.status),
+                Text(result.detail),
+            )
         content = self.query_one("#doctor-content", Vertical)
         content.remove_children()
         content.mount(table)
 
 
-def _pretty_status(status: DiagnosticStatus) -> str:
-    return {
-        DiagnosticStatus.OK: "OK",
-        DiagnosticStatus.WARN: "WARN",
-        DiagnosticStatus.FAIL: "FAIL",
-    }[status]
+# `.status-ok` and friends never applied here: a DataTable cell is rendered
+# content, not a widget, so a CSS class on the table could not reach it. The
+# colour has to travel with the cell — and the word carries the state on its
+# own, so nothing depends on seeing it.
+_STATUS_STYLES: dict[DiagnosticStatus, tuple[str, str]] = {
+    DiagnosticStatus.OK: ("OK", f"bold {palette.OK}"),
+    DiagnosticStatus.WARN: ("WARN", f"bold {palette.WARN}"),
+    DiagnosticStatus.FAIL: ("FAIL", f"bold {palette.BAD}"),
+}
+
+
+def _pretty_status(status: DiagnosticStatus) -> Text:
+    label, style = _STATUS_STYLES[status]
+    return Text(label, style=style)

@@ -91,7 +91,7 @@ def test_benchmark_screen_shows_successful_matrix(
             text = _visible_text(screen)
             assert screen.query(DataTable)
             assert "Prompt processing 512" in text
-            assert "1.98x" in text
+            assert "~2.0x" in text
             assert advisor.matrix_calls == 1
             assert advisor.last_matrix_request is not None
             assert advisor.last_matrix_request.include_cpu is False
@@ -99,7 +99,7 @@ def test_benchmark_screen_shows_successful_matrix(
             assert advisor.last_matrix_request.selected_gpu_layers == (
                 BenchmarkGpuLayers.full(),
             )
-            assert "Running llama-bench: vulkan · device Vulkan0 · ngl all" in text
+            assert "Running llama-bench: vulkan" in text
 
     _run(scenario())
 
@@ -152,10 +152,12 @@ def test_benchmark_screen_runs_transformers_single_benchmark(
             assert advisor.last_benchmark_request.artifact.format == "transformers"
             assert advisor.operations == ["hardware", "select_backend"]
             text = _visible_text(screen)
-            assert screen.query(DataTable)
+            # One configuration renders as bar rows rather than a table; the
+            # exact throughput stays on the row beside the bar.
             assert "Running Transformers benchmark: cpu" in text
-            assert "Startup" in text
+            assert "Performance" in text
             assert "Memory" in text
+            assert "tok/s" in text
 
     _run(scenario())
 
@@ -209,7 +211,7 @@ def test_benchmark_screen_keeps_partial_failure_results(
             )
 
             text = _visible_text(screen)
-            assert screen.query(DataTable)
+            assert "tok/s" in text
             assert "Vulkan run failed" in text
             assert screen.query_one("#benchmark-details", Button).disabled is False
 

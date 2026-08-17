@@ -4,6 +4,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
+from jaull.presentation.plan_labels import hardware_summary
+from jaull.tui import palette
 from jaull.workflow.models import WorkflowStep
 
 # Only the steps the user actually passes through; terminal states are excluded
@@ -15,18 +17,24 @@ _ORDER: tuple[tuple[WorkflowStep, str], ...] = (
     (WorkflowStep.RANKING, "Results"),
 )
 
-_DONE = "#b3bac6"
-_CURRENT = "#3a7bd5"
-_PENDING = "#8b95a5"
-_JOIN = "#2b3748"
+_DONE = palette.INK_2
+_CURRENT = palette.ACCENT
+_PENDING = palette.INK_3
+_JOIN = palette.LINE_2
 
 
 class WorkflowHeader(Vertical):
-    """Where the user is in the guided flow, as a heading rather than a panel.
+    """Where the user is in the guided flow, and what machine they are on.
 
-    Three lines and a hairline: the step title with its position, one line of
-    orientation, and a breadcrumb where the current step is the only thing
-    wearing the accent colour.
+    Two lines and a hairline. It used to be four — title, step count, a line of
+    orientation copy, and the breadcrumb — which cost five rows on every screen
+    and still never said what hardware the answers applied to. The breadcrumb
+    carries the position, so the separate "Step 3 of 4" is redundant, and the
+    row it frees goes to the machine.
+
+    The subtitle is accepted and ignored on purpose: the call sites still pass
+    the orientation copy they always did, and dropping it is a presentation
+    decision this widget is entitled to make in one place rather than in six.
     """
 
     DEFAULT_CLASSES = "workflow-header"
@@ -38,17 +46,19 @@ class WorkflowHeader(Vertical):
         self._subtitle = subtitle
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
+        with Horizontal(classes="context-title-row"):
             yield Static(self._title, classes="workflow-title")
-            position = self._position()
-            if position is not None:
-                yield Static(
-                    f"Step {position} of {len(_ORDER)}",
-                    classes="workflow-step-count",
-                )
-        if self._subtitle:
-            yield Static(self._subtitle, classes="workflow-subtitle")
+            yield Static("", classes="workflow-machine", id="workflow-machine")
         yield Static(self._breadcrumb(), classes="workflow-breadcrumb")
+
+    def on_mount(self) -> None:
+        # The profile only exists once the hardware scan has run, so it is read
+        # here rather than passed through every screen constructor.
+        profile = getattr(self.app, "hardware_profile", None)
+        summary = hardware_summary(profile)
+        machine = self.query_one("#workflow-machine", Static)
+        machine.update(summary)
+        machine.display = bool(summary)
 
     def _position(self) -> int | None:
         for index, (step, _) in enumerate(_ORDER, start=1):
@@ -66,7 +76,7 @@ class WorkflowHeader(Vertical):
                 parts.append(f"[{_DONE}]{label}[/]")
             else:
                 parts.append(f"[{_PENDING}]{label}[/]")
-        return f"[{_JOIN}] ─── [/]".join(parts)
+        return f"[{_JOIN}] ─ [/]".join(parts)
 
 
 __all__ = ["WorkflowHeader"]

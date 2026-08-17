@@ -485,7 +485,11 @@ def _first_existing_executable(directory: Path, names: Sequence[str]) -> Path | 
 
 
 def _is_executable(path: Path) -> bool:
-    return os.name == "nt" or os.access(path, os.X_OK)
+    if os.name != "nt":
+        return os.access(path, os.X_OK)
+    pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+    executable_suffixes = {suffix.casefold() for suffix in pathext.split(os.pathsep)}
+    return path.suffix.casefold() in executable_suffixes
 
 
 def _normalize_path(path: Path) -> Path:

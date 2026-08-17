@@ -71,13 +71,27 @@ def render_execution_observation(
     console.print(table)
 
 
-def inline_observation_summary(observation: ExecutionObservation) -> str:
-    """Compact summary for TUI history metadata."""
-    return (
-        f"{observation.duration_seconds:.2f} s"
-        f" · RAM {_format_observed_bytes(observation.peak_ram_bytes)}"
-        f" · VRAM {_format_observed_bytes(observation.peak_vram_bytes)}"
-    )
+def inline_observation_summary(
+    observation: ExecutionObservation,
+    *,
+    omit_missing: bool = False,
+) -> str:
+    """Compact summary for TUI history metadata.
+
+    ``omit_missing`` drops the metrics that were not measured. A report wants
+    the full shape — "VRAM unavailable" documents that the field exists and was
+    not captured — but under a chat response it is noise: two of the four facts
+    on the line would say nothing at all.
+    """
+    parts = [f"{observation.duration_seconds:.2f} s"]
+    for label, value in (
+        ("RAM", observation.peak_ram_bytes),
+        ("VRAM", observation.peak_vram_bytes),
+    ):
+        if value is None and omit_missing:
+            continue
+        parts.append(f"{label} {_format_observed_bytes(value)}")
+    return " · ".join(parts)
 
 
 def _format_observed_bytes(value: int | None) -> str:

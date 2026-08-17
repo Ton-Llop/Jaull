@@ -76,6 +76,7 @@ from jaull.evaluation.experiments import build_experiment_record  # noqa: E402
 from jaull.execution.errors import ExecutionTimeoutError  # noqa: E402
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness  # noqa: E402
 from jaull.tui.app import JaullApp  # noqa: E402
+from jaull.tui.screens.execution_paths import ExecutionPathsScreen  # noqa: E402
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen  # noqa: E402
 from jaull.tui.screens.recommendation_execution import (  # noqa: E402
     RecommendationExecutionScreen,
@@ -106,6 +107,7 @@ SCREENSHOTS = (
     "tui-wizard.svg",
     "tui-search.svg",
     "tui-results.svg",
+    "tui-paths.svg",
     "tui-export.svg",
     "tui-validation-running.svg",
     "tui-validation-success.svg",
@@ -538,6 +540,22 @@ async def _capture_search_and_results(  # type: ignore[no-untyped-def]
     _save(app, out_dir, "tui-results.svg")
 
 
+async def _capture_paths(app: JaullApp, pilot, out_dir: Path) -> None:  # type: ignore[no-untyped-def]
+    """Execution paths: the screen that decides how a model actually runs.
+
+    Never captured before, which is part of why it drifted — quantizations
+    listed as peers of a runtime, and a selection rendered as a glyph inside a
+    button label.
+    """
+    app.screen.query_one("#res-paths-0", Button).press()
+    await _wait_for(pilot, lambda: isinstance(app.screen, ExecutionPathsScreen))
+    await _wait_for(pilot, lambda: bool(app.screen.query(".path-option")))
+    await _settle(pilot)
+    _save(app, out_dir, "tui-paths.svg")
+    await pilot.press("escape")
+    await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationResultsScreen))
+
+
 async def _capture_export(app: JaullApp, pilot, out_dir: Path) -> None:  # type: ignore[no-untyped-def]
     app.screen.query_one("#res-export", Button).press()
     await _wait_for(pilot, lambda: isinstance(app.screen, ExportReportModal))
@@ -686,6 +704,9 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
 
             print("Capturing search and results...")
             await _capture_search_and_results(app, pilot, out_dir, search_gate)
+
+            print("Capturing execution paths...")
+            await _capture_paths(app, pilot, out_dir)
 
             print("Capturing export...")
             await _capture_export(app, pilot, out_dir)

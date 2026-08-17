@@ -60,11 +60,14 @@ class WorkflowProgress(BaseModel):
         for step in self.steps:
             if step.key == key:
                 seen = True
+                next_detail = detail
+                if next_detail is None and status is StepStatus.RUNNING:
+                    next_detail = step.detail
                 updated.append(
                     step.model_copy(
                         update={
                             "status": status,
-                            "detail": detail if detail is not None else step.detail,
+                            "detail": next_detail,
                         }
                     )
                 )
