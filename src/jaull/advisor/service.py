@@ -10,7 +10,7 @@ front-end modules free of ``HfClient()``/``detect_hardware`` construction.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +23,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRequest,
     BenchmarkRunResult,
 )
+from jaull.domain.candidates import ModelCandidate
 from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.execution import ExecutionObservation, InferenceResult
 from jaull.domain.execution_plans import (
@@ -66,6 +67,7 @@ from jaull.workflow.container import (
     InspectModelFn,
     ServiceContainer,
 )
+from jaull.workflow.model_analysis_cache import ModelAnalysisCacheProtocol
 from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
@@ -144,7 +146,13 @@ class AdvisorService:
         return self.collect_diagnostics()
 
     def inspect_model(self, repo_id: str) -> ModelAnalysis:
-        return self.services.inspect_model(repo_id, client=self.services.hf_client)
+        candidate = ModelCandidate(repo_id=repo_id)
+        cached = self._cached_model_analysis(candidate)
+        if cached is not None:
+            return cached
+        analysis = self._inspect_model_live(repo_id)
+        self._store_model_analysis(candidate, analysis)
+        return analysis
 
     def estimate_model(
         self,
@@ -518,7 +526,8 @@ class AdvisorService:
             identity=identity,
             current=current,
             search_client=self.services.search_client,
-            inspect_model=self.inspect_model,
+            inspect_model=self._inspect_model_live,
+            analysis_cache=self.services.model_analysis_cache,
             include_uncertain=include_uncertain,
             limit=limit,
         )
@@ -929,6 +938,23 @@ class AdvisorService:
         client = factory()
         return client  # type: ignore[return-value]
 
+    def _cached_model_analysis(self, candidate: ModelCandidate) -> ModelAnalysis | None:
+        cache = self.services.model_analysis_cache
+        if cache is None:
+            return None
+        return cache.get(candidate)
+
+    def _inspect_model_live(self, repo_id: str) -> ModelAnalysis:
+        return self.services.inspect_model(repo_id, client=self.services.hf_client)
+
+    def _store_model_analysis(
+        self, candidate: ModelCandidate, analysis: ModelAnalysis
+    ) -> None:
+        cache = self.services.model_analysis_cache
+        if cache is None:
+            return
+        cache.put(candidate, analysis)
+
     # ------------------------------------------------------------------
     # Factories
     # ------------------------------------------------------------------
@@ -943,9 +969,12 @@ class AdvisorService:
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
         runtime_locator: RuntimeLocator | None = None,
+        model_analysis_cache: ModelAnalysisCacheProtocol | None = None,
     ) -> AdvisorService:
         """Production wiring: real HF client, real hardware probes, real estimator."""
         services = ServiceContainer.default()
+        if model_analysis_cache is not None:
+            services = replace(services, model_analysis_cache=model_analysis_cache)
         artifacts = ArtifactService(
             resolver=HuggingFaceArtifactResolver(services.hf_client),
             storage=ArtifactStorage(),
@@ -987,6 +1016,7 @@ class AdvisorService:
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
         runtime_locator: RuntimeLocator | None = None,
+        model_analysis_cache: ModelAnalysisCacheProtocol | None = None,
     ) -> AdvisorService:
         """Test wiring: assemble a ServiceContainer from callables and wrap it."""
         from jaull.discovery.search_client import HfSearchClient
@@ -1000,6 +1030,7 @@ class AdvisorService:
             estimate_memory=estimate_memory,
             capability_analyzer=MetadataCapabilityAnalyzer(),
             range_client_factory=None,
+            model_analysis_cache=model_analysis_cache,
         )
         return cls(
             services=services,

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 from jaull.discovery import candidate_filter, enrichment, query_builder
 from jaull.domain.candidates import (
@@ -38,6 +39,7 @@ from jaull.workflow.progress import (
     ProgressReporter,
 )
 from jaull.workflow.state import RecommendationWorkflowState
+from jaull.workflow.telemetry import PerformanceTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +86,7 @@ def run_workflow(
 ) -> RecommendationWorkflowState:
     """Run discovery, evaluation and ranking. Never raises for one bad model."""
     reporter = ProgressReporter(DISCOVERY_STEPS, on_progress)
+    telemetry = PerformanceTelemetry()
     current = (state or RecommendationWorkflowState()).model_copy(
         update={
             "answers": answers,
@@ -101,30 +104,33 @@ def run_workflow(
 
         reporter.start("queries")
         _check(cancelled)
-        queries = query_builder.build_queries(
-            requirements, limit=policies.SEARCH_RESULTS_PER_QUERY
-        )
+        with telemetry.timed("query_build"):
+            queries = query_builder.build_queries(
+                requirements, limit=policies.SEARCH_RESULTS_PER_QUERY
+            )
         reporter.done("queries", f"{len(queries)} queries")
 
         reporter.start("search")
-        candidates, search_warnings = _search(
-            services, queries, reporter, cancelled
-        )
+        with telemetry.timed("search"):
+            candidates, search_warnings = _search(
+                services, queries, reporter, cancelled, telemetry
+            )
         warnings.extend(search_warnings)
         if not candidates:
             return _finish_without_results(
-                current, requirements, reporter, warnings, [], queries
+                current, requirements, reporter, warnings, [], queries, telemetry
             )
         reporter.done("search", f"{len(candidates)} unique repositories")
 
         reporter.start("filter")
-        outcome = candidate_filter.filter_candidates(candidates, requirements)
-        shortlist = candidate_filter.shortlist(
-            outcome.kept,
-            requirements,
-            policies.MAX_DEEP_INSPECTION,
-            budget_bytes=_memory_budget(hardware),
-        )
+        with telemetry.timed("filter"):
+            outcome = candidate_filter.filter_candidates(candidates, requirements)
+            shortlist = candidate_filter.shortlist(
+                outcome.kept,
+                requirements,
+                policies.MAX_DEEP_INSPECTION,
+                budget_bytes=_memory_budget(hardware),
+            )
         reporter.done(
             "filter",
             f"{len(outcome.kept)} kept, {len(outcome.rejected)} filtered out",
@@ -138,30 +144,49 @@ def run_workflow(
         )
         if not shortlist:
             return _finish_without_results(
-                current, requirements, reporter, warnings, [], queries
+                current, requirements, reporter, warnings, [], queries, telemetry
             )
 
         evaluated = _evaluate(
-            shortlist, requirements, hardware, services, reporter, cancelled
+            shortlist,
+            requirements,
+            hardware,
+            services,
+            reporter,
+            cancelled,
+            telemetry,
         )
         current = current.model_copy(update={"evaluated_candidates": evaluated})
 
         reporter.start("rank")
-        usable = [item for item in evaluated if not item.failed]
-        if not usable:
-            return _finish_without_results(
-                current, requirements, reporter, warnings, evaluated, queries
-            )
+        with telemetry.timed("ranking"):
+            usable = [item for item in evaluated if not item.failed]
+            if not usable:
+                return _finish_without_results(
+                    current,
+                    requirements,
+                    reporter,
+                    warnings,
+                    evaluated,
+                    queries,
+                    telemetry,
+                )
 
-        recommendations = recommendation_service.recommend(
-            usable,
-            requirements,
-            limit=policies.MAX_RECOMMENDATIONS,
-            capability_analyzer=services.capability_analyzer,
-        )
+            recommendations = recommendation_service.recommend(
+                usable,
+                requirements,
+                limit=policies.MAX_RECOMMENDATIONS,
+                capability_analyzer=services.capability_analyzer,
+            )
         if not recommendations:
             return _finish_without_results(
-                current, requirements, reporter, warnings, evaluated, queries
+                current,
+                requirements,
+                reporter,
+                warnings,
+                evaluated,
+                queries,
+                telemetry,
             )
         reporter.done("rank", f"{len(recommendations)} recommendations")
 
@@ -170,6 +195,7 @@ def run_workflow(
                 "recommendations": recommendations,
                 "progress": reporter.progress,
                 "warnings": warnings,
+                "telemetry": telemetry.snapshot(),
                 "current_step": WorkflowStep.COMPLETED,
             }
         )
@@ -180,6 +206,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
+                "telemetry": telemetry.snapshot(),
                 "current_step": WorkflowStep.FAILED,
                 "errors": ["Search cancelled."],
             }
@@ -190,6 +217,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
+                "telemetry": telemetry.snapshot(),
                 "current_step": WorkflowStep.FAILED,
                 "errors": [str(exc)],
             }
@@ -200,6 +228,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
+                "telemetry": telemetry.snapshot(),
                 "current_step": WorkflowStep.FAILED,
                 "errors": [str(exc)],
             }
@@ -211,6 +240,7 @@ def _search(
     queries: list[SearchQuery],
     reporter: ProgressReporter,
     cancelled: CancelCheck,
+    telemetry: PerformanceTelemetry,
 ) -> tuple[list[ModelCandidate], list[str]]:
     """Run every query, tolerating individual query failures."""
     per_query: list[list[ModelCandidate]] = []
@@ -221,6 +251,7 @@ def _search(
         _check(cancelled)
         reporter.detail("search", f"query {index} of {len(queries)}")
         try:
+            telemetry.increment("search_api_calls")
             per_query.append(list(services.search_client.search(query)))
         except HuggingFaceUnavailableError as exc:
             failures += 1
@@ -271,20 +302,21 @@ def _evaluate(
     services: ServiceContainer,
     reporter: ProgressReporter,
     cancelled: CancelCheck,
+    telemetry: PerformanceTelemetry,
 ) -> list[EvaluatedCandidate]:
     """Inspect and estimate the shortlist, caching within this run."""
     analysis_cache: RunCache[str, ModelAnalysis] = RunCache()
     estimate_cache: RunCache[tuple[str, str], MemoryEstimate] = RunCache()
-    range_client = _build_range_client(services)
 
-    def inspect(repo_id: str) -> ModelAnalysis:
+    def inspect(candidate: ModelCandidate) -> ModelAnalysis:
         return analysis_cache.get_or_compute(
-            repo_id,
-            lambda: services.inspect_model(repo_id, client=services.hf_client),
+            _analysis_run_key(candidate),
+            lambda: _inspect_with_persistent_cache(candidate, services, telemetry),
         )
 
     def make_estimate_fn(
         repo_id: str,
+        range_client: object | None,
     ) -> Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]:
         def estimate(
             analysis: ModelAnalysis, config: InferenceConfiguration
@@ -292,37 +324,146 @@ def _evaluate(
             key = (repo_id, _config_key(config))
             return estimate_cache.get_or_compute(
                 key,
-                lambda: services.estimate_memory(
+                lambda: _estimate_with_timing(
                     analysis=analysis,
                     hardware=hardware,
-                    inference_cfg=config,
-                    client=services.hf_client,
+                    config=config,
+                    services=services,
                     range_client=range_client,
+                    telemetry=telemetry,
                 ),
             )
 
         return estimate
 
-    evaluated: list[EvaluatedCandidate] = []
-    reporter.start("inspect")
-    for index, candidate in enumerate(shortlist, start=1):
-        _check(cancelled)
-        reporter.detail("inspect", f"{index} of {len(shortlist)}")
-        evaluated.append(
-            enrichment.evaluate_candidate(
-                candidate=candidate,
-                requirements=requirements,
-                hardware=hardware,
-                inspect_fn=inspect,
-                estimate_fn=make_estimate_fn(candidate.repo_id),
-            )
+    def evaluate_one(candidate: ModelCandidate) -> EvaluatedCandidate:
+        range_client = _build_range_client(services)
+
+        def inspect_repo(repo_id: str) -> ModelAnalysis:
+            if repo_id != candidate.repo_id:
+                fallback = ModelCandidate(repo_id=repo_id)
+                return inspect(fallback)
+            return inspect(candidate)
+
+        return enrichment.evaluate_candidate(
+            candidate=candidate,
+            requirements=requirements,
+            hardware=hardware,
+            inspect_fn=inspect_repo,
+            estimate_fn=make_estimate_fn(candidate.repo_id, range_client),
         )
+
+    evaluated: list[EvaluatedCandidate | None] = [None] * len(shortlist)
+    reporter.start("inspect")
+    if not shortlist:
+        reporter.done("inspect", "0 inspected")
+        reporter.done("estimate", "0 estimated")
+        return []
+    max_workers = max(1, min(policies.MAX_CONCURRENT_INSPECTIONS, len(shortlist)))
+    telemetry.increment("max_concurrent_inspection_workers", max_workers)
+    completed = 0
+    next_index = 0
+    pending: dict[Future[EvaluatedCandidate], int] = {}
+    with ThreadPoolExecutor(
+        max_workers=max_workers,
+        thread_name_prefix="jaull-inspect",
+    ) as executor:
+        try:
+            while next_index < len(shortlist) and len(pending) < max_workers:
+                _check(cancelled)
+                future = executor.submit(evaluate_one, shortlist[next_index])
+                pending[future] = next_index
+                next_index += 1
+
+            while pending:
+                _check(cancelled)
+                done, _ = wait(pending, return_when=FIRST_COMPLETED, timeout=0.05)
+                if not done:
+                    continue
+                for future in done:
+                    index = pending.pop(future)
+                    evaluated[index] = future.result()
+                    completed += 1
+                    cache_stats = (
+                        services.model_analysis_cache.stats
+                        if services.model_analysis_cache
+                        else None
+                    )
+                    cached = cache_stats.hits if cache_stats is not None else 0
+                    reporter.detail(
+                        "inspect",
+                        f"{completed} of {len(shortlist)} · {cached} cached",
+                    )
+                    if next_index < len(shortlist):
+                        _check(cancelled)
+                        next_future = executor.submit(
+                            evaluate_one, shortlist[next_index]
+                        )
+                        pending[next_future] = next_index
+                        next_index += 1
+        except WorkflowCancelled:
+            for future in pending:
+                future.cancel()
+            raise
+        except Exception:
+            for future in pending:
+                future.cancel()
+            raise
+    result = [item for item in evaluated if item is not None]
+    telemetry.increment("run_analysis_cache_hits", analysis_cache.hits)
+    telemetry.increment("run_analysis_cache_misses", analysis_cache.misses)
+    telemetry.increment("run_estimate_cache_hits", estimate_cache.hits)
+    telemetry.increment("run_estimate_cache_misses", estimate_cache.misses)
     reporter.done("inspect", f"{len(shortlist)} inspected")
     reporter.done(
         "estimate",
-        f"{sum(1 for e in evaluated if e.memory_estimate is not None)} estimated",
+        f"{sum(1 for e in result if e.memory_estimate is not None)} estimated",
     )
-    return evaluated
+    return result
+
+
+def _estimate_with_timing(
+    *,
+    analysis: ModelAnalysis,
+    hardware: HardwareProfile,
+    config: InferenceConfiguration,
+    services: ServiceContainer,
+    range_client: object | None,
+    telemetry: PerformanceTelemetry,
+) -> MemoryEstimate:
+    with telemetry.timed("estimation"):
+        return services.estimate_memory(
+            analysis=analysis,
+            hardware=hardware,
+            inference_cfg=config,
+            client=services.hf_client,
+            range_client=range_client,
+        )
+
+
+def _inspect_with_persistent_cache(
+    candidate: ModelCandidate,
+    services: ServiceContainer,
+    telemetry: PerformanceTelemetry,
+) -> ModelAnalysis:
+    cache = services.model_analysis_cache
+    if cache is not None:
+        with telemetry.timed("persistent_cache_lookup"):
+            cached = cache.get(candidate)
+        if cached is not None:
+            telemetry.increment("persistent_cache_hits")
+            return cached
+        telemetry.increment("persistent_cache_misses")
+    telemetry.increment("deep_inspections")
+    with telemetry.timed("deep_inspection"):
+        analysis = services.inspect_model(
+            candidate.repo_id,
+            client=services.hf_client,
+        )
+    if cache is not None:
+        with telemetry.timed("persistent_cache_write"):
+            cache.put(candidate, analysis)
+    return analysis
 
 
 def _build_range_client(services: ServiceContainer) -> object | None:
@@ -343,6 +484,13 @@ def _config_key(config: InferenceConfiguration) -> str:
     )
 
 
+def _analysis_run_key(candidate: ModelCandidate) -> str:
+    revision = candidate.revision_hint
+    if revision is None and candidate.last_modified is not None:
+        revision = candidate.last_modified.isoformat()
+    return f"{candidate.repo_id}|{revision or 'unknown'}"
+
+
 def _finish_without_results(
     state: RecommendationWorkflowState,
     requirements: UserRequirements,
@@ -350,6 +498,7 @@ def _finish_without_results(
     warnings: list[str],
     evaluated: list[EvaluatedCandidate],
     queries: list[SearchQuery],
+    telemetry: PerformanceTelemetry,
 ) -> RecommendationWorkflowState:
     """Complete the run with an explanation instead of recommendations."""
     del requirements
@@ -361,6 +510,7 @@ def _finish_without_results(
             "evaluated_candidates": evaluated or state.evaluated_candidates,
             "search_queries": [q.label for q in queries] or state.search_queries,
             "no_results_reason": explanations.no_results_explanation(evaluated),
+            "telemetry": telemetry.snapshot(),
             "current_step": WorkflowStep.COMPLETED,
         }
     )

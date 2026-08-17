@@ -31,6 +31,9 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.recommendation.models import ModelRecommendation
+from jaull.workflow import policies
+from jaull.workflow.model_analysis_cache import ModelAnalysisCacheProtocol
+from jaull.workflow.telemetry import PerformanceTelemetry
 
 InspectModelFn = object
 
@@ -163,8 +166,11 @@ def discover_artifact_variants(
     current: ArtifactVariant | None,
     search_client: ModelSearchClient,
     inspect_model: object,
+    analysis_cache: ModelAnalysisCacheProtocol | None = None,
     limit: int = 20,
     include_uncertain: bool = False,
+    max_deep_inspection: int = policies.MAX_VARIANT_DEEP_INSPECTION,
+    telemetry: PerformanceTelemetry | None = None,
 ) -> list[ArtifactVariant]:
     """Discover metadata-only artifact variants without downloading weights."""
 
@@ -176,8 +182,29 @@ def discover_artifact_variants(
         search=f"{identity.model_name} GGUF",
         limit=limit,
     )
-    for candidate in search_client.search(query):
-        analysis = _inspect(inspect_model, candidate.repo_id)
+    if telemetry is not None:
+        telemetry.increment("variant_search_api_calls")
+    search_results = search_client.search(query)
+    if telemetry is not None:
+        telemetry.increment("variant_candidates_searched", len(search_results))
+    candidates = _prioritize_variant_candidates(
+        identity,
+        search_results,
+        include_uncertain=include_uncertain,
+    )
+    inspected = 0
+    for candidate in candidates:
+        if inspected >= max_deep_inspection:
+            break
+        analysis = _inspect_candidate(
+            inspect_model=inspect_model,
+            candidate=candidate,
+            analysis_cache=analysis_cache,
+            telemetry=telemetry,
+        )
+        inspected += 1
+        if telemetry is not None:
+            telemetry.increment("variant_candidates_deeply_inspected")
         candidate_identity = resolve_model_identity(candidate=candidate, analysis=analysis)
         match = _identity_match(identity, candidate, candidate_identity)
         if match is IdentityMatchStatus.REJECTED:
@@ -192,6 +219,11 @@ def discover_artifact_variants(
                 match=match,
             )
         )
+        if (
+            match is IdentityMatchStatus.CONFIRMED
+            and _confirmed_gguf_quantization_count(variants) >= 3
+        ):
+            break
     return _dedupe_variants(variants)
 
 
@@ -383,8 +415,81 @@ def _plan_id(artifact: ArtifactVariant, runtime: RuntimeRecommendation) -> str:
     return "plan-" + "-".join(_slug(part) for part in parts if part)
 
 
-def _inspect(inspect_model: object, repo_id: str) -> ModelAnalysis:
-    return inspect_model(repo_id)  # type: ignore[operator, no-any-return]
+def _inspect_candidate(
+    *,
+    inspect_model: object,
+    candidate: ModelCandidate,
+    analysis_cache: ModelAnalysisCacheProtocol | None,
+    telemetry: PerformanceTelemetry | None,
+) -> ModelAnalysis:
+    if analysis_cache is not None:
+        cached = analysis_cache.get(candidate)
+        if cached is not None:
+            if telemetry is not None:
+                telemetry.increment("variant_persistent_cache_hits")
+            return cached
+        if telemetry is not None:
+            telemetry.increment("variant_persistent_cache_misses")
+    analysis = inspect_model(candidate.repo_id)  # type: ignore[operator]
+    if analysis_cache is not None:
+        analysis_cache.put(candidate, analysis)
+    return analysis  # type: ignore[no-any-return]
+
+
+def _prioritize_variant_candidates(
+    identity: ModelIdentity,
+    candidates: list[ModelCandidate],
+    *,
+    include_uncertain: bool,
+) -> list[ModelCandidate]:
+    indexed = list(enumerate(candidates))
+    ranked: list[tuple[int, int, ModelCandidate]] = []
+    for index, candidate in indexed:
+        priority = _variant_candidate_priority(identity, candidate)
+        if priority is None:
+            continue
+        if priority > 1 and not include_uncertain:
+            continue
+        ranked.append((priority, index, candidate))
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [candidate for _, _, candidate in ranked]
+
+
+def _variant_candidate_priority(
+    identity: ModelIdentity,
+    candidate: ModelCandidate,
+) -> int | None:
+    target = identity.canonical_repo_id
+    if target and candidate.base_model_repo_id:
+        if _norm_repo(candidate.base_model_repo_id) == _norm_repo(target):
+            return 0
+        return None
+    if target and _norm_repo(candidate.repo_id) == _norm_repo(target):
+        return 0
+    cheap_identity = resolve_model_identity(candidate=candidate, analysis=None)
+    if (
+        target
+        and cheap_identity.canonical_repo_id
+        and _norm_repo(cheap_identity.canonical_repo_id) == _norm_repo(target)
+    ):
+        return 1
+    if _normalised_model_name(identity.model_name) == _normalised_model_name(
+        cheap_identity.model_name
+    ):
+        return 2
+    if "gguf" in {tag.casefold() for tag in candidate.tags}:
+        return 3
+    return None
+
+
+def _confirmed_gguf_quantization_count(variants: list[ArtifactVariant]) -> int:
+    return sum(
+        1
+        for variant in variants
+        if variant.format is ArtifactVariantFormat.GGUF
+        and variant.identity_match is IdentityMatchStatus.CONFIRMED
+        and variant.quantization
+    )
 
 
 def _gguf_variant(analysis: ModelAnalysis | None, quantization: str) -> GgufVariant | None:

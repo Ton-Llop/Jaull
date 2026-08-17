@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,7 +77,11 @@ class TransformersRunner:
 
         try:
             result = self.backend.execute(
-                ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)
+                ExecutionRequest(
+                    command=command,
+                    timeout_seconds=self.timeout_seconds,
+                    environment=_worker_environment(),
+                )
             )
         except ExecutionFailedError as exc:
             raise _worker_failed_error(exc) from exc
@@ -213,6 +218,17 @@ def _last_nonempty_line(text: str) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+def _worker_environment() -> dict[str, str]:
+    import_root = str(Path(__file__).resolve().parents[2])
+    existing = os.environ.get("PYTHONPATH")
+    pythonpath = (
+        import_root
+        if not existing
+        else os.pathsep.join((import_root, existing))
+    )
+    return {"PYTHONPATH": pythonpath}
 
 
 __all__ = [

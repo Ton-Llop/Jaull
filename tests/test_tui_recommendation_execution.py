@@ -770,8 +770,12 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert "Measured RAM" in text
             assert "Execution" in text
             assert advisor.experiment_persisted_path is not None
-            assert str(advisor.experiment_persisted_path) in text
             assert screen.query_one("#validation-details", Button).disabled is False
+            screen.query_one("#validation-details", Button).press()
+            await pilot.pause()
+            assert str(advisor.experiment_persisted_path) in _visible_text(
+                pilot.app.screen
+            )
 
     _run(scenario())
 

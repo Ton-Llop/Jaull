@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from pathlib import Path
 
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.estimation import CompatibilityStatus
@@ -16,6 +18,7 @@ from jaull.recommendation.report import (
 )
 from jaull.workflow import orchestrator, policies
 from jaull.workflow.container import ServiceContainer
+from jaull.workflow.model_analysis_cache import ModelAnalysisCache
 from jaull.workflow.models import StepStatus, WorkflowStep
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
@@ -252,6 +255,138 @@ def test_the_same_repository_is_inspected_once_per_run() -> None:
     assert calls.count("org/Coder-GGUF") == 1
 
 
+def test_persistent_cache_avoids_second_run_inspection(tmp_path: Path) -> None:
+    calls: list[str] = []
+    repo_id = "org/Coder-7B"
+    search = FakeSearchClient(
+        default=[
+            candidate(
+                repo_id=repo_id,
+                tags=["text-generation", "code"],
+            ).model_copy(update={"revision_hint": "rev1"})
+        ]
+    )
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        del client
+        calls.append(repo_id)
+        return transformers_analysis(repo_id=repo_id)
+
+    first = _container(search)
+    first = ServiceContainer(
+        hf_client=first.hf_client,
+        search_client=first.search_client,
+        detect_hardware=first.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=first.estimate_memory,
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    cold = orchestrator.run_workflow(answers(), hardware(), first)
+
+    second = ServiceContainer(
+        hf_client=first.hf_client,
+        search_client=search,
+        detect_hardware=first.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=first.estimate_memory,
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    warm = orchestrator.run_workflow(answers(), hardware(), second)
+
+    assert calls == [repo_id]
+    assert cold.recommendations[0].repo_id == warm.recommendations[0].repo_id
+    assert cold.telemetry["count.persistent_cache_misses"] == 1
+    assert warm.telemetry["count.persistent_cache_hits"] == 1
+    assert warm.telemetry.get("count.deep_inspections", 0) == 0
+
+
+def test_changed_repository_revision_invalidates_only_that_repo(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    repos = ["org/A-7B", "org/B-7B"]
+    cold_candidates = [
+        candidate(repo_id=repo, tags=["text-generation", "code"]).model_copy(
+            update={"revision_hint": "rev1"}
+        )
+        for repo in repos
+    ]
+    warm_candidates = [
+        cold_candidates[0],
+        cold_candidates[1].model_copy(update={"revision_hint": "rev2"}),
+    ]
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        del client
+        calls.append(repo_id)
+        return transformers_analysis(repo_id=repo_id)
+
+    base = _container(FakeSearchClient(default=cold_candidates))
+    cold = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=base.search_client,
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    orchestrator.run_workflow(answers(), hardware(), cold)
+    calls.clear()
+
+    warm = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=FakeSearchClient(default=warm_candidates),
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    orchestrator.run_workflow(answers(), hardware(), warm)
+
+    assert calls == ["org/B-7B"]
+
+
+def test_persistent_cache_does_not_cache_estimates(tmp_path: Path) -> None:
+    estimate_calls = 0
+    repo_id = "org/Coder-7B"
+    search = FakeSearchClient(
+        default=[
+            candidate(repo_id=repo_id, tags=["text-generation", "code"]).model_copy(
+                update={"revision_hint": "rev1"}
+            )
+        ]
+    )
+    estimator = size_driven_estimator(vram_budget=24 * GIB)
+
+    def estimate_memory(**kwargs: object) -> object:
+        nonlocal estimate_calls
+        estimate_calls += 1
+        return estimator(kwargs["analysis"], kwargs["inference_cfg"])
+
+    first = ServiceContainer(
+        hf_client=FakeHfClient(),
+        search_client=search,
+        detect_hardware=lambda **_: hardware(),  # type: ignore[arg-type]
+        inspect_model=lambda repo_id, client=None: transformers_analysis(repo_id),  # type: ignore[arg-type]
+        estimate_memory=estimate_memory,  # type: ignore[arg-type]
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    orchestrator.run_workflow(answers(), hardware(), first)
+    cold_estimates = estimate_calls
+
+    second = ServiceContainer(
+        hf_client=first.hf_client,
+        search_client=search,
+        detect_hardware=first.detect_hardware,
+        inspect_model=first.inspect_model,
+        estimate_memory=estimate_memory,  # type: ignore[arg-type]
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    orchestrator.run_workflow(answers(), hardware(), second)
+
+    assert estimate_calls > cold_estimates
+
+
 def test_duplicate_search_results_are_inspected_once() -> None:
     repeated = [
         candidate(repo_id="org/same", tags=["text-generation", "code"], queries=[f"q{i}"])
@@ -260,6 +395,127 @@ def test_duplicate_search_results_are_inspected_once() -> None:
     search = FakeSearchClient(default=repeated)
     state = orchestrator.run_workflow(answers(), hardware(), _container(search))
     assert len(state.candidates) == 1
+
+
+def test_deep_inspection_uses_bounded_concurrency() -> None:
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+    release = threading.Event()
+    reached_limit = threading.Event()
+    candidates = [
+        candidate(repo_id=f"org/model-{index}", tags=["text-generation", "code"])
+        for index in range(policies.MAX_DEEP_INSPECTION)
+    ]
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        nonlocal active, max_active
+        del client
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            if active == policies.MAX_CONCURRENT_INSPECTIONS:
+                reached_limit.set()
+        reached_limit.wait(timeout=1)
+        release.set()
+        release.wait(timeout=1)
+        with lock:
+            active -= 1
+        return transformers_analysis(repo_id=repo_id)
+
+    base = _container(FakeSearchClient(default=candidates))
+    services = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=base.search_client,
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+    )
+
+    orchestrator.run_workflow(answers(), hardware(), services)
+
+    assert max_active == policies.MAX_CONCURRENT_INSPECTIONS
+
+
+def test_slow_candidate_does_not_reorder_evaluated_results() -> None:
+    release_first = threading.Event()
+    second_started = threading.Event()
+    candidates = [
+        candidate(
+            repo_id="org/slow",
+            tags=["text-generation", "code"],
+            downloads=20_000,
+        ),
+        candidate(
+            repo_id="org/fast",
+            tags=["text-generation", "code"],
+            downloads=100,
+        ),
+    ]
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        del client
+        if repo_id == "org/slow":
+            second_started.wait(timeout=1)
+            release_first.wait(timeout=1)
+        else:
+            second_started.set()
+            release_first.set()
+        return transformers_analysis(repo_id=repo_id)
+
+    base = _container(FakeSearchClient(default=candidates))
+    services = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=base.search_client,
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+    )
+
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+
+    assert [item.repo_id for item in state.evaluated_candidates] == [
+        "org/slow",
+        "org/fast",
+    ]
+
+
+def test_cancellation_cancels_pending_inspections() -> None:
+    started = 0
+    cancel_now = threading.Event()
+    release = threading.Event()
+    candidates = [
+        candidate(repo_id=f"org/model-{index}", tags=["text-generation", "code"])
+        for index in range(policies.MAX_DEEP_INSPECTION)
+    ]
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        nonlocal started
+        del repo_id, client
+        started += 1
+        cancel_now.set()
+        release.wait(timeout=1)
+        return transformers_analysis()
+
+    base = _container(FakeSearchClient(default=candidates))
+    services = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=base.search_client,
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+    )
+
+    state = orchestrator.run_workflow(
+        answers(),
+        hardware(),
+        services,
+        is_cancelled=cancel_now.is_set,
+    )
+    release.set()
+
+    assert state.current_step is WorkflowStep.FAILED
+    assert started <= policies.MAX_CONCURRENT_INSPECTIONS
 
 
 def test_every_query_contributes_to_the_candidate_pool() -> None:

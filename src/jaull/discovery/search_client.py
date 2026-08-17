@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from huggingface_hub import HfApi
@@ -107,6 +108,11 @@ def candidate_from_model_info(info: ModelInfo, query_label: str) -> ModelCandida
         gated=getattr(info, "gated", False) or False,
         private=bool(getattr(info, "private", False)),
         base_model_repo_id=_first_string(card_data.get("base_model")),
+        revision_hint=_string_or_none(getattr(info, "sha", None)),
+        last_modified=_datetime_or_none(
+            getattr(info, "last_modified", None)
+            or getattr(info, "lastModified", None)
+        ),
         source_queries=[query_label],
         metadata_confidence=confidence,
     )
@@ -141,6 +147,25 @@ def _first_string(value: object) -> str | None:
             nested = value.get(key)
             if isinstance(nested, str) and nested:
                 return nested
+    return None
+
+
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _datetime_or_none(value: object) -> datetime | None:
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
     return None
 
 

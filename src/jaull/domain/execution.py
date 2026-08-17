@@ -48,6 +48,7 @@ class ExecutionRequest(BaseModel):
 
     command: tuple[str, ...] = Field(min_length=1)
     timeout_seconds: float = Field(default=300.0, gt=0.0)
+    environment: dict[str, str] = Field(default_factory=dict)
 
 
 class ExecutionResult(BaseModel):

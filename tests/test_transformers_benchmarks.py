@@ -101,6 +101,8 @@ def test_runner_parses_successful_transformers_benchmark(tmp_path: Path) -> None
         "-m",
         "jaull.runtime.transformers_benchmark_worker",
     )
+    assert "PYTHONPATH" in backend.requests[0].environment
+    assert backend.requests[0].environment["PYTHONPATH"]
 
 
 def test_runner_preserves_failed_worker_as_failed_observation(tmp_path: Path) -> None:

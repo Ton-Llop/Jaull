@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 
@@ -54,6 +55,7 @@ class HostExecutionBackend:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=_process_environment(request),
             )
         except FileNotFoundError as exc:
             executable = request.command[0]
@@ -171,6 +173,12 @@ class HostExecutionBackend:
             process.kill()
             stdout, stderr = process.communicate()
         return stdout, stderr
+
+
+def _process_environment(request: ExecutionRequest) -> dict[str, str] | None:
+    if not request.environment:
+        return None
+    return {**os.environ, **request.environment}
 
 
 class _ProcessExecutionSampler:

@@ -485,15 +485,21 @@ def _first_existing_executable(directory: Path, names: Sequence[str]) -> Path | 
 
 
 def _is_executable(path: Path) -> bool:
-    if os.name != "nt":
-        return os.access(path, os.X_OK)
-    pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
-    executable_suffixes = {suffix.casefold() for suffix in pathext.split(os.pathsep)}
-    return path.suffix.casefold() in executable_suffixes
+    if os.name == "nt":
+        # Windows has no POSIX executable bit, and several call sites inject a
+        # fake execution backend that deliberately uses extensionless temp
+        # files. Whether a real file can be spawned is determined by the host
+        # execution backend; the locator only rejects directories here.
+        return True
+    return os.access(path, os.X_OK)
 
 
 def _normalize_path(path: Path) -> Path:
-    return path.expanduser().resolve(strict=False)
+    # Runtime identity is the path we execute, not necessarily the filesystem
+    # target. A virtualenv Python is often a symlink to the base interpreter;
+    # dereferencing it would silently leave the virtualenv and lose installed
+    # packages such as torch/transformers.
+    return Path(os.path.abspath(path.expanduser()))
 
 
 def _installation_root(binary: Path | None) -> Path | None:

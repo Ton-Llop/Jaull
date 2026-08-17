@@ -22,6 +22,7 @@ from jaull.recommendation.capability import (
     CapabilityAnalyzer,
     MetadataCapabilityAnalyzer,
 )
+from jaull.workflow.model_analysis_cache import ModelAnalysisCacheProtocol
 
 DetectHardwareFn = Callable[..., HardwareProfile]
 InspectModelFn = Callable[..., ModelAnalysis]
@@ -41,6 +42,7 @@ class ServiceContainer:
         default_factory=MetadataCapabilityAnalyzer
     )
     range_client_factory: Callable[[], object] | None = field(default=None)
+    model_analysis_cache: ModelAnalysisCacheProtocol | None = field(default=None)
 
     @classmethod
     def default(cls) -> ServiceContainer:
@@ -55,6 +57,7 @@ class ServiceContainer:
         from jaull.huggingface.client import HfClient
         from jaull.huggingface.repository import inspect_model
         from jaull.metadata.range_reader import HttpxRangeClient
+        from jaull.workflow.model_analysis_cache import ModelAnalysisCache
 
         _load_dotenv()
 
@@ -66,6 +69,7 @@ class ServiceContainer:
             estimate_memory=estimate_memory,
             capability_analyzer=MetadataCapabilityAnalyzer(),
             range_client_factory=HttpxRangeClient,
+            model_analysis_cache=ModelAnalysisCache(),
         )
 
 

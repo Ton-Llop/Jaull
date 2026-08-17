@@ -9,6 +9,8 @@ live in ``domain/`` rather than inside any single feature package.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 # Side-effect import: loading ``jaull.domain.runtime`` resolves the
@@ -62,6 +64,8 @@ class ModelCandidate(BaseModel):
     private: bool = False
     repository_type: RepositoryType | None = None
     base_model_repo_id: str | None = None
+    revision_hint: str | None = None
+    last_modified: datetime | None = None
     source_queries: list[str] = Field(default_factory=list)
     metadata_confidence: EstimationConfidence = EstimationConfidence.MEDIUM
     # Set when preliminary filtering keeps a candidate but with reservations.
@@ -83,6 +87,8 @@ class ModelCandidate(BaseModel):
                 "tags": self.tags or other.tags,
                 "downloads": max(self.downloads, other.downloads),
                 "likes": max(self.likes, other.likes),
+                "revision_hint": self.revision_hint or other.revision_hint,
+                "last_modified": self.last_modified or other.last_modified,
             }
         )
 

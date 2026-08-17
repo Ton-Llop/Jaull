@@ -8,6 +8,7 @@ there is no database, no invalidation policy and no stale-data class of bug.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
 
@@ -18,26 +19,31 @@ class RunCache[K, V]:
         self._entries: dict[K, V] = {}
         self.hits = 0
         self.misses = 0
+        self._lock = threading.Lock()
 
     def get_or_compute(self, key: K, factory: Callable[[], V]) -> V:
-        if key in self._entries:
-            self.hits += 1
-            return self._entries[key]
-        self.misses += 1
+        with self._lock:
+            if key in self._entries:
+                self.hits += 1
+                return self._entries[key]
+            self.misses += 1
         value = factory()
-        self._entries[key] = value
-        return value
+        with self._lock:
+            return self._entries.setdefault(key, value)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._entries
+        with self._lock:
+            return key in self._entries
 
     def __len__(self) -> int:
-        return len(self._entries)
+        with self._lock:
+            return len(self._entries)
 
     def clear(self) -> None:
-        self._entries.clear()
-        self.hits = 0
-        self.misses = 0
+        with self._lock:
+            self._entries.clear()
+            self.hits = 0
+            self.misses = 0
 
 
 __all__ = ["RunCache"]

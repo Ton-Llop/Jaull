@@ -34,6 +34,7 @@ class RecommendationWorkflowState(BaseModel):
     search_queries: list[str] = Field(default_factory=list)
     # Set when the run ended with nothing to recommend but no hard failure.
     no_results_reason: list[str] = Field(default_factory=list)
+    telemetry: dict[str, float | int] = Field(default_factory=dict)
 
     @property
     def failed(self) -> bool:

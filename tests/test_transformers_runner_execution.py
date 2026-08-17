@@ -145,6 +145,8 @@ def test_runner_builds_isolated_worker_command_from_repo_ref(tmp_path: Path) -> 
         "--torch-dtype",
         "torch.float32",
     )
+    assert "PYTHONPATH" in backend.requests[0].environment
+    assert backend.requests[0].environment["PYTHONPATH"]
 
 
 def test_runner_uses_local_model_directory_with_spaces(tmp_path: Path) -> None:

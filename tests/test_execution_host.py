@@ -76,6 +76,23 @@ def test_host_backend_captures_stdout_and_stderr() -> None:
     assert result.observation.measurement.vram_measurement == "nvml_process_memory"
 
 
+def test_host_backend_passes_request_environment() -> None:
+    backend = HostExecutionBackend(sample_interval_seconds=0.01)
+
+    result = backend.execute(
+        ExecutionRequest(
+            command=(
+                sys.executable,
+                "-c",
+                "import os; print(os.environ['JAULL_TEST_ENV'])",
+            ),
+            environment={"JAULL_TEST_ENV": "visible"},
+        )
+    )
+
+    assert result.stdout == "visible\n"
+
+
 def test_host_backend_translates_missing_executable() -> None:
     backend = HostExecutionBackend()
 

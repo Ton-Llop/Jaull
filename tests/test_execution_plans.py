@@ -51,7 +51,9 @@ from jaull.execution_plans import (
 )
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
+from jaull.workflow import policies
 from jaull.workflow.container import ServiceContainer
+from jaull.workflow.model_analysis_cache import ModelAnalysisCache
 from tests._workflow_fixtures import (
     GIB,
     candidate,
@@ -126,6 +128,210 @@ def test_similar_name_without_evidence_is_not_safe_variant() -> None:
     )
 
     assert variants == []
+
+
+def test_variant_discovery_does_not_deep_inspect_every_search_result() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    strong = candidate(
+        "someone/Qwen2.5-0.5B-Instruct-GGUF",
+        base_model="Qwen/Qwen2.5-0.5B-Instruct",
+        tags=["gguf"],
+    )
+    results = [
+        strong,
+        *[
+            candidate(f"mirror/Other-{index}-GGUF", tags=["gguf"])
+            for index in range(19)
+        ],
+    ]
+    inspector = _Inspector({strong.repo_id: gguf_analysis(strong.repo_id)})
+
+    variants = discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search(results),
+        inspect_model=inspector,
+    )
+
+    assert inspector.calls == [strong.repo_id]
+    assert len(inspector.calls) < len(results)
+    assert any(variant.quantization == "Q4_K_M" for variant in variants)
+
+
+def test_structured_base_model_match_gets_priority_over_heuristic() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    heuristic = candidate(
+        "mirror/Qwen2.5-0.5B-Instruct-GGUF",
+        tags=["gguf"],
+    )
+    strong = candidate(
+        "author/Qwen2.5-0.5B-Instruct-GGUF",
+        base_model="Qwen/Qwen2.5-0.5B-Instruct",
+        tags=["gguf"],
+    )
+    inspector = _Inspector(
+        {
+            strong.repo_id: gguf_analysis(strong.repo_id),
+            heuristic.repo_id: gguf_analysis(heuristic.repo_id),
+        }
+    )
+
+    discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search([heuristic, strong]),
+        inspect_model=inspector,
+        include_uncertain=True,
+        max_deep_inspection=2,
+    )
+
+    assert inspector.calls[0] == strong.repo_id
+
+
+def test_confirmed_candidate_is_not_lost_after_heuristic_result() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    heuristic = candidate(
+        "mirror/Qwen2.5-0.5B-Instruct-GGUF",
+        tags=["gguf"],
+    )
+    strong = candidate(
+        "author/Qwen2.5-0.5B-Instruct-GGUF",
+        base_model="Qwen/Qwen2.5-0.5B-Instruct",
+        tags=["gguf"],
+    )
+    inspector = _Inspector(
+        {
+            strong.repo_id: gguf_analysis(strong.repo_id),
+            heuristic.repo_id: gguf_analysis("other/model"),
+        }
+    )
+
+    variants = discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search([heuristic, strong]),
+        inspect_model=inspector,
+        max_deep_inspection=1,
+    )
+
+    assert inspector.calls == [strong.repo_id]
+    assert any(
+        variant.identity_match is IdentityMatchStatus.CONFIRMED
+        for variant in variants
+    )
+
+
+def test_include_uncertain_allows_name_only_candidate_without_confirming_it() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    heuristic = candidate(
+        "mirror/Qwen2.5-0.5B-Instruct-GGUF",
+        tags=["gguf"],
+    )
+    inspector = _Inspector({heuristic.repo_id: gguf_analysis(heuristic.repo_id)})
+
+    variants = discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search([heuristic]),
+        inspect_model=inspector,
+        include_uncertain=True,
+    )
+
+    assert inspector.calls == [heuristic.repo_id]
+    assert all(
+        variant.identity_match is IdentityMatchStatus.UNCERTAIN
+        for variant in variants
+    )
+
+
+def test_variant_discovery_reuses_persistent_analysis_cache(tmp_path: Path) -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    gguf_candidate = candidate(
+        "someone/Qwen2.5-0.5B-Instruct-GGUF",
+        base_model="Qwen/Qwen2.5-0.5B-Instruct",
+        tags=["gguf"],
+    ).model_copy(update={"revision_hint": "rev1"})
+    cache = ModelAnalysisCache(root=tmp_path)
+    cache.put(gguf_candidate, gguf_analysis(gguf_candidate.repo_id))
+    inspector = _Inspector({})
+
+    variants = discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search([gguf_candidate]),
+        inspect_model=inspector,
+        analysis_cache=cache,
+    )
+
+    assert inspector.calls == []
+    assert cache.stats.hits == 1
+    assert variants
+
+
+def test_variant_discovery_returns_current_artifact_without_search_results() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    current = variant_from_recommendation(source, identity=identity)
+
+    variants = discover_artifact_variants(
+        identity=identity,
+        current=current,
+        search_client=_Search([]),
+        inspect_model=_Inspector({}),
+    )
+
+    assert variants == [current]
+
+
+def test_variant_deep_inspection_budget_is_explicit() -> None:
+    source = _transformers_recommendation()
+    identity = resolve_model_identity(
+        candidate=source.evaluated.candidate,
+        analysis=source.evaluated.analysis,
+    )
+    results = [
+        candidate(
+            f"mirror/Qwen2.5-0.5B-Instruct-{index}-GGUF",
+            tags=["gguf"],
+        )
+        for index in range(20)
+    ]
+    inspector = _Inspector(
+        {item.repo_id: gguf_analysis(item.repo_id) for item in results}
+    )
+
+    discover_artifact_variants(
+        identity=identity,
+        current=None,
+        search_client=_Search(results),
+        inspect_model=inspector,
+        include_uncertain=True,
+    )
+
+    assert len(inspector.calls) == policies.MAX_VARIANT_DEEP_INSPECTION
 
 
 def test_recommendation_variant_keeps_safetensors_runtime() -> None:

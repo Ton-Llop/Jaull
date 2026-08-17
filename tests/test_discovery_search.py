@@ -7,6 +7,7 @@ returns canned objects.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -101,6 +102,8 @@ class _Info:
     private: bool = False
     gated: bool | str = False
     card_data: dict[str, Any] = field(default_factory=dict)
+    sha: str | None = None
+    last_modified: datetime | str | None = None
 
 
 @dataclass
@@ -167,6 +170,16 @@ def test_license_given_as_a_list_takes_the_first_entry() -> None:
 def test_base_model_dict_shape_is_understood() -> None:
     info = _Info(id="org/x-GGUF", card_data={"base_model": {"finetune": "org/x"}})
     assert candidate_from_model_info(info, "q").base_model_repo_id == "org/x"  # type: ignore[arg-type]
+
+
+def test_revision_and_last_modified_are_preserved_from_search_metadata() -> None:
+    modified = datetime(2026, 1, 2, tzinfo=UTC)
+    info = _Info(id="org/x", sha="abc123", last_modified=modified)
+
+    result = candidate_from_model_info(info, "q")  # type: ignore[arg-type]
+
+    assert result.revision_hint == "abc123"
+    assert result.last_modified == modified
 
 
 @dataclass

@@ -27,6 +27,21 @@ def user_data_dir(*subdirs: str) -> Path:
     return _root().joinpath(*subdirs)
 
 
+def user_cache_dir(*subdirs: str) -> Path:
+    """Return ``<per-user jaull cache root>/<subdirs...>``.
+
+    - Linux / other: ``$XDG_CACHE_HOME/jaull`` or ``~/.cache/jaull``.
+    - macOS: ``~/Library/Caches/jaull``.
+    - Windows: ``%LOCALAPPDATA%\\jaull\\cache`` (falls back to
+      ``~/AppData/Local/jaull/cache`` if the env var is unset).
+
+    Cache files are disposable and may be deleted without losing user data.
+    The path is **not** created; call ``.mkdir(parents=True, exist_ok=True)``
+    at the write site.
+    """
+    return _cache_root().joinpath(*subdirs)
+
+
 def _root() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(
@@ -39,4 +54,16 @@ def _root() -> Path:
     return Path(xdg) / "jaull"
 
 
-__all__ = ["user_data_dir"]
+def _cache_root() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or str(
+            Path.home() / "AppData" / "Local"
+        )
+        return Path(base) / "jaull" / "cache"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "jaull"
+    xdg = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(xdg) / "jaull"
+
+
+__all__ = ["user_cache_dir", "user_data_dir"]

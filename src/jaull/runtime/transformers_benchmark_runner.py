@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -50,6 +51,7 @@ class TransformersBenchmarkRunner:
                 ExecutionRequest(
                     command=command,
                     timeout_seconds=request.timeout_seconds,
+                    environment=_worker_environment(),
                 )
             )
         except ExecutableNotFoundError as exc:
@@ -335,6 +337,17 @@ def _int_or_none(value: object) -> int | None:
     if isinstance(value, int | str):
         return int(value)
     raise TypeError(f"Expected integer value, got {type(value).__name__}.")
+
+
+def _worker_environment() -> dict[str, str]:
+    import_root = str(Path(__file__).resolve().parents[2])
+    existing = os.environ.get("PYTHONPATH")
+    pythonpath = (
+        import_root
+        if not existing
+        else os.pathsep.join((import_root, existing))
+    )
+    return {"PYTHONPATH": pythonpath}
 
 
 __all__ = [
