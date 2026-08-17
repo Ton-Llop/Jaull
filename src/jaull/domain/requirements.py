@@ -16,6 +16,9 @@ class UseCase(StrEnum):
     GENERAL_CHAT = "general_chat"
     CODING = "coding"
     DOCUMENT_QA = "document_qa"
+    SUMMARIZATION_EXTRACTION = "summarization_extraction"
+    REASONING = "reasoning"
+    BATCH_PROCESSING = "batch_processing"
     WRITING_TRANSLATION = "writing_translation"
 
 
@@ -48,6 +51,7 @@ class CommercialUse(StrEnum):
     YES = "yes"
     NO = "no"
     NOT_SURE = "not_sure"
+    NO_PREFERENCE = "no_preference"
 
 
 class UserAnswers(BaseModel):

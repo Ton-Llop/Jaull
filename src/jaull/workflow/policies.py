@@ -24,7 +24,7 @@ MAX_VARIANT_DEEP_INSPECTION = 6
 # --------------------------------------------------------------------------
 # Output budget.
 # --------------------------------------------------------------------------
-MAX_RECOMMENDATIONS = 3
+MAX_RECOMMENDATIONS = 5
 MAX_ALTERNATIVES = MAX_RECOMMENDATIONS - 1
 
 

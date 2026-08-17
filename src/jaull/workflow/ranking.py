@@ -13,6 +13,7 @@ from jaull.discovery import series
 from jaull.discovery.grouping import collapse_families
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserRequirements
 from jaull.recommendation import (
     capability,
@@ -24,11 +25,25 @@ from jaull.recommendation import (
     tier,
 )
 from jaull.recommendation.actionability import assess_actionability
+from jaull.recommendation.diversity import DiversifiedRecommendation, diversify_ranked_plans
+from jaull.recommendation.engine_v2 import (
+    PlanRankingContext,
+    RankedPlan,
+    rank_execution_plans,
+)
 from jaull.recommendation.models import (
     ModelRecommendation,
+    ScoreBreakdown,
     SeriesSibling,
 )
 from jaull.workflow import policies as workflow_policies
+
+_RankedRecommendation = tuple[
+    EvaluatedCandidate,
+    ScoreBreakdown,
+    RankedPlan | None,
+    DiversifiedRecommendation | None,
+]
 
 
 def score_all(
@@ -71,6 +86,8 @@ def recommend(
     requirements: UserRequirements,
     limit: int = workflow_policies.MAX_RECOMMENDATIONS,
     capability_analyzer: capability.CapabilityAnalyzer | None = None,
+    hardware: HardwareProfile | None = None,
+    plan_context: PlanRankingContext | None = None,
 ) -> list[ModelRecommendation]:
     """Produce at most ``limit`` explained recommendations."""
     analyzer = capability_analyzer or capability.MetadataCapabilityAnalyzer()
@@ -91,38 +108,68 @@ def recommend(
     }
     collapsed, siblings = collapse_families(scored, provisional)
 
-    # Series grouping is applied on top of family collapsing: same-family models
-    # of different sizes (Qwen2.5-0.5B / 1.5B / 3B / 7B) become one primary +
-    # SeriesSiblings so we recommend the best size instead of three of them.
-    series_map = series.group_by_series(collapsed)
-    series_winners: list[EvaluatedCandidate] = []
-    series_others: dict[str, list[EvaluatedCandidate]] = {}
-    for members in series_map.values():
-        if len(members) <= 1:
-            series_winners.append(members[0])
-            continue
-        best = max(
-            members, key=lambda item: provisional.get(item.repo_id, 0.0)
+    if hardware is not None:
+        context = plan_context or PlanRankingContext(hardware=hardware)
+        ranked_plans = rank_execution_plans(
+            scored,
+            requirements,
+            context=context,
         )
-        series_winners.append(best)
-        series_others[best.repo_id] = [
-            m for m in members if m.repo_id != best.repo_id
+        diversified_items = diversify_ranked_plans(ranked_plans, limit=limit)
+        ranked: list[_RankedRecommendation] = [
+            (
+                item.primary.evaluated,
+                ranker.score_breakdown(
+                    item.primary.evaluated,
+                    requirements.priority,
+                    hard_penalty=item.primary.evaluated.requirement_penalty,
+                    unmet_requirements=item.primary.evaluated.unmet_requirement_labels,
+                ),
+                item.primary,
+                item,
+            )
+            for item in diversified_items
         ]
-
-    ranked = ranker.select_ranked(
-        series_winners,
-        requirements.priority,
-        limit,
-        penalty_of=lambda item: item.requirement_penalty,
-        unmet_of=lambda item: item.unmet_requirement_labels,
-    )
+    else:
+        # Legacy no-hardware path keeps the old strong series grouping because
+        # it does not have execution-plan assessments to drive the v2 diversifier.
+        series_map = series.group_by_series(collapsed)
+        series_winners: list[EvaluatedCandidate] = []
+        series_others: dict[str, list[EvaluatedCandidate]] = {}
+        for members in series_map.values():
+            if len(members) <= 1:
+                series_winners.append(members[0])
+                continue
+            best = max(
+                members, key=lambda item: provisional.get(item.repo_id, 0.0)
+            )
+            series_winners.append(best)
+            series_others[best.repo_id] = [
+                m for m in members if m.repo_id != best.repo_id
+            ]
+        legacy_ranked = ranker.select_ranked(
+            series_winners,
+            requirements.priority,
+            limit,
+            penalty_of=lambda item: item.requirement_penalty,
+            unmet_of=lambda item: item.unmet_requirement_labels,
+        )
+        ranked = [
+            (item, breakdown, None, None)
+            for item, breakdown in legacy_ranked
+        ]
+    if hardware is not None:
+        series_others = {}
     if not ranked:
         return []
 
     primary = ranked[0][0]
     recommendations: list[ModelRecommendation] = []
 
-    for index, (item, breakdown) in enumerate(ranked, start=1):
+    for index, (item, breakdown, ranked_plan, diversified_item) in enumerate(
+        ranked,
+        start=1,
+    ):
         label = (
             None if index == 1 else ranker.alternative_label(primary, item)
         )
@@ -139,6 +186,26 @@ def recommend(
                 rank=index,
                 evaluated=item,
                 score=breakdown,
+                plan=ranked_plan.plan if ranked_plan is not None else None,
+                plan_assessment=(
+                    ranked_plan.assessment if ranked_plan is not None else None
+                ),
+                alternative_plans=(
+                    [alternative.plan for alternative in diversified_item.alternatives]
+                    if diversified_item is not None
+                    else []
+                ),
+                alternative_plan_assessments=(
+                    [
+                        alternative.assessment
+                        for alternative in diversified_item.alternatives
+                    ]
+                    if diversified_item is not None
+                    else []
+                ),
+                recommendation_position=(
+                    diversified_item.position if diversified_item is not None else None
+                ),
                 status=status,
                 confidence=confidence,
                 license_category=policies.classify_license(item.candidate.license),

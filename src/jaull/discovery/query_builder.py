@@ -26,6 +26,21 @@ _USE_CASE_PHRASES: dict[UseCase, tuple[str, ...]] = {
         "multilingual instruct",
         "question answering instruct",
     ),
+    UseCase.SUMMARIZATION_EXTRACTION: (
+        "summarization instruct",
+        "information extraction instruct",
+        "document assistant",
+    ),
+    UseCase.REASONING: (
+        "reasoning instruct",
+        "math reasoning",
+        "problem solving instruct",
+    ),
+    UseCase.BATCH_PROCESSING: (
+        "fast instruct",
+        "small instruct",
+        "efficient text generation",
+    ),
     UseCase.WRITING_TRANSLATION: (
         "multilingual instruct",
         "translation instruct",

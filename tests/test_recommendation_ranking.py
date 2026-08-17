@@ -254,14 +254,14 @@ def test_ties_break_deterministically() -> None:
     assert first == second
 
 
-def test_at_most_three_recommendations_are_returned() -> None:
+def test_at_most_configured_recommendations_are_returned() -> None:
     many = [
         _evaluated(repo_id=f"org/model-{index}", downloads=index * 1000)
         for index in range(10)
     ]
     results = recommend(many, _req())  # type: ignore[arg-type]
     assert len(results) <= workflow_policies.MAX_RECOMMENDATIONS
-    assert len(results) == 3
+    assert len(results) == workflow_policies.MAX_RECOMMENDATIONS
 
 
 def test_ranks_are_sequential_and_primary_is_first() -> None:

@@ -23,9 +23,9 @@ from jaull.evaluation.benchmark_comparison import (
     BenchmarkPlanSummary,
 )
 from jaull.presentation.plan_labels import (
-    backend_hint,
     format_gib,
     model_display_name,
+    plan_backend,
     plan_summary_line,
 )
 from jaull.recommendation.models import ModelRecommendation
@@ -650,9 +650,9 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
         "License",
         "Main reason",
     )
-    for rec in recommendations:
+    for rec in _logical_comparison_recommendations(recommendations):
         table.add_row(
-            rec.repo_id,
+            _model_title(rec),
             _configuration_label(rec),
             _memory_label(rec),
             rec.status.value,
@@ -660,8 +660,22 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
             rec.confidence.value,
             rec.evaluated.candidate.license or "not declared",
             rec.reasons[0] if rec.reasons else "-",
-        )
+    )
     return table
+
+
+def _logical_comparison_recommendations(
+    recommendations: list[ModelRecommendation],
+) -> list[ModelRecommendation]:
+    seen: set[str] = set()
+    logical: list[ModelRecommendation] = []
+    for rec in recommendations:
+        key = _model_identity_key(rec)
+        if key in seen:
+            continue
+        seen.add(key)
+        logical.append(rec)
+    return logical
 
 
 def _benchmark_plan_table(comparison: BenchmarkComparison) -> DataTable[str]:
@@ -910,8 +924,23 @@ def _model_title(rec: ModelRecommendation) -> str:
     format is shown next to it already, and the full path stays in technical
     details.
     """
-    identity = ModelIdentity(model_name=rec.repo_id.split("/")[-1])
+    from jaull.execution_plans import execution_plan_for_recommendation
+
+    try:
+        identity = execution_plan_for_recommendation(rec).model_identity
+    except ValueError:
+        identity = ModelIdentity(model_name=rec.repo_id.split("/")[-1])
     return model_display_name(identity, fallback=rec.repo_id)
+
+
+def _model_identity_key(rec: ModelRecommendation) -> str:
+    from jaull.execution_plans import execution_plan_for_recommendation
+
+    try:
+        identity = execution_plan_for_recommendation(rec).model_identity
+    except ValueError:
+        return rec.repo_id.lower()
+    return (identity.canonical_repo_id or identity.model_name).lower()
 
 
 def _plan_line(rec: ModelRecommendation) -> str:
@@ -1000,19 +1029,33 @@ def _execution_path_detail_rows(rec: ModelRecommendation) -> list[tuple[str, str
         return [("Current artifact", "no executable runtime recommendation")]
 
     runtime = plan.runtime.runtime.value
-    backend = backend_hint(plan.runtime)
+    backend = plan_backend(plan)
     readiness = (
         plan.execution_readiness.status.value
         if plan.execution_readiness is not None
         else "preflight not checked"
     )
     rows = [
-        (f"{runtime} · {backend}", f"{plan.artifact.label} · {readiness}"),
+        ("Primary execution plan", f"{plan.artifact.label} · {runtime} · {backend} · {readiness}"),
         ("Model identity", plan.model_identity.model_name),
         ("Identity confidence", plan.model_identity.confidence.value),
         ("Identity match", plan.artifact.identity_match.value),
         ("Repository", plan.artifact.repo_id),
     ]
+    for index, alternative in enumerate(rec.alternative_plans, start=1):
+        alt_runtime = alternative.runtime.runtime.value
+        alt_backend = plan_backend(alternative)
+        alt_readiness = (
+            alternative.execution_readiness.status.value
+            if alternative.execution_readiness is not None
+            else "preflight not checked"
+        )
+        rows.append(
+            (
+                f"Alternative execution plan {index}",
+                f"{alternative.artifact.label} · {alt_runtime} · {alt_backend} · {alt_readiness}",
+            )
+        )
     if plan.artifact.filename:
         rows.append(("Filename", plan.artifact.filename))
     if plan.artifact.quantization:
@@ -1025,6 +1068,13 @@ def _execution_path_detail_rows(rec: ModelRecommendation) -> list[tuple[str, str
 
 
 def _configuration_label(rec: ModelRecommendation) -> str:
+    from jaull.execution_plans import execution_plan_for_recommendation
+
+    try:
+        artifact = execution_plan_for_recommendation(rec).artifact
+        return artifact.quantization or artifact.precision or artifact.format.value
+    except ValueError:
+        pass
     config = rec.evaluated.selected_configuration
     if config is None:
         return "unknown"

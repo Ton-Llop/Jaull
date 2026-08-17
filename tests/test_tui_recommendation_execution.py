@@ -29,8 +29,10 @@ from jaull.domain.execution import (
     InferenceResult,
 )
 from jaull.domain.execution_plans import (
+    ArtifactVariant,
     ArtifactVariantFormat,
     ExecutionPlan,
+    ModelIdentity,
     PreparedExecutionPlan,
 )
 from jaull.domain.experiments import (
@@ -182,6 +184,21 @@ def _runtime(*, ctx_size: int = 4096, n_gpu_layers: int = 12) -> RuntimeRecommen
     )
 
 
+def _transformers_runtime() -> RuntimeRecommendation:
+    return RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        flags=[
+            RuntimeFlag(
+                name="device_map",
+                value="auto",
+                source=RuntimeFlagSource.HARDWARE,
+                explanation="from hardware",
+            )
+        ],
+        confidence=EstimationConfidence.HIGH,
+    )
+
+
 def _recommendation(
     *,
     rank: int = 1,
@@ -219,6 +236,40 @@ def _recommendation(
         license_category=LicenseCategory.COMMERCIAL_ALLOWED,
         reasons=["fixture"],
     )
+
+
+def _recommendation_with_plan(
+    *,
+    repo_id: str,
+    identity: ModelIdentity,
+    format_: ArtifactVariantFormat,
+    quantization: str | None = None,
+    precision: str | None = None,
+    runtime: RuntimeName = RuntimeName.LLAMA_CPP,
+) -> ModelRecommendation:
+    recommendation = _recommendation(
+        repo_id=repo_id,
+        quantization=quantization or "Q4_K_M",
+        runtime=_runtime() if runtime is RuntimeName.LLAMA_CPP else _transformers_runtime(),
+    )
+    artifact = ArtifactVariant(
+        model_identity=identity,
+        repo_id=repo_id,
+        revision="main",
+        format=format_,
+        filename=repo_id,
+        quantization=quantization,
+        precision=precision,
+        compatible_runtimes=[runtime],
+    )
+    plan = ExecutionPlan(
+        plan_id=f"{repo_id}:{artifact.label}",
+        model_identity=identity,
+        artifact=artifact,
+        runtime=_runtime() if runtime is RuntimeName.LLAMA_CPP else _transformers_runtime(),
+        runtime_family=runtime,
+    )
+    return recommendation.model_copy(update={"plan": plan})
 
 
 class _FakeAdvisor:
@@ -1084,6 +1135,63 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
                 pilot.app.screen.query_one("#details-back", Button).press()
                 await pilot.pause()
                 assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+    _run(scenario())
+
+
+def test_results_compare_collapses_representations_of_same_model_identity() -> None:
+    async def scenario() -> None:
+        qwen_identity = ModelIdentity(
+            canonical_repo_id="Qwen/Qwen2.5-1.5B-Instruct",
+            family="Qwen",
+            model_name="Qwen2.5 1.5B Instruct",
+            parameter_count=1_500_000_000,
+        )
+        other_identity = ModelIdentity(
+            canonical_repo_id="org/Other-Model",
+            family="Other",
+            model_name="Other Model",
+        )
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation_with_plan(
+                    repo_id="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+                    identity=qwen_identity,
+                    format_=ArtifactVariantFormat.GGUF,
+                    quantization="Q5_K_M",
+                    runtime=RuntimeName.LLAMA_CPP,
+                ),
+                _recommendation_with_plan(
+                    repo_id="Qwen/Qwen2.5-1.5B-Instruct",
+                    identity=qwen_identity,
+                    format_=ArtifactVariantFormat.SAFETENSORS,
+                    precision="int8",
+                    runtime=RuntimeName.TRANSFORMERS,
+                ),
+                _recommendation_with_plan(
+                    repo_id="org/Other-Model",
+                    identity=other_identity,
+                    format_=ArtifactVariantFormat.GGUF,
+                    quantization="Q4_K_M",
+                    runtime=RuntimeName.LLAMA_CPP,
+                ),
+            ]
+        )
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-compare", Button).press()
+            await pilot.pause()
+
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationCompareScreen)
+            table = screen.query_one(DataTable)
+            assert table.row_count == 2
+            model_cells = [str(table.get_row_at(index)[0]) for index in range(table.row_count)]
+            assert "Qwen2.5 1.5B Instruct" in model_cells
+            assert "Qwen/Qwen2.5-1.5B-Instruct-GGUF" not in model_cells
 
     _run(scenario())
 

@@ -42,7 +42,7 @@ from jaull.exceptions import (
     JaullError,
     QuantizationNotFoundError,
 )
-from jaull.presentation.plan_labels import backend_hint, model_display_name
+from jaull.presentation.plan_labels import model_display_name, plan_backend
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -578,7 +578,7 @@ def _execution_plan_label(plan: ExecutionPlan) -> str:
         else plan.runtime.runtime.value
     )
     artifact = plan.artifact.quantization or plan.artifact.precision or plan.artifact.format.value
-    return f"{runtime} · {backend_hint(plan.runtime)} · {artifact}"
+    return f"{runtime} · {plan_backend(plan)} · {artifact}"
 
 
 _BAR_WIDTH = 18

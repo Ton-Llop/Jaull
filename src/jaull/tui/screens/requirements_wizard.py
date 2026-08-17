@@ -36,6 +36,9 @@ _USE_CASES: tuple[tuple[UseCase, str], ...] = (
     (UseCase.GENERAL_CHAT, "General chat and assistant"),
     (UseCase.CODING, "Programming and code"),
     (UseCase.DOCUMENT_QA, "Documents and company knowledge"),
+    (UseCase.SUMMARIZATION_EXTRACTION, "Summarization and extraction"),
+    (UseCase.REASONING, "Reasoning and problem solving"),
+    (UseCase.BATCH_PROCESSING, "Batch processing"),
     (UseCase.WRITING_TRANSLATION, "Writing and translation"),
 )
 
@@ -51,8 +54,8 @@ _LANGUAGES: tuple[str, ...] = ("Spanish", "Catalan", "English", "Portuguese")
 _CONCURRENCY: tuple[tuple[ConcurrencyLevel, str], ...] = (
     (ConcurrencyLevel.SINGLE, "One user"),
     (ConcurrencyLevel.SMALL, "2-5 users"),
-    (ConcurrencyLevel.MEDIUM, "6-20 users"),
-    (ConcurrencyLevel.LARGE, "More than 20 users"),
+    (ConcurrencyLevel.MEDIUM, "6-10 users"),
+    (ConcurrencyLevel.LARGE, "10+ users"),
 )
 
 _DOCUMENT_SCALE: tuple[tuple[DocumentScale, str], ...] = (
@@ -63,8 +66,9 @@ _DOCUMENT_SCALE: tuple[tuple[DocumentScale, str], ...] = (
 )
 
 _COMMERCIAL: tuple[tuple[CommercialUse, str], ...] = (
-    (CommercialUse.YES, "Yes"),
-    (CommercialUse.NO, "No"),
+    (CommercialUse.YES, "Commercial required"),
+    (CommercialUse.NO, "Non-commercial acceptable"),
+    (CommercialUse.NO_PREFERENCE, "No preference"),
     (CommercialUse.NOT_SURE, "Not sure"),
 )
 

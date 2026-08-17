@@ -26,6 +26,7 @@ from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import UserAnswers, UserRequirements
 from jaull.exceptions import HuggingFaceUnavailableError, JaullError
 from jaull.recommendation import explanations
+from jaull.recommendation.engine_v2 import PlanRankingContext
 from jaull.workflow import policies
 from jaull.workflow import ranking as recommendation_service
 from jaull.workflow import requirements as requirements_service
@@ -83,6 +84,7 @@ def run_workflow(
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCheck | None = None,
     state: RecommendationWorkflowState | None = None,
+    plan_context: PlanRankingContext | None = None,
 ) -> RecommendationWorkflowState:
     """Run discovery, evaluation and ranking. Never raises for one bad model."""
     reporter = ProgressReporter(DISCOVERY_STEPS, on_progress)
@@ -177,6 +179,8 @@ def run_workflow(
                 requirements,
                 limit=policies.MAX_RECOMMENDATIONS,
                 capability_analyzer=services.capability_analyzer,
+                hardware=hardware,
+                plan_context=plan_context,
             )
         if not recommendations:
             return _finish_without_results(

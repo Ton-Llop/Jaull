@@ -123,7 +123,7 @@ def backend_hint(runtime: RuntimeRecommendation) -> str:
 def plan_backend(plan: ExecutionPlan) -> str:
     """The selected backend when one was chosen, else the runtime's intent."""
     if plan.backend_selection is not None:
-        return plan.backend_selection.selected_backend.value
+        return _backend_display(plan.backend_selection.selected_backend.value)
     return backend_hint(plan.runtime)
 
 
@@ -158,7 +158,7 @@ def artifact_display(plan: ExecutionPlan) -> str:
 
 def execution_option_label(plan: ExecutionPlan) -> str:
     """The runtime option a plan belongs to — the level above quantization."""
-    backend = backend_hint(plan.runtime)
+    backend = plan_backend(plan)
     if plan.runtime.runtime is RuntimeName.TRANSFORMERS:
         return f"Transformers · PyTorch · {backend}"
     if is_gguf_plan(plan):
@@ -196,6 +196,15 @@ def is_ready_plan(plan: ExecutionPlan) -> bool:
         plan.execution_readiness is not None
         and plan.execution_readiness.status.value == "ready"
     )
+
+
+def _backend_display(backend: str) -> str:
+    normalized = backend.lower()
+    if normalized in {"cpu", "cuda", "hip"}:
+        return normalized.upper()
+    if normalized == "vulkan":
+        return "Vulkan"
+    return backend
 
 
 def format_gib(value: int | None) -> str:

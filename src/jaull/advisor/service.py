@@ -9,6 +9,7 @@ front-end modules free of ``HfClient()``/``detect_hardware`` construction.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -61,6 +62,7 @@ from jaull.domain.runtime import (
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
+from jaull.recommendation.engine_v2 import PlanRankingContext
 from jaull.workflow.container import (
     DetectHardwareFn,
     EstimateMemoryFn,
@@ -92,6 +94,7 @@ if TYPE_CHECKING:
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
 CancelCheck = Callable[[], bool]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -192,13 +195,110 @@ class AdvisorService:
         from jaull.workflow import orchestrator
 
         hw = hardware or self.scan_hardware()
+        plan_context = self._plan_ranking_context(hw)
         return orchestrator.run_workflow(
             answers=answers,
             hardware=hw,
             services=self.services,
             on_progress=on_progress,
             is_cancelled=is_cancelled,
+            plan_context=plan_context,
         )
+
+    def _plan_ranking_context(self, hardware: HardwareProfile) -> PlanRankingContext:
+        backend_selection = self._plan_backend_selection(hardware)
+        return PlanRankingContext(
+            hardware=hardware,
+            backend_selection=backend_selection,
+            readiness_by_runtime=self._plan_runtime_readiness(
+                hardware=hardware,
+                selection=backend_selection,
+            ),
+            benchmark_records=self._stored_benchmark_records(),
+            experiment_records=self._stored_experiment_records(),
+        )
+
+    def _plan_backend_selection(
+        self,
+        hardware: HardwareProfile,
+    ) -> RuntimeBackendSelection | None:
+        try:
+            return self.select_runtime_backend(hardware)
+        except Exception:
+            logger.debug(
+                "Could not select a backend for recommendation plan ranking.",
+                exc_info=True,
+            )
+            return None
+
+    def _plan_runtime_readiness(
+        self,
+        *,
+        hardware: HardwareProfile,
+        selection: RuntimeBackendSelection | None,
+    ) -> dict[RuntimeName, ExecutionReadiness] | None:
+        if selection is None:
+            return None
+        readiness: dict[RuntimeName, ExecutionReadiness] = {}
+        try:
+            readiness[RuntimeName.LLAMA_CPP] = self.evaluate_execution_readiness(
+                selection=selection,
+                hardware=hardware,
+            )
+        except Exception:
+            logger.debug(
+                "Could not evaluate llama.cpp readiness for recommendation ranking.",
+                exc_info=True,
+            )
+        try:
+            readiness[RuntimeName.TRANSFORMERS] = (
+                self.evaluate_pytorch_execution_readiness(
+                    selection=selection,
+                    hardware=hardware,
+                )
+            )
+        except Exception:
+            logger.debug(
+                "Could not evaluate PyTorch readiness for recommendation ranking.",
+                exc_info=True,
+            )
+        return readiness or None
+
+    def _stored_benchmark_records(self) -> list[BenchmarkRecord]:
+        try:
+            benchmark_ids = self.list_benchmark_ids()
+        except Exception:
+            logger.debug("Could not list local benchmark evidence.", exc_info=True)
+            return []
+        records: list[BenchmarkRecord] = []
+        for benchmark_id in benchmark_ids:
+            try:
+                records.append(self.load_benchmark_record(benchmark_id))
+            except Exception:
+                logger.debug(
+                    "Ignoring unreadable local benchmark evidence %s.",
+                    benchmark_id,
+                    exc_info=True,
+                )
+        return records
+
+    def _stored_experiment_records(self) -> list[ExperimentRecord]:
+        try:
+            experiment_ids = self.list_experiment_ids()
+        except Exception:
+            logger.debug("Could not list local experiment evidence.", exc_info=True)
+            return []
+        records: list[ExperimentRecord] = []
+        for experiment_id in experiment_ids:
+            try:
+                records.append(self.load_experiment_record(experiment_id))
+            except Exception:
+                logger.debug(
+                    "Ignoring unreadable local experiment evidence %s.",
+                    experiment_id,
+                    exc_info=True,
+                )
+        return records
 
     # ------------------------------------------------------------------
     # Artifact resolution / download / verification

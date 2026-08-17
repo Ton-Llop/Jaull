@@ -47,6 +47,9 @@ def _requirements(use_case: UseCase = UseCase.CODING) -> Any:
         (UseCase.GENERAL_CHAT, "instruct"),
         (UseCase.CODING, "coder instruct"),
         (UseCase.DOCUMENT_QA, "instruct long context"),
+        (UseCase.SUMMARIZATION_EXTRACTION, "summarization instruct"),
+        (UseCase.REASONING, "reasoning instruct"),
+        (UseCase.BATCH_PROCESSING, "fast instruct"),
         (UseCase.WRITING_TRANSLATION, "multilingual instruct"),
     ],
 )

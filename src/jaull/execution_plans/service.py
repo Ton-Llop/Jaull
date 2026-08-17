@@ -45,7 +45,12 @@ def resolve_model_identity(
 ) -> ModelIdentity:
     """Resolve the logical model identity from structured metadata first."""
 
-    canonical = candidate.base_model_repo_id or candidate.repo_id
+    raw_canonical = candidate.base_model_repo_id or candidate.repo_id
+    canonical = (
+        candidate.base_model_repo_id
+        if candidate.base_model_repo_id
+        else _logical_repo_id(candidate.repo_id)
+    )
     evidence: list[ModelIdentityEvidence] = []
     confidence = candidate.metadata_confidence
     if candidate.base_model_repo_id:
@@ -58,6 +63,15 @@ def resolve_model_identity(
             )
         )
         confidence = EstimationConfidence.HIGH
+    elif canonical != raw_canonical:
+        evidence.append(
+            ModelIdentityEvidence(
+                kind=ModelIdentityEvidenceKind.NAME_HEURISTIC,
+                source=candidate.repo_id,
+                value=canonical,
+                confidence=EstimationConfidence.LOW,
+            )
+        )
     else:
         evidence.append(
             ModelIdentityEvidence(
@@ -235,6 +249,14 @@ def execution_plan_for_recommendation(
     runtime_capability: RuntimeCapability | None = None,
     execution_readiness: ExecutionReadiness | None = None,
 ) -> ExecutionPlan:
+    if (
+        recommendation.plan is not None
+        and hardware is None
+        and backend_selection is None
+        and runtime_capability is None
+        and execution_readiness is None
+    ):
+        return recommendation.plan
     estimate = recommendation.evaluated.memory_estimate
     runtime = estimate.runtime_recommendation if estimate is not None else None
     if runtime is None:
@@ -503,6 +525,32 @@ def _gguf_variant(analysis: ModelAnalysis | None, quantization: str) -> GgufVari
 
 def _repo_name(repo_id: str) -> str:
     return repo_id.split("/")[-1] if repo_id else "unknown"
+
+
+_FORMAT_SUFFIXES = (
+    "-gguf",
+    "-awq",
+    "-gptq",
+    "-onnx",
+    "-hf",
+    "-quantized",
+    "-bnb",
+)
+
+
+def _logical_repo_id(repo_id: str) -> str:
+    if "/" not in repo_id:
+        return _strip_format_suffix(repo_id)
+    owner, name = repo_id.split("/", 1)
+    return f"{owner}/{_strip_format_suffix(name)}"
+
+
+def _strip_format_suffix(name: str) -> str:
+    lowered = name.casefold()
+    for suffix in _FORMAT_SUFFIXES:
+        if lowered.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 def _variant_from_name(repo_id: str) -> str | None:

@@ -67,8 +67,8 @@ def test_no_languages_falls_back_to_english_with_an_assumption() -> None:
     [
         (ConcurrencyLevel.SINGLE, 1),
         (ConcurrencyLevel.SMALL, 3),
-        (ConcurrencyLevel.MEDIUM, 10),
-        (ConcurrencyLevel.LARGE, 25),
+        (ConcurrencyLevel.MEDIUM, 8),
+        (ConcurrencyLevel.LARGE, 15),
     ],
 )
 def test_concurrency_buckets(level: ConcurrencyLevel, expected_users: int) -> None:
@@ -116,6 +116,7 @@ def test_document_use_case_without_scale_uses_the_default() -> None:
     [
         (CommercialUse.YES, True),
         (CommercialUse.NO, False),
+        (CommercialUse.NO_PREFERENCE, False),
         (CommercialUse.NOT_SURE, None),
     ],
 )

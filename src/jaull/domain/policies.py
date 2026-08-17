@@ -41,8 +41,8 @@ DEFAULT_CONTEXT_TOKENS = 4096
 CONCURRENCY_BUCKETS: dict[str, tuple[int, str]] = {
     "single": (1, "One user"),
     "small": (3, "2-5 users"),
-    "medium": (10, "6-20 users"),
-    "large": (25, "More than 20 users"),
+    "medium": (8, "6-10 users"),
+    "large": (15, "10+ users"),
 }
 
 # How much extra KV-cache headroom to require per concurrent user beyond the

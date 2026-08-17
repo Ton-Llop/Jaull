@@ -9,6 +9,8 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.recommendation import PlanAssessment, RecommendationPosition
 from jaull.recommendation.policies import LicenseCategory
 
 
@@ -61,6 +63,11 @@ class ModelRecommendation(BaseModel):
     rank: int
     evaluated: EvaluatedCandidate
     score: ScoreBreakdown
+    plan: ExecutionPlan | None = None
+    plan_assessment: PlanAssessment | None = None
+    alternative_plans: list[ExecutionPlan] = Field(default_factory=list)
+    alternative_plan_assessments: list[PlanAssessment] = Field(default_factory=list)
+    recommendation_position: RecommendationPosition | None = None
     status: CompatibilityStatus
     confidence: EstimationConfidence
     license_category: LicenseCategory

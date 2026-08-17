@@ -139,7 +139,7 @@ def _resolve_commercial(
 ) -> bool | None:
     if answer is CommercialUse.YES:
         return True
-    if answer is CommercialUse.NO:
+    if answer in {CommercialUse.NO, CommercialUse.NO_PREFERENCE}:
         return False
     assumptions.append(
         "Commercial use unspecified; licenses are reported but not used to exclude models."

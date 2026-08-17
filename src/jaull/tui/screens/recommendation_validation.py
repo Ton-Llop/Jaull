@@ -43,7 +43,7 @@ from jaull.experiments.errors import (
     ExperimentRunnerError,
 )
 from jaull.presentation.console import format_bytes
-from jaull.presentation.plan_labels import backend_hint, model_display_name
+from jaull.presentation.plan_labels import model_display_name, plan_backend
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -503,7 +503,7 @@ class _ValidationHeader(ContextBar):
             subtitle = " · ".join(
                 [
                     execution_plan.runtime.runtime.value,
-                    backend_hint(execution_plan.runtime),
+                    plan_backend(execution_plan),
                     execution_plan.artifact.label,
                 ]
             )

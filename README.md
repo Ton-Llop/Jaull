@@ -136,7 +136,7 @@ The query builder issues several complementary queries per use case (task wordin
 3. **Filtered** — private, gated, multimodal, wrong-pipeline, base-less adapters and (when commercial use is required) non-commercial licenses are rejected. Thin metadata is *never* a rejection; it becomes a recorded penalty and lower confidence.
 4. **Shortlisted** down to the deep-inspection budget using cheap pre-inspection signals only.
 
-Budgets are centralised in `workflow/policies.py`: 20 results per query, 40 unique candidates, 12 deep inspections, 3 recommendations.
+Budgets are centralised in `workflow/policies.py`: 20 results per query, 40 unique candidates, 12 deep inspections, 5 recommendations.
 
 Only the shortlist pays for inspection, which reuses the existing `inspect_model`, the analyzers, the base-model resolver and `estimate_memory` — the guided flow computes no memory figures of its own.
 

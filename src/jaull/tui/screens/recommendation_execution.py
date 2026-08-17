@@ -25,7 +25,7 @@ from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
 from jaull.presentation.execution_report import inline_observation_summary
-from jaull.presentation.plan_labels import backend_hint, model_display_name
+from jaull.presentation.plan_labels import model_display_name, plan_backend
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -418,7 +418,7 @@ def _run_metadata(
         artifact = execution_plan.artifact
         return [
             execution_plan.runtime.runtime.value,
-            backend_hint(execution_plan.runtime),
+            plan_backend(execution_plan),
             artifact.label,
         ]
     config = rec.evaluated.selected_configuration
