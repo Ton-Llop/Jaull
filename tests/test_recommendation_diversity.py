@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
+from jaull.domain.execution_plans import (
+    ModelIdentity,
+    ModelIdentityEvidence,
+    ModelIdentityEvidenceKind,
+    model_identity_key,
+)
 from jaull.domain.inference import WeightPrecision
 from jaull.domain.recommendation import AssessmentLevel, RecommendationPosition
 from jaull.domain.requirements import RecommendationPriority
@@ -96,6 +102,38 @@ def test_base_repo_gguf_repo_and_precision_variants_share_one_slot() -> None:
         if plan is not None
     }
     assert {"Q5_K_M", "float16", "int8"} <= labels
+
+
+def test_model_identity_key_ignores_artifact_and_evidence_fields() -> None:
+    gguf_identity = ModelIdentity(
+        canonical_repo_id="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        family="qwen2.5",
+        model_name="Qwen2.5-1.5B-Instruct-GGUF",
+        parameter_count=1_500_000_000,
+        variant="gguf",
+        architecture="Qwen2ForCausalLM",
+        confidence=EstimationConfidence.LOW,
+        evidence=[
+            ModelIdentityEvidence(
+                kind=ModelIdentityEvidenceKind.NAME_HEURISTIC,
+                source="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+                value="Qwen/Qwen2.5-1.5B-Instruct",
+                confidence=EstimationConfidence.LOW,
+            )
+        ],
+    )
+    transformers_identity = ModelIdentity(
+        canonical_repo_id="qwen/qwen2.5-1.5b-instruct",
+        family="Qwen",
+        model_name="Qwen2.5 1.5B Instruct",
+        parameter_count=1_500_000_000,
+        variant="instruct",
+    )
+
+    assert gguf_identity != transformers_identity
+    assert model_identity_key(gguf_identity) == model_identity_key(
+        transformers_identity
+    )
 
 
 def test_gguf_suffix_is_removed_from_model_identity() -> None:

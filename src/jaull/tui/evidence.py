@@ -28,7 +28,11 @@ from enum import StrEnum
 
 from jaull.advisor.service import AdvisorService
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
+from jaull.domain.execution_plans import (
+    ExecutionPlan,
+    ModelIdentity,
+    logical_model_repo_key,
+)
 from jaull.domain.runtime import RuntimeName
 from jaull.presentation.plan_labels import is_ready_plan
 
@@ -201,7 +205,11 @@ def _safe_load[Record](load: Callable[[str], Record], record_id: str) -> Record 
 
 def _matches_model(artifact: ModelArtifact, identity: ModelIdentity) -> bool:
     """Same test the advisor already applies when collecting benchmarks."""
-    if identity.canonical_repo_id and artifact.repo_id == identity.canonical_repo_id:
+    if (
+        identity.canonical_repo_id
+        and logical_model_repo_key(artifact.repo_id)
+        == logical_model_repo_key(identity.canonical_repo_id)
+    ):
         return True
     model_name = identity.model_name.casefold()
     if not model_name:

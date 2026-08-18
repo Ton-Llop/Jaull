@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, model_identity_key
 from jaull.domain.recommendation import RecommendationPosition
 from jaull.recommendation.engine_v2 import RankedPlan
 
@@ -54,7 +54,7 @@ def diversify_ranked_plans(
 
 @dataclass(frozen=True)
 class _IdentityBucket:
-    key: tuple[object, ...]
+    key: str
     primary: RankedPlan
     alternatives: tuple[RankedPlan, ...]
     original_index: int
@@ -63,12 +63,12 @@ class _IdentityBucket:
 def _best_plan_per_identity(
     ranked_plans: Sequence[RankedPlan],
 ) -> list[_IdentityBucket]:
-    grouped: dict[tuple[object, ...], list[RankedPlan]] = {}
-    indexes: dict[tuple[object, ...], int] = {}
+    grouped: dict[str, list[RankedPlan]] = {}
+    indexes: dict[str, int] = {}
     for index, plan in enumerate(ranked_plans):
         if plan.assessment.rejected:
             continue
-        key = _identity_key(plan.plan.model_identity)
+        key = model_identity_key(plan.plan.model_identity)
         grouped.setdefault(key, []).append(plan)
         indexes.setdefault(key, index)
     return [
@@ -96,45 +96,6 @@ def _choose_next(
         comparable,
         key=lambda item: (_redundancy_key(item.primary.plan, selected), item.original_index),
     )
-
-
-def _identity_key(identity: ModelIdentity) -> tuple[object, ...]:
-    if identity.canonical_repo_id:
-        return ("canonical", _logical_repo_key(identity.canonical_repo_id))
-    return (
-        "identity",
-        identity.family.lower() if identity.family else None,
-        _strip_format_suffix(identity.model_name).lower(),
-        identity.parameter_count,
-        identity.variant.lower() if identity.variant else None,
-        identity.architecture.lower() if identity.architecture else None,
-    )
-
-
-_FORMAT_SUFFIXES = (
-    "-gguf",
-    "-awq",
-    "-gptq",
-    "-onnx",
-    "-hf",
-    "-quantized",
-    "-bnb",
-)
-
-
-def _logical_repo_key(repo_id: str) -> str:
-    if "/" not in repo_id:
-        return _strip_format_suffix(repo_id).lower()
-    owner, name = repo_id.split("/", 1)
-    return f"{owner}/{_strip_format_suffix(name)}".lower()
-
-
-def _strip_format_suffix(name: str) -> str:
-    lowered = name.casefold()
-    for suffix in _FORMAT_SUFFIXES:
-        if lowered.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
 
 
 def _assessment_signature(plan: RankedPlan) -> tuple[object, ...]:

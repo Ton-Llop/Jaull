@@ -18,6 +18,9 @@ from jaull.domain.execution_plans import (
     ModelIdentityEvidence,
     ModelIdentityEvidenceKind,
     PlanCompatibilityStatus,
+    logical_model_repo_id,
+    logical_model_repo_key,
+    model_identity_key,
 )
 from jaull.domain.families import detect_family, resolve_parameter_count
 from jaull.domain.hardware import HardwareProfile
@@ -46,11 +49,7 @@ def resolve_model_identity(
     """Resolve the logical model identity from structured metadata first."""
 
     raw_canonical = candidate.base_model_repo_id or candidate.repo_id
-    canonical = (
-        candidate.base_model_repo_id
-        if candidate.base_model_repo_id
-        else _logical_repo_id(candidate.repo_id)
-    )
+    canonical = logical_model_repo_id(raw_canonical)
     evidence: list[ModelIdentityEvidence] = []
     confidence = candidate.metadata_confidence
     if candidate.base_model_repo_id:
@@ -362,14 +361,14 @@ def _identity_match(
     if (
         target.canonical_repo_id
         and candidate.base_model_repo_id
-        and _norm_repo(candidate.base_model_repo_id) == _norm_repo(target.canonical_repo_id)
+        and logical_model_repo_key(candidate.base_model_repo_id)
+        == logical_model_repo_key(target.canonical_repo_id)
     ):
         return IdentityMatchStatus.CONFIRMED
     if (
         target.canonical_repo_id
         and candidate_identity.canonical_repo_id
-        and _norm_repo(candidate_identity.canonical_repo_id)
-        == _norm_repo(target.canonical_repo_id)
+        and model_identity_key(candidate_identity) == model_identity_key(target)
     ):
         return IdentityMatchStatus.CONFIRMED
     if target.family and candidate_identity.family and target.family != candidate_identity.family:
@@ -483,16 +482,20 @@ def _variant_candidate_priority(
 ) -> int | None:
     target = identity.canonical_repo_id
     if target and candidate.base_model_repo_id:
-        if _norm_repo(candidate.base_model_repo_id) == _norm_repo(target):
+        if logical_model_repo_key(candidate.base_model_repo_id) == logical_model_repo_key(
+            target
+        ):
             return 0
         return None
-    if target and _norm_repo(candidate.repo_id) == _norm_repo(target):
+    if target and logical_model_repo_key(candidate.repo_id) == logical_model_repo_key(
+        target
+    ):
         return 0
     cheap_identity = resolve_model_identity(candidate=candidate, analysis=None)
     if (
         target
         and cheap_identity.canonical_repo_id
-        and _norm_repo(cheap_identity.canonical_repo_id) == _norm_repo(target)
+        and model_identity_key(cheap_identity) == model_identity_key(identity)
     ):
         return 1
     if _normalised_model_name(identity.model_name) == _normalised_model_name(
@@ -527,42 +530,12 @@ def _repo_name(repo_id: str) -> str:
     return repo_id.split("/")[-1] if repo_id else "unknown"
 
 
-_FORMAT_SUFFIXES = (
-    "-gguf",
-    "-awq",
-    "-gptq",
-    "-onnx",
-    "-hf",
-    "-quantized",
-    "-bnb",
-)
-
-
-def _logical_repo_id(repo_id: str) -> str:
-    if "/" not in repo_id:
-        return _strip_format_suffix(repo_id)
-    owner, name = repo_id.split("/", 1)
-    return f"{owner}/{_strip_format_suffix(name)}"
-
-
-def _strip_format_suffix(name: str) -> str:
-    lowered = name.casefold()
-    for suffix in _FORMAT_SUFFIXES:
-        if lowered.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
-
-
 def _variant_from_name(repo_id: str) -> str | None:
     name = _repo_name(repo_id).lower()
     for token in ("instruct", "chat", "base"):
         if token in name:
             return token
     return None
-
-
-def _norm_repo(repo_id: str) -> str:
-    return repo_id.strip().lower()
 
 
 def _normalised_model_name(value: str) -> str:

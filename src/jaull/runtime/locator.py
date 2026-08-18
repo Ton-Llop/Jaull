@@ -461,7 +461,23 @@ def _resolve_candidate(
 
 
 def _which(name: str, path_env: str | None) -> str | None:
-    return shutil.which(name, path=path_env)
+    found = shutil.which(name, path=path_env)
+    if found is None:
+        return None
+    return str(_preserve_existing_path_case(Path(found)))
+
+
+def _preserve_existing_path_case(path: Path, *, windows: bool | None = None) -> Path:
+    is_windows = os.name == "nt" if windows is None else windows
+    if not is_windows or not path.parent.exists():
+        return path
+    try:
+        for child in path.parent.iterdir():
+            if child.name.casefold() == path.name.casefold():
+                return child
+    except OSError:
+        return path
+    return path
 
 
 def _binary_names(base: str) -> tuple[str, ...]:

@@ -33,6 +33,8 @@ from jaull.domain.execution_plans import (
     ArtifactVariantFormat,
     ExecutionPlan,
     ModelIdentity,
+    ModelIdentityEvidence,
+    ModelIdentityEvidenceKind,
     PreparedExecutionPlan,
 )
 from jaull.domain.experiments import (
@@ -1141,12 +1143,31 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
 
 def test_results_compare_collapses_representations_of_same_model_identity() -> None:
     async def scenario() -> None:
-        qwen_identity = ModelIdentity(
+        qwen_gguf_identity = ModelIdentity(
+            canonical_repo_id="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+            family="qwen2.5",
+            model_name="Qwen2.5-1.5B-Instruct-GGUF",
+            parameter_count=1_500_000_000,
+            variant="gguf",
+            architecture="Qwen2ForCausalLM",
+            confidence=EstimationConfidence.LOW,
+            evidence=[
+                ModelIdentityEvidence(
+                    kind=ModelIdentityEvidenceKind.NAME_HEURISTIC,
+                    source="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+                    value="Qwen/Qwen2.5-1.5B-Instruct",
+                    confidence=EstimationConfidence.LOW,
+                )
+            ],
+        )
+        qwen_transformers_identity = ModelIdentity(
             canonical_repo_id="Qwen/Qwen2.5-1.5B-Instruct",
             family="Qwen",
             model_name="Qwen2.5 1.5B Instruct",
             parameter_count=1_500_000_000,
+            variant="instruct",
         )
+        assert qwen_gguf_identity != qwen_transformers_identity
         other_identity = ModelIdentity(
             canonical_repo_id="org/Other-Model",
             family="Other",
@@ -1156,14 +1177,14 @@ def test_results_compare_collapses_representations_of_same_model_identity() -> N
             recommendations=[
                 _recommendation_with_plan(
                     repo_id="Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-                    identity=qwen_identity,
+                    identity=qwen_gguf_identity,
                     format_=ArtifactVariantFormat.GGUF,
                     quantization="Q5_K_M",
                     runtime=RuntimeName.LLAMA_CPP,
                 ),
                 _recommendation_with_plan(
                     repo_id="Qwen/Qwen2.5-1.5B-Instruct",
-                    identity=qwen_identity,
+                    identity=qwen_transformers_identity,
                     format_=ArtifactVariantFormat.SAFETENSORS,
                     precision="int8",
                     runtime=RuntimeName.TRANSFORMERS,
@@ -1217,7 +1238,8 @@ def test_execution_path_compare_uses_saved_benchmark_records() -> None:
                     pilot.app.screen,
                     ExecutionPathBenchmarkCompareScreen,
                 )
-                and "Measured differences" in _visible_text(pilot.app.screen),
+                and "Measured differences" in _visible_text(pilot.app.screen)
+                and "Comparison notes" in _visible_text(pilot.app.screen),
             )
 
             text = _visible_text(pilot.app.screen)

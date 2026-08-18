@@ -76,6 +76,67 @@ class ModelIdentity(BaseModel):
         return self
 
 
+_ARTIFACT_REPOSITORY_SUFFIXES = (
+    "gguf",
+    "awq",
+    "gptq",
+    "onnx",
+    "hf",
+    "quantized",
+    "bnb",
+    "exl2",
+    "mlx",
+)
+
+
+def logical_model_repo_id(repo_id: str) -> str:
+    """Return the repository identity without an artifact-format suffix.
+
+    Repository casing is preserved for display and provenance. Use
+    :func:`logical_model_repo_key` when comparing identities.
+    """
+
+    value = repo_id.strip()
+    if "/" not in value:
+        return _strip_artifact_repository_suffix(value)
+    owner, name = value.split("/", 1)
+    return f"{owner}/{_strip_artifact_repository_suffix(name)}"
+
+
+def logical_model_repo_key(repo_id: str) -> str:
+    """Stable comparison key for a logical model repository."""
+
+    return logical_model_repo_id(repo_id).casefold()
+
+
+def model_identity_key(identity: ModelIdentity) -> str:
+    """Identify a logical model independently from artifacts and evidence.
+
+    ``ModelIdentity`` is a rich evidence-bearing value object, so equality of
+    the complete object is intentionally stricter than logical-model equality.
+    Grouping recommendations must use this key instead.
+    """
+
+    if identity.canonical_repo_id:
+        return f"repo:{logical_model_repo_key(identity.canonical_repo_id)}"
+    family = (identity.family or "").strip().casefold()
+    model_name = _strip_artifact_repository_suffix(identity.model_name.strip()).casefold()
+    variant = (identity.variant or "").strip().casefold()
+    architecture = (identity.architecture or "").strip().casefold()
+    parameters = "" if identity.parameter_count is None else str(identity.parameter_count)
+    return f"metadata:{family}|{model_name}|{parameters}|{variant}|{architecture}"
+
+
+def _strip_artifact_repository_suffix(name: str) -> str:
+    lowered = name.casefold()
+    for suffix in _ARTIFACT_REPOSITORY_SUFFIXES:
+        for separator in ("-", "_"):
+            token = f"{separator}{suffix}"
+            if lowered.endswith(token):
+                return name[: -len(token)]
+    return name
+
+
 class ArtifactVariant(BaseModel):
     """Metadata for one available representation of a logical model.
 
@@ -166,4 +227,7 @@ __all__ = [
     "ModelIdentityEvidenceKind",
     "PlanCompatibilityStatus",
     "PreparedExecutionPlan",
+    "logical_model_repo_id",
+    "logical_model_repo_key",
+    "model_identity_key",
 ]

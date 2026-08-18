@@ -16,7 +16,7 @@ from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Input, Static
 
 from jaull.domain.benchmarks import BenchmarkMeasurementKind
-from jaull.domain.execution_plans import ModelIdentity
+from jaull.domain.execution_plans import ModelIdentity, model_identity_key
 from jaull.evaluation.benchmark_comparison import (
     BenchmarkComparison,
     BenchmarkPlanMetricComparison,
@@ -670,7 +670,7 @@ def _logical_comparison_recommendations(
     seen: set[str] = set()
     logical: list[ModelRecommendation] = []
     for rec in recommendations:
-        key = _model_identity_key(rec)
+        key = _recommendation_identity_key(rec)
         if key in seen:
             continue
         seen.add(key)
@@ -933,14 +933,17 @@ def _model_title(rec: ModelRecommendation) -> str:
     return model_display_name(identity, fallback=rec.repo_id)
 
 
-def _model_identity_key(rec: ModelRecommendation) -> str:
+def _recommendation_identity_key(rec: ModelRecommendation) -> str:
     from jaull.execution_plans import execution_plan_for_recommendation
 
     try:
         identity = execution_plan_for_recommendation(rec).model_identity
     except ValueError:
-        return rec.repo_id.lower()
-    return (identity.canonical_repo_id or identity.model_name).lower()
+        identity = ModelIdentity(
+            canonical_repo_id=rec.repo_id,
+            model_name=rec.repo_id.split("/")[-1],
+        )
+    return model_identity_key(identity)
 
 
 def _plan_line(rec: ModelRecommendation) -> str:

@@ -50,7 +50,7 @@ async def _wait_for(
     pilot: Any,
     predicate: Callable[[], bool],
     *,
-    timeout: float = 10.0,
+    timeout: float = 30.0,
 ) -> None:
     waited = 0.0
     while waited < timeout:
@@ -60,7 +60,17 @@ async def _wait_for(
             return
         await asyncio.sleep(0.05)
         waited += 0.05
-    raise AssertionError("the UI never reached the expected state")
+    screen = pilot.app.screen
+    recommendations = getattr(getattr(screen, "_state", None), "recommendations", None)
+    recommendation_count = (
+        len(recommendations) if recommendations is not None else "n/a"
+    )
+    button_ids = [button.id for button in screen.query(Button) if button.id]
+    raise AssertionError(
+        "the UI never reached the expected state "
+        f"(screen={type(screen).__name__}, "
+        f"recommendations={recommendation_count}, buttons={button_ids})"
+    )
 
 
 def _assert_buttons_fit(screen: Any, label: str) -> None:
@@ -123,7 +133,9 @@ def test_guided_flow_stays_usable_at(size: tuple[int, int]) -> None:
             assert answers is not None
             app.start_discovery(answers)
             await _wait_for(
-                pilot, lambda: isinstance(app.screen, RecommendationResultsScreen)
+                pilot,
+                lambda: isinstance(app.screen, RecommendationResultsScreen)
+                and bool(app.screen.query("#res-run-0")),
             )
             results = app.screen
             _assert_buttons_fit(results, f"results {label}")
@@ -164,7 +176,9 @@ def test_run_history_keeps_the_composer_in_place(size: tuple[int, int]) -> None:
             assert answers is not None
             app.start_discovery(answers)
             await _wait_for(
-                pilot, lambda: isinstance(app.screen, RecommendationResultsScreen)
+                pilot,
+                lambda: isinstance(app.screen, RecommendationResultsScreen)
+                and bool(app.screen.query("#res-run-0")),
             )
             app.screen.query_one("#res-run-0", Button).press()
             await _wait_for(

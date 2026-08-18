@@ -33,6 +33,7 @@ from jaull.domain.execution_plans import (
     ExecutionPlan,
     ModelIdentity,
     PreparedExecutionPlan,
+    logical_model_repo_key,
 )
 from jaull.domain.experiments import (
     ExperimentBackendTrace,
@@ -834,7 +835,11 @@ class AdvisorService:
         model_identity: ModelIdentity,
     ) -> bool:
         artifact = record.artifact
-        if artifact.repo_id == model_identity.canonical_repo_id:
+        if (
+            model_identity.canonical_repo_id
+            and logical_model_repo_key(artifact.repo_id)
+            == logical_model_repo_key(model_identity.canonical_repo_id)
+        ):
             return True
         model_name = model_identity.model_name.casefold()
         values = [

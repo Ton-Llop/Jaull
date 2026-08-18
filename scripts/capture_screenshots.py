@@ -67,6 +67,8 @@ from jaull.domain.runtime import (  # noqa: E402
     LlamaCppCapabilityReason,
     LlamaCppRuntimeCapability,
     LlamaCppRuntimeDevice,
+    RuntimeBackendSelection,
+    RuntimeBackendSelectionReason,
     RuntimeFlag,
     RuntimeFlagSource,
     RuntimeName,
@@ -74,6 +76,7 @@ from jaull.domain.runtime import (  # noqa: E402
 )
 from jaull.evaluation.experiments import build_experiment_record  # noqa: E402
 from jaull.execution.errors import ExecutionTimeoutError  # noqa: E402
+from jaull.recommendation.engine_v2 import PlanRankingContext  # noqa: E402
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness  # noqa: E402
 from jaull.tui.app import JaullApp  # noqa: E402
 from jaull.tui.screens.execution_paths import ExecutionPathsScreen  # noqa: E402
@@ -383,6 +386,30 @@ class _ScriptAdvisor(AdvisorService):
             persisted_path=Path("experiments") / f"{record.identity.experiment_id}.json",
         )
 
+    def _plan_ranking_context(self, hardware_profile) -> PlanRankingContext:  # type: ignore[no-untyped-def]
+        """Keep documentation fixtures independent from real local runtimes."""
+        del hardware_profile
+        selection = _runtime_backend_selection(ComputeBackend.CUDA)
+        capability = _runtime_capability_for(ComputeBackend.CUDA)
+        readiness = evaluate_execution_readiness(
+            selection=selection,
+            runtime_capability=capability,
+        )
+        return PlanRankingContext(
+            hardware=hardware(),
+            backend_selection=selection,
+            readiness_by_runtime={RuntimeName.LLAMA_CPP: readiness},
+        )
+
+
+def _runtime_backend_selection(backend: ComputeBackend) -> RuntimeBackendSelection:
+    return RuntimeBackendSelection(
+        selected_backend=backend,
+        reason=RuntimeBackendSelectionReason.NATIVE_BACKEND_AVAILABLE
+        if backend is ComputeBackend.CUDA
+        else RuntimeBackendSelectionReason.CPU_FALLBACK,
+    )
+
 
 def _runtime_capability_for(backend: ComputeBackend) -> LlamaCppRuntimeCapability:
     devices: list[LlamaCppRuntimeDevice] = []
@@ -441,7 +468,7 @@ async def _wait_for(
     pilot,  # type: ignore[no-untyped-def]
     predicate: Callable[[], bool],
     *,
-    timeout: float = 10.0,
+    timeout: float = 30.0,
 ) -> None:
     """Pump the event loop until `predicate` holds, then settle once more."""
     waited = 0.0
@@ -452,7 +479,17 @@ async def _wait_for(
             return
         await asyncio.sleep(0.05)
         waited += 0.05
-    raise TimeoutError("timed out waiting for the UI to reach the expected state")
+    screen = pilot.app.screen
+    recommendations = getattr(getattr(screen, "_state", None), "recommendations", None)
+    recommendation_count = (
+        len(recommendations) if recommendations is not None else "n/a"
+    )
+    button_ids = [button.id for button in screen.query(Button) if button.id]
+    raise TimeoutError(
+        "timed out waiting for the UI to reach the expected state "
+        f"(screen={type(screen).__name__}, "
+        f"recommendations={recommendation_count}, buttons={button_ids})"
+    )
 
 
 async def _settle(pilot, seconds: float = 0.4) -> None:  # type: ignore[no-untyped-def]
@@ -535,7 +572,11 @@ async def _capture_search_and_results(  # type: ignore[no-untyped-def]
     finally:
         search_gate.release()
 
-    await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationResultsScreen))
+    await _wait_for(
+        pilot,
+        lambda: isinstance(app.screen, RecommendationResultsScreen)
+        and bool(app.screen.query("#res-paths-0")),
+    )
     await _settle(pilot)
     _save(app, out_dir, "tui-results.svg")
 
@@ -547,6 +588,7 @@ async def _capture_paths(app: JaullApp, pilot, out_dir: Path) -> None:  # type: 
     listed as peers of a runtime, and a selection rendered as a glyph inside a
     button label.
     """
+    await _wait_for(pilot, lambda: bool(app.screen.query("#res-paths-0")))
     app.screen.query_one("#res-paths-0", Button).press()
     await _wait_for(pilot, lambda: isinstance(app.screen, ExecutionPathsScreen))
     await _wait_for(pilot, lambda: bool(app.screen.query(".path-option")))
@@ -612,6 +654,7 @@ async def _capture_run(  # type: ignore[no-untyped-def]
     advisor: _ScriptAdvisor,
     artifact_gate: _Gate,
 ) -> None:
+    await _wait_for(pilot, lambda: bool(app.screen.query("#res-run-0")))
     app.screen.query_one("#res-run-0", Button).press()
     await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationExecutionScreen))
     _save(app, out_dir, "tui-run-empty.svg")

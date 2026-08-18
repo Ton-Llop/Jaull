@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import jaull.runtime.locator as locator_module
 from jaull.advisor.service import AdvisorService
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
@@ -68,6 +69,13 @@ def test_path_llama_cli_discovery(tmp_path: Path) -> None:
 
     assert installation.source is RuntimeSource.PATH
     assert installation.llama_cli == _norm(cli)
+
+
+def test_windows_path_discovery_preserves_existing_filename_case(tmp_path: Path) -> None:
+    cli = _exe(tmp_path / "path bin" / "llama-cli.exe")
+    upper = cli.with_name("llama-cli.EXE")
+
+    assert locator_module._preserve_existing_path_case(upper, windows=True) == cli
 
 
 def test_bounded_local_discovery_finds_build_cpu_without_arbitrary_scan(
