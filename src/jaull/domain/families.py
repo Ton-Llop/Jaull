@@ -47,11 +47,11 @@ _FORMAT_TOKENS = {
 }
 
 _PARAM_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"(\d+(?:\.\d+)?)\s*[bB](?![a-zA-Z])"),
-    re.compile(r"(\d+(?:\.\d+)?)[-_]?[bB](?![a-zA-Z])"),
+    re.compile(r"(\d+(?:\.\d+)?)\s*([bBmM])(?![a-zA-Z])"),
+    re.compile(r"(\d+(?:\.\d+)?)[-_]?([bBmM])(?![a-zA-Z])"),
 )
 
-_SIZE_MARKER_RE = re.compile(r"[-_]\d+(?:\.\d+)?[bB](?![a-zA-Z])")
+_SIZE_MARKER_RE = re.compile(r"[-_]\d+(?:\.\d+)?[bBmM](?![a-zA-Z])")
 _TOKEN_SPLIT_RE = re.compile(r"[^a-z0-9.]+")
 _VERSION_RE = re.compile(r"^(?:v?\d+(?:\.\d+)*|r\d+)$")
 
@@ -105,7 +105,10 @@ def resolve_parameter_count(
     4. ``…-7B-…`` suffix in the repo id (LOW).
     5. Nothing → UNKNOWN.
     """
-    if analysis is not None:
+    packed_quantization = (
+        analysis is not None and _has_packed_quantization_config(analysis.config)
+    )
+    if analysis is not None and not packed_quantization:
         summary = getattr(analysis, "safetensors_summary", None)
         if summary is not None and summary.total_parameters > 0:
             return ParameterCount(
@@ -114,7 +117,11 @@ def resolve_parameter_count(
                 confidence=EstimationConfidence.HIGH,
             )
 
-    if weight_estimate is not None and weight_estimate.num_parameters:
+    if (
+        weight_estimate is not None
+        and weight_estimate.num_parameters
+        and not packed_quantization
+    ):
         source = weight_estimate.component.source
         if source is EstimateSource.METADATA:
             return ParameterCount(
@@ -208,9 +215,18 @@ def _from_repo_id(repo_id: str) -> int | None:
     for pattern in _PARAM_PATTERNS:
         match = pattern.search(repo_id)
         if match:
-            billions = float(match.group(1))
-            return int(billions * 1_000_000_000)
+            value = float(match.group(1))
+            unit = match.group(2).lower()
+            multiplier = 1_000_000_000 if unit == "b" else 1_000_000
+            return int(value * multiplier)
     return None
+
+
+def _has_packed_quantization_config(config: ModelConfig | None) -> bool:
+    if config is None or not config.quantization_config:
+        return False
+    method = str(config.quantization_config.get("quant_method") or "").lower()
+    return method in {"awq", "gptq"}
 
 
 def _family_from_repo_id(repo_id: str) -> str | None:

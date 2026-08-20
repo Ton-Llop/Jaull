@@ -40,6 +40,30 @@ def test_only_base_config_used_when_no_header() -> None:
     )
 
 
+def test_quantization_config_is_preserved_from_base_config() -> None:
+    base = ModelConfig(
+        num_hidden_layers=28,
+        quantization_config={
+            "bits": 4,
+            "quant_method": "awq",
+            "group_size": 128,
+        },
+    )
+
+    enriched = config_merger.merge(gguf_header=None, base_config=base)
+
+    assert enriched is not None
+    assert enriched.config.quantization_config == {
+        "bits": 4,
+        "quant_method": "awq",
+        "group_size": 128,
+    }
+    assert (
+        enriched.sources["quantization_config"]
+        is ConfigurationSource.BASE_MODEL_CONFIG
+    )
+
+
 def test_matching_values_are_not_recorded_as_conflicts() -> None:
     header = GgufHeaderMetadata(
         architecture="llama",

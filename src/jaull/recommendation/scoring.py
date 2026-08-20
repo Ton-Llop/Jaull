@@ -8,6 +8,7 @@ relative importance.
 from __future__ import annotations
 
 import math
+import re
 
 from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.estimation import (
@@ -22,7 +23,7 @@ from jaull.recommendation import policies
 # Keywords that suggest a repository targets a given use case. Matched against
 # the repo id and the tag list, both lowercased.
 _USE_CASE_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
-    UseCase.GENERAL_CHAT: ("instruct", "chat", "assistant", "it", "conversational"),
+    UseCase.GENERAL_CHAT: ("instruct", "chat", "assistant", "conversational"),
     UseCase.CODING: ("coder", "code", "programming", "starcoder", "codellama", "dev"),
     UseCase.DOCUMENT_QA: ("instruct", "long-context", "longcontext", "qa", "rag", "chat"),
     UseCase.SUMMARIZATION_EXTRACTION: (
@@ -47,7 +48,7 @@ _USE_CASE_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
 
 # Keywords that count double because they are the defining signal for the case.
 _STRONG_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
-    UseCase.GENERAL_CHAT: ("instruct", "chat"),
+    UseCase.GENERAL_CHAT: ("chat", "assistant", "conversational"),
     UseCase.CODING: ("coder", "code"),
     UseCase.DOCUMENT_QA: ("long-context", "longcontext", "rag"),
     UseCase.SUMMARIZATION_EXTRACTION: ("summarization", "extraction"),
@@ -71,16 +72,14 @@ _NEGATIVE_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
 
 def task_match(candidate: ModelCandidate, requirements: UserRequirements) -> float:
     """How well the repository's advertised purpose matches the use case."""
-    haystack = " ".join(
-        [candidate.repo_id.lower(), *(tag.lower() for tag in candidate.tags)]
-    )
+    tokens = _candidate_tokens(candidate)
 
     keywords = _USE_CASE_KEYWORDS[requirements.use_case]
     strong = _STRONG_KEYWORDS[requirements.use_case]
     negative = _NEGATIVE_KEYWORDS[requirements.use_case]
 
-    hits = sum(1 for word in keywords if word in haystack)
-    strong_hits = sum(1 for word in strong if word in haystack)
+    hits = sum(1 for word in keywords if _has_signal(tokens, word))
+    strong_hits = sum(1 for word in strong if _has_signal(tokens, word))
 
     # Saturating: three matching keywords is already a confident signal.
     score = (
@@ -90,10 +89,33 @@ def task_match(candidate: ModelCandidate, requirements: UserRequirements) -> flo
     if candidate.pipeline_tag == TEXT_GENERATION_PIPELINE:
         score = min(1.0, score + 0.1)
 
-    if any(word in haystack for word in negative):
+    if any(_has_signal(tokens, word) for word in negative):
         score *= 0.5
 
     return _clamp(score)
+
+
+def _candidate_tokens(candidate: ModelCandidate) -> set[str]:
+    values = [
+        candidate.repo_id.split("/")[-1],
+        candidate.pipeline_tag or "",
+        candidate.library_name or "",
+        *candidate.tags,
+    ]
+    tokens: set[str] = set()
+    for value in values:
+        normalized = value.strip().lower()
+        if not normalized:
+            continue
+        tokens.add(normalized)
+        tokens.add(normalized.replace("_", "-"))
+        tokens.update(token for token in re.split(r"[^a-z0-9.]+", normalized) if token)
+    return tokens
+
+
+def _has_signal(tokens: set[str], signal: str) -> bool:
+    normalized = signal.lower()
+    return normalized in tokens or normalized.replace("_", "-") in tokens
 
 
 def language_match(

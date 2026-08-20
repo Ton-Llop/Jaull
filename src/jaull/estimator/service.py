@@ -213,10 +213,16 @@ def _estimate_weights(
 
     if classification.primary_type is RepositoryType.TRANSFORMERS:
         summary = None
-        try:
-            summary = client.safetensors_summary(analysis.repo.repo_id)
-        except HuggingFaceUnavailableError as exc:
-            warnings.append(f"Could not read safetensors metadata: {exc}")
+        if not _has_packed_quantization_config(analysis.config):
+            try:
+                summary = client.safetensors_summary(analysis.repo.repo_id)
+            except HuggingFaceUnavailableError as exc:
+                warnings.append(f"Could not read safetensors metadata: {exc}")
+        else:
+            warnings.append(
+                "Packed quantized safetensors metadata ignored for weight sizing; "
+                "using artifact file sizes instead."
+            )
         if summary is not None:
             return (
                 weights.estimate_weights_from_safetensors(
@@ -229,7 +235,11 @@ def _estimate_weights(
         return (
             weights.estimate_weights_from_files(
                 analysis=analysis,
-                requested_precision=inference_cfg.precision,
+                requested_precision=(
+                    None
+                    if _has_packed_quantization_config(analysis.config)
+                    else inference_cfg.precision
+                ),
                 config=analysis.config,
             ),
             None,
@@ -243,6 +253,13 @@ def _estimate_weights(
         ),
         None,
     )
+
+
+def _has_packed_quantization_config(config: ModelConfig | None) -> bool:
+    if config is None or not config.quantization_config:
+        return False
+    method = str(config.quantization_config.get("quant_method") or "").lower()
+    return method in {"awq", "gptq"}
 
 
 def _device_reserve_component(reserve_bytes: int) -> MemoryComponent:

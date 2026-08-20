@@ -48,7 +48,11 @@ def resolve_model_identity(
 ) -> ModelIdentity:
     """Resolve the logical model identity from structured metadata first."""
 
-    raw_canonical = candidate.base_model_repo_id or candidate.repo_id
+    raw_canonical = (
+        candidate.base_model_repo_id
+        if candidate.base_model_repo_id and _is_artifact_wrapper_repo(candidate)
+        else candidate.repo_id
+    )
     canonical = logical_model_repo_id(raw_canonical)
     evidence: list[ModelIdentityEvidence] = []
     confidence = candidate.metadata_confidence
@@ -115,6 +119,17 @@ def resolve_model_identity(
         confidence=confidence,
         evidence=evidence,
     )
+
+
+def _is_artifact_wrapper_repo(candidate: ModelCandidate) -> bool:
+    if candidate.repository_type in {
+        RepositoryType.GGUF,
+        RepositoryType.ONNX,
+        RepositoryType.ADAPTER,
+    }:
+        return True
+    repo_key = logical_model_repo_key(candidate.repo_id)
+    return repo_key != candidate.repo_id.casefold()
 
 
 def variant_from_recommendation(

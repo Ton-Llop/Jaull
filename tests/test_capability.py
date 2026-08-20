@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.analyzers.transformers import _model_config_from_dict
 from jaull.domain.candidates import ModelCandidate
+from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import EstimationConfidence
+from jaull.domain.families import resolve_parameter_count
+from jaull.domain.model import (
+    ModelAnalysis,
+    ModelRepositoryInfo,
+    RepositoryClassification,
+    SafetensorsSummary,
+)
+from jaull.domain.parameters import ParameterCountSource
 from jaull.recommendation.capability import (
     DEFAULT_CAPABILITY_SCORE,
     MetadataCapabilityAnalyzer,
@@ -87,6 +97,48 @@ def test_parameter_count_prefers_inspected_config() -> None:
     # suffix supplies the count. The important property: it does not silently
     # return the old 12·L·H² undercount.
     assert parameter_count(_candidate("org/Model-7B"), analysis) == 7_000_000_000
+
+
+def test_packed_awq_safetensors_count_is_not_logical_parameter_count() -> None:
+    config = _model_config_from_dict(
+        {
+            "model_type": "qwen2",
+            "num_hidden_layers": 28,
+            "num_attention_heads": 28,
+            "num_key_value_heads": 4,
+            "hidden_size": 3584,
+            "intermediate_size": 18944,
+            "vocab_size": 152064,
+            "quantization_config": {
+                "bits": 4,
+                "quant_method": "awq",
+                "group_size": 128,
+            },
+        }
+    )
+    analysis = ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="Qwen/Qwen2.5-7B-Instruct-AWQ"),
+        files=[],
+        classification=RepositoryClassification(
+            primary_type=RepositoryType.TRANSFORMERS,
+            detected_types={RepositoryType.TRANSFORMERS},
+            formats={Format.SAFETENSORS},
+        ),
+        config=config,
+        safetensors_summary=SafetensorsSummary(
+            total_parameters=1_960_000_000,
+            parameters_by_dtype={"I4": 1_960_000_000},
+        ),
+    )
+
+    resolved = resolve_parameter_count(
+        _candidate("Qwen/Qwen2.5-7B-Instruct-AWQ"),
+        analysis,
+    )
+
+    assert resolved.source is not ParameterCountSource.SAFETENSORS_METADATA
+    assert resolved.count is not None
+    assert resolved.count > 7_000_000_000
 
 
 @pytest.mark.parametrize(

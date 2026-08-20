@@ -110,5 +110,6 @@ def _model_config_from_dict(data: dict[str, object]) -> ModelConfig:
         rope_scaling=_dict_or_none("rope_scaling"),
         tie_word_embeddings=_bool_or_none("tie_word_embeddings"),
         vocab_size=_int_or_none("vocab_size"),
+        quantization_config=_dict_or_none("quantization_config"),
         raw_flags=raw_flags,
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -38,7 +39,7 @@ from jaull.domain.recommendation import (
     RecommendationEvidenceCategory,
     RecommendationEvidenceSource,
 )
-from jaull.domain.requirements import RecommendationPriority, UserRequirements
+from jaull.domain.requirements import RecommendationPriority, UseCase, UserRequirements
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessStatus,
@@ -47,7 +48,9 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.estimator.configuration import select_configuration
+from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 from jaull.execution_plans import build_execution_plan, resolve_model_identity
+from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
 from jaull.recommendation.policies import LicenseCategory, classify_license
 
 EstimatePlanFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
@@ -144,6 +147,11 @@ def assess_plan(
 ) -> PlanAssessment:
     ctx = context or PlanRankingContext()
     evidence = _base_evidence(evaluated, plan)
+    capability = MetadataCapabilityAnalyzer().analyze(
+        evaluated.candidate,
+        evaluated.analysis,
+    )
+    evidence.extend(_capability_evidence(capability))
     hard = _hard_constraints(evaluated, plan, requirements)
     local_experiment = _matching_experiment(plan, ctx.experiment_records)
     local_benchmark = _matching_benchmark(plan, ctx.benchmark_records)
@@ -200,7 +208,9 @@ def assess_plan(
     return PlanAssessment(
         plan_id=plan.plan_id,
         hard_constraints=hard,
+        capability=_capability_level(capability),
         suitability=_suitability(evaluated, requirements),
+        execution_fitness=_execution_fitness(plan),
         feasibility=_feasibility(plan),
         executability=_executability(plan),
         performance_evidence=(
@@ -216,8 +226,8 @@ def assess_plan(
         confidence=_confidence(evaluated, plan, local_experiment, local_benchmark),
         evidence=evidence,
         external_evaluations=external,
-        reasons=reasons,
-        trade_offs=trade_offs,
+        reasons=_with_capability_reasons(reasons, capability),
+        trade_offs=_with_capability_trade_offs(trade_offs, capability),
         rejection_reasons=rejection_reasons,
         measured_memory_bytes=measured_memory,
         estimated_memory_bytes=(
@@ -512,6 +522,42 @@ def _base_evidence(
     return evidence
 
 
+def _capability_evidence(capability: CapabilitySignal) -> list[RecommendationEvidence]:
+    evidence: list[RecommendationEvidence] = []
+    if capability.parameter_count is not None:
+        evidence.append(
+            RecommendationEvidence(
+                category=RecommendationEvidenceCategory.METADATA,
+                key="parameter_count",
+                value=str(capability.parameter_count),
+                source=RecommendationEvidenceSource.MODEL_ANALYSIS,
+                confidence=capability.confidence,
+            )
+        )
+    if capability.scale_tier is not None:
+        evidence.append(
+            RecommendationEvidence(
+                category=RecommendationEvidenceCategory.METADATA,
+                key="model_scale",
+                value=capability.scale_tier,
+                source=RecommendationEvidenceSource.POLICY,
+                confidence=capability.confidence,
+                provenance={"parameter_count": capability.parameter_count},
+            )
+        )
+    if capability.chat_or_base is not None:
+        evidence.append(
+            RecommendationEvidence(
+                category=RecommendationEvidenceCategory.METADATA,
+                key="assistant_tuning",
+                value=capability.chat_or_base,
+                source=RecommendationEvidenceSource.HEURISTIC,
+                confidence=EstimationConfidence.LOW,
+            )
+        )
+    return evidence
+
+
 def _external_evidence(
     external: Sequence[ExternalEvaluationEvidence],
 ) -> list[RecommendationEvidence]:
@@ -537,15 +583,87 @@ def _suitability(
     evaluated: EvaluatedCandidate,
     requirements: UserRequirements,
 ) -> AssessmentLevel:
-    if evaluated.task_match_score >= 0.75:
+    task_score = evaluated.task_match_score
+    if requirements.use_case in {
+        UseCase.GENERAL_CHAT,
+        UseCase.REASONING,
+        UseCase.DOCUMENT_QA,
+    }:
+        tokens = _candidate_signal_tokens(evaluated)
+        has_chat_signal = any(
+            _has_signal(tokens, token)
+            for token in ("chat", "assistant", "conversational")
+        )
+        has_instruction_signal = has_chat_signal or any(
+            _has_signal(tokens, token) for token in ("instruct", "instruction")
+        )
+        has_base_signal = any(
+            _has_signal(tokens, token) for token in ("base", "pretrain", "foundation")
+        )
+        if has_instruction_signal:
+            task_score = max(task_score, 0.65)
+            if not has_chat_signal:
+                task_score = min(task_score, 0.70)
+        elif has_base_signal:
+            task_score = min(task_score, 0.40)
+    if task_score >= 0.75:
         return AssessmentLevel.STRONG
-    if evaluated.task_match_score >= 0.45:
+    if task_score >= 0.45:
         return AssessmentLevel.ADEQUATE
-    if evaluated.task_match_score > 0:
+    if task_score > 0:
         return AssessmentLevel.WEAK
     if evaluated.candidate.metadata_confidence is EstimationConfidence.LOW:
         return AssessmentLevel.UNKNOWN
     return AssessmentLevel.WEAK
+
+
+def _candidate_signal_tokens(evaluated: EvaluatedCandidate) -> set[str]:
+    values = [
+        evaluated.repo_id.split("/")[-1],
+        evaluated.candidate.pipeline_tag or "",
+        evaluated.candidate.library_name or "",
+        *evaluated.candidate.tags,
+    ]
+    tokens: set[str] = set()
+    for value in values:
+        normalized = value.strip().lower()
+        if not normalized:
+            continue
+        tokens.add(normalized)
+        tokens.add(normalized.replace("_", "-"))
+        tokens.update(token for token in re.split(r"[^a-z0-9.]+", normalized) if token)
+    return tokens
+
+
+def _has_signal(tokens: set[str], signal: str) -> bool:
+    normalized = signal.lower()
+    return normalized in tokens or normalized.replace("_", "-") in tokens
+
+
+def _capability_level(capability: CapabilitySignal) -> AssessmentLevel:
+    if capability.score >= 0.72:
+        return AssessmentLevel.STRONG
+    if capability.score >= 0.55:
+        return AssessmentLevel.ADEQUATE
+    if capability.score > 0:
+        return AssessmentLevel.WEAK
+    return AssessmentLevel.UNKNOWN
+
+
+def _execution_fitness(plan: ExecutionPlan) -> AssessmentLevel:
+    executability = _executability(plan)
+    feasibility = _feasibility(plan)
+    if AssessmentLevel.BLOCKED in {executability, feasibility}:
+        return AssessmentLevel.BLOCKED
+    if executability is AssessmentLevel.UNKNOWN:
+        return AssessmentLevel.UNKNOWN
+    if feasibility is AssessmentLevel.STRONG:
+        return AssessmentLevel.STRONG
+    if feasibility is AssessmentLevel.ADEQUATE:
+        return AssessmentLevel.ADEQUATE
+    if feasibility is AssessmentLevel.WEAK:
+        return AssessmentLevel.WEAK
+    return AssessmentLevel.UNKNOWN
 
 
 def _feasibility(plan: ExecutionPlan) -> AssessmentLevel:
@@ -693,6 +811,30 @@ def _trade_offs(
     return trade_offs
 
 
+def _with_capability_reasons(
+    reasons: list[str],
+    capability: CapabilitySignal,
+) -> list[str]:
+    updated = list(reasons)
+    if capability.scale_tier is not None:
+        updated.append(f"capability:scale:{capability.scale_tier}")
+    if capability.chat_or_base in {"chat", "instruction"}:
+        updated.append(f"capability:{capability.chat_or_base}_tuned")
+    return updated
+
+
+def _with_capability_trade_offs(
+    trade_offs: list[str],
+    capability: CapabilitySignal,
+) -> list[str]:
+    updated = list(trade_offs)
+    if capability.scale_tier == "lightweight":
+        updated.append("capability:lightweight_model")
+    if capability.chat_or_base == "base":
+        updated.append("capability:base_model")
+    return updated
+
+
 def _matching_experiment(
     plan: ExecutionPlan,
     records: Sequence[ExperimentRecord],
@@ -702,7 +844,7 @@ def _matching_experiment(
         for record in records
         if _artifact_matches(plan.artifact.to_model_artifact(), record.artifact)
         and record.runtime.runtime is plan.runtime.runtime
-        and (plan.hardware is None or record.hardware == plan.hardware)
+        and _hardware_matches(plan.hardware, record.hardware)
     ]
     return max(compatible, key=lambda record: record.identity.created_at, default=None)
 
@@ -716,7 +858,7 @@ def _matching_benchmark(
         for record in records
         if _artifact_matches(plan.artifact.to_model_artifact(), record.artifact)
         and record.runtime.runtime is plan.runtime.runtime
-        and (plan.hardware is None or record.hardware == plan.hardware)
+        and _hardware_matches(plan.hardware, record.hardware)
         and (
             plan.backend_selection is None
             or record.requested_backend is plan.backend_selection.selected_backend
@@ -732,6 +874,15 @@ def _artifact_matches(left: ModelArtifact, right: ModelArtifact) -> bool:
         and left.format == right.format
         and left.quantization == right.quantization
     )
+
+
+def _hardware_matches(
+    plan_hardware: HardwareProfile | None,
+    record_hardware: HardwareProfile,
+) -> bool:
+    if plan_hardware is None:
+        return True
+    return machine_fingerprint(plan_hardware) == machine_fingerprint(record_hardware)
 
 
 def _measured_memory(
@@ -792,8 +943,9 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
     if priority is RecommendationPriority.QUALITY:
         priority_axes: tuple[int | float, ...] = (
             _LEVEL_RANK[assessment.suitability],
+            _LEVEL_RANK[assessment.capability],
             _quantization_quality_rank(item.plan),
-            _LEVEL_RANK[assessment.feasibility],
+            _LEVEL_RANK[assessment.execution_fitness],
         )
     elif priority is RecommendationPriority.SPEED:
         priority_axes = (
@@ -805,14 +957,16 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
     elif priority is RecommendationPriority.MEMORY:
         priority_axes = (
             _memory_efficiency_rank(assessment),
-            _LEVEL_RANK[assessment.feasibility],
+            _LEVEL_RANK[assessment.execution_fitness],
             _LEVEL_RANK[assessment.executability],
         )
     else:
         priority_axes = (
-            _LEVEL_RANK[assessment.feasibility],
             _LEVEL_RANK[assessment.suitability],
+            _LEVEL_RANK[assessment.capability],
+            _LEVEL_RANK[assessment.execution_fitness],
             _LEVEL_RANK[assessment.executability],
+            _comfortable_memory_rank(assessment),
         )
     return (
         1 if assessment.rejected else 0,
@@ -870,6 +1024,23 @@ def _throughput_rank(assessment: PlanAssessment) -> float:
 def _memory_efficiency_rank(assessment: PlanAssessment) -> int:
     memory = assessment.measured_memory_bytes or assessment.estimated_memory_bytes
     return memory if memory is not None else 10**18
+
+
+def _comfortable_memory_rank(assessment: PlanAssessment) -> int:
+    """Diminishing memory utility once a plan is comfortably runnable.
+
+    Balanced ranking should care a lot about impossible/tight plans, but should
+    not keep rewarding every extra unused GiB after the plan already fits well.
+    """
+    if assessment.feasibility is AssessmentLevel.STRONG:
+        return 0
+    if assessment.feasibility is AssessmentLevel.ADEQUATE:
+        return 1
+    if assessment.feasibility is AssessmentLevel.WEAK:
+        return 2
+    if assessment.feasibility is AssessmentLevel.UNKNOWN:
+        return 3
+    return 4
 
 
 def _weaker_confidence(

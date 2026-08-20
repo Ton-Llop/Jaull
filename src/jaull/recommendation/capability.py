@@ -10,6 +10,7 @@ table for named model families.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -53,7 +54,10 @@ class CapabilitySignal:
 
     score: float
     parameter_count: int | None = None
+    scale_tier: str | None = None
     family: str | None = None
+    instruction_tuned: bool | None = None
+    chat_or_base: str | None = None
     confidence: EstimationConfidence = EstimationConfidence.MEDIUM
     reasons: tuple[str, ...] = ()
 
@@ -89,12 +93,16 @@ class MetadataCapabilityAnalyzer:
         return CapabilitySignal(
             score=score,
             parameter_count=params,
+            scale_tier=_scale_tier(params),
             family=family,
+            instruction_tuned=_instruction_tuned(candidate),
+            chat_or_base=_chat_or_base(candidate),
             confidence=candidate.metadata_confidence,
             reasons=tuple(
                 reason
                 for reason in (
                     _size_reason(params),
+                    _instruction_reason(candidate),
                     _metadata_reason(candidate, analysis),
                     _artifact_reason(candidate, analysis),
                     _activity_reason(candidate),
@@ -165,12 +173,88 @@ def _size_curve(params: int | None) -> float:
     return 1.0 / (1.0 + math.exp(-1.8 * x))
 
 
+def _scale_tier(params: int | None) -> str | None:
+    """Coarse capacity prior for explanation, never a hard quality rule."""
+    if params is None or params <= 0:
+        return None
+    if params < 300_000_000:
+        return "lightweight"
+    if params < 1_500_000_000:
+        return "small"
+    if params < 4_000_000_000:
+        return "balanced"
+    if params < 7_000_000_000:
+        return "mid_size"
+    return "higher_capacity"
+
+
 def _size_reason(params: int | None) -> str | None:
     if params is None:
         return "Parameter count could not be confirmed."
     if params >= 1_000_000_000:
         return f"Estimated around {params / 1_000_000_000:.1f}B parameters."
     return f"Estimated around {params / 1_000_000:.0f}M parameters."
+
+
+def _instruction_tuned(candidate: ModelCandidate) -> bool | None:
+    tokens = _model_tokens(candidate)
+    if any(
+        _has_signal(tokens, token)
+        for token in ("instruct", "instruction", "chat", "conversational")
+    ):
+        return True
+    if any(_has_signal(tokens, token) for token in ("base", "pretrain", "foundation")):
+        return False
+    if _has_signal(tokens, "assistant"):
+        return True
+    return None
+
+
+def _chat_or_base(candidate: ModelCandidate) -> str | None:
+    tokens = _model_tokens(candidate)
+    if _has_signal(tokens, "chat") or _has_signal(tokens, "conversational"):
+        return "chat"
+    if _has_signal(tokens, "instruct") or _has_signal(tokens, "instruction"):
+        return "instruction"
+    if any(_has_signal(tokens, token) for token in ("base", "pretrain", "foundation")):
+        return "base"
+    if _has_signal(tokens, "assistant"):
+        return "chat"
+    return None
+
+
+def _instruction_reason(candidate: ModelCandidate) -> str | None:
+    kind = _chat_or_base(candidate)
+    if kind == "chat":
+        return "Metadata/name suggests chat tuning."
+    if kind == "instruction":
+        return "Metadata/name suggests instruction tuning."
+    if kind == "base":
+        return "Metadata/name suggests a base model rather than an assistant-tuned model."
+    return None
+
+
+def _model_tokens(candidate: ModelCandidate) -> set[str]:
+    values = [
+        candidate.repo_id.split("/")[-1],
+        candidate.pipeline_tag or "",
+        candidate.library_name or "",
+        *candidate.tags,
+    ]
+    tokens: set[str] = set()
+    for value in values:
+        normalized = value.strip().lower()
+        if not normalized:
+            continue
+        tokens.add(normalized)
+        tokens.add(normalized.replace("_", "-"))
+        tokens.update(token for token in re.split(r"[^a-z0-9.]+", normalized) if token)
+    return tokens
+
+
+def _has_signal(tokens: set[str], signal: str) -> bool:
+    normalized = signal.lower()
+    return normalized in tokens or normalized.replace("_", "-") in tokens
 
 
 def _metadata_reason(
