@@ -1,0 +1,176 @@
+# Memory estimation
+
+How `jaull estimate` and the guided recommendation turn public metadata into a memory
+figure, and what each number is allowed to claim. No weights are downloaded and no
+inference is run anywhere in this path.
+
+Every component carries a **source** (`exact`, `metadata`, `derived`, `assumed`, `unknown`)
+and the overall assessment carries a **confidence** (`high`, `medium`, `low`, `unknown`)
+reduced by the weakest link in the chain. Numbers are never presented with more precision
+than their provenance supports.
+
+---
+
+## The four components
+
+### 1. Weights
+
+Highest-confidence source first:
+
+- **GGUF** — the exact size of the selected variant, taken from the file size `HfApi`
+  reports. No download.
+- **Transformers with safetensors metadata** — `total_parameters × bytes_per_parameter(dtype)`.
+  Parameter counts come from `HfApi.get_safetensors_metadata`, which parses headers rather
+  than downloading weights.
+- **Transformers without metadata** — the sum of `.safetensors` / `pytorch_model*.bin`
+  sizes, scaled by the dtype ratio if a different dtype was requested.
+- Otherwise unknown, with a warning.
+
+`bytes_per_parameter`: `float32=4`, `float16=2`, `bfloat16=2`, `int8=1`, `int4=0.5`. Real
+quantized formats add scales and block metadata (typically under 10%), so that path is
+tagged `DERIVED` to make the approximation visible.
+
+### 2. KV cache
+
+```text
+kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users
+           * bytes_per_kv_element
+```
+
+`num_kv_heads` falls back to `num_attention_heads` for MHA models. `head_dim` derives from
+`hidden_size // num_attention_heads` when the config does not state it. If `sliding_window`
+is present and the context exceeds it, the effective context is capped.
+
+Concurrency is modelled here rather than as a scoring nudge: each concurrent session
+multiplies the cache, on the stated assumption that every session keeps its own full
+context.
+
+Non-standard architectures (MoE, MLA / DeepSeek-style, multimodal composites, `auto_map`
+custom code) return `unknown` and a warning instead of a fabricated number.
+
+### 3. Runtime overhead
+
+Allocator, kernel buffers, activations and small caches:
+
+```text
+overhead = max(min_overhead, base_overhead + weight_fraction * weights)
+```
+
+Constants live in `estimator/policies.py` (`base = 512 MiB`, `fraction = 10%`,
+`min = 256 MiB`). Always tagged `ASSUMED` / `LOW` confidence.
+
+### 4. Device reserve and safety margin
+
+User-controllable via `--device-reserve-gib` and `--safety-margin-percent`, kept as
+distinct components so each one can be inspected — and so a policy figure is never mistaken
+for a measured one.
+
+---
+
+## Compatibility
+
+The total is compared against local RAM/VRAM:
+
+| Status | Meaning |
+|---|---|
+| `comfortable` | ≤ 75 % of available |
+| `compatible` | 75–90 % |
+| `tight` | 90–100 % |
+| `offloading_required` | Fits in RAM + VRAM combined but not in VRAM alone |
+| `insufficient` | Exceeds combined RAM + VRAM |
+| `unknown` | Missing inputs |
+
+With `--device auto` the estimator prefers GPU, falls back to `offloading_required` if the
+model fits combined memory, then CPU, then `insufficient`.
+
+VRAM comes from NVML, so this comparison is NVIDIA-only. On other vendors the accelerator
+is still detected and its backends probed, but the memory model falls back to system RAM.
+
+---
+
+## Base model resolution and GGUF enrichment
+
+GGUF repositories usually ship only quantized weights — no `config.json`, and therefore no
+way to compute a KV cache from metadata alone. The estimator solves this in three layered
+steps, each with its own provenance.
+
+### 1. Base-model resolution
+
+In priority order:
+
+1. `card_data["base_model"]` in the GGUF repo's model card (string, single-element list, or
+   a dict with `finetune` / `quantized_by` / …) → HIGH confidence.
+2. `general.source.huggingface.repository` read from the GGUF header itself → HIGH
+   confidence.
+3. A `https://huggingface.co/...` URL found in a model-card field (`source`, `homepage`, …)
+   → MEDIUM confidence.
+4. Nothing → UNRESOLVED. The repository name (`X-GGUF` → `X`) is **never** used as an
+   answer; it is only surfaced as evidence.
+
+### 2. GGUF header read over HTTP Range
+
+No full download: an initial 256 KiB range, doubling up to 8 MiB. The response is
+*streamed* and iteration stops the moment the requested number of bytes has been read, so a
+server that ignores `Range` and answers `200 OK` with the whole file still costs only the
+prefix — the rest of the body is never pulled off the wire. That case is flagged with a
+warning and the reader stops growing the range. Timeouts, 4xx/5xx, `416` and malformed
+headers all degrade cleanly.
+
+The consequence: if the header is not inside the first 8 MiB, enrichment gives up rather
+than reading further.
+
+### 3. Config merge
+
+The GGUF header wins for the fields it declares — it is the artifact that will actually
+run. The base config fills in the rest. Conflicts (a `context_length` mismatch, for
+instance) are recorded as warnings and shown in the "Configuration source" row.
+
+### Precedence policy
+
+| Field | 1st | 2nd | 3rd | Fallback |
+|---|---|---|---|---|
+| `context_length` | GGUF header | base config `max_position_embeddings` | user `--context` | — |
+| `num_hidden_layers` | GGUF `block_count` | base config | — | KV = unknown |
+| `num_attention_heads` | GGUF `head_count` | base config | — | KV = unknown |
+| `num_key_value_heads` | GGUF `head_count_kv` | base config | `num_attention_heads` (MHA) | — |
+| `head_dim` | GGUF `rope_dim` | base config `head_dim` | `hidden // heads` | — |
+| `sliding_window` | base config | — | — | no cap |
+| architecture | GGUF `general.architecture` | base config `model_type` | — | warning |
+
+### Turning enrichment off
+
+```bash
+uv run jaull estimate <repo> --no-resolve-base-model
+```
+
+Falls back to weights-only estimates: GGUF file size, KV cache reported as unknown.
+
+---
+
+## Runtime recommendation
+
+After computing the estimate, Jaull suggests a runtime and a starter command:
+
+| Repository type | Primary runtime | Alternative |
+|---|---|---|
+| GGUF | `llama.cpp` (llama-server / llama-cli) | — |
+| Transformers | `transformers` (Python snippet) | `vllm` when the architecture is on the shortlist and the model fits fully in VRAM |
+| Others (diffusers / onnx / adapter / unknown) | — | — |
+
+Every recommendation carries per-flag provenance:
+
+- `--n-gpu-layers` for llama.cpp is computed as
+  `min(block_count, (available_vram − device_reserve − 256 MiB − kv_cache) / (weights / block_count))`.
+  When `block_count` is unknown it falls back to a documented conservative default (20
+  layers) with a warning. The split assumes uniform layer sizes.
+- `device_map` for Transformers is `"cuda"` when the model fits VRAM, `"auto"` for
+  offloading (with an `accelerate` warning) and `"cpu"` otherwise.
+- vLLM is only suggested when the architecture is on the shortlist (`llama`, `qwen2`,
+  `mistral`, `phi3`, `gemma`, `gemma2`, `gemma3`) and the model fits GPU memory. The real
+  vLLM support matrix is broader; the shortlist is deliberately narrow.
+- If the memory assessment is `insufficient`, no runtime is recommended and the user is
+  told so explicitly.
+
+The commands shown by `estimate` and by the guided flow are **generated, not executed**.
+To have Jaull actually run something, use `jaull run` or the execution paths in the TUI —
+see [evidence.md](evidence.md).

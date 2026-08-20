@@ -1,0 +1,112 @@
+name: Hardware validation report
+description: Report how Jaull behaves on hardware the maintainers do not have
+labels: ["hardware-validation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks — this is the most useful kind of report for this project.
+
+        Everything Jaull claims about hardware detection, backend availability, runtime
+        compatibility and memory behaviour has only been exercised on a narrow set of
+        machines. A report that something is detected wrongly is just as valuable as one
+        that says everything worked.
+
+        The quickest way to fill most of this in:
+
+        ```bash
+        uv run jaull scan
+        uv run jaull doctor
+        ```
+
+  - type: textarea
+    id: scan
+    attributes:
+      label: "`jaull scan` output"
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`jaull doctor` output"
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, RAM, GPU/accelerator, VRAM.
+      placeholder: "Ryzen 7 7800X3D, 32 GB RAM, Radeon RX 7900 XTX 24 GB"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS, driver and Python version
+      placeholder: "Fedora 41, Mesa 24.3 / ROCm 6.2, Python 3.12.7"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Jaull version or commit
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and backend
+      description: llama.cpp build and backend, or torch/transformers versions, if relevant.
+      placeholder: "llama.cpp b4321 (Vulkan build), or torch 2.6.0+rocm6.2"
+    validations:
+      required: false
+
+  - type: input
+    id: model
+    attributes:
+      label: Model and artifact
+      description: Repository, quantization or precision, and context size.
+      placeholder: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF, Q4_K_M, ctx 4096"
+    validations:
+      required: false
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What you ran
+      description: The command or TUI path — scan only, an estimate, a run, a validation, a benchmark.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What you observed
+      description: |
+        What was right, what was wrong, and what was missing. If Jaull predicted memory and
+        you also ran or benchmarked the model, the predicted vs measured numbers are the
+        most valuable part of this report.
+    validations:
+      required: true
+
+  - type: textarea
+    id: records
+    attributes:
+      label: Experiment or benchmark records
+      description: |
+        Optional. Records live under the per-user data directory
+        (`~/.local/share/jaull/experiments` and `.../benchmarks` on Linux,
+        `~/Library/Application Support/jaull/...` on macOS,
+        `%LOCALAPPDATA%\jaull\...` on Windows). They contain your hardware profile,
+        model and timings — review before pasting.
+      render: json
+    validations:
+      required: false

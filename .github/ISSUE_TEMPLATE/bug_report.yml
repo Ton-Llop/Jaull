@@ -1,0 +1,62 @@
+name: Bug report
+description: Something does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a wrong or surprising **hardware or backend detection** result, please use the
+        *Hardware validation report* template instead — it asks for the right details.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The exact command or TUI path, including the model reference if one is involved.
+      placeholder: |
+        uv run jaull estimate Qwen/Qwen2.5-7B-Instruct --context 32768
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or traceback
+      description: Paste the relevant output. `--verbose` adds debug logging.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Jaull version or commit
+      description: "`uv run jaull --help` shows the CLI; a commit sha is fine."
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Python version
+      placeholder: "Ubuntu 24.04 (WSL2), Python 3.12.7"
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`jaull doctor` output"
+      description: Helpful whenever runtimes, backends or execution are involved.
+      render: shell
+    validations:
+      required: false

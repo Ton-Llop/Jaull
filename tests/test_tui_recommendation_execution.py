@@ -1581,19 +1581,40 @@ def test_execution_screen_survives_three_prompts_without_duplicate_ids(
 
     _run(scenario())
 
+# These transitions take ~150 ms on an idle developer machine, so a 2 s budget
+# left barely a 13x margin — not enough for a Windows CI runner, which is
+# several times slower, rounds `asyncio.sleep` up to the ~15 ms timer
+# granularity, and runs this inside the full suite rather than on its own. The
+# loop exits the moment the predicate holds, so a generous deadline costs a
+# passing test nothing; it only decides how long a genuinely stuck one waits
+# before failing.
+_WAIT_TIMEOUT_SECONDS = 15.0
+
+
+def _predicate_location(predicate: Any) -> str:
+    code = getattr(predicate, "__code__", None)
+    if code is None:
+        return "<unknown predicate>"
+    return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
+
+
 async def _wait_until(
     pilot: Any,
     predicate: Any,
     *,
-    timeout_seconds: float = 2.0,
+    timeout_seconds: float = _WAIT_TIMEOUT_SECONDS,
 ) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
 
     while not predicate():
         if loop.time() >= deadline:
+            # "Timed out waiting for TUI state" alone says nothing about which
+            # of the 20-odd waits gave up, or what the app was showing instead.
             raise AssertionError(
-                "Timed out waiting for TUI state"
+                f"Timed out after {timeout_seconds:g}s waiting for "
+                f"{_predicate_location(predicate)}; "
+                f"current screen is {type(pilot.app.screen).__name__}"
             )
 
         await pilot.pause()

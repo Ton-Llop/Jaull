@@ -1,20 +1,29 @@
-# Arquitectura de Jaull
+# Jaull architecture
 
-Aquest document descriu **les capes** en què està organitzat el projecte i **les regles de dependència** entre elles. `docs/Workflow.md` explica *què fa* el pipeline; aquest document explica *com està muntat* i per què les fronteres estan on estan.
+This document describes **the layers** the project is organised into and **the dependency
+rules** between them. `docs/Workflow.md` explains *what* the pipeline does; this document
+explains *how it is assembled* and why the boundaries are where they are.
 
-Jaull segueix sent avui un **monòlit modular Python**: no hi ha workers, ni Docker, ni benchmark worker. La recomanació guiada continua sent metadata-only, però ja existeix un camí explícit d’execució local: `jaull run` resol, descarrega, verifica i executa artefactes GGUF single-file amb `llama-cli`. El propòsit d’aquesta arquitectura és deixar la casa endreçada perquè els següents cicles (benchmarks, streaming de descàrrega, execució remota) puguin afegir-se sense arrossegar cicles.
+Jaull is still a **modular Python monolith** today: no network workers, no Docker, no remote
+executor. Guided recommendation remains metadata-only, but explicit local execution paths
+already exist: `jaull run` resolves, downloads, verifies and executes single-file GGUF
+artifacts with `llama-cli`, and the TUI adds execution of Transformers repositories through
+an isolated Python worker, validation (persisted experiments) and benchmarks (`llama-bench`
+and a Transformers worker). The purpose of this architecture is to keep the house in order
+so that the next cycles (concurrent load, deployment qualification, remote execution) can be
+added without dragging cycles behind them.
 
-## Diagrama de capes
+## Layer diagram
 
 ```
                      ┌──── CLI ────┐         ┌──── TUI ────┐
                      └──────┬──────┘         └──────┬──────┘
                             └─────── AdvisorService ─────────┐
                                      │                       │
-                    Workflow (orquestrador guiat) ───────────┤
+                    Workflow (guided orchestrator) ──────────┤
                                      │                       │
              ┌─────── Discovery ─────┼─── Recommendation ────┤
-             │              (comparteixen contractes via)     │
+             │            (share contracts through)           │
              └────────────────── Domain  ────────────────────┘
                                      ▲
        Estimator · Metadata · HuggingFace · Hardware · Runtime · Artifacts · Execution
@@ -22,157 +31,230 @@ Jaull segueix sent avui un **monòlit modular Python**: no hi ha workers, ni Doc
                      Reporting · Diagnostics · Presentation
 ```
 
-Les fletxes representen imports permesos, no fluxos de dades.
+The arrows represent permitted imports, not data flows.
 
-## Paquets
+## Packages
 
-| Paquet | Responsabilitat | Depèn de |
+| Package | Responsibility | Depends on |
 |---|---|---|
-| `domain/` | Models Pydantic i enums compartits; polítiques constants; heurístiques pures (families, licenses) | — |
-| `hardware/` | Detecció local (psutil, NVML) | `domain/` |
-| `huggingface/` | Client HTTP contra el Hub i parseig d’URLs | `domain/` |
-| `metadata/` | Lectura de headers safetensors i GGUF | `domain/`, `huggingface/` |
-| `estimator/` | Càlcul de memòria, selecció de variant, compatibilitat | `domain/`, `metadata/`, `huggingface/`, `runtime/` |
-| `runtime/` | Recomanació de runtime i runner local de llama.cpp | `domain/`, `execution/` |
-| `artifacts/` | Resolució, descàrrega, emmagatzematge i verificació d’artefactes executables | `domain/`, `huggingface/` |
-| `execution/` | Contractes d’execució i backend host per llançar processos locals | `domain/` |
-| `discovery/` | Consulta al Hub, filtratge, enriquiment, agrupació en sèries | `domain/`, `huggingface/`, `estimator/`, `metadata/` |
-| `recommendation/` | Scoring, ranking, explicacions, capability | `domain/`, `estimator/` |
-| `workflow/` | Orquestrador del guided run (síncron, amb progrés i cancel·lació) | `domain/`, `discovery/`, `recommendation/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/` |
-| `reporting/` | Serialització JSON i Markdown dels resultats | `domain/`, `workflow.state` |
-| `diagnostics/` | Comprovacions d’entorn (Python, xarxa, HF, NVML, cache) | `domain/`, `hardware/` |
-| `advisor/` | Fachada d’aplicació que empaqueta els serveis anteriors | tot el que hi ha per sota |
-| `presentation/` | Renderitzat Rich (taules, panells) | `domain/`, `reporting/` |
-| `cli/` | Subcomandes Typer, entrypoint; `run` també composa el runner local | `advisor/`, `presentation/`, `domain/`, `runtime/`, `execution/` |
-| `tui/` | Pantalles Textual, entrypoint | `advisor/`, `domain/` |
+| `domain/` | Shared Pydantic models and enums; constant policies; pure heuristics (families, licenses) | — |
+| `hardware/` | Local detection (psutil, NVML, Vulkan probe) | `domain/` |
+| `huggingface/` | HTTP client against the Hub and URL parsing | `domain/` |
+| `metadata/` | Reading safetensors and GGUF headers | `domain/`, `huggingface/` |
+| `estimator/` | Memory computation, variant selection, compatibility | `domain/`, `metadata/`, `huggingface/`, `runtime/` |
+| `runtime/` | Runtime recommendation, runtime discovery, capability probes and local runners | `domain/`, `execution/` |
+| `artifacts/` | Resolution, download, storage and verification of executable artifacts | `domain/`, `huggingface/` |
+| `execution/` | Execution contracts and host backend for launching local processes | `domain/` |
+| `execution_plans/` | Logical model identity, artifact variants and concrete execution plans | `domain/`, `discovery/`, `recommendation/`, `workflow/` |
+| `experiments/` | Experiment runner and JSON store for `ExperimentRecord` | `domain/`, `evaluation/`, `runtime/`, `execution/` |
+| `benchmarks/` | Benchmark matrix runner and JSON store for `BenchmarkRecord` | `domain/`, `runtime/`, `execution/` |
+| `evaluation/` | Prediction↔observation and benchmark↔benchmark comparison (pure functions) | `domain/` |
+| `discovery/` | Hub queries, filtering, enrichment, grouping into series | `domain/`, `huggingface/`, `estimator/`, `metadata/` |
+| `recommendation/` | Scoring, ranking, explanations, capability | `domain/`, `estimator/` |
+| `workflow/` | Guided-run orchestrator (synchronous, with progress and cancellation) | `domain/`, `discovery/`, `recommendation/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/` |
+| `reporting/` | JSON and Markdown serialisation of results | `domain/`, `workflow.state` |
+| `diagnostics/` | Environment checks (Python, network, HF, NVML, runtimes, cache) | `domain/`, `hardware/` |
+| `advisor/` | Application facade wrapping all the services above | everything below it |
+| `presentation/` | Rich rendering (tables, panels) | `domain/`, `reporting/` |
+| `cli/` | Typer subcommands, entry point; `run` also composes the local runner | `advisor/`, `presentation/`, `domain/`, `runtime/`, `execution/` |
+| `tui/` | Textual screens, entry point | `advisor/`, `domain/` |
 
-## Regles de dependència (dures)
+## Dependency rules (hard)
 
-1. **`domain/` no importa mai res d’una capa superior.** És el fons de la pila.
-2. **`discovery/` i `recommendation/` no s’importen mútuament.** Els contractes que necessiten compartir (candidats, polítiques, families, licenses) viuen a `domain/`.
-3. **`discovery/` i `recommendation/` no importen `workflow/`.** Reben `UserRequirements` (a `domain/`) i retornen resultats; l’orquestració és responsabilitat de `workflow/`.
-4. **`recommendation/` no importa `presentation/`.** La serialització viu a `reporting/`; el renderitzat Rich viu a `presentation/`; la lògica de ranking no coneix cap dels dos.
-5. **`cli/` i `tui/` no s’importen l’un a l’altre.** L’única fachada compartida és `AdvisorService`.
-6. **`workflow/` pot orquestrar;** `advisor/` és qui la CLI i la TUI toquen — mai construeixen `HfClient()`, `detect_hardware`, `estimate_memory` o `collect_diagnostics` directament.
+1. **`domain/` never imports anything from a higher layer.** It is the bottom of the stack.
+2. **`discovery/` and `recommendation/` do not import each other.** The contracts they need
+   to share (candidates, policies, families, licenses) live in `domain/`.
+3. **`discovery/` and `recommendation/` do not import `workflow/`.** They receive
+   `UserRequirements` (from `domain/`) and return results; orchestration is `workflow/`'s
+   responsibility.
+4. **`recommendation/` does not import `presentation/`.** Serialisation lives in
+   `reporting/`, Rich rendering lives in `presentation/`, and the ranking logic knows about
+   neither.
+5. **`cli/` and `tui/` do not import each other.** The only shared facade is
+   `AdvisorService`.
+6. **`workflow/` may orchestrate;** `advisor/` is what the CLI and the TUI touch — they
+   never construct `HfClient()`, `detect_hardware`, `estimate_memory` or
+   `collect_diagnostics` directly.
 
-Aquestes regles es poden verificar amb `grep`:
+These rules can be verified with `grep`:
 
 ```bash
-# Cap import creuat entre discovery i recommendation
+# No cross-imports between discovery and recommendation
 grep -rn "from jaull.recommendation" src/jaull/discovery/
 grep -rn "from jaull.discovery"      src/jaull/recommendation/
 
-# Ni workflow des de discovery/recommendation
+# Nor workflow from discovery/recommendation
 grep -rn "from jaull.workflow"       src/jaull/discovery/ src/jaull/recommendation/
 
-# Ni presentation des de recommendation
+# Nor presentation from recommendation
 grep -rn "from jaull.presentation"   src/jaull/recommendation/
 
-# Ni cli des de tui
+# Nor cli from tui
 grep -rn "from jaull.cli"            src/jaull/tui/
 ```
 
-Totes aquestes consultes han de retornar zero coincidències.
+All of these queries must return zero matches.
 
 ## `AdvisorService`
 
-`src/jaull/advisor/service.py` conté la fachada que la CLI i les pantalles TUI utilitzen per accedir als serveis d’aplicació. Els seus mètodes cobreixen les operacions principals:
+`src/jaull/advisor/service.py` holds the facade the CLI and the TUI screens use to reach the
+application services. Its methods cover the main operations:
 
-- `scan_hardware(on_progress=None)` — perfil local, opcionalment amb progrés per passes.
-- `diagnostics()` — llista de `DiagnosticResult`.
-- `inspect_model(repo_id)` — anàlisi d’un repositori.
-- `estimate_model(analysis, hardware, inference_cfg, ...)` — estimació de memòria completa.
-- `recommend(answers, hardware=None, on_progress=None, is_cancelled=None)` — guided run end-to-end.
-- `resolve_artifact(repo_id, quantization=None, revision=None)` — tria un fitxer GGUF executable.
-- `download_artifact(artifact)` — baixa l’artefacte al layout local.
-- `verify_artifact(artifact, full=False)` — comprova mida i SHA-256.
-- `run_artifact(artifact=..., prompt=..., runtime=...)` — executa via el runner configurat.
+Analysis and recommendation:
 
-Dues fàbriques:
+- `scan_hardware(on_progress=None)` — local profile, optionally reporting progress per step.
+- `diagnostics()` — a list of `DiagnosticResult`.
+- `inspect_model(repo_id)` — analysis of one repository.
+- `estimate_model(analysis, hardware, inference_cfg, ...)` — full memory estimate.
+- `recommend(answers, hardware=None, on_progress=None, is_cancelled=None)` — end-to-end
+  guided run.
 
-- `AdvisorService.default()` — muntatge de producció (`ServiceContainer.default()`).
-- `AdvisorService.build(hf_client=..., detect_hardware=..., inspect_model=..., estimate_memory=..., collect_diagnostics=...)` — muntatge de test, amb tots els serveis com a callables injectats.
+Artifacts and execution:
 
-Els screens TUI accedeixen a l’advisor via `self.app.advisor`; les funcions CLI l’accepten com a paràmetre opcional (`advisor: AdvisorService | None = None`) i cauen a `AdvisorService.default()` quan no se’n rep cap. `cli/run.py` fa servir l’advisor per resoldre/descarregar/verificar artefactes i instancia el runner local amb les opcions específiques de CLI (`--llama-cli`, `--timeout-seconds`, `--ctx-size`, `--n-gpu-layers`).
+- `resolve_artifact(repo_id, quantization=None, revision=None)` — pick an executable GGUF file.
+- `download_artifact(artifact)` — download the artifact into the local layout.
+- `verify_artifact(artifact, full=False)` — check size and SHA-256.
+- `run_artifact(artifact=..., prompt=..., runtime=...)` — execute through the configured runner.
 
-## Artefactes i execució local
+Execution plans:
 
-El camí `run` és deliberadament separat de l’estimador i del workflow guiat:
+- `resolve_model_identity(recommendation)` — the logical model behind a recommendation.
+- `discover_artifact_variants(recommendation=..., ...)` — the artifacts that represent it.
+- `execution_plans_for_recommendation(recommendation, ...)` — one plan per viable variant.
+- `prepare_execution_plan(plan, ...)` — inspect, estimate, resolve/download/verify the
+  artifact, select a backend and evaluate readiness.
+
+Runtimes and readiness:
+
+- `select_runtime_backend(hardware=None)` — preferred compute backend, with its reason.
+- `inspect_llama_cpp_runtime(...)` / `inspect_pytorch_runtime()` — observed capabilities.
+- `evaluate_execution_readiness(...)` / `evaluate_pytorch_execution_readiness(...)` —
+  preflight decision.
+
+Evidence:
+
+- `run_experiment(request)` / `build_experiment_record(...)` — run and record an experiment.
+- `save_experiment_record`, `load_experiment_record`, `list_experiment_ids` — the store.
+- `run_benchmark(...)` / `run_benchmark_matrix(...)` — measure one or several configurations.
+- `save_benchmark_record`, `load_benchmark_record`, `list_benchmark_ids`,
+  `benchmark_records_for_model(...)` — the store.
+- `compare_benchmarks(...)` / `compare_saved_benchmarks_for_recommendation(...)` — compare
+  benchmarks as complete execution plans.
+
+Two factories:
+
+- `AdvisorService.default()` — production wiring (`ServiceContainer.default()`).
+- `AdvisorService.build(hf_client=..., detect_hardware=..., inspect_model=...,
+  estimate_memory=..., collect_diagnostics=...)` — test wiring, with every service injected
+  as a callable.
+
+TUI screens reach the advisor through `self.app.advisor`; CLI functions accept it as an
+optional parameter (`advisor: AdvisorService | None = None`) and fall back to
+`AdvisorService.default()` when none is passed. `cli/run.py` uses the advisor to
+resolve/download/verify artifacts and instantiates the local runner with the CLI-specific
+options (`--llama-cli`, `--timeout-seconds`, `--ctx-size`, `--n-gpu-layers`).
+
+## Artifacts and local execution
+
+The `run` path is deliberately kept separate from the estimator and from the guided
+workflow:
 
 ```text
 cli/run.py
    ├── normalize_repo_id()
    ├── AdvisorService.resolve_artifact()
-   ├── AdvisorService.download_artifact()   # només si falta el fitxer
+   ├── AdvisorService.download_artifact()   # only if the file is missing
    ├── AdvisorService.verify_artifact()
    └── LlamaCppRunner(HostExecutionBackend).run()
 ```
 
-`artifacts/` tradueix un repositori abstracte a un `ModelArtifact` concret i verificat. En aquesta fase només accepta GGUF single-file; repositoris Transformers i GGUF multipart es rebutgen amb errors específics.
+`artifacts/` translates an abstract repository into a concrete, verified `ModelArtifact`. In
+this phase it only accepts single-file GGUF; Transformers repositories and multipart GGUF
+are rejected with specific errors.
 
-`execution/` no coneix Hugging Face ni models: només rep una `ExecutionRequest` immutable i retorna un `ExecutionResult`. Aquest resultat conté stdout/stderr i una `ExecutionObservation`, que és la font de veritat sobre què ha passat realment durant el procés: durada, exit status, peak RSS del procés principal i peak VRAM atribuïda via NVML quan és possible. Això permet provar el runner sense invocar cap binari real i manté separades predicció (`MemoryEstimate`) i observació.
+`execution/` knows nothing about Hugging Face or about models: it receives an immutable
+`ExecutionRequest` and returns an `ExecutionResult`. That result holds stdout/stderr and an
+`ExecutionObservation`, which is the source of truth about what actually happened during the
+process: duration, exit status, peak RSS of the main process, and peak VRAM attributed via
+NVML when possible. This makes it possible to test the runner without invoking any real
+binary, and keeps prediction (`MemoryEstimate`) and observation separate.
 
-`runtime/llama_cpp_runner.py` valida que l’artefacte sigui GGUF, descarregat, verificat i present en disc abans de construir el comandament `llama-cli --single-turn`.
+`runtime/llama_cpp_runner.py` validates that the artifact is GGUF, downloaded, verified and
+present on disk before building the `llama-cli --single-turn` command.
 
 ## Prediction validation
 
-`jaull.evaluation.comparison.compare_prediction` compara una predicció de Jaull
-amb una execució real ja observada:
+`jaull.evaluation.comparison.compare_prediction` compares a Jaull prediction against an
+execution that has already been observed:
 
 ```text
 MemoryEstimate + ExecutionObservation -> PredictionComparison
 ```
 
-La comparació no modifica l'estimador ni calibra fórmules. `MemoryEstimate`
-continua representant la predicció, `ExecutionObservation` continua representant
-la realitat mesurada i `PredictionComparison` és una tercera peça derivada.
+The comparison does not modify the estimator and does not calibrate any formula.
+`MemoryEstimate` still represents the prediction, `ExecutionObservation` still represents
+measured reality, and `PredictionComparison` is a third, derived piece.
 
-La convenció d'error és única:
+There is a single error convention:
 
 ```text
 error_bytes = measured_bytes - predicted_bytes
 error_percent = (measured_bytes - predicted_bytes) / predicted_bytes * 100
 ```
 
-Un error positiu significa que Jaull ha infraestimat el consum real. Un error
-negatiu significa que Jaull ha sobreestimat el consum real.
+A positive error means Jaull underestimated real consumption. A negative error means Jaull
+overestimated it.
 
-La comparació RAM només es calcula quan la configuració executada és CPU-only o
-no offload. En aquest cas la predicció comparable és la suma dels components que
-representen consum de procés (`weights + kv_cache + runtime_overhead`), excloent
-`device_reserve` i `safety_margin`, perquè aquests últims són polítiques de
-capacitat i no RSS observat. Quan el runtime usa GPU offload, Jaull encara no
-conserva un breakdown host/device; per tant `ram.predicted_bytes` queda `null` i
-la comparació es marca com `methodologically_unavailable`.
+The RAM comparison is only computed when the executed configuration is CPU-only or without
+offload. In that case the comparable prediction is the sum of the components that represent
+process consumption (`weights + kv_cache + runtime_overhead`), excluding `device_reserve`
+and `safety_margin`, because those last two are capacity policy and not observed RSS. When
+the runtime uses GPU offload, Jaull does not yet keep a host/device breakdown, so
+`ram.predicted_bytes` stays `null` and the comparison is marked
+`methodologically_unavailable`.
 
-La comparació VRAM també queda `methodologically_unavailable` en aquesta fase:
-el model d'estimació actual no conserva VRAM atribuïda al PID/configuració
-executada. Si NVML no exposa memòria de procés, `peak_vram_bytes = null` no es
-tracta com zero.
+The VRAM comparison is also `methodologically_unavailable` in this phase: the current
+estimation model does not retain VRAM attributed to the executed PID and configuration. If
+NVML exposes no process memory, `peak_vram_bytes = null` is not treated as zero.
 
-## Composició de dependències
+## Dependency composition
 
-`workflow/container.py::ServiceContainer` continua sent el contenidor de serveis que fa servir el `workflow` per parametritzar HTTP client, capability analyzer, range client factory, etc. L’`AdvisorService` **el conté**, no el substitueix — d’aquesta manera els tests que abans construïen un `ServiceContainer` de mentida per exercir el guided run segueixen funcionant sense canvis, i els que ara construeixen un `AdvisorService` de test poden usar `AdvisorService.build(...)`.
+`workflow/container.py::ServiceContainer` remains the service container the `workflow` uses
+to parameterise the HTTP client, capability analyzer, range client factory, and so on.
+`AdvisorService` **contains** it rather than replacing it — that way tests which used to
+build a fake `ServiceContainer` to exercise the guided run keep working unchanged, and tests
+which now build a test `AdvisorService` can use `AdvisorService.build(...)`.
 
-## Reporting i serialització
+## Reporting and serialisation
 
-`jaull.reporting.estimation.estimate_to_json_dict` és el **únic** productor de la representació JSON d’una `MemoryEstimate`. `presentation/estimation_report.py` la re-exporta per compatibilitat, però ja no en conté una còpia.
+`jaull.reporting.estimation.estimate_to_json_dict` is the **only** producer of the JSON
+representation of a `MemoryEstimate`. `presentation/estimation_report.py` re-exports it for
+compatibility but no longer holds a copy.
 
-`jaull.reporting.recommendation.report_to_json`/`report_to_markdown` són les úniques funcions que construeixen l’informe complet del guided run. `recommendation/report.py` només és un shim de compatibilitat que re-exporta d’allà.
+`jaull.reporting.recommendation.report_to_json` / `report_to_markdown` are the only functions
+that build the complete guided-run report. `recommendation/report.py` is only a
+compatibility shim that re-exports from there.
 
-Els contractes de compatibilitat són **byte-idèntics**: `tests/test_reporting_regression.py` compara la sortida JSON i Markdown contra `tests/snapshots/report.json` i `tests/snapshots/report.md`. Qualsevol canvi que trenqui la igualtat byte a byte ha d’actualitzar `REPORT_SCHEMA_VERSION` explícitament.
+The compatibility contracts are **byte-identical**: `tests/test_reporting_regression.py`
+compares the JSON and Markdown output against `tests/snapshots/report.json` and
+`tests/snapshots/report.md`. Any change that breaks byte-for-byte equality must bump
+`REPORT_SCHEMA_VERSION` explicitly.
 
-## Convencions
+## Conventions
 
-- **Sense excepció `Exception` nua.** Sempre atrapem un tipus específic de `jaull.exceptions` o d’una llibreria concreta (`OSError`, `ImportError`, …).
-- **Python 3.12+**: `X | None`, `list[str]`, `type` genèric, sense `Union`/`Optional` de `typing`.
-- **Pydantic v2 frozen models** a `domain/`. Cap classe muta l’estat després de la construcció.
-- **Sense singletons globals mutables**: el contenidor de serveis i l’advisor es construeixen al punt d’entrada i s’injecten cap avall.
+- **No bare `except Exception`.** Always catch a specific type from `jaull.exceptions` or
+  from a concrete library (`OSError`, `ImportError`, …).
+- **Python 3.12+**: `X | None`, `list[str]`, generic `type`, no `Union`/`Optional` from
+  `typing`.
+- **Frozen Pydantic v2 models** in `domain/`. No class mutates its state after construction.
+- **No mutable global singletons**: the service container and the advisor are built at the
+  entry point and injected downwards.
 
-## Treball pendent (fora d’aquest cicle)
+## Pending work (outside this cycle)
 
 - Docker / Docker Compose.
-- Streaming de descàrrega i progrés byte-level per a artefactes grans.
-- Benchmarks reals del camí `run` (tokens/s, latència de primer token).
-- HTTP intern entre `Advisor` i un `Executor` remot.
-- Capturas de `docs/assets/tui-*.png` amb el nom nou (es regeneraran quan la TUI s’estabilitzi).
+- Download streaming and byte-level progress for large artifacts.
+- Explicit workload/SLO model (minimum throughput, TTFT, latency).
+- Concurrent load experiments and capacity curves.
+- Deployment qualification verdict and reproducible manifest (`jaull.lock`).
+- Internal HTTP between `Advisor` and a remote `Executor`.

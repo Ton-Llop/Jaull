@@ -1,7 +1,7 @@
 [project]
 name = "jaull"
 version = "0.1.0"
-description = "Analyze local hardware and Hugging Face model repositories to decide what fits where."
+description = "Evidence-driven qualification and validation of local LLM deployments."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -35,6 +35,11 @@ dev = [
     "mypy>=1.10",
     "types-psutil>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Ton-Llop/Jaull"
+Repository = "https://github.com/Ton-Llop/Jaull"
+Issues = "https://github.com/Ton-Llop/Jaull/issues"
 
 [project.scripts]
 jaull = "jaull.cli.app:app"
