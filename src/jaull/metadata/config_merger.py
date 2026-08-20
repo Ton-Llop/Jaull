@@ -130,6 +130,10 @@ def merge(
     if vocab is not None:
         sources["vocab_size"] = ConfigurationSource.BASE_MODEL_CONFIG
 
+    quantization_config = base.quantization_config if base else None
+    if quantization_config is not None:
+        sources["quantization_config"] = ConfigurationSource.BASE_MODEL_CONFIG
+
     raw_flags = dict(base.raw_flags) if base else {}
 
     config = ModelConfig(
@@ -147,6 +151,7 @@ def merge(
         rope_scaling=rope_scaling,
         tie_word_embeddings=tie_wte,
         vocab_size=vocab,
+        quantization_config=quantization_config,
         raw_flags=raw_flags,
     )
 

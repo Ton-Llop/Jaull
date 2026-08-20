@@ -55,6 +55,7 @@ from jaull.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
+from jaull.domain.parameters import ParameterCountSource
 from jaull.domain.requirements import (
     CommercialUse,
     ConcurrencyLevel,
@@ -527,12 +528,14 @@ def test_no_vram_warnings_on_cpu_only(evaluated_bundle) -> None:  # type: ignore
             )
 
 
-def test_parameter_count_uses_safetensors_when_available(evaluated_bundle) -> None:  # type: ignore[no-untyped-def]
+def test_awq_parameter_count_does_not_trust_packed_safetensors(evaluated_bundle) -> None:  # type: ignore[no-untyped-def]
     evaluated, _ = evaluated_bundle
     awq = next(e for e in evaluated if "AWQ" in e.repo_id)
     assert awq.parameter_count_info is not None
-    assert awq.parameter_count_info.count == 7_615_616_512
-    assert awq.parameter_count_info.confidence is EstimationConfidence.HIGH
+    assert awq.parameter_count_info.count is not None
+    assert awq.parameter_count_info.count > 7_000_000_000
+    assert awq.parameter_count_info.source is not ParameterCountSource.SAFETENSORS_METADATA
+    assert awq.parameter_count_info.confidence is not EstimationConfidence.HIGH
 
 
 def test_series_grouping_isolates_coder(evaluated_bundle) -> None:  # type: ignore[no-untyped-def]

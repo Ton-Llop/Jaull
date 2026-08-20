@@ -102,6 +102,8 @@ def _assessment_signature(plan: RankedPlan) -> tuple[object, ...]:
     assessment = plan.assessment
     return (
         assessment.suitability,
+        assessment.capability,
+        assessment.execution_fitness,
         assessment.feasibility,
         assessment.executability,
         assessment.performance_evidence,

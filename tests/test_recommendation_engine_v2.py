@@ -270,6 +270,48 @@ def test_local_benchmark_requires_compatible_fingerprint_and_machine() -> None:
     assert assessment.measured_generation_tokens_per_second == 55.0
 
 
+def test_local_evidence_matches_when_only_available_memory_changes() -> None:
+    scanned = hardware()
+    recorded = scanned.model_copy(
+        update={
+            "memory": scanned.memory.model_copy(
+                update={"available_bytes": scanned.memory.available_bytes // 2}
+            )
+        }
+    )
+    evaluated = _evaluated_gguf()
+    req = _requirements()
+    plan = generate_execution_plans(
+        evaluated,
+        req,
+        context=PlanRankingContext(hardware=scanned),
+    )[0]
+    benchmark = _benchmark_record(
+        plan.artifact.to_model_artifact(),
+        plan.runtime,
+        machine=recorded,
+        tps=55.0,
+    )
+    experiment = _experiment_record(
+        plan.artifact.to_model_artifact(),
+        plan.runtime,
+    ).model_copy(update={"hardware": recorded})
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        req,
+        context=PlanRankingContext(
+            hardware=scanned,
+            benchmark_records=[benchmark],
+            experiment_records=[experiment],
+        ),
+    )
+
+    assert assessment.local_benchmark_id == benchmark.identity.benchmark_id
+    assert assessment.local_experiment_id == experiment.identity.experiment_id
+
+
 def test_advisor_plan_context_loads_local_evidence(tmp_path: Path) -> None:
     evaluated = _evaluated_gguf()
     req = _requirements()
@@ -397,6 +439,108 @@ def test_q4_and_q5_are_different_plans_and_priority_changes_policy() -> None:
     assert quality[0].plan.artifact.quantization != speed[0].plan.artifact.quantization
     assert quality[0].plan.artifact.quantization == "Q6_K"
     assert speed[0].plan.artifact.quantization == "Q4_K_M"
+
+
+def test_balanced_does_not_reward_extra_headroom_over_capability() -> None:
+    lightweight = _evaluated_gguf(
+        repo_id="org/Smol-135M-Instruct-GGUF",
+        total_bytes=1 * GIB,
+    )
+    balanced = _evaluated_gguf(
+        repo_id="org/Useful-1.5B-Instruct-GGUF",
+        total_bytes=3 * GIB,
+    )
+    larger = _evaluated_gguf(
+        repo_id="org/Useful-3B-Instruct-GGUF",
+        total_bytes=5 * GIB,
+    )
+
+    ranked = rank_execution_plans(
+        [lightweight, balanced, larger],
+        _requirements(RecommendationPriority.BALANCED, use_case=UseCase.GENERAL_CHAT),
+    )
+
+    assert ranked[0].evaluated.repo_id != lightweight.repo_id
+    assert ranked[0].assessment.capability in {
+        AssessmentLevel.STRONG,
+        AssessmentLevel.ADEQUATE,
+    }
+    lightweight_assessment = next(
+        item.assessment for item in ranked if item.evaluated.repo_id == lightweight.repo_id
+    )
+    assert lightweight_assessment.feasibility is AssessmentLevel.STRONG
+    assert "capability:lightweight_model" in lightweight_assessment.trade_offs
+
+
+def test_speed_can_still_promote_lightweight_models_without_benchmark_evidence() -> None:
+    lightweight = _evaluated_gguf(
+        repo_id="org/Smol-135M-Instruct-GGUF",
+        total_bytes=1 * GIB,
+    )
+    balanced = _evaluated_gguf(
+        repo_id="org/Useful-1.5B-Instruct-GGUF",
+        total_bytes=3 * GIB,
+    )
+
+    ranked = rank_execution_plans(
+        [balanced, lightweight],
+        _requirements(RecommendationPriority.SPEED, use_case=UseCase.GENERAL_CHAT),
+    )
+
+    assert ranked[0].evaluated.repo_id == lightweight.repo_id
+
+
+def test_instruction_tuned_evidence_improves_assistant_suitability() -> None:
+    instruct = _evaluated_gguf(
+        repo_id="org/Assistant-1.5B-Instruct-GGUF",
+        tags=["text-generation", "instruct", "gguf"],
+    )
+    base = _evaluated_gguf(
+        repo_id="org/Plain-1.5B-Base-GGUF",
+        tags=["text-generation", "base", "gguf"],
+    )
+    req = _requirements(RecommendationPriority.BALANCED, use_case=UseCase.GENERAL_CHAT)
+
+    instruct_assessment = assess_plan(
+        instruct,
+        generate_execution_plans(instruct, req)[0],
+        req,
+    )
+    base_assessment = assess_plan(
+        base,
+        generate_execution_plans(base, req)[0],
+        req,
+    )
+
+    assert instruct_assessment.suitability is AssessmentLevel.ADEQUATE
+    assert base_assessment.suitability is AssessmentLevel.WEAK
+    assert "capability:instruction_tuned" in instruct_assessment.reasons
+    assert "capability:base_model" in base_assessment.trade_offs
+
+
+def test_general_chat_suitability_accepts_conversational_evidence() -> None:
+    req = _requirements(RecommendationPriority.BALANCED, use_case=UseCase.GENERAL_CHAT)
+    chat = _assessment_for_tags("org/Model-3B", ["text-generation", "chat"], req)
+    assistant = _assessment_for_tags(
+        "org/Model-3B",
+        ["text-generation", "assistant"],
+        req,
+    )
+    conversational = _assessment_for_tags(
+        "org/Model-3B",
+        ["text-generation", "conversational"],
+        req,
+    )
+    instruct_only = _assessment_for_tags(
+        "org/Model-3B-Instruct",
+        ["text-generation", "instruct"],
+        req,
+    )
+
+    assert chat.suitability is AssessmentLevel.STRONG
+    assert assistant.suitability is AssessmentLevel.STRONG
+    assert conversational.suitability is AssessmentLevel.STRONG
+    assert instruct_only.suitability is AssessmentLevel.ADEQUATE
 
 
 def test_transformers_and_llama_cpp_plans_can_coexist() -> None:
@@ -593,6 +737,7 @@ def _evaluated_gguf(
     languages: list[str] | None = None,
     tags: list[str] | None = None,
     metadata_confidence: EstimationConfidence = EstimationConfidence.HIGH,
+    total_bytes: int = 5 * GIB,
 ) -> EvaluatedCandidate:
     req = _requirements(priority)
     analysis = gguf_analysis(repo_id=repo_id)
@@ -601,7 +746,7 @@ def _evaluated_gguf(
     estimate = memory_estimate(
         analysis,
         choice,
-        total_bytes=5 * GIB,
+        total_bytes=total_bytes,
         status=status,
         confidence=EstimationConfidence.HIGH,
     ).model_copy(
@@ -658,6 +803,13 @@ def _evaluated_transformers(
         compatibility=estimate.assessment,
     )
     return scoring.score_candidate(evaluated, req, 1.0, capability_signal=0.8)
+
+
+def _assessment_for_tags(repo_id: str, tags: list[str], req):
+    evaluated = _evaluated_gguf(repo_id=repo_id, tags=tags).model_copy(
+        update={"task_match_score": 0.75}
+    )
+    return assess_plan(evaluated, generate_execution_plans(evaluated, req)[0], req)
 
 
 def _select(analysis, req, estimator):

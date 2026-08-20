@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.hardware import (
@@ -164,6 +166,44 @@ def test_transformers_int8_offloading_required() -> None:
         client=client,
     )
     assert est.assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED
+
+
+@pytest.mark.parametrize("method", ["awq", "gptq"])
+def test_packed_quantized_transformers_uses_file_size_not_safetensors_summary(
+    method: str,
+) -> None:
+    config = ModelConfig(
+        num_hidden_layers=28,
+        num_attention_heads=28,
+        num_key_value_heads=4,
+        hidden_size=3584,
+        quantization_config={"quant_method": method, "bits": 4},
+    )
+    analysis = _transformers_analysis(config)
+    cfg = InferenceConfiguration(
+        context_length=4096,
+        target_device=TargetDevice.AUTO,
+        precision=WeightPrecision.INT4,
+    )
+    client = _FakeClient(
+        summaries={
+            "user/tf": SafetensorsSummary(
+                total_parameters=1_960_000_000,
+                parameters_by_dtype={"I4": 1_960_000_000},
+            )
+        }
+    )
+
+    est = service.estimate_memory(
+        analysis=analysis,
+        hardware=_hardware(ram=32 * GIB, vram=12 * GIB),
+        inference_cfg=cfg,
+        client=client,
+    )
+
+    assert est.weights.component.bytes == int(7.6 * GIB)
+    assert est.weights.num_parameters is None
+    assert any("Packed quantized safetensors metadata ignored" in item for item in est.warnings)
 
 
 def test_transformers_float16_cpu_only_when_no_gpu() -> None:

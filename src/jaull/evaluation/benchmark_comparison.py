@@ -12,6 +12,7 @@ from jaull.domain.benchmarks import (
 from jaull.domain.execution_plans import ModelIdentity
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import LlamaCppRuntimeCapability, PyTorchRuntimeCapability
+from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 
 _PREFERRED_METHODOLOGY_BY_RUNTIME = {
     "llama.cpp": "llama_bench_v1",
@@ -240,8 +241,8 @@ def _plan_summary(
 def _same_machine(records: list[BenchmarkRecord]) -> bool:
     if not records:
         return False
-    first = _machine_fingerprint(records[0].hardware)
-    return all(_machine_fingerprint(record.hardware) == first for record in records)
+    first = machine_fingerprint(records[0].hardware)
+    return all(machine_fingerprint(record.hardware) == first for record in records)
 
 
 def _configuration_key(
@@ -250,7 +251,7 @@ def _configuration_key(
     include_methodology: bool = True,
 ) -> tuple[str, ...]:
     values = [
-        *_machine_fingerprint(record.hardware),
+        *machine_fingerprint(record.hardware),
         record.artifact.repo_id,
         record.artifact.revision or "",
         record.artifact.filename,
@@ -270,42 +271,6 @@ def _configuration_key(
     if include_methodology:
         values.append(record.observation.methodology or "")
     return tuple(values)
-
-
-def _machine_fingerprint(hardware: HardwareProfile) -> tuple[str, ...]:
-    gpus = tuple(
-        sorted(f"{gpu.name}:{gpu.vram_total_bytes}" for gpu in hardware.gpus)
-    )
-    accelerators = tuple(
-        sorted(
-            ":".join(
-                [
-                    accelerator.name,
-                    accelerator.vendor.value,
-                    accelerator.type.value,
-                    accelerator.vendor_id or "",
-                    accelerator.device_id or "",
-                    accelerator.pci_bus_id or "",
-                    accelerator.uuid or "",
-                    str(accelerator.dedicated_memory_bytes or ""),
-                    str(accelerator.shared_memory),
-                ]
-            )
-            for accelerator in hardware.accelerators
-        )
-    )
-    return (
-        hardware.os,
-        hardware.os_version or "",
-        hardware.arch,
-        hardware.cpu.model or "",
-        str(hardware.cpu.physical_cores or ""),
-        str(hardware.cpu.logical_cores or ""),
-        str(hardware.memory.total_bytes),
-        *gpus,
-        *accelerators,
-    )
-
 
 def _runtime_version(record: BenchmarkRecord) -> str | None:
     if record.llama_bench_capability is not None:

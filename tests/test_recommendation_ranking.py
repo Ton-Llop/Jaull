@@ -124,6 +124,20 @@ def test_task_match_penalises_a_clearly_different_target() -> None:
     assert scoring.task_match(chat, req) > scoring.task_match(coder, req)  # type: ignore[arg-type]
 
 
+def test_task_match_uses_tokenized_signals_not_substrings() -> None:
+    req = _req(use_case=UseCase.GENERAL_CHAT)
+    accidental = candidate(
+        repo_id="org/Litigator-7B",
+        tags=["text-generation", "utility"],
+    )
+    explicit = candidate(
+        repo_id="org/Chat-7B",
+        tags=["text-generation", "chat"],
+    )
+
+    assert scoring.task_match(explicit, req) > scoring.task_match(accidental, req)  # type: ignore[arg-type]
+
+
 def test_language_match_rewards_declared_languages() -> None:
     req = _req(languages=["Spanish", "English"])
     both = candidate(languages=["es", "en"])

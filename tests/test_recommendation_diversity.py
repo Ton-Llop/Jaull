@@ -231,6 +231,26 @@ def test_diversity_does_not_promote_clearly_worse_candidate() -> None:
     assert diversified[1].primary.plan.model_identity.family == "qwen"
 
 
+def test_diversity_does_not_promote_adequate_capability_over_strong() -> None:
+    ranked = _ranked_with_identities(
+        ("qwen", "Qwen-A", 3_000_000_000),
+        ("qwen", "Qwen-7B", 7_000_000_000),
+        ("tinyllama", "TinyLlama", 1_100_000_000),
+    )
+    weaker_tiny = ranked[2].assessment.model_copy(
+        update={"capability": AssessmentLevel.ADEQUATE}
+    )
+    ranked[2] = RankedPlan(
+        evaluated=ranked[2].evaluated,
+        plan=ranked[2].plan,
+        assessment=weaker_tiny,
+    )
+
+    diversified = diversify_ranked_plans(ranked, limit=3)
+
+    assert diversified[1].primary.plan.model_identity.family == "qwen"
+
+
 def test_multiple_models_from_same_family_are_allowed() -> None:
     ranked = _ranked_with_identities(
         ("qwen", "Qwen-A", 1_500_000_000),

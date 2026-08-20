@@ -105,7 +105,9 @@ class PlanAssessment(BaseModel):
 
     plan_id: str
     hard_constraints: list[HardConstraint] = Field(default_factory=list)
+    capability: AssessmentLevel = AssessmentLevel.UNKNOWN
     suitability: AssessmentLevel = AssessmentLevel.UNKNOWN
+    execution_fitness: AssessmentLevel = AssessmentLevel.UNKNOWN
     feasibility: AssessmentLevel = AssessmentLevel.UNKNOWN
     executability: AssessmentLevel = AssessmentLevel.UNKNOWN
     performance_evidence: AssessmentLevel = AssessmentLevel.UNKNOWN

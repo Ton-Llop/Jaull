@@ -92,6 +92,9 @@ hf_token.txt
 .claude/
 .codex/
 .agents/
+.shared-memory/
+/AGENTS.md
+/CLAUDE.md
 
 # =====================================================================
 # IDEs y editores

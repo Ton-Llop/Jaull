@@ -77,6 +77,34 @@ def test_transformers_repo_resolves_model_identity() -> None:
     assert identity.evidence
 
 
+def test_derived_instruct_repo_does_not_collapse_to_base_model_identity() -> None:
+    candidate_ = candidate(
+        "Qwen/Qwen2.5-3B-Instruct",
+        base_model="Qwen/Qwen2.5-3B",
+    )
+    analysis = transformers_analysis("Qwen/Qwen2.5-3B-Instruct")
+
+    identity = resolve_model_identity(candidate=candidate_, analysis=analysis)
+
+    assert identity.canonical_repo_id == "Qwen/Qwen2.5-3B-Instruct"
+    assert identity.model_name == "Qwen2.5-3B-Instruct"
+    assert identity.variant == "instruct"
+
+
+def test_artifact_wrapper_repo_uses_base_model_as_logical_identity() -> None:
+    candidate_ = candidate(
+        "someone/Qwen2.5-3B-Instruct-GGUF",
+        base_model="Qwen/Qwen2.5-3B-Instruct",
+        tags=["gguf"],
+    ).model_copy(update={"repository_type": RepositoryType.GGUF})
+    analysis = gguf_analysis("someone/Qwen2.5-3B-Instruct-GGUF")
+
+    identity = resolve_model_identity(candidate=candidate_, analysis=analysis)
+
+    assert identity.canonical_repo_id == "Qwen/Qwen2.5-3B-Instruct"
+    assert identity.model_name == "Qwen2.5-3B-Instruct"
+
+
 def test_gguf_repo_matches_base_model_metadata() -> None:
     source = _transformers_recommendation()
     identity = resolve_model_identity(

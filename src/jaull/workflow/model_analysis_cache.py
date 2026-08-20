@@ -20,7 +20,7 @@ from jaull.paths import user_cache_dir
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_CACHE_SCHEMA_VERSION = 1
+ANALYSIS_CACHE_SCHEMA_VERSION = 2
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
 
