@@ -82,7 +82,7 @@ guided workflow. It is allowed to know concrete adapters and construct them.
 
 Presentation modules render already-computed semantics. TUI screens must not
 import Hugging Face adapters directly. Pure model-reference parsing lives in
-`domain.model_reference`; `huggingface.url_parser` remains as an import
+`application.model_reference`; `huggingface.url_parser` remains as an import
 compatibility shim.
 
 ## Recommendation Pipeline

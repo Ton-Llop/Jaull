@@ -3,6 +3,8 @@
 This document describes **the layers** the project is organised into and **the dependency
 rules** between them. `docs/Workflow.md` explains *what* the pipeline does; this document
 explains *how it is assembled* and why the boundaries are where they are.
+[ARCHITECTURE.md](../ARCHITECTURE.md) at the repository root is the condensed version of the
+same contract.
 
 Jaull is still a **modular Python monolith** today: no network workers, no Docker, no remote
 executor. Guided recommendation remains metadata-only, but explicit local execution paths
@@ -16,75 +18,120 @@ added without dragging cycles behind them.
 ## Layer diagram
 
 ```
-                     ┌──── CLI ────┐         ┌──── TUI ────┐
-                     └──────┬──────┘         └──────┬──────┘
-                            └─────── AdvisorService ─────────┐
-                                     │                       │
-                    Workflow (guided orchestrator) ──────────┤
-                                     │                       │
-             ┌─────── Discovery ─────┼─── Recommendation ────┤
-             │            (share contracts through)           │
-             └────────────────── Domain  ────────────────────┘
-                                     ▲
-       Estimator · Metadata · HuggingFace · Hardware · Runtime · Artifacts · Execution
-                                     ▲
-                     Reporting · Diagnostics · Presentation
+   ┌──── CLI ────┐                        ┌──── TUI ────┐
+   └──────┬──────┘                        └──────┬──────┘
+          └────────────  AdvisorService  ────────┘
+                               │
+                      ┌────────┴────────┐
+                      │   Application   │   application/  use cases
+                      │                 │   workflow/     guided orchestrator
+                      └────────┬────────┘
+                               │
+              Discovery ───────┼─────── Recommendation
+                               │   (they share contracts through Domain)
+                     ┌─────────┴─────────┐
+                     │  Domain · Ports   │
+                     └─────────┬─────────┘
+                               ▲
+        Adapters and infrastructure, composed by bootstrap/:
+        adapters/ · huggingface/ · analyzers/ · metadata/ · hardware/ ·
+        estimator/ · runtime/ · execution/ · artifacts/ · experiments/ ·
+        benchmarks/ · evaluation/ · observability/
+                               ▲
+        Rendering over already-computed semantics:
+        reporting/ · presentation/ · diagnostics/
 ```
 
 The arrows represent permitted imports, not data flows.
 
+`workflow/` is no longer the centre of orchestration it once was. It contributes the
+guided-run orchestrator and the progress/state DTOs that describe a run; the use cases it
+used to own — requirements normalisation, recommendation policy, budgets, telemetry,
+variant discovery and container wiring — now live in `application/`, `observability/` and
+`bootstrap/`. The old module paths survive only as import shims. `execution_plans/` was
+narrowed the same way: it keeps logical model identity and pure `ExecutionPlan`
+construction, and everything that needs recommendation DTOs, Hub search or caching moved to
+`application/`.
+
 ## Packages
+
+`exceptions.py` and `paths.py` are leaf modules used almost everywhere and are omitted from
+the table. A handful of packages also import a compatibility shim, which adds a few edges to
+the real import graph that the intended design would not have; the rules that are actually
+enforced are listed under [Dependency rules](#dependency-rules-hard).
 
 | Package | Responsibility | Depends on |
 |---|---|---|
-| `domain/` | Shared Pydantic models and enums; constant policies; pure heuristics (families, licenses) | — |
+| `domain/` | Frozen Pydantic models and enums; constant policies; pure heuristics (families, licenses) | — |
+| `ports/` | Boundary protocols, only where infrastructure is genuinely replaceable (`ModelAnalysisCacheProtocol`) | `domain/` |
+| `adapters/` | Concrete implementations of those ports (the persistent model-analysis cache) | `domain/`, `ports/` |
+| `application/` | Use cases: requirements normalisation, model-reference parsing, artifact-variant discovery, recommendation service, budgets and policies, execution-plan assembly | `domain/`, `ports/`, `discovery/`, `recommendation/`, `execution_plans/`, `observability/` |
+| `bootstrap/` | Production composition root; builds the concrete services into a `ServiceContainer` | `adapters/`, `ports/`, `domain/`, `discovery/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/`, `recommendation/` |
+| `observability/` | Performance telemetry for long-running stages | — |
 | `hardware/` | Local detection (psutil, NVML, Vulkan probe) | `domain/` |
-| `huggingface/` | HTTP client against the Hub and URL parsing | `domain/` |
-| `metadata/` | Reading safetensors and GGUF headers | `domain/`, `huggingface/` |
-| `estimator/` | Memory computation, variant selection, compatibility | `domain/`, `metadata/`, `huggingface/`, `runtime/` |
+| `huggingface/` | HTTP client against the Hub, repository classification, artifact resolution | `domain/`, `analyzers/`, `estimator/`, `artifacts/` |
+| `analyzers/` | Per-repository-type analyzers behind a Protocol | `domain/`, `huggingface/` |
+| `metadata/` | Reading safetensors and GGUF headers | `domain/`, `analyzers/`, `huggingface/` |
+| `estimator/` | Memory computation, variant selection, compatibility | `domain/`, `metadata/`, `huggingface/`, `runtime/`, `recommendation/` |
 | `runtime/` | Runtime recommendation, runtime discovery, capability probes and local runners | `domain/`, `execution/` |
 | `artifacts/` | Resolution, download, storage and verification of executable artifacts | `domain/`, `huggingface/` |
-| `execution/` | Execution contracts and host backend for launching local processes | `domain/` |
-| `execution_plans/` | Logical model identity, artifact variants and concrete execution plans | `domain/`, `discovery/`, `recommendation/`, `workflow/` |
+| `execution/` | Execution contracts and host backend for launching local processes | `domain/`, `hardware/` |
+| `execution_plans/` | Logical model identity and pure `ExecutionPlan` construction | `domain/` |
 | `experiments/` | Experiment runner and JSON store for `ExperimentRecord` | `domain/`, `evaluation/`, `runtime/`, `execution/` |
 | `benchmarks/` | Benchmark matrix runner and JSON store for `BenchmarkRecord` | `domain/`, `runtime/`, `execution/` |
 | `evaluation/` | Prediction↔observation and benchmark↔benchmark comparison (pure functions) | `domain/` |
-| `discovery/` | Hub queries, filtering, enrichment, grouping into series | `domain/`, `huggingface/`, `estimator/`, `metadata/` |
-| `recommendation/` | Scoring, ranking, explanations, capability | `domain/`, `estimator/` |
-| `workflow/` | Guided-run orchestrator (synchronous, with progress and cancellation) | `domain/`, `discovery/`, `recommendation/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/` |
-| `reporting/` | JSON and Markdown serialisation of results | `domain/`, `workflow.state` |
-| `diagnostics/` | Environment checks (Python, network, HF, NVML, runtimes, cache) | `domain/`, `hardware/` |
-| `advisor/` | Application facade wrapping all the services above | everything below it |
+| `discovery/` | Hub queries, filtering, enrichment, grouping into series | `domain/`, `huggingface/`, `estimator/`, `runtime/` |
+| `recommendation/` | Plan assessment, v2 ranking, diversity, tiers, explanations | `domain/`, `estimator/`, `evaluation/`, `execution_plans/` |
+| `workflow/` | Guided-run orchestrator (synchronous, with progress and cancellation), progress/state DTOs, per-run cache, and shims for the modules that moved | `domain/`, `application/`, `discovery/`, `recommendation/`, `observability/` |
+| `reporting/` | JSON and Markdown serialisation of results | `domain/`, `recommendation/`, `workflow.state` |
+| `diagnostics/` | Environment checks (Python, network, HF, NVML, runtimes, cache) | `domain/`, `hardware/`, `runtime/`, `execution/` |
+| `advisor/` | Application facade wrapping all the services above | `bootstrap/` and everything below it |
 | `presentation/` | Rich rendering (tables, panels) | `domain/`, `reporting/` |
 | `cli/` | Typer subcommands, entry point; `run` also composes the local runner | `advisor/`, `presentation/`, `domain/`, `runtime/`, `execution/` |
-| `tui/` | Textual screens, entry point | `advisor/`, `domain/` |
+| `tui/` | Textual screens, entry point | `advisor/`, `domain/`, `application/`, `presentation/` |
 
 ## Dependency rules (hard)
 
-1. **`domain/` never imports anything from a higher layer.** It is the bottom of the stack.
-2. **`discovery/` and `recommendation/` do not import each other.** The contracts they need
-   to share (candidates, policies, families, licenses) live in `domain/`.
-3. **`discovery/` and `recommendation/` do not import `workflow/`.** They receive
-   `UserRequirements` (from `domain/`) and return results; orchestration is `workflow/`'s
-   responsibility.
-4. **`recommendation/` does not import `presentation/`.** Serialisation lives in
+1. **`domain/` never imports anything from a higher layer.** It is the bottom of the stack:
+   no application, adapters, workflow, runtime, presentation, advisor or front-end, and no
+   `textual`, `huggingface_hub`, `torch` or `subprocess`.
+2. **`application/` never imports infrastructure.** No adapters, no `huggingface/`, no
+   `huggingface_hub`, no `textual`, and no presentation, advisor or `workflow/`. It talks to
+   `domain/` and to `ports/`; the concrete implementations are injected by `bootstrap/`.
+3. **`ports/` never imports adapters or presentation.** A port that knows its own
+   implementation is not a port.
+4. **`execution_plans/` never imports `workflow/` or `recommendation/`.** It builds plans out
+   of domain objects; anything that needs recommendation DTOs lives in
+   `application/recommendation/execution_plans.py`.
+5. **`discovery/` and `recommendation/` do not import each other**, and neither imports
+   `workflow/`, the advisor or a front-end. The contracts they need to share (candidates,
+   policies, families, licenses) live in `domain/`.
+6. **`recommendation/` does not import `presentation/`.** Serialisation lives in
    `reporting/`, Rich rendering lives in `presentation/`, and the ranking logic knows about
    neither.
-5. **`cli/` and `tui/` do not import each other.** The only shared facade is
-   `AdvisorService`.
-6. **`workflow/` may orchestrate;** `advisor/` is what the CLI and the TUI touch — they
-   never construct `HfClient()`, `detect_hardware`, `estimate_memory` or
-   `collect_diagnostics` directly.
+7. **`cli/` and `tui/` do not import each other**, and neither constructs `HfClient()`,
+   `detect_hardware`, `estimate_memory` or `collect_diagnostics` directly. `AdvisorService`
+   is the only entry point they use.
+8. **`presentation/` and `tui/` never import Hugging Face adapters** (`jaull.huggingface`,
+   `huggingface_hub`); `presentation/` additionally stays clear of `adapters/` and
+   `textual`. Both render semantics that were computed elsewhere.
 
-These rules can be verified with `grep`:
+Rules 1–4 and 8, plus the `recommendation/` half of rule 5, are checked automatically by
+`tests/test_architecture_dependencies.py`: it walks every module with `ast`, collects the
+import edges and compares them against an exact allowlist that is currently empty. A new
+violation fails the test with the offending file and import named. `discovery/` itself has
+no rule in that test, so the rest stays a convention the greps below protect.
+
+The rest can still be verified with `grep`:
 
 ```bash
 # No cross-imports between discovery and recommendation
 grep -rn "from jaull.recommendation" src/jaull/discovery/
 grep -rn "from jaull.discovery"      src/jaull/recommendation/
 
-# Nor workflow from discovery/recommendation
-grep -rn "from jaull.workflow"       src/jaull/discovery/ src/jaull/recommendation/
+# Nor workflow from discovery, recommendation or execution_plans
+grep -rn "from jaull.workflow" \
+  src/jaull/discovery/ src/jaull/recommendation/ src/jaull/execution_plans/
 
 # Nor presentation from recommendation
 grep -rn "from jaull.presentation"   src/jaull/recommendation/
@@ -219,11 +266,15 @@ NVML exposes no process memory, `peak_vram_bytes = null` is not treated as zero.
 
 ## Dependency composition
 
-`workflow/container.py::ServiceContainer` remains the service container the `workflow` uses
-to parameterise the HTTP client, capability analyzer, range client factory, and so on.
-`AdvisorService` **contains** it rather than replacing it — that way tests which used to
-build a fake `ServiceContainer` to exercise the guided run keep working unchanged, and tests
-which now build a test `AdvisorService` can use `AdvisorService.build(...)`.
+`bootstrap/container.py::ServiceContainer` is the production composition root. It is the one
+place allowed to know concrete adapters — HTTP client, capability analyzer, range client
+factory, persistent model-analysis cache — and to construct them. `AdvisorService`
+**contains** it rather than replacing it, so tests which used to build a fake
+`ServiceContainer` to exercise the guided run keep working unchanged, and tests which now
+build a test `AdvisorService` can use `AdvisorService.build(...)`.
+
+`workflow/container.py` remains as a re-export of `bootstrap.container` so historical
+imports keep resolving. New wiring belongs in `bootstrap/`.
 
 ## Reporting and serialisation
 
