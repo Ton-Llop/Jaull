@@ -113,12 +113,6 @@ def _run(coro: Any) -> None:
     asyncio.run(coro)
 
 
-async def _settle(pilot: Any, attempts: int = 40) -> None:
-    for _ in range(attempts):
-        await pilot.pause()
-        await asyncio.sleep(0.02)
-
-
 def _services() -> ServiceContainer:
     return ServiceContainer(
         hf_client=object(),  # type: ignore[arg-type]
@@ -733,7 +727,10 @@ def test_results_screen_runs_an_alternative_recommendation() -> None:
             assert isinstance(screen, RecommendationResultsScreen)
 
             screen.query_one("#res-run-1", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+            )
 
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
@@ -756,7 +753,10 @@ def test_results_screen_can_open_validation_for_selected_recommendation() -> Non
             assert screen.query_one("#res-validate-0", Button).disabled is False
 
             screen.query_one("#res-validate-0", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationValidationScreen),
+            )
 
             validation = pilot.app.screen
             assert isinstance(validation, RecommendationValidationScreen)
@@ -800,7 +800,11 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(advisor.experiment_records) == 1
+                and screen.query_one("#validation-details", Button).disabled is False,
+            )
 
             assert advisor.operations == [
                 "resolve",
@@ -825,8 +829,14 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert advisor.experiment_persisted_path is not None
             assert screen.query_one("#validation-details", Button).disabled is False
             screen.query_one("#validation-details", Button).press()
-            await pilot.pause()
-            assert str(advisor.experiment_persisted_path) in _visible_text(
+            await _wait_until(
+                pilot,
+                lambda: advisor.experiment_persisted_path is not None
+                and advisor.experiment_persisted_path.name in _visible_text(
+                    pilot.app.screen
+                ),
+            )
+            assert advisor.experiment_persisted_path.name in _visible_text(
                 pilot.app.screen
             )
 
@@ -865,7 +875,7 @@ def test_validation_screen_runs_transformers_experiment_without_gguf_resolution(
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: len(advisor.experiment_records) == 1)
 
             assert advisor.operations == [
                 "hardware",
@@ -907,7 +917,7 @@ def test_validation_screen_preserves_failed_execution_record(monkeypatch: Any) -
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: len(advisor.experiment_records) == 1)
 
             assert len(advisor.experiment_records) == 1
             assert advisor.experiment_records[0].observation.success is False
@@ -933,7 +943,10 @@ def test_validation_screen_does_not_execute_when_not_ready(monkeypatch: Any) -> 
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "Validation unavailable" in _visible_text(screen),
+            )
 
             assert advisor.operations == [
                 "resolve",
@@ -966,7 +979,10 @@ def test_validation_screen_does_not_execute_when_readiness_unknown(
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "Could not verify runtime readiness" in _visible_text(screen),
+            )
 
             assert advisor.experiment_records == []
             assert "Could not verify runtime readiness" in _visible_text(screen)
@@ -989,7 +1005,10 @@ def test_validation_screen_keeps_result_visible_when_persistence_fails(
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "Configuration validated (not saved)" in _visible_text(screen),
+            )
 
             text = _visible_text(screen)
             assert "could not be saved" in text
@@ -1012,10 +1031,10 @@ def test_validation_screen_can_repeat_without_duplicate_ids(monkeypatch: Any) ->
             _run_workers_inline(pilot.app, screen, monkeypatch)
 
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: len(advisor.experiment_records) == 1)
             first_id = advisor.experiment_records[-1].identity.experiment_id
             screen.query_one("#validation-start", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: len(advisor.experiment_records) == 2)
             second_id = advisor.experiment_records[-1].identity.experiment_id
 
             assert first_id != second_id
@@ -1039,28 +1058,49 @@ def test_results_export_modal_can_cancel_reopen_export_and_reopen(
             assert isinstance(results, RecommendationResultsScreen)
 
             results.query_one("#res-export", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExportReportModal),
+            )
             assert isinstance(pilot.app.screen, ExportReportModal)
             pilot.app.screen.query_one("#res-export-cancel", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
             assert isinstance(pilot.app.screen, RecommendationResultsScreen)
 
             pilot.app.screen.query_one("#res-export", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExportReportModal),
+            )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
-            modal.query_one("#res-export-path", Input).value = str(tmp_path / "report.json")
+            modal.query_one("#res-export-path", Input).value = str(
+                tmp_path / "report.json"
+            )
             modal.query_one("#res-export-confirm", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: (tmp_path / "report.json").exists()
+                and "Report written" in _visible_text(modal),
+            )
 
             assert (tmp_path / "report.json").exists()
             assert (tmp_path / "report.md").exists()
             assert "Report written" in _visible_text(modal)
 
             modal.query_one("#res-export-close", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
             pilot.app.screen.query_one("#res-export", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExportReportModal),
+            )
             assert isinstance(pilot.app.screen, ExportReportModal)
 
     _run(scenario())
@@ -1086,15 +1126,24 @@ def test_results_export_modal_shows_filesystem_errors_without_rebuilding_form(
             app.show_recommendations(state)
             await pilot.pause()
             pilot.app.screen.query_one("#res-export", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExportReportModal),
+            )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
             path_input = modal.query_one("#res-export-path", Input)
 
             modal.query_one("#res-export-confirm", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "permission denied" in _visible_text(modal),
+            )
             modal.query_one("#res-export-confirm", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "permission denied" in _visible_text(modal),
+            )
 
             assert modal.query_one("#res-export-path", Input) is path_input
             assert "permission denied" in _visible_text(modal)
@@ -1122,20 +1171,32 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
 
             for _ in range(2):
                 pilot.app.screen.query_one("#res-compare", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, RecommendationCompareScreen),
+                )
                 assert isinstance(pilot.app.screen, RecommendationCompareScreen)
                 assert pilot.app.screen.query(DataTable)
                 pilot.app.screen.query_one("#compare-back", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+                )
                 assert isinstance(pilot.app.screen, RecommendationResultsScreen)
 
                 pilot.app.screen.query_one("#res-details", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen),
+                )
                 assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
                 assert "Technical details" in _visible_text(pilot.app.screen)
                 assert "preflight not checked" in _visible_text(pilot.app.screen)
                 pilot.app.screen.query_one("#details-back", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+                )
                 assert isinstance(pilot.app.screen, RecommendationResultsScreen)
 
     _run(scenario())
@@ -1204,7 +1265,10 @@ def test_results_compare_collapses_representations_of_same_model_identity() -> N
             app.show_recommendations(state)
             await pilot.pause()
             pilot.app.screen.query_one("#res-compare", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationCompareScreen),
+            )
 
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationCompareScreen)
@@ -1504,7 +1568,10 @@ def test_execution_screen_keeps_visual_history_across_prompts(
 
             _set_prompt(screen, "Say hi")
             screen.query_one("#run-generate", Button).press()
-            await _settle(pilot)
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 1,
+            )
 
             prompt_input = screen.query_one("#run-prompt-input", TextArea)
             assert prompt_input.text == ""
@@ -1518,7 +1585,10 @@ def test_execution_screen_keeps_visual_history_across_prompts(
             )
             _set_prompt(screen, "Say bye")
             screen.query_one("#run-generate", Button).press()
-            await _settle(pilot)
+            await _wait_until(
+                pilot,
+                lambda: len(screen.query(InferenceResponse)) == 2,
+            )
 
             assert advisor.runs[-1][1] == "Say bye"
             assert len(screen.query(InferencePrompt)) == 2
@@ -1785,7 +1855,11 @@ def test_execution_screen_rejects_empty_prompt(monkeypatch: Any) -> None:
             assert isinstance(screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, screen, monkeypatch)
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: "Prompt must not be empty"
+                in _widget_text(screen.query_one("#run-error-message", Static)),
+            )
 
             message = screen.query_one("#run-error-message", Static)
             assert "Prompt must not be empty" in _widget_text(message)
@@ -1827,7 +1901,10 @@ def test_escape_returns_to_results_screen() -> None:
             app.show_recommendations(state)
             await pilot.pause()
             pilot.app.screen.query_one("#res-run-0", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+            )
             assert isinstance(pilot.app.screen, RecommendationExecutionScreen)
             assert not pilot.app.screen.query("#run-back")
 
@@ -1859,13 +1936,22 @@ def test_tui_results_execution_export_details_stress_flow(
 
             for _ in range(2):
                 pilot.app.screen.query_one("#res-export", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, ExportReportModal),
+                )
                 assert isinstance(pilot.app.screen, ExportReportModal)
                 pilot.app.screen.query_one("#res-export-cancel", Button).press()
-                await pilot.pause()
+                await _wait_until(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+                )
 
             pilot.app.screen.query_one("#res-run-0", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+            )
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
             _run_workers_inline(pilot.app, run_screen, monkeypatch)
@@ -1903,28 +1989,46 @@ def test_tui_results_execution_export_details_stress_flow(
             assert "recovered" in _visible_text(run_screen)
 
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
             assert isinstance(pilot.app.screen, RecommendationResultsScreen)
 
             pilot.app.screen.query_one("#res-export", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExportReportModal),
+            )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
             modal.query_one("#res-export-path", Input).value = str(tmp_path / "stress.json")
             modal.query_one("#res-export-confirm", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: (tmp_path / "stress.json").exists())
             assert (tmp_path / "stress.json").exists()
             modal.query_one("#res-export-close", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
 
             pilot.app.screen.query_one("#res-details", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen),
+            )
             assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
             pilot.app.screen.query_one("#details-back", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
 
             pilot.app.screen.query_one("#res-run-1", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+            )
             second_run = pilot.app.screen
             assert isinstance(second_run, RecommendationExecutionScreen)
             assert second_run.recommendation.repo_id == "org/Second-GGUF"

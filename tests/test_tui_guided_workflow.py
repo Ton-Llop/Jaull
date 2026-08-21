@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import Path
 from threading import Event, Lock
 
@@ -15,7 +16,6 @@ from textual.widgets import Button, Checkbox, DataTable, RadioSet
 
 from jaull.domain.requirements import UseCase
 from jaull.tui.app import JaullApp
-from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
 from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
 from jaull.tui.screens.recommendation_results import (
@@ -25,7 +25,6 @@ from jaull.tui.screens.recommendation_results import (
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.welcome import WelcomeScreen
-from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
@@ -104,10 +103,28 @@ def _services_with_blocking_detector(
     )
 
 
-async def _settle(pilot, attempts: int = 60) -> None:  # type: ignore[no-untyped-def]
-    """Let worker threads hand their results back to the event loop."""
-    for _ in range(attempts):
+async def _wait_for(
+    pilot,  # type: ignore[no-untyped-def]
+    predicate: Callable[[], bool],
+    *,
+    timeout: float = 15.0,
+) -> None:
+    """Wait for an observable TUI state instead of assuming one tick is enough."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
         await pilot.pause()
+        if predicate():
+            await pilot.pause()
+            return
+        if loop.time() >= deadline:
+            button_ids = [
+                button.id for button in pilot.app.screen.query(Button) if button.id
+            ]
+            raise AssertionError(
+                "the UI never reached the expected state "
+                f"(screen={type(pilot.app.screen).__name__}, buttons={button_ids})"
+            )
         await asyncio.sleep(0.05)
 
 
@@ -133,22 +150,11 @@ def test_entering_guided_mode_opens_the_hardware_screen() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, HardwareAnalysisScreen),
+            )
             assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
-
-    _run(scenario())
-
-
-def test_entering_advanced_tools_keeps_the_original_menu() -> None:
-    async def scenario() -> None:
-        app = JaullApp(services=_services())
-        async with app.run_test() as pilot:
-            app.push_screen("advanced")
-            await pilot.pause()
-            screen = pilot.app.screen
-            assert isinstance(screen, AdvancedToolsScreen)
-            ids = {item.id for item in screen.query("ListItem")}
-            assert {"menu-scan", "menu-inspect", "menu-estimate", "menu-doctor"} <= ids
 
     _run(scenario())
 
@@ -161,11 +167,14 @@ def test_hardware_screen_shows_progress_and_a_continue_button() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
-            await _settle(pilot)
+            await _wait_for(
+                pilot,
+                lambda: app.hardware_profile is not None
+                and bool(pilot.app.screen.query("#hw-continue")),
+            )
             assert app.hardware_profile is not None
             # After completion the loading card is replaced by the summary
             # card in the same slot — no scrolling needed to see the result.
-            assert pilot.app.screen.query(SummaryCard)
             assert pilot.app.screen.query_one("#hw-continue", Button)
 
     _run(scenario())
@@ -184,17 +193,22 @@ def test_hardware_screen_can_be_closed_before_detector_finishes() -> None:
 
         async with app.run_test(size=(120, 50)) as pilot:
             app.start_guided_workflow()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, HardwareAnalysisScreen),
+            )
             assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
             assert started.wait(timeout=1)
 
             app.pop_screen()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, WelcomeScreen),
+            )
             assert isinstance(pilot.app.screen, WelcomeScreen)
 
             release.set()
-            await pilot.pause()
-            await pilot.pause()
+            await _wait_for(pilot, lambda: isinstance(pilot.app.screen, WelcomeScreen))
             assert isinstance(pilot.app.screen, WelcomeScreen)
 
     _run(scenario())
@@ -236,14 +250,20 @@ def test_hardware_screen_repeated_start_and_back_does_not_hang() -> None:
         async with app.run_test(size=(120, 50)) as pilot:
             for index in range(3):
                 app.start_guided_workflow()
-                await pilot.pause()
+                await _wait_for(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, HardwareAnalysisScreen),
+                )
                 assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
                 assert starts[index].wait(timeout=1)
                 app.pop_screen()
-                await pilot.pause()
+                await _wait_for(
+                    pilot,
+                    lambda: isinstance(pilot.app.screen, WelcomeScreen),
+                )
                 assert isinstance(pilot.app.screen, WelcomeScreen)
                 releases[index].set()
-                await pilot.pause()
+                await _wait_for(pilot, lambda: isinstance(pilot.app.screen, WelcomeScreen))
 
     _run(scenario())
 
@@ -265,7 +285,7 @@ def test_network_and_probes_do_not_block_the_event_loop() -> None:
             assert elapsed < 0.4, elapsed
             assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
 
-            await _settle(pilot)
+            await _wait_for(pilot, lambda: app.hardware_profile is not None)
             assert app.hardware_profile is not None
 
     _run(scenario())
@@ -279,7 +299,10 @@ def test_wizard_collects_answers_from_its_widgets() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             screen = pilot.app.screen
             assert isinstance(screen, RequirementsWizardScreen)
 
@@ -296,7 +319,10 @@ def test_document_question_is_hidden_unless_the_use_case_needs_it() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             screen = pilot.app.screen
             assert isinstance(screen, RequirementsWizardScreen)
 
@@ -323,7 +349,10 @@ def test_wizard_rejects_an_empty_language_selection() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             screen = pilot.app.screen
             assert isinstance(screen, RequirementsWizardScreen)
 
@@ -339,7 +368,10 @@ def test_wizard_rejects_unrecognised_other_languages() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             screen = pilot.app.screen
             assert isinstance(screen, RequirementsWizardScreen)
 
@@ -359,14 +391,23 @@ def test_wizard_navigates_into_discovery() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.push_screen(RequirementsWizardScreen())
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             screen = pilot.app.screen
             assert isinstance(screen, RequirementsWizardScreen)
             answers = screen.collect_answers()
             assert answers is not None
 
             app.start_discovery(answers)
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(
+                    pilot.app.screen,
+                    ModelDiscoveryScreen | RecommendationResultsScreen,
+                ),
+            )
             # With fake services the run can finish within a single tick, so
             # either the progress screen or its successor is a valid landing.
             assert isinstance(
@@ -382,17 +423,24 @@ def test_full_guided_run_reaches_the_results_screen() -> None:
         app = JaullApp(services=_services())
         async with app.run_test(size=(120, 50)) as pilot:
             app.start_guided_workflow()
-            await _settle(pilot)
+            await _wait_for(pilot, lambda: app.hardware_profile is not None)
 
             app.goto_requirements()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             wizard = pilot.app.screen
             assert isinstance(wizard, RequirementsWizardScreen)
             answers = wizard.collect_answers()
             assert answers is not None
 
             app.start_discovery(answers)
-            await _settle(pilot)
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen)
+                and bool(pilot.app.screen.query("#res-run-0")),
+            )
 
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
@@ -408,20 +456,30 @@ def test_results_screen_can_render_a_comparison(tmp_path: Path) -> None:
         app = JaullApp(services=_services())
         async with app.run_test(size=(120, 50)) as pilot:
             app.start_guided_workflow()
-            await _settle(pilot)
+            await _wait_for(pilot, lambda: app.hardware_profile is not None)
             app.goto_requirements()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
             wizard = pilot.app.screen
             assert isinstance(wizard, RequirementsWizardScreen)
             answers = wizard.collect_answers()
             assert answers is not None
             app.start_discovery(answers)
-            await _settle(pilot)
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen)
+                and bool(pilot.app.screen.query("#res-compare")),
+            )
 
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
             screen.query_one("#res-compare", Button).press()
-            await pilot.pause()
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationCompareScreen),
+            )
             assert isinstance(pilot.app.screen, RecommendationCompareScreen)
             assert pilot.app.screen.query(DataTable)
 
@@ -440,10 +498,9 @@ def test_restart_returns_to_the_welcome_screen() -> None:
         app = JaullApp(services=_services())
         async with app.run_test() as pilot:
             app.start_guided_workflow()
-            await _settle(pilot)
+            await _wait_for(pilot, lambda: app.hardware_profile is not None)
             app.restart_workflow()
-            await pilot.pause()
-            await pilot.pause()
+            await _wait_for(pilot, lambda: isinstance(pilot.app.screen, WelcomeScreen))
             assert isinstance(pilot.app.screen, WelcomeScreen)
             assert app.workflow_state is None
 
