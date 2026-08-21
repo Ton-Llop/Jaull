@@ -963,6 +963,7 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
     else:
         priority_axes = (
             _LEVEL_RANK[assessment.suitability],
+            _balanced_runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
             _LEVEL_RANK[assessment.execution_fitness],
             _LEVEL_RANK[assessment.executability],
@@ -1041,6 +1042,26 @@ def _comfortable_memory_rank(assessment: PlanAssessment) -> int:
     if assessment.feasibility is AssessmentLevel.UNKNOWN:
         return 3
     return 4
+
+
+def _balanced_runnability_rank(assessment: PlanAssessment) -> int:
+    """Coarse execution class for Balanced before comparing capability.
+
+    Strong and adequate fitness both mean "normally runnable" for this mode:
+    once a plan is in that broad class, capability is still allowed to decide.
+    Weak/offloading plans move to a degraded class, and unknown readiness stays
+    below known runnable plans without being treated as a hard rejection here.
+    """
+    if assessment.execution_fitness in {
+        AssessmentLevel.STRONG,
+        AssessmentLevel.ADEQUATE,
+    }:
+        return 0
+    if assessment.execution_fitness is AssessmentLevel.WEAK:
+        return 1
+    if assessment.execution_fitness is AssessmentLevel.UNKNOWN:
+        return 2
+    return 3
 
 
 def _weaker_confidence(

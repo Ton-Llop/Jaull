@@ -582,6 +582,74 @@ def test_runtime_readiness_affects_ranking() -> None:
     assert ranked[0].assessment.executability is AssessmentLevel.STRONG
 
 
+def test_balanced_prefers_runnable_plan_over_more_capable_offloading_plan() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-7B-Instruct-AWQ",
+                status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.BALANCED),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen2.5-1.5B-Instruct-GGUF"
+    assert ranked[0].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.STRONG
+    assert ranked[1].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.WEAK
+
+
+def test_balanced_can_still_prefer_more_capable_compatible_plan() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen3-4B-Instruct-GGUF",
+                status=CompatibilityStatus.COMPATIBLE,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.BALANCED),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen3-4B-Instruct-GGUF"
+    assert ranked[0].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.ADEQUATE
+    assert ranked[1].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
+
+
+def test_quality_policy_is_unchanged_by_balanced_runnability_gate() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-7B-Instruct-AWQ",
+                status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.QUALITY),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen2.5-7B-Instruct-AWQ"
+    assert ranked[0].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.WEAK
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
+
+
 def test_non_executable_plan_does_not_appear_in_top3_when_ready_plans_exist() -> None:
     selection = _selection()
     ready = _readiness(RuntimeName.LLAMA_CPP, selection, ExecutionReadinessStatus.READY)
@@ -863,6 +931,20 @@ def _readiness(
         selection=selection,
         runtime_capability=capability,
         message=f"{runtime.value} is {status.value}",
+    )
+
+
+def _ready_llama_context() -> PlanRankingContext:
+    selection = _selection(ComputeBackend.CPU)
+    return PlanRankingContext(
+        backend_selection=selection,
+        readiness_by_runtime={
+            RuntimeName.LLAMA_CPP: _readiness(
+                RuntimeName.LLAMA_CPP,
+                selection,
+                ExecutionReadinessStatus.READY,
+            )
+        },
     )
 
 
