@@ -16,6 +16,7 @@ from textual.widgets import (
 )
 
 from jaull.advisor.service import AdvisorService
+from jaull.application.model_reference import normalize_repo_id
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.inference import (
     InferenceConfiguration,
@@ -35,7 +36,6 @@ from jaull.exceptions import (
     ModelNotFoundError,
     QuantizationNotFoundError,
 )
-from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.tui.widgets.assessment_badge import AssessmentBadge
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.cli_equivalent import CliEquivalent

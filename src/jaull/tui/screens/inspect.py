@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, LoadingIndicator, Static
 
 from jaull.advisor.service import AdvisorService
+from jaull.application.model_reference import normalize_repo_id
 from jaull.domain.model import ModelAnalysis
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
@@ -14,7 +15,6 @@ from jaull.exceptions import (
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
-from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
 from jaull.tui.widgets.summary_card import SummaryCard

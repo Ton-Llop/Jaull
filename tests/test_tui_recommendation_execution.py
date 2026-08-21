@@ -45,6 +45,11 @@ from jaull.domain.experiments import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.recommendation import (
+    AssessmentLevel,
+    PlanAssessment,
+    RecommendationPosition,
+)
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     LlamaCppBackendCapability,
@@ -266,6 +271,36 @@ def _recommendation_with_plan(
         runtime_family=runtime,
     )
     return recommendation.model_copy(update={"plan": plan})
+
+
+def _plan_assessment(
+    *,
+    plan_id: str = "plan-fixture",
+    reasons: list[str] | None = None,
+    trade_offs: list[str] | None = None,
+) -> PlanAssessment:
+    return PlanAssessment(
+        plan_id=plan_id,
+        suitability=AssessmentLevel.STRONG,
+        capability=AssessmentLevel.STRONG,
+        execution_fitness=AssessmentLevel.STRONG,
+        executability=AssessmentLevel.STRONG,
+        performance_evidence=AssessmentLevel.UNKNOWN,
+        confidence=EstimationConfidence.LOW,
+        reasons=(
+            reasons
+            if reasons is not None
+            else [
+                "Strong match for general chat and assistant use.",
+                "Runs comfortably on the detected hardware.",
+            ]
+        ),
+        trade_offs=(
+            trade_offs
+            if trade_offs is not None
+            else ["No measured local performance evidence."]
+        ),
+    )
 
 
 class _FakeAdvisor:
@@ -1190,14 +1225,113 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
                     lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen),
                 )
                 assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
-                assert "Technical details" in _visible_text(pilot.app.screen)
-                assert "preflight not checked" in _visible_text(pilot.app.screen)
+                details_text = _visible_text(pilot.app.screen)
+                assert "Technical details" in details_text
+                assert "Recommendation assessment" in details_text
+                assert "Assessment" in details_text
+                assert "unavailable" in details_text
+                assert "Memory breakdown" in details_text
+                assert "preflight not checked" in details_text
+                assert "Score breakdown" not in details_text
+                assert "/100 overall" not in details_text
                 pilot.app.screen.query_one("#details-back", Button).press()
                 await _wait_until(
                     pilot,
                     lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
                 )
                 assert isinstance(pilot.app.screen, RecommendationResultsScreen)
+
+    _run(scenario())
+
+
+def test_details_show_plan_assessment_instead_of_legacy_score() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation(rank=1, repo_id="org/First-GGUF")
+        assessment = _plan_assessment()
+        recommendation = recommendation.model_copy(
+            update={
+                "plan_assessment": assessment,
+                "recommendation_position": RecommendationPosition.BEST_OVERALL,
+            }
+        )
+        state = RecommendationWorkflowState(recommendations=[recommendation])
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-details", Button).press()
+            await pilot.pause()
+
+            assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
+            text = _visible_text(pilot.app.screen)
+            assert "Recommendation assessment" in text
+            assert "Suitability" in text
+            assert "Strong" in text
+            assert "Capability" in text
+            assert "Execution fitness" in text
+            assert "Memory fit" in text
+            assert "Comfortable" in text
+            assert "Performance evidence" in text
+            assert "Unknown" in text
+            assert "Confidence" in text
+            assert "Low" in text
+            assert "Position" in text
+            assert "Best overall" in text
+            assert "Strong match for general chat and assistant use." in text
+            assert "Runs comfortably on the detected hardware." in text
+            assert "No measured local performance evidence." in text
+            assert "Score breakdown" not in text
+            assert "/100 overall" not in text
+
+    _run(scenario())
+
+
+def test_details_handle_missing_assessment_and_optional_recommendation_data() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation(rank=1, repo_id="org/First-GGUF")
+        evaluated = recommendation.evaluated.model_copy(update={"memory_estimate": None})
+        recommendation = recommendation.model_copy(
+            update={
+                "evaluated": evaluated,
+                "plan_assessment": _plan_assessment(reasons=[], trade_offs=[]),
+                "recommendation_position": None,
+                "reasons": [],
+            }
+        )
+        legacy = _recommendation(rank=1, repo_id="org/Legacy-GGUF")
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-details", Button).press()
+            await pilot.pause()
+
+            text = _visible_text(pilot.app.screen)
+            assert "Memory fit" in text
+            assert "Unknown" in text
+            assert "Position" in text
+            assert "unavailable" in text
+            assert "No recommendation reasons recorded." in text
+            assert "none recorded" in text
+            pilot.app.screen.query_one("#details-back", Button).press()
+            await pilot.pause()
+
+            app.show_recommendations(RecommendationWorkflowState(recommendations=[legacy]))
+            await pilot.pause()
+            pilot.app.screen.query_one("#res-details", Button).press()
+            await pilot.pause()
+
+            legacy_text = _visible_text(pilot.app.screen)
+            assert "Recommendation assessment" in legacy_text
+            assert "Assessment" in legacy_text
+            assert "unavailable" in legacy_text
+            assert "Memory breakdown" in legacy_text
+            assert "Pipeline" in legacy_text
+            assert "Execution paths" in legacy_text
 
     _run(scenario())
 
@@ -1274,6 +1408,9 @@ def test_results_compare_collapses_representations_of_same_model_identity() -> N
             assert isinstance(screen, RecommendationCompareScreen)
             table = screen.query_one(DataTable)
             assert table.row_count == 2
+            assert len(table.get_row_at(0)) == 7
+            assert "92/100" not in _visible_text(screen)
+            assert "Score" not in _visible_text(screen)
             model_cells = [str(table.get_row_at(index)[0]) for index in range(table.row_count)]
             assert "Qwen2.5 1.5B Instruct" in model_cells
             assert "Qwen/Qwen2.5-1.5B-Instruct-GGUF" not in model_cells

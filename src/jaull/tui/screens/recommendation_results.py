@@ -42,7 +42,6 @@ from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
 from jaull.tui.widgets.memory_usage_bar import MemoryUsageBar
 from jaull.tui.widgets.metric_list import MetricRow
-from jaull.tui.widgets.score_bar import ScoreBar
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -490,7 +489,7 @@ class RecommendationDetailsScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Technical details",
-            "Scoring, memory, assumptions and the equivalent CLI command.",
+            "Assessment, memory, assumptions and the equivalent CLI command.",
         )
         with VerticalScroll(id="details-body"):
             if not self._state.recommendations:
@@ -502,7 +501,8 @@ class RecommendationDetailsScreen(Screen[None]):
 
     def _compose_details(self) -> ComposeResult:
         primary = self._state.recommendations[0]
-        yield ScoreBar(primary.score)
+        yield SummaryCard("Recommendation assessment", _assessment_rows(primary))
+        yield SummaryCard("Recommendation", _recommendation_rows(primary))
 
         estimate = primary.evaluated.memory_estimate
         if estimate is not None:
@@ -645,7 +645,6 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
         "Configuration",
         "Memory",
         "Compatibility",
-        "Score",
         "Confidence",
         "License",
         "Main reason",
@@ -656,12 +655,60 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
             _configuration_label(rec),
             _memory_label(rec),
             rec.status.value,
-            f"{rec.score.out_of_100}/100",
             rec.confidence.value,
             rec.evaluated.candidate.license or "not declared",
             rec.reasons[0] if rec.reasons else "-",
     )
     return table
+
+
+def _assessment_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
+    assessment = rec.plan_assessment
+    if assessment is None:
+        return [("Assessment", "unavailable")]
+    return [
+        ("Suitability", _display_value(assessment.suitability.value)),
+        ("Capability", _display_value(assessment.capability.value)),
+        ("Execution fitness", _display_value(assessment.execution_fitness.value)),
+        ("Executability", _display_value(assessment.executability.value)),
+        ("Memory fit", _memory_fit_label(rec)),
+        ("Performance evidence", _display_value(assessment.performance_evidence.value)),
+        ("Confidence", _display_value(assessment.confidence.value)),
+    ]
+
+
+def _recommendation_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
+    assessment = rec.plan_assessment
+    reasons = assessment.reasons if assessment is not None else []
+    trade_offs = assessment.trade_offs if assessment is not None else []
+    return [
+        (
+            "Position",
+            (
+                _display_value(rec.recommendation_position.value)
+                if rec.recommendation_position is not None
+                else "unavailable"
+            ),
+        ),
+        ("Why", _first_items(reasons or rec.reasons, "No recommendation reasons recorded.")),
+        ("Trade-offs", _first_items(trade_offs, "none recorded")),
+    ]
+
+
+def _memory_fit_label(rec: ModelRecommendation) -> str:
+    estimate = rec.evaluated.memory_estimate
+    if estimate is None:
+        return "Unknown"
+    return _display_value(estimate.assessment.status.value)
+
+
+def _first_items(values: list[str], fallback: str) -> str:
+    selected = [value for value in values if value][:2]
+    return " · ".join(selected) if selected else fallback
+
+
+def _display_value(value: str) -> str:
+    return value.replace("_", " ").capitalize()
 
 
 def _logical_comparison_recommendations(

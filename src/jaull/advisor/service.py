@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING
 
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
+from jaull.bootstrap.container import (
+    DetectHardwareFn,
+    EstimateMemoryFn,
+    InspectModelFn,
+    ServiceContainer,
+)
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
@@ -63,14 +69,8 @@ from jaull.domain.runtime import (
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
+from jaull.ports.cache import ModelAnalysisCacheProtocol
 from jaull.recommendation.engine_v2 import PlanRankingContext
-from jaull.workflow.container import (
-    DetectHardwareFn,
-    EstimateMemoryFn,
-    InspectModelFn,
-    ServiceContainer,
-)
-from jaull.workflow.model_analysis_cache import ModelAnalysisCacheProtocol
 from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 

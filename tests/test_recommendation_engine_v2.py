@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from jaull.advisor.service import AdvisorService
+from jaull.analyzers.transformers import _model_config_from_dict
 from jaull.benchmarks.storage import BenchmarkStore
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
@@ -27,6 +28,7 @@ from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.execution import ExecutionObservation
 from jaull.domain.experiments import ExperimentRecord, ExperimentWorkload
 from jaull.domain.hardware import ComputeBackend
+from jaull.domain.inference import WeightPrecision
 from jaull.domain.recommendation import (
     AssessmentLevel,
     ExternalEvaluationEvidence,
@@ -51,7 +53,7 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.experiments.storage import ExperimentStore
-from jaull.presentation.plan_labels import plan_backend
+from jaull.presentation.plan_labels import artifact_display, plan_backend
 from jaull.recommendation import scoring
 from jaull.recommendation.engine_v2 import (
     PlanRankingContext,
@@ -122,6 +124,116 @@ def test_cuda_backend_selection_flows_to_recommendation_plan() -> None:
     assert recs[0].plan.backend_selection is selection
     assert recs[0].plan.execution_readiness is readiness
     assert plan_backend(recs[0].plan) == "CUDA"
+
+
+def test_awq_transformers_plan_uses_config_quantization_as_artifact_semantics() -> None:
+    evaluated = _evaluated_packed_transformers(
+        repo_id="Qwen/Qwen2.5-7B-Instruct-AWQ",
+        method="awq",
+        bits=4,
+    )
+    plan = generate_execution_plans(
+        evaluated,
+        _requirements(),
+        context=_ready_transformers_context(),
+    )[0]
+
+    assert evaluated.analysis.config is not None
+    assert evaluated.analysis.config.quantization_config == {
+        "bits": 4,
+        "quant_method": "awq",
+    }
+    assert plan.artifact.quantization == "AWQ 4-bit"
+    assert plan.artifact.precision is None
+    assert plan.artifact.label == "safetensors AWQ 4-bit"
+    assert artifact_display(plan) == "safetensors · AWQ 4-bit"
+    assert "float16" not in plan.artifact.label
+    assert plan.memory_prediction is not None
+    assert plan.memory_prediction.total_bytes == evaluated.memory_estimate.total_bytes
+
+
+def test_gptq_transformers_plan_uses_config_quantization_as_artifact_semantics() -> None:
+    evaluated = _evaluated_packed_transformers(
+        repo_id="Qwen/Qwen2.5-7B-Instruct-GPTQ",
+        method="gptq",
+        bits=4,
+    )
+    plan = generate_execution_plans(
+        evaluated,
+        _requirements(),
+        context=_ready_transformers_context(),
+    )[0]
+
+    assert evaluated.analysis.config is not None
+    assert evaluated.analysis.config.quantization_config == {
+        "bits": 4,
+        "quant_method": "gptq",
+    }
+    assert plan.artifact.quantization == "GPTQ 4-bit"
+    assert plan.artifact.precision is None
+    assert plan.artifact.label == "safetensors GPTQ 4-bit"
+    assert "float16" not in plan.artifact.label
+
+
+def test_normal_transformers_fp16_plan_keeps_precision_semantics() -> None:
+    evaluated = _evaluated_transformers(repo_id="org/Normal-7B")
+    plan = generate_execution_plans(
+        evaluated,
+        _requirements(),
+        context=_ready_transformers_context(),
+    )[0]
+
+    assert plan.artifact.quantization is None
+    assert plan.artifact.precision == "float16"
+    assert plan.artifact.label == "safetensors float16"
+
+
+def test_theoretical_transformers_dtype_ladder_still_sets_precision() -> None:
+    for precision in (WeightPrecision.INT8, WeightPrecision.INT4):
+        evaluated = _evaluated_transformers(
+            repo_id=f"org/Theoretical-{precision.value}-7B"
+        )
+        config = evaluated.selected_configuration.model_copy(
+            update={"precision": precision}
+        )
+        estimate = evaluated.memory_estimate.model_copy(
+            update={"inference_configuration": config}
+        )
+        evaluated = evaluated.model_copy(
+            update={
+                "selected_configuration": config,
+                "memory_estimate": estimate,
+            }
+        )
+
+        plan = generate_execution_plans(
+            evaluated,
+            _requirements(),
+            context=_ready_transformers_context(),
+        )[0]
+
+        assert plan.artifact.quantization is None
+        assert plan.artifact.precision == precision.value
+        assert plan.artifact.label == f"safetensors {precision.value}"
+
+
+def test_packed_transformers_quantization_does_not_enter_gguf_quality_ladder() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_transformers(repo_id="zzz/Normal-7B"),
+            _evaluated_packed_transformers(
+                repo_id="aaa/Packed-7B-AWQ",
+                method="awq",
+                bits=4,
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.QUALITY),
+        context=_ready_transformers_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "aaa/Packed-7B-AWQ"
+    assert ranked[0].plan.artifact.quantization == "AWQ 4-bit"
 
 
 def test_hard_memory_failure_rejects_plan() -> None:
@@ -582,6 +694,74 @@ def test_runtime_readiness_affects_ranking() -> None:
     assert ranked[0].assessment.executability is AssessmentLevel.STRONG
 
 
+def test_balanced_prefers_runnable_plan_over_more_capable_offloading_plan() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-7B-Instruct-AWQ",
+                status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.BALANCED),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen2.5-1.5B-Instruct-GGUF"
+    assert ranked[0].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.STRONG
+    assert ranked[1].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.WEAK
+
+
+def test_balanced_can_still_prefer_more_capable_compatible_plan() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen3-4B-Instruct-GGUF",
+                status=CompatibilityStatus.COMPATIBLE,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.BALANCED),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen3-4B-Instruct-GGUF"
+    assert ranked[0].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.ADEQUATE
+    assert ranked[1].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
+
+
+def test_quality_policy_is_unchanged_by_balanced_runnability_gate() -> None:
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-7B-Instruct-AWQ",
+                status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+        ],
+        _requirements(RecommendationPriority.QUALITY),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Qwen2.5-7B-Instruct-AWQ"
+    assert ranked[0].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[0].assessment.execution_fitness is AssessmentLevel.WEAK
+    assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
+
+
 def test_non_executable_plan_does_not_appear_in_top3_when_ready_plans_exist() -> None:
     selection = _selection()
     ready = _readiness(RuntimeName.LLAMA_CPP, selection, ExecutionReadinessStatus.READY)
@@ -805,6 +985,60 @@ def _evaluated_transformers(
     return scoring.score_candidate(evaluated, req, 1.0, capability_signal=0.8)
 
 
+def _evaluated_packed_transformers(
+    repo_id: str,
+    *,
+    method: str,
+    bits: int,
+    status: CompatibilityStatus = CompatibilityStatus.OFFLOADING_REQUIRED,
+) -> EvaluatedCandidate:
+    req = _requirements()
+    raw_config = {
+        "model_type": "llama",
+        "max_position_embeddings": 32768,
+        "hidden_size": 4096,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "num_key_value_heads": 8,
+        "quantization_config": {
+            "bits": bits,
+            "quant_method": method,
+        },
+    }
+    analysis = transformers_analysis(repo_id=repo_id).model_copy(
+        update={
+            "config": _model_config_from_dict(raw_config),
+            "total_size_bytes": 8 * GIB,
+        }
+    )
+    config = _select(analysis, req, size_driven_estimator(vram_budget=24 * GIB))
+    estimate = memory_estimate(
+        analysis,
+        config,
+        total_bytes=8 * GIB,
+        status=status,
+        confidence=EstimationConfidence.HIGH,
+    ).model_copy(
+        update={
+            "runtime_recommendation": RuntimeRecommendation(
+                runtime=RuntimeName.TRANSFORMERS,
+                confidence=EstimationConfidence.HIGH,
+            )
+        }
+    )
+    evaluated = EvaluatedCandidate(
+        candidate=candidate(
+            repo_id=repo_id,
+            tags=["text-generation", "code", "instruct", method],
+        ),
+        analysis=analysis,
+        selected_configuration=config,
+        memory_estimate=estimate,
+        compatibility=estimate.assessment,
+    )
+    return scoring.score_candidate(evaluated, req, 1.0, capability_signal=0.8)
+
+
 def _assessment_for_tags(repo_id: str, tags: list[str], req):
     evaluated = _evaluated_gguf(repo_id=repo_id, tags=tags).model_copy(
         update={"task_match_score": 0.75}
@@ -863,6 +1097,34 @@ def _readiness(
         selection=selection,
         runtime_capability=capability,
         message=f"{runtime.value} is {status.value}",
+    )
+
+
+def _ready_llama_context() -> PlanRankingContext:
+    selection = _selection(ComputeBackend.CPU)
+    return PlanRankingContext(
+        backend_selection=selection,
+        readiness_by_runtime={
+            RuntimeName.LLAMA_CPP: _readiness(
+                RuntimeName.LLAMA_CPP,
+                selection,
+                ExecutionReadinessStatus.READY,
+            )
+        },
+    )
+
+
+def _ready_transformers_context() -> PlanRankingContext:
+    selection = _selection(ComputeBackend.CPU)
+    return PlanRankingContext(
+        backend_selection=selection,
+        readiness_by_runtime={
+            RuntimeName.TRANSFORMERS: _readiness(
+                RuntimeName.TRANSFORMERS,
+                selection,
+                ExecutionReadinessStatus.READY,
+            )
+        },
     )
 
 

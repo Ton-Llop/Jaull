@@ -49,6 +49,7 @@ from jaull.execution_plans import (
     resolve_model_identity,
     variant_from_recommendation,
 )
+from jaull.presentation.plan_labels import artifact_display
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
 from jaull.workflow import policies
@@ -371,6 +372,28 @@ def test_recommendation_variant_keeps_safetensors_runtime() -> None:
     assert variant.precision == "float32"
 
 
+def test_awq_recommendation_variant_uses_config_quantization_semantics() -> None:
+    rec = _packed_transformers_recommendation("awq")
+    variant = variant_from_recommendation(rec)
+    plan = execution_plan_for_recommendation(rec)
+
+    assert variant.format is ArtifactVariantFormat.SAFETENSORS
+    assert variant.quantization == "AWQ 4-bit"
+    assert variant.precision is None
+    assert variant.label == "safetensors AWQ 4-bit"
+    assert artifact_display(plan) == "safetensors · AWQ 4-bit"
+
+
+def test_gptq_recommendation_variant_uses_config_quantization_semantics() -> None:
+    rec = _packed_transformers_recommendation("gptq")
+    variant = variant_from_recommendation(rec)
+
+    assert variant.format is ArtifactVariantFormat.SAFETENSORS
+    assert variant.quantization == "GPTQ 4-bit"
+    assert variant.precision is None
+    assert variant.label == "safetensors GPTQ 4-bit"
+
+
 def test_gguf_recommendation_variant_lists_all_quantization_metadata() -> None:
     rec = _gguf_recommendation()
     variant = variant_from_recommendation(rec)
@@ -619,6 +642,43 @@ def _transformers_recommendation() -> ModelRecommendation:
         compatibility=estimate.assessment,
     )
     return _recommendation(evaluated)
+
+
+def _packed_transformers_recommendation(method: str) -> ModelRecommendation:
+    rec = _transformers_recommendation()
+    repo_id = f"Qwen/Qwen2.5-7B-Instruct-{method.upper()}"
+    analysis = rec.evaluated.analysis
+    assert analysis.config is not None
+    updated_config = analysis.config.model_copy(
+        update={
+            "quantization_config": {
+                "bits": 4,
+                "quant_method": method,
+            }
+        }
+    )
+    updated_repo = analysis.repo.model_copy(update={"repo_id": repo_id})
+    updated_analysis = analysis.model_copy(
+        update={
+            "repo": updated_repo,
+            "config": updated_config,
+            "total_size_bytes": 8 * GIB,
+        }
+    )
+    updated_estimate = rec.evaluated.memory_estimate.model_copy(
+        update={
+            "repository": updated_repo,
+            "runtime_recommendation": _runtime(RuntimeName.TRANSFORMERS),
+        }
+    )
+    updated_evaluated = rec.evaluated.model_copy(
+        update={
+            "candidate": candidate(repo_id, tags=["text-generation", "instruct", method]),
+            "analysis": updated_analysis,
+            "memory_estimate": updated_estimate,
+        }
+    )
+    return rec.model_copy(update={"evaluated": updated_evaluated})
 
 
 def _gguf_recommendation() -> ModelRecommendation:

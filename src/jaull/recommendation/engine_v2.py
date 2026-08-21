@@ -50,6 +50,7 @@ from jaull.domain.runtime import (
 from jaull.estimator.configuration import select_configuration
 from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 from jaull.execution_plans import build_execution_plan, resolve_model_identity
+from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
 from jaull.recommendation.policies import LicenseCategory, classify_license
 
@@ -311,7 +312,12 @@ def _transformers_plan(
 ) -> ExecutionPlan:
     analysis = evaluated.analysis
     config = evaluated.selected_configuration
-    precision = config.precision.value if config is not None and config.precision else None
+    packed_quantization = packed_transformers_quantization_label(
+        analysis.config if analysis is not None else None
+    )
+    precision = None
+    if packed_quantization is None and config is not None and config.precision:
+        precision = config.precision.value
     filenames = {file.path for file in analysis.files} if analysis is not None else set()
     format_ = (
         ArtifactVariantFormat.SAFETENSORS
@@ -325,6 +331,7 @@ def _transformers_plan(
         format=format_,
         filename=evaluated.repo_id,
         size_bytes=analysis.total_size_bytes if analysis is not None else None,
+        quantization=packed_quantization,
         precision=precision,
         source="analysis",
         compatible_runtimes=[RuntimeName.TRANSFORMERS],
@@ -963,6 +970,7 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
     else:
         priority_axes = (
             _LEVEL_RANK[assessment.suitability],
+            _balanced_runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
             _LEVEL_RANK[assessment.execution_fitness],
             _LEVEL_RANK[assessment.executability],
@@ -980,6 +988,8 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
 
 
 def _quantization_quality_rank(plan: ExecutionPlan) -> int:
+    if plan.artifact.format is not ArtifactVariantFormat.GGUF:
+        return 0
     quant = plan.artifact.quantization
     if quant is None:
         return 0
@@ -1005,6 +1015,8 @@ def _priority_quantization_rank(
     plan: ExecutionPlan,
     priority: RecommendationPriority,
 ) -> int:
+    if plan.artifact.format is not ArtifactVariantFormat.GGUF:
+        return len(_quantization_ladder(priority))
     quant = plan.artifact.quantization
     if quant is None:
         return len(_quantization_ladder(priority))
@@ -1041,6 +1053,26 @@ def _comfortable_memory_rank(assessment: PlanAssessment) -> int:
     if assessment.feasibility is AssessmentLevel.UNKNOWN:
         return 3
     return 4
+
+
+def _balanced_runnability_rank(assessment: PlanAssessment) -> int:
+    """Coarse execution class for Balanced before comparing capability.
+
+    Strong and adequate fitness both mean "normally runnable" for this mode:
+    once a plan is in that broad class, capability is still allowed to decide.
+    Weak/offloading plans move to a degraded class, and unknown readiness stays
+    below known runnable plans without being treated as a hard rejection here.
+    """
+    if assessment.execution_fitness in {
+        AssessmentLevel.STRONG,
+        AssessmentLevel.ADEQUATE,
+    }:
+        return 0
+    if assessment.execution_fitness is AssessmentLevel.WEAK:
+        return 1
+    if assessment.execution_fitness is AssessmentLevel.UNKNOWN:
+        return 2
+    return 3
 
 
 def _weaker_confidence(
