@@ -147,6 +147,8 @@ def artifact_display(plan: ExecutionPlan) -> str:
     """The artifact as a user picks it, with `·` between format and variant."""
     if is_gguf_plan(plan):
         return f"GGUF · {plan.artifact.quantization or 'unknown'}"
+    if plan.artifact.quantization:
+        return f"{plan.artifact.format.value} · {plan.artifact.quantization}"
     if plan.artifact.format is ArtifactVariantFormat.SAFETENSORS:
         return "safetensors"
     if plan.artifact.format is ArtifactVariantFormat.TRANSFORMERS:

@@ -33,6 +33,7 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.recommendation.models import ModelRecommendation
 from jaull.workflow import policies
 from jaull.workflow.model_analysis_cache import ModelAnalysisCacheProtocol
@@ -164,7 +165,12 @@ def variant_from_recommendation(
             evidence=list(effective_identity.evidence),
         )
 
-    precision = config.precision.value if config is not None and config.precision else None
+    packed_quantization = packed_transformers_quantization_label(
+        analysis.config if analysis is not None else None
+    )
+    precision = None
+    if packed_quantization is None and config is not None and config.precision:
+        precision = config.precision.value
     format_ = ArtifactVariantFormat.TRANSFORMERS
     if profile is not None and profile.format is ArtifactFormat.NATIVE:
         format_ = ArtifactVariantFormat.SAFETENSORS
@@ -179,6 +185,7 @@ def variant_from_recommendation(
         format=format_,
         filename=recommendation.repo_id,
         size_bytes=analysis.total_size_bytes if analysis is not None else None,
+        quantization=packed_quantization,
         precision=precision,
         source="recommendation",
         compatible_runtimes=[RuntimeName.TRANSFORMERS],
@@ -351,6 +358,7 @@ def _variants_from_candidate(
                 )
             )
     if analysis.classification.primary_type is RepositoryType.TRANSFORMERS:
+        packed_quantization = packed_transformers_quantization_label(analysis.config)
         variants.append(
             ArtifactVariant(
                 model_identity=identity,
@@ -359,6 +367,7 @@ def _variants_from_candidate(
                 format=ArtifactVariantFormat.SAFETENSORS,
                 filename=candidate.repo_id,
                 size_bytes=analysis.total_size_bytes,
+                quantization=packed_quantization,
                 compatible_runtimes=[RuntimeName.TRANSFORMERS],
                 identity_match=match,
                 confidence=_match_confidence(match),
