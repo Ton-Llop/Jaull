@@ -1,6 +1,4 @@
-"""Compatibility shim for the persistent model-analysis cache."""
-
-from __future__ import annotations
+"""Cache adapter implementations."""
 
 from jaull.adapters.cache.model_analysis_cache import (
     ANALYSIS_CACHE_SCHEMA_VERSION,
@@ -8,13 +6,10 @@ from jaull.adapters.cache.model_analysis_cache import (
     ModelAnalysisCache,
     NullModelAnalysisCache,
 )
-from jaull.ports.cache import ModelAnalysisCacheProtocol, ModelAnalysisCacheStats
 
 __all__ = [
     "ANALYSIS_CACHE_SCHEMA_VERSION",
     "DEFAULT_TTL_SECONDS",
     "ModelAnalysisCache",
-    "ModelAnalysisCacheProtocol",
-    "ModelAnalysisCacheStats",
     "NullModelAnalysisCache",
 ]

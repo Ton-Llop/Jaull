@@ -13,6 +13,9 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
+from jaull.application import requirements as requirements_service
+from jaull.application.recommendation import policies
+from jaull.application.recommendation import service as recommendation_service
 from jaull.discovery import candidate_filter, enrichment, query_builder
 from jaull.domain.candidates import (
     EvaluatedCandidate,
@@ -25,11 +28,9 @@ from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import UserAnswers, UserRequirements
 from jaull.exceptions import HuggingFaceUnavailableError, JaullError
+from jaull.observability.telemetry import PerformanceTelemetry
 from jaull.recommendation import explanations
 from jaull.recommendation.engine_v2 import PlanRankingContext
-from jaull.workflow import policies
-from jaull.workflow import ranking as recommendation_service
-from jaull.workflow import requirements as requirements_service
 from jaull.workflow.cache import RunCache
 from jaull.workflow.container import ServiceContainer
 from jaull.workflow.models import WorkflowStep
@@ -40,7 +41,6 @@ from jaull.workflow.progress import (
     ProgressReporter,
 )
 from jaull.workflow.state import RecommendationWorkflowState
-from jaull.workflow.telemetry import PerformanceTelemetry
 
 logger = logging.getLogger(__name__)
 
