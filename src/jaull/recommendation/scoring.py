@@ -259,13 +259,13 @@ def max_log_downloads(candidates: list[ModelCandidate]) -> float:
     return max(math.log1p(max(0, c.downloads)) for c in candidates) or 1.0
 
 
-def score_candidate(
+def enrich_candidate_features(
     evaluated: EvaluatedCandidate,
     requirements: UserRequirements,
     max_log: float,
     capability_signal: float | None = None,
 ) -> EvaluatedCandidate:
-    """Return a copy with all sub-scores populated.
+    """Return a copy with candidate features populated.
 
     ``capability_signal`` is passed in from the caller so the recommendation
     service can source it from ``recommendation.capability`` without this
@@ -297,6 +297,21 @@ def score_candidate(
     )
 
 
+def score_candidate(
+    evaluated: EvaluatedCandidate,
+    requirements: UserRequirements,
+    max_log: float,
+    capability_signal: float | None = None,
+) -> EvaluatedCandidate:
+    """Compatibility wrapper for the old feature-enrichment entry point."""
+    return enrich_candidate_features(
+        evaluated,
+        requirements,
+        max_log,
+        capability_signal=capability_signal,
+    )
+
+
 def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
 
@@ -312,6 +327,7 @@ __all__ = [
     "artifact_realism",
     "concurrency_fit",
     "confidence_of",
+    "enrich_candidate_features",
     "hardware_fit",
     "language_match",
     "license_score",

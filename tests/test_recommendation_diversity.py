@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pytest import MonkeyPatch
+
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.execution_plans import (
     ModelIdentity,
@@ -18,6 +20,7 @@ from jaull.recommendation.engine_v2 import (
     RankedPlan,
     rank_execution_plans,
 )
+from jaull.recommendation.models import ScoreBreakdown
 from jaull.workflow import policies, ranking
 from tests._workflow_fixtures import GIB, hardware, size_driven_estimator
 from tests.test_recommendation_engine_v2 import (
@@ -40,6 +43,45 @@ def test_eight_valid_candidates_return_five_recommendations() -> None:
     )
 
     assert len(recs) == 5
+
+
+def test_hardware_path_does_not_use_legacy_ranker_to_select_recommendations(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    def fail_select_ranked(*args: object, **kwargs: object) -> object:
+        raise AssertionError("hardware recommendation path must use v2 ranking")
+
+    monkeypatch.setattr(ranking.ranker, "select_ranked", fail_select_ranked)
+
+    recs = ranking.recommend(
+        [_evaluated_gguf(repo_id=f"org/Model-{index}-7B-GGUF") for index in range(8)],
+        _requirements(),
+        hardware=hardware(),
+    )
+
+    assert len(recs) == 5
+
+
+def test_hardware_path_builds_legacy_breakdown_only_for_final_compatibility(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def count_breakdown(*args: object, **kwargs: object) -> ScoreBreakdown:
+        nonlocal calls
+        calls += 1
+        return ScoreBreakdown(total=0.5, hard_penalty=1.0)
+
+    monkeypatch.setattr(ranking.ranker, "score_breakdown", count_breakdown)
+
+    recs = ranking.recommend(
+        [_evaluated_gguf(repo_id=f"org/Model-{index}-7B-GGUF") for index in range(8)],
+        _requirements(),
+        hardware=hardware(),
+    )
+
+    assert len(recs) == 5
+    assert calls == len(recs)
 
 
 def test_four_valid_candidates_return_four_recommendations() -> None:

@@ -46,17 +46,17 @@ _RankedRecommendation = tuple[
 ]
 
 
-def score_all(
+def enrich_candidate_features(
     evaluated: list[EvaluatedCandidate],
     requirements: UserRequirements,
     capability_analyzer: capability.CapabilityAnalyzer | None = None,
 ) -> list[EvaluatedCandidate]:
-    """Populate every sub-score, normalising popularity across the whole set."""
+    """Populate candidate features used by v2 assessment and compatibility."""
     usable = [item for item in evaluated if not item.failed]
     max_log = scoring.max_log_downloads([item.candidate for item in usable])
     analyzer = capability_analyzer or capability.MetadataCapabilityAnalyzer()
-    scored = [
-        scoring.score_candidate(
+    enriched = [
+        scoring.enrich_candidate_features(
             item,
             requirements,
             max_log,
@@ -65,10 +65,10 @@ def score_all(
         for item in usable
     ]
 
-    # Second pass: evaluate hard requirements once the sub-scores exist (so
+    # Second pass: evaluate hard requirements once the features exist (so
     # concurrency_fit_score is available to the gate).
     with_gate: list[EvaluatedCandidate] = []
-    for item in scored:
+    for item in enriched:
         satisfaction = requirements_gate.evaluate_requirements(item, requirements)
         with_gate.append(
             item.model_copy(
@@ -81,6 +81,19 @@ def score_all(
     return with_gate
 
 
+def score_all(
+    evaluated: list[EvaluatedCandidate],
+    requirements: UserRequirements,
+    capability_analyzer: capability.CapabilityAnalyzer | None = None,
+) -> list[EvaluatedCandidate]:
+    """Compatibility wrapper for callers that still use the old name."""
+    return enrich_candidate_features(
+        evaluated,
+        requirements,
+        capability_analyzer=capability_analyzer,
+    )
+
+
 def recommend(
     evaluated: list[EvaluatedCandidate],
     requirements: UserRequirements,
@@ -91,31 +104,27 @@ def recommend(
 ) -> list[ModelRecommendation]:
     """Produce at most ``limit`` explained recommendations."""
     analyzer = capability_analyzer or capability.MetadataCapabilityAnalyzer()
-    scored = score_all(evaluated, requirements, capability_analyzer=analyzer)
-    if not scored:
+    enriched = enrich_candidate_features(
+        evaluated,
+        requirements,
+        capability_analyzer=analyzer,
+    )
+    if not enriched:
         return []
-
-    # Collapse the original repo and its GGUF conversions into one entry, using
-    # the composite score to decide which member represents the family.
-    provisional = {
-        item.repo_id: ranker.score_breakdown(
-            item,
-            requirements.priority,
-            hard_penalty=item.requirement_penalty,
-            unmet_requirements=item.unmet_requirement_labels,
-        ).total
-        for item in scored
-    }
-    collapsed, siblings = collapse_families(scored, provisional)
 
     if hardware is not None:
         context = plan_context or PlanRankingContext(hardware=hardware)
         ranked_plans = rank_execution_plans(
-            scored,
+            enriched,
             requirements,
             context=context,
         )
         diversified_items = diversify_ranked_plans(ranked_plans, limit=limit)
+        v2_priority = {
+            item.evaluated.repo_id: float(len(ranked_plans) - index)
+            for index, item in enumerate(ranked_plans)
+        }
+        _collapsed, siblings = collapse_families(enriched, v2_priority)
         ranked: list[_RankedRecommendation] = [
             (
                 item.primary.evaluated,
@@ -131,6 +140,18 @@ def recommend(
             for item in diversified_items
         ]
     else:
+        # Compatibility path: ranking without hardware still uses the legacy
+        # composite score because it has no execution-plan assessments.
+        provisional = {
+            item.repo_id: ranker.score_breakdown(
+                item,
+                requirements.priority,
+                hard_penalty=item.requirement_penalty,
+                unmet_requirements=item.unmet_requirement_labels,
+            ).total
+            for item in enriched
+        }
+        collapsed, siblings = collapse_families(enriched, provisional)
         # Legacy no-hardware path keeps the old strong series grouping because
         # it does not have execution-plan assessments to drive the v2 diversifier.
         series_map = series.group_by_series(collapsed)
