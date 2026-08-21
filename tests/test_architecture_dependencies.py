@@ -25,9 +25,12 @@ RULES = (
     DependencyRule(
         source_prefix="src/jaull/domain/",
         forbidden_import_prefixes=(
+            "jaull.application",
+            "jaull.adapters",
             "jaull.workflow",
             "jaull.tui",
             "jaull.cli",
+            "jaull.presentation",
             "jaull.advisor",
             "jaull.runtime",
             "jaull.discovery",
@@ -47,6 +50,34 @@ RULES = (
         ),
     ),
     DependencyRule(
+        source_prefix="src/jaull/application/",
+        forbidden_import_prefixes=(
+            "jaull.adapters",
+            "jaull.tui",
+            "jaull.cli",
+            "jaull.presentation",
+            "jaull.advisor",
+            "jaull.workflow",
+            "jaull.huggingface",
+            "huggingface_hub",
+            "textual",
+        ),
+    ),
+    DependencyRule(
+        source_prefix="src/jaull/ports/",
+        forbidden_import_prefixes=(
+            "jaull.adapters",
+            "jaull.tui",
+            "jaull.cli",
+            "jaull.presentation",
+            "jaull.advisor",
+            "jaull.workflow",
+            "jaull.huggingface",
+            "huggingface_hub",
+            "textual",
+        ),
+    ),
+    DependencyRule(
         source_prefix="src/jaull/execution_plans/",
         forbidden_import_prefixes=(
             "jaull.workflow",
@@ -54,38 +85,22 @@ RULES = (
         ),
     ),
     DependencyRule(
+        source_prefix="src/jaull/presentation/",
+        forbidden_import_prefixes=(
+            "jaull.adapters",
+            "jaull.huggingface",
+            "textual",
+            "huggingface_hub",
+        ),
+    ),
+    DependencyRule(
         source_prefix="src/jaull/tui/",
-        forbidden_import_prefixes=("jaull.huggingface",),
+        forbidden_import_prefixes=("jaull.huggingface", "huggingface_hub"),
     ),
 )
 
 
-LEGACY_IMPORT_ALLOWLIST = {
-    (
-        "src/jaull/execution_plans/service.py",
-        "jaull.workflow.policies",
-    ),
-    (
-        "src/jaull/execution_plans/service.py",
-        "jaull.workflow.model_analysis_cache",
-    ),
-    (
-        "src/jaull/execution_plans/service.py",
-        "jaull.workflow.telemetry",
-    ),
-    (
-        "src/jaull/execution_plans/service.py",
-        "jaull.recommendation.models",
-    ),
-    (
-        "src/jaull/tui/screens/estimate.py",
-        "jaull.huggingface.url_parser",
-    ),
-    (
-        "src/jaull/tui/screens/inspect.py",
-        "jaull.huggingface.url_parser",
-    ),
-}
+LEGACY_IMPORT_ALLOWLIST: set[tuple[str, str]] = set()
 
 
 def test_architecture_dependency_rules_do_not_gain_new_violations() -> None:
