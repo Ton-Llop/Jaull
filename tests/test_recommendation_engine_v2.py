@@ -247,7 +247,7 @@ def test_hard_memory_failure_rejects_plan() -> None:
     }
 
 
-def test_missing_runtime_rejects_or_marks_not_ready() -> None:
+def test_missing_runtime_is_operational_not_a_rejection() -> None:
     evaluated = _evaluated_gguf()
     selection = _selection()
     readiness = _readiness(RuntimeName.LLAMA_CPP, selection, ExecutionReadinessStatus.NOT_READY)
@@ -268,8 +268,12 @@ def test_missing_runtime_rejects_or_marks_not_ready() -> None:
         context=PlanRankingContext(readiness_by_runtime={RuntimeName.LLAMA_CPP: readiness}),
     )
 
-    assert assessment.executability is AssessmentLevel.BLOCKED
-    assert HardConstraintCode.RUNTIME_NOT_READY in {
+    # The plan is still a coherent way to run this model on this hardware, so
+    # only the operational axis reacts. A missing binary must not reject it.
+    assert assessment.executability is AssessmentLevel.STRONG
+    assert assessment.runtime_readiness is AssessmentLevel.BLOCKED
+    assert not assessment.rejected
+    assert HardConstraintCode.RUNTIME_NOT_READY not in {
         constraint.code for constraint in assessment.hard_constraints
     }
 

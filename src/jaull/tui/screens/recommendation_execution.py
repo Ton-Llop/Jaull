@@ -25,7 +25,11 @@ from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
 from jaull.execution.errors import ExecutionError
 from jaull.presentation.execution_report import inline_observation_summary
-from jaull.presentation.plan_labels import model_display_name, plan_backend
+from jaull.presentation.plan_labels import (
+    model_display_name,
+    plan_backend,
+    runtime_block_reason,
+)
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -158,6 +162,17 @@ class RecommendationExecutionScreen(Screen[None]):
             self._render_error(
                 "This recommendation has no executable runtime configuration."
             )
+            return
+        # The plan can be recommended without the runtime being installed, so
+        # this is the point where "can I launch it now?" is finally asked. Say
+        # what is missing instead of spawning a process that is not there.
+        blocked = (
+            runtime_block_reason(self._execution_plan)
+            if self._execution_plan is not None
+            else None
+        )
+        if blocked is not None:
+            self._render_error(blocked)
             return
 
         self._clear_error()

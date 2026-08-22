@@ -42,7 +42,11 @@ from jaull.exceptions import (
     JaullError,
     QuantizationNotFoundError,
 )
-from jaull.presentation.plan_labels import model_display_name, plan_backend
+from jaull.presentation.plan_labels import (
+    model_display_name,
+    plan_backend,
+    runtime_block_reason,
+)
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -168,6 +172,16 @@ class RecommendationBenchmarkScreen(Screen[None]):
         runtime = self._runtime()
         if runtime is None:
             self._set_error("Benchmark requires an executable runtime recommendation.")
+            return
+        # Recommending this plan never required the runtime to be installed;
+        # measuring it does.
+        blocked = (
+            runtime_block_reason(self._execution_plan)
+            if self._execution_plan is not None
+            else None
+        )
+        if blocked is not None:
+            self._set_error(blocked)
             return
 
         app = self._app()
