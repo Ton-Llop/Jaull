@@ -679,12 +679,27 @@ class AdvisorService:
                 else _runtime_for_variant(variant)
             )
             memory = current.memory_prediction if variant == current.artifact else None
+            # The ranked plan already carries the readiness that was probed for
+            # its runtime; rebuilding the siblings without it left every plan on
+            # this screen reading "Ready when prepared" and the Ready filter
+            # permanently empty. Readiness is per-runtime, so it only carries
+            # over to a sibling on the same one; hardware and backend selection
+            # are runtime-independent.
+            same_runtime = runtime.runtime is current.runtime_family
             plans.append(
                 build_execution_plan(
                     model_identity=current.model_identity,
                     artifact=variant,
                     runtime=runtime,
                     memory_prediction=memory,
+                    hardware=current.hardware,
+                    backend_selection=current.backend_selection,
+                    runtime_capability=(
+                        current.runtime_capability if same_runtime else None
+                    ),
+                    execution_readiness=(
+                        current.execution_readiness if same_runtime else None
+                    ),
                 )
             )
         return plans or [current]

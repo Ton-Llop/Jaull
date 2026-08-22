@@ -1476,10 +1476,14 @@ def test_execution_paths_selects_plan_and_run_uses_prepared_plan(
             results = pilot.app.screen
             assert isinstance(results, RecommendationResultsScreen)
             results.query_one("#res-paths-0", Button).press()
+            # #paths-gguf is registered several awaited mounts before the actions
+            # are enabled, and pressing a disabled Button is a silent no-op, so
+            # the gate has to name the button this test is about to press.
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-gguf")),
+                and bool(pilot.app.screen.query("#paths-gguf"))
+                and not pilot.app.screen.query_one("#paths-run", Button).disabled,
             )
             paths = pilot.app.screen
             assert isinstance(paths, ExecutionPathsScreen)

@@ -22,7 +22,11 @@ from jaull.domain.execution_plans import (
     ModelIdentity,
 )
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+from jaull.domain.runtime import (
+    ExecutionReadinessStatus,
+    RuntimeName,
+    RuntimeRecommendation,
+)
 from jaull.presentation.console import format_bytes
 
 # Repository names carry the artifact format as a suffix (`-GGUF`, `-AWQ`).
@@ -200,6 +204,32 @@ def is_ready_plan(plan: ExecutionPlan) -> bool:
     )
 
 
+def runtime_block_reason(plan: ExecutionPlan) -> str | None:
+    """Why this plan cannot be acted on here, or ``None`` when it can be tried.
+
+    Recommending a plan and acting on it are separate questions, so this answers
+    only the second one. The wording names the plan rather than any one verb, so
+    Run, Validate and Benchmark can all report the same condition without each
+    inventing its own sentence. Only a conclusive ``NOT_READY`` blocks: an
+    unknown readiness means the probe could not decide, and letting the attempt
+    proceed yields a more precise error from the runtime layer than a guess.
+    """
+
+    readiness = plan.execution_readiness
+    if readiness is None or readiness.status is not ExecutionReadinessStatus.NOT_READY:
+        return None
+    required = plan.runtime_family.value
+    if plan.backend_selection is not None:
+        backend = _backend_display(plan.backend_selection.selected_backend.value)
+        required += f" with {backend} support"
+    detail = readiness.message or readiness.reason.value.replace("_", " ")
+    return (
+        f"This execution plan is not ready on this machine. "
+        f"Required runtime: {required}. Runtime status: {detail}. "
+        "Run `jaull doctor` for runtime setup details."
+    )
+
+
 def _backend_display(backend: str) -> str:
     normalized = backend.lower()
     if normalized in {"cpu", "cuda", "hip"}:
@@ -246,5 +276,6 @@ __all__ = [
     "plan_summary_line",
     "plan_variant",
     "readiness_label",
+    "runtime_block_reason",
     "selected_plan_label",
 ]

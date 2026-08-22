@@ -214,6 +214,7 @@ def assess_plan(
         execution_fitness=_execution_fitness(plan),
         feasibility=_feasibility(plan),
         executability=_executability(plan),
+        runtime_readiness=_runtime_readiness(plan),
         performance_evidence=(
             AssessmentLevel.STRONG if local_benchmark is not None else AssessmentLevel.UNKNOWN
         ),
@@ -475,18 +476,11 @@ def _hard_constraints(
                 evidence_key="language",
             )
         )
-    if (
-        plan.execution_readiness is not None
-        and plan.execution_readiness.status is ExecutionReadinessStatus.NOT_READY
-    ):
-        constraints.append(
-            HardConstraint(
-                code=HardConstraintCode.RUNTIME_NOT_READY,
-                message=plan.execution_readiness.message
-                or "Runtime is not ready for the selected backend.",
-                evidence_key="execution.readiness",
-            )
-        )
+    # A missing binary is deliberately absent from this list. It is an
+    # operational condition of this machine at this moment, not an
+    # incompatibility of the plan, so it must not reject a recommendation.
+    # HardConstraintCode.RUNTIME_NOT_READY still exists and is raised by the
+    # action layer, where "can I launch this now?" is the actual question.
     return constraints
 
 
@@ -689,8 +683,26 @@ def _feasibility(plan: ExecutionPlan) -> AssessmentLevel:
 
 
 def _executability(plan: ExecutionPlan) -> AssessmentLevel:
+    """Whether the plan is technically coherent, not whether it can run now.
+
+    Recommendation answers "is this a good plan for this hardware?", which does
+    not depend on which binaries happen to be installed. The operational side
+    lives in :func:`_runtime_readiness` and never enters the ranking key.
+    """
+
     if plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE:
         return AssessmentLevel.BLOCKED
+    if plan.compatibility is PlanCompatibilityStatus.COMPATIBLE:
+        return AssessmentLevel.STRONG
+    return AssessmentLevel.UNKNOWN
+
+
+def _runtime_readiness(plan: ExecutionPlan) -> AssessmentLevel:
+    """Whether this installation could launch the plan right now.
+
+    Purely operational: reported and rendered, never ranked.
+    """
+
     if plan.execution_readiness is None:
         return AssessmentLevel.UNKNOWN
     if plan.execution_readiness.status is ExecutionReadinessStatus.READY:
@@ -761,12 +773,10 @@ def _confidence(
 ) -> EstimationConfidence:
     if experiment is not None or benchmark is not None:
         return EstimationConfidence.HIGH
-    if (
-        plan.execution_readiness is not None
-        and plan.execution_readiness.status is ExecutionReadinessStatus.READY
-        and evaluated.candidate.metadata_confidence is EstimationConfidence.UNKNOWN
-    ):
-        return EstimationConfidence.MEDIUM
+    # An installed runtime used to upgrade a metadata-poor candidate to MEDIUM.
+    # That leaked readiness into both the ranking tie-break and the diversity
+    # signature, so installing llama.cpp changed the order. Confidence now
+    # describes the evidence behind the plan, not this machine's setup.
     if plan.memory_prediction is not None:
         return _weaker_confidence(
             evaluated.candidate.metadata_confidence,

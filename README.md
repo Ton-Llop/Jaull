@@ -237,25 +237,45 @@ planned      workload profile (SLOs) → load & capacity experiments → sustain
 Jaull is a modular Python monolith. There are no workers, no containers and no remote
 executors — the boundaries exist so those can be added later without a rewrite.
 
+The dependency direction is one-way:
+
+```text
+Presentation    cli/ · tui/ · presentation/ · reporting/ · diagnostics/
+      ↓
+Advisor         advisor/          the single facade both front-ends talk to
+      ↓
+Application     application/ · workflow/     use cases and guided orchestration
+      ↓
+Domain / Ports  domain/ · ports/  frozen models, pure heuristics, boundary protocols
+      ↑
+Adapters        adapters/ and the infrastructure packages, composed by bootstrap/
+```
+
 ```text
 src/jaull/
-├── domain/           # frozen Pydantic models + enums shared by everything else
+├── domain/           # frozen Pydantic models, enums, policies, pure heuristics
+├── ports/            # boundary protocols for replaceable infrastructure
+├── application/      # use cases: requirements, model references, variant discovery,
+│                     #   recommendation service, policies, execution-plan assembly
+├── adapters/         # concrete implementations behind the ports (model-analysis cache)
+├── bootstrap/        # production composition root (`ServiceContainer`)
+├── advisor/          # application facade used by both front-ends
 ├── hardware/         # CPU/RAM/storage probes, NVML, Vulkan backend detection
 ├── huggingface/      # Hub client, URL parser, repository classifier, artifact resolver
 ├── analyzers/        # per-repository-type analyzers behind a Protocol
 ├── metadata/         # GGUF header reader over HTTP Range, base-model resolver, config merge
 ├── estimator/        # weights, KV cache, overhead, compatibility, policies
 ├── discovery/        # Hub search, query building, filtering, enrichment, series grouping
-├── recommendation/   # scoring, ranking, tiers, hard-requirement gate, explanations
-├── workflow/         # guided-run orchestrator, requirements, caches, service container
-├── execution_plans/  # model identity, artifact variants, concrete execution plans
+├── recommendation/   # plan assessment, ranking, diversity, tiers, explanations
+├── execution_plans/  # logical model identity and pure execution-plan construction
+├── workflow/         # guided-run orchestrator, progress/state, per-run cache
 ├── artifacts/        # artifact resolution, download, storage layout, SHA-256 verification
 ├── runtime/          # runtime discovery, capability probes, backend selection, runners
 ├── execution/        # process execution contracts + host backend
 ├── experiments/      # experiment runner and JSON record store
 ├── benchmarks/       # benchmark matrix runner and JSON record store
 ├── evaluation/       # prediction vs observation, and benchmark vs benchmark, comparison
-├── advisor/          # application facade used by both front-ends
+├── observability/    # performance telemetry
 ├── reporting/        # JSON + Markdown serialisation
 ├── presentation/     # Rich rendering
 ├── diagnostics/      # environment, runtime and readiness checks (`doctor`)
@@ -263,14 +283,33 @@ src/jaull/
 └── tui/              # Textual screens and widgets
 ```
 
-The boundaries that are enforced:
+Recommendation policy, requirements normalisation, budgets, telemetry and variant discovery
+live in `application/`, not in `workflow/`. What is left in `workflow/` is the guided-run
+orchestrator, its progress and state DTOs, the per-run memoisation cache, and compatibility
+shims that re-export the moved modules under their historical import paths.
+`execution_plans/` is likewise reduced to logical model identity and pure plan construction;
+anything that needs recommendation DTOs, search or caching lives in `application/`.
 
-- `domain/` imports nothing from the layers above it.
-- `discovery/` and `recommendation/` never import each other, and never import `workflow/`.
-- `workflow/`, `discovery/` and `recommendation/` are pure Python — the whole guided
-  pipeline runs, and is tested, without a terminal.
-- CLI commands and TUI screens never call `HfApi`, NVML or a runtime directly: they go
-  through `AdvisorService`.
+The boundaries enforced by `tests/test_architecture_dependencies.py`:
+
+- `domain/` imports nothing from the layers above it, and no infrastructure library.
+- `application/` never imports adapters, presentation, advisor, `workflow/` or Hugging Face
+  clients — it depends on domain models and ports.
+- `ports/` never imports adapters or presentation.
+- `execution_plans/` never imports `workflow/` or `recommendation/`.
+- `recommendation/` never imports `workflow/`, the advisor or a front-end.
+- `presentation/` and TUI screens never import Hugging Face adapters.
+
+That test scans imports with `ast`; its exception list is exact and currently empty. Two
+further rules hold by convention rather than by test, and `docs/architecture.md` shows the
+`grep` that checks them: `discovery/` and `recommendation/` never import each other — the
+contracts they share live in `domain/` — and CLI commands and TUI screens reach services
+only through `AdvisorService`, never through `HfApi`, NVML or a runtime directly.
+
+Beyond the import graph:
+
+- `application/`, `workflow/`, `discovery/` and `recommendation/` are pure Python — the whole
+  guided pipeline runs, and is tested, without a terminal.
 - Prediction (`MemoryEstimate`), observation (`ExecutionObservation`) and their comparison
   (`PredictionComparison`) are three separate objects. Measurement never edits a prediction.
 - Every external dependency hides behind a `Protocol`, so tests inject fakes.

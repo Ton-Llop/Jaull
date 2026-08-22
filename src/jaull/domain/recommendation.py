@@ -110,6 +110,10 @@ class PlanAssessment(BaseModel):
     execution_fitness: AssessmentLevel = AssessmentLevel.UNKNOWN
     feasibility: AssessmentLevel = AssessmentLevel.UNKNOWN
     executability: AssessmentLevel = AssessmentLevel.UNKNOWN
+    # Operational, not a ranking axis: whether this installation could launch the
+    # plan right now. A plan whose runtime is not installed is still a good plan
+    # for this hardware, so ranking policy must never read this field.
+    runtime_readiness: AssessmentLevel = AssessmentLevel.UNKNOWN
     performance_evidence: AssessmentLevel = AssessmentLevel.UNKNOWN
     resource_evidence: AssessmentLevel = AssessmentLevel.UNKNOWN
     license_fit: AssessmentLevel = AssessmentLevel.UNKNOWN

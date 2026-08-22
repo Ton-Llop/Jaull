@@ -134,7 +134,7 @@ def build_execution_plan(
     runtime_capability: RuntimeCapability | None = None,
     execution_readiness: ExecutionReadiness | None = None,
 ) -> ExecutionPlan:
-    compatibility = _compatibility(artifact, runtime, execution_readiness)
+    compatibility = _compatibility(artifact, runtime)
     return ExecutionPlan(
         plan_id=_plan_id(artifact, runtime),
         model_identity=model_identity,
@@ -155,17 +155,17 @@ def build_execution_plan(
 def _compatibility(
     artifact: ArtifactVariant,
     runtime: RuntimeRecommendation,
-    readiness: ExecutionReadiness | None,
 ) -> PlanCompatibilityStatus:
+    """Whether the artifact and the runtime fit each other.
+
+    Deliberately blind to what is installed locally: a GGUF file is compatible
+    with llama.cpp whether or not llama-cli exists on this machine. Whether the
+    plan can be launched *now* is ``ExecutionPlan.execution_readiness``.
+    """
+
     if runtime.runtime not in artifact.compatible_runtimes:
         return PlanCompatibilityStatus.NOT_COMPATIBLE
-    if readiness is None:
-        return PlanCompatibilityStatus.UNKNOWN
-    if readiness.status is ExecutionReadinessStatus.READY:
-        return PlanCompatibilityStatus.COMPATIBLE
-    if readiness.status is ExecutionReadinessStatus.NOT_READY:
-        return PlanCompatibilityStatus.NOT_COMPATIBLE
-    return PlanCompatibilityStatus.UNKNOWN
+    return PlanCompatibilityStatus.COMPATIBLE
 
 
 def _plan_evidence(

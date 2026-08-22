@@ -436,7 +436,11 @@ def test_execution_plan_llama_cpp_not_ready_is_preserved() -> None:
         execution_readiness=readiness,
     )
 
-    assert plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE
+    # A GGUF file and llama.cpp fit each other whether or not llama-cli is
+    # installed here, so compatibility stays COMPATIBLE and the unmet condition
+    # is carried by readiness and the warning instead.
+    assert plan.compatibility is PlanCompatibilityStatus.COMPATIBLE
+    assert plan.execution_readiness is readiness
     assert "Runtime readiness is not_ready." in plan.warnings
 
 

@@ -83,9 +83,15 @@ def test_benchmark_screen_shows_successful_matrix(
             _run_workers_inline(screen, monkeypatch)
 
             screen.query_one("#benchmark-start", Button).press()
+            # The progress line is erased from #benchmark-status once the result
+            # renders, so its only surviving copy is inside the Run log
+            # collapsible -- which mounts a generation later than the result
+            # itself. Waiting on "Benchmark complete" alone resumes the test
+            # before that mount lands.
             await _wait_until(
                 pilot,
-                lambda: "Benchmark complete" in _visible_text(screen),
+                lambda: "Benchmark complete" in _visible_text(screen)
+                and "Running llama-bench: vulkan" in _visible_text(screen),
             )
 
             text = _visible_text(screen)
@@ -142,7 +148,8 @@ def test_benchmark_screen_runs_transformers_single_benchmark(
             screen.query_one("#benchmark-start", Button).press()
             await _wait_until(
                 pilot,
-                lambda: "Benchmark complete" in _visible_text(screen),
+                lambda: "Benchmark complete" in _visible_text(screen)
+                and "Running Transformers benchmark: cpu" in _visible_text(screen),
             )
 
             assert advisor.benchmark_calls == 1
