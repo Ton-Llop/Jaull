@@ -236,6 +236,14 @@ class ExecutionPathsScreen(Screen[None]):
         status = self.query_one("#paths-status", Static)
         status.update("")
         status.display = False
+        # `_render_plans` only reaches `_apply_selection` after mounting every
+        # option, and each mount yields. The selection is already known here, so
+        # settle the actions first: otherwise the screen looks ready while
+        # `#paths-run` is still disabled, and Textual swallows the press.
+        selected = self._selected_plan()
+        self._set_actions(
+            enabled=selected is not None and self._plan_matches_filter(selected)
+        )
         await self._render_plans()
 
     @on(_ExecutionPathsFailed)
