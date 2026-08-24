@@ -1554,10 +1554,16 @@ def test_execution_paths_quantization_selection_does_not_prepare() -> None:
             results = pilot.app.screen
             assert isinstance(results, RecommendationResultsScreen)
             results.query_one("#res-paths-0", Button).press()
+            # `Select` is a compound widget: it exists in the DOM one mount
+            # generation before its own `SelectCurrent` composes the `#label`
+            # that `Select._watch_value` writes into. Waiting only for
+            # `#paths-quant` therefore lets the assignment below land in that
+            # gap and raise NoMatches, so the gate names the descendant the
+            # test is about to touch rather than the container.
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-quant")),
+                and bool(pilot.app.screen.query("#paths-quant #label")),
             )
             paths = pilot.app.screen
             assert isinstance(paths, ExecutionPathsScreen)

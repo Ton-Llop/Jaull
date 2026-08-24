@@ -46,6 +46,24 @@ class CompatibilityStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class HardwareFitMode(StrEnum):
+    GPU_RESIDENT = "gpu_resident"
+    GPU_OFFLOAD = "gpu_offload"
+    CPU_RAM = "cpu_ram"
+    TOO_LARGE = "too_large"
+
+
+class HardwareMemoryTopology(StrEnum):
+    DISCRETE_MEMORY = "discrete_memory"
+    UNIFIED_MEMORY = "unified_memory"
+
+
+class HardwareFitPlacementMethod(StrEnum):
+    LAYERS = "layers"
+    ESTIMATED_BYTES = "estimated_bytes"
+    NONE = "none"
+
+
 class MetadataSource(StrEnum):
     MODEL_CARD_METADATA = "model_card_metadata"
     GGUF_METADATA = "gguf_metadata"
@@ -132,6 +150,33 @@ class CompatibilityAssessment(BaseModel):
     available_ram_bytes: int | None = None
     ratio: float | None = None
     reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class HardwareFitResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    mode: HardwareFitMode
+    memory_topology: HardwareMemoryTopology
+    weights_bytes: int
+    kv_cache_bytes: int
+    overhead_bytes: int
+    device_reserve_bytes: int = 0
+    safety_margin_bytes: int = 0
+    available_vram_bytes: int | None = None
+    available_ram_bytes: int | None = None
+    gpu_required_bytes: int | None = None
+    gpu_weight_bytes: int = 0
+    gpu_overhead_bytes: int = 0
+    gpu_safety_margin_bytes: int = 0
+    ram_required_bytes: int | None = None
+    ram_weight_bytes: int = 0
+    ram_overhead_bytes: int = 0
+    ram_safety_margin_bytes: int = 0
+    gpu_layers: int | None = None
+    total_layers: int | None = None
+    placement_method: HardwareFitPlacementMethod = HardwareFitPlacementMethod.NONE
+    reason: str
     warnings: list[str] = Field(default_factory=list)
 
 
