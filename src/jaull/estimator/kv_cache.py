@@ -17,6 +17,12 @@ FORMULA = (
     "* context * batch * concurrent_users * bytes_per_kv_element"
 )
 
+# Architectures that document ``sliding_window`` on its own and never expose
+# ``use_sliding_window``: there, a populated window is in force and its absence
+# from the config carries no information. Kept minimal on purpose — see
+# ``_apply_sliding_window``. Every entry needs evidence and a test.
+_WINDOW_ALWAYS_ACTIVE_MODEL_TYPES = frozenset({"mistral", "mixtral"})
+
 
 def estimate_kv_cache(
     config: ModelConfig | None,
@@ -70,13 +76,11 @@ def estimate_kv_cache(
     explicit_head_dim = config.head_dim
     head_dim: int = explicit_head_dim if explicit_head_dim else hidden // heads
 
-    effective_context = context_length
-    if config.sliding_window and context_length > config.sliding_window:
-        effective_context = config.sliding_window
-        notes.append(
-            f"Context capped at sliding_window={config.sliding_window} tokens "
-            f"(user requested {context_length})."
-        )
+    effective_context, window_note, window_assumed = _apply_sliding_window(
+        config, context_length
+    )
+    if window_note is not None:
+        notes.append(window_note)
 
     kv_bytes = (
         2
@@ -110,7 +114,11 @@ def estimate_kv_cache(
             name="KV cache",
             bytes=kv_bytes,
             source=EstimateSource.DERIVED,
-            confidence=EstimationConfidence.HIGH,
+            confidence=(
+                EstimationConfidence.MEDIUM
+                if window_assumed
+                else EstimationConfidence.HIGH
+            ),
             explanation=explanation,
         ),
         layers=layers,
@@ -121,6 +129,83 @@ def estimate_kv_cache(
         dtype_bytes=dtype_bytes,
         formula=FORMULA,
         notes=notes,
+    )
+
+
+def _apply_sliding_window(
+    config: ModelConfig, context_length: int
+) -> tuple[int, str | None, bool]:
+    """Decide whether a declared sliding window actually bounds the KV cache.
+
+    A populated ``sliding_window`` is not by itself evidence that attention is
+    windowed, and different architectures use the field differently. Qwen2 and
+    Qwen2.5 ship it set to their full context and gate it behind
+    ``use_sliding_window: false``; Mistral documents ``sliding_window`` alone
+    and never exposes the flag at all, so there its absence does not mean the
+    window is off.
+
+    Clamping *reduces* the estimate, so guessing wrong in that direction can
+    report that a model fits when it needs several times the memory — measured
+    at 4x against llama.cpp on Qwen2.5-1.5B at 131072 tokens. The unknown case
+    therefore resolves the other way:
+
+    * ``true``   - the window is in force. Clamp, HIGH confidence.
+    * ``false``  - declared but inactive. Do not clamp, HIGH confidence.
+    * ``None``   - the config did not say:
+
+      * on an architecture whose ``sliding_window`` semantics are known
+        (:data:`_WINDOW_ALWAYS_ACTIVE_MODEL_TYPES`), clamp, MEDIUM confidence
+        — the decision came from the architecture, not from the config;
+      * otherwise size the full context, MEDIUM confidence. This over-estimates
+        rather than under-estimates, which is the safe direction for an advisor
+        that answers "does this fit".
+
+    The known-architecture set is deliberately small. It grows when there is
+    evidence and a test for the entry, not to pre-empt every family.
+
+    Returns the context to size for, a note when there is something to say, and
+    whether the decision rested on an assumption rather than on the config.
+    """
+
+    window = config.sliding_window
+    if not window or context_length <= window:
+        return context_length, None, False
+
+    if config.use_sliding_window is True:
+        return (
+            window,
+            f"Context capped at sliding_window={window} tokens "
+            f"(user requested {context_length}); use_sliding_window is true.",
+            False,
+        )
+
+    if config.use_sliding_window is False:
+        return (
+            context_length,
+            f"Config declares sliding_window={window} but use_sliding_window is "
+            "false, so the window does not bound the KV cache and the full "
+            f"{context_length}-token context is sized.",
+            False,
+        )
+
+    model_type = (config.model_type or "").lower()
+    if model_type in _WINDOW_ALWAYS_ACTIVE_MODEL_TYPES:
+        return (
+            window,
+            f"Context capped at sliding_window={window} tokens (user requested "
+            f"{context_length}). {model_type} does not expose "
+            "use_sliding_window and windows attention unconditionally, so the "
+            "window is applied on the architecture's behaviour.",
+            True,
+        )
+
+    return (
+        context_length,
+        f"Config declares sliding_window={window} but not use_sliding_window, "
+        f"and {model_type or 'this architecture'} has no known window "
+        f"semantics. Sized for the full {context_length}-token context to avoid "
+        "under-estimating the KV cache.",
+        True,
     )
 
 

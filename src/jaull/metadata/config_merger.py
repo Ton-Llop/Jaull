@@ -110,6 +110,12 @@ def merge(
     if sliding is not None:
         sources["sliding_window"] = ConfigurationSource.BASE_MODEL_CONFIG
 
+    # Carried alongside the window itself: without it the estimator cannot tell
+    # a declared-but-inactive window from an active one.
+    use_sliding = base.use_sliding_window if base else None
+    if use_sliding is not None:
+        sources["use_sliding_window"] = ConfigurationSource.BASE_MODEL_CONFIG
+
     torch_dtype = base.torch_dtype if base else None
     if torch_dtype is not None:
         sources["torch_dtype"] = ConfigurationSource.BASE_MODEL_CONFIG
@@ -148,6 +154,7 @@ def merge(
         head_dim=_as_int(head_dim),
         intermediate_size=intermediate,
         sliding_window=sliding,
+        use_sliding_window=use_sliding,
         rope_scaling=rope_scaling,
         tie_word_embeddings=tie_wte,
         vocab_size=vocab,

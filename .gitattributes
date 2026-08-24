@@ -1,0 +1,21 @@
+# The repository is edited from Windows over \\wsl.localhost and built inside
+# WSL, so line endings are the one thing that reliably drifts: a tool running
+# under Windows Python writes CRLF, and the whole file then shows up as
+# rewritten in a diff that contains no actual change.
+#
+# Normalise everything to LF in the index and in the working tree. `text=auto`
+# still lets Git detect binaries, so images and GGUF fixtures are untouched.
+* text=auto eol=lf
+
+# Belt and braces for the formats this repo actually carries, so a future
+# `core.autocrlf=true` on someone's machine cannot reintroduce the drift.
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.tcss  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+
+uv.lock linguist-generated=true
