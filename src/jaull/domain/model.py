@@ -47,6 +47,11 @@ class ModelConfig(BaseModel):
     head_dim: int | None = None
     intermediate_size: int | None = None
     sliding_window: int | None = None
+    # Whether the window above is actually in force. Qwen2/2.5 ship
+    # ``sliding_window`` populated with ``use_sliding_window: false``, so the
+    # number alone does not mean the KV cache is bounded by it. ``None`` means
+    # the config did not say, which is the Mistral-family case.
+    use_sliding_window: bool | None = None
     rope_scaling: dict[str, object] | None = None
     tie_word_embeddings: bool | None = None
     vocab_size: int | None = None

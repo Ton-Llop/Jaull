@@ -107,6 +107,7 @@ def _model_config_from_dict(data: dict[str, object]) -> ModelConfig:
         head_dim=_int_or_none("head_dim"),
         intermediate_size=_int_or_none("intermediate_size"),
         sliding_window=_int_or_none("sliding_window"),
+        use_sliding_window=_bool_or_none("use_sliding_window"),
         rope_scaling=_dict_or_none("rope_scaling"),
         tie_word_embeddings=_bool_or_none("tie_word_embeddings"),
         vocab_size=_int_or_none("vocab_size"),
