@@ -232,6 +232,7 @@
           "reasons": [],
           "warnings": []
         },
+        "hardware_fit": null,
         "assumptions": [],
         "warnings": [],
         "base_model_resolution": null,

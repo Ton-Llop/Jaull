@@ -17,6 +17,10 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimateSource,
     EstimationConfidence,
+    HardwareFitMode,
+    HardwareFitPlacementMethod,
+    HardwareFitResult,
+    HardwareMemoryTopology,
     KvCacheEstimate,
     MemoryComponent,
     MemoryEstimate,
@@ -411,9 +415,11 @@ def _estimate(
     status: CompatibilityStatus = CompatibilityStatus.COMPATIBLE,
     target_device: TargetDevice = TargetDevice.AUTO,
     effective_device: TargetDevice = TargetDevice.CPU,
+    hardware_fit: HardwareFitResult | None = None,
 ) -> MemoryEstimate:
     total = _sum_optional([weights, kv, overhead])
     return MemoryEstimate(
+        hardware_fit=hardware_fit,
         repository=ModelRepositoryInfo(repo_id="org/model"),
         repository_type=RepositoryType.GGUF,
         inference_configuration=InferenceConfiguration(
@@ -519,3 +525,288 @@ def _runtime(n_gpu_layers: int, *, ctx_size: int | None = None) -> RuntimeRecomm
         confidence=EstimationConfidence.HIGH,
         flags=flags,
     )
+
+
+# ---------------------------------------------------------------------------
+# VRAM: budget is not allocation
+# ---------------------------------------------------------------------------
+# ``peak_vram_bytes`` is what NVML attributed to the process, so the prediction
+# has to be the bytes that process allocates. ``gpu_required_bytes`` is a
+# capacity budget: it also holds the device reserve (memory left free for
+# *other* processes) and the safety margin (policy padding). Comparing the
+# budget would report the size of the policy as if it were estimator error.
+
+
+def _fit(
+    *,
+    mode: HardwareFitMode = HardwareFitMode.GPU_RESIDENT,
+    gpu_weight: int = 600,
+    kv: int = 300,
+    gpu_overhead: int = 100,
+    device_reserve: int = 250,
+    gpu_margin: int = 50,
+    gpu_layers: int | None = 32,
+    total_layers: int | None = 32,
+    placement: HardwareFitPlacementMethod = HardwareFitPlacementMethod.LAYERS,
+    ram_weight: int = 0,
+) -> HardwareFitResult:
+    """A placement in round numbers so the arithmetic reads by hand.
+
+    Physical = 600 + 300 + 100 = 1000. Budget = physical + 250 + 50 = 1300.
+    """
+
+    gpu_required = gpu_weight + kv + gpu_overhead + device_reserve + gpu_margin
+    return HardwareFitResult(
+        mode=mode,
+        memory_topology=HardwareMemoryTopology.DISCRETE_MEMORY,
+        weights_bytes=gpu_weight + ram_weight,
+        kv_cache_bytes=kv,
+        overhead_bytes=gpu_overhead,
+        device_reserve_bytes=device_reserve,
+        safety_margin_bytes=gpu_margin,
+        available_vram_bytes=8000,
+        available_ram_bytes=16000,
+        gpu_required_bytes=gpu_required,
+        gpu_weight_bytes=gpu_weight,
+        gpu_overhead_bytes=gpu_overhead,
+        gpu_safety_margin_bytes=gpu_margin,
+        ram_required_bytes=ram_weight,
+        ram_weight_bytes=ram_weight,
+        gpu_layers=gpu_layers,
+        total_layers=total_layers,
+        placement_method=placement,
+        reason="test placement",
+    )
+
+
+def _gpu_estimate(fit: HardwareFitResult | None) -> MemoryEstimate:
+    return _estimate(
+        weights=600,
+        kv=300,
+        overhead=100,
+        effective_device=TargetDevice.GPU,
+        hardware_fit=fit,
+    )
+
+
+def test_vram_compares_the_allocation_not_the_budget() -> None:
+    """The headline case: reserve and margin must not count as prediction."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    # 1000, not the 1300 budget.
+    assert comparison.vram.predicted_bytes == 1000
+    assert comparison.vram.error_bytes == 0
+    assert comparison.vram.error_percent == pytest.approx(0.0)
+
+
+def test_vram_overprediction_is_a_negative_error() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=800),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram.error_bytes == -200
+    assert comparison.vram.absolute_error_bytes == 200
+    assert comparison.vram.error_percent == pytest.approx(-20.0)
+
+
+def test_vram_underprediction_is_a_positive_error() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=1250),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram.error_bytes == 250
+    assert comparison.vram.error_percent == pytest.approx(25.0)
+
+
+def test_vram_without_a_measurement_reports_the_measurement_missing() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=None),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.MEASUREMENT_UNAVAILABLE
+    )
+    assert comparison.vram.predicted_bytes == 1000
+    assert comparison.vram.error_bytes is None
+
+
+def test_vram_without_a_fit_stays_methodologically_unavailable() -> None:
+    """An estimate from before this contract must not silently compare."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(None),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert comparison.vram.predicted_bytes is None
+    assert "no structured hardware fit" in (comparison.vram.unavailable_reason or "")
+
+
+def test_offload_compares_only_the_gpu_side() -> None:
+    fit = _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_weight=600,
+        ram_weight=400,
+        gpu_layers=24,
+        total_layers=32,
+    )
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=24),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    # The 400 bytes of RAM-side weights are not part of a VRAM prediction.
+    assert comparison.vram.predicted_bytes == 1000
+
+
+# ---------------------------------------------------------------------------
+# VRAM: refusing to compare different things
+# ---------------------------------------------------------------------------
+def test_a_cpu_placement_predicts_no_process_vram() -> None:
+    """``gpu_required_bytes`` on a rejected GPU is hypothetical, not a forecast."""
+
+    fit = _fit(mode=HardwareFitMode.CPU_RAM, gpu_weight=0, gpu_layers=0)
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=0),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "no weights on the GPU" in (comparison.vram.unavailable_reason or "")
+
+
+def test_a_different_layer_split_is_not_comparable() -> None:
+    """Otherwise the number would measure the placement, not the memory model."""
+
+    fit = _fit(mode=HardwareFitMode.GPU_OFFLOAD, gpu_layers=24, total_layers=32)
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=30),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    reason = comparison.vram.unavailable_reason or ""
+    assert "30" in reason and "24" in reason
+
+
+def test_running_every_layer_on_the_gpu_contradicts_an_offload_prediction() -> None:
+    fit = _fit(mode=HardwareFitMode.GPU_OFFLOAD, gpu_layers=24, total_layers=32)
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "every layer" in (comparison.vram.unavailable_reason or "")
+
+
+def test_a_byte_sized_placement_cannot_be_checked_against_a_layer_flag() -> None:
+    fit = _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_layers=None,
+        total_layers=None,
+        placement=HardwareFitPlacementMethod.ESTIMATED_BYTES,
+    )
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=24),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "sized in bytes" in (comparison.vram.unavailable_reason or "")
+
+
+def test_without_a_runtime_the_placement_cannot_be_verified() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=1000),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "cannot be verified" in (comparison.vram.unavailable_reason or "")
+
+
+def test_transformers_placement_is_reported_as_unverifiable() -> None:
+    """Transformers decides device placement itself and exposes no equivalent flag."""
+
+    runtime = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        confidence=EstimationConfidence.HIGH,
+        flags=[],
+    )
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=None, vram=1000),
+        runtime=runtime,
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+
+
+def test_resident_prediction_accepts_an_explicit_full_layer_count() -> None:
+    """``-1`` and ``32 of 32`` say the same thing; both must be comparable."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit(gpu_layers=32, total_layers=32)),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=32),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+
+
+def test_wiring_vram_did_not_change_the_ram_verdict() -> None:
+    """The RAM path is untouched by this milestone, including its refusal."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=900, vram=1000),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.ram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "host/device breakdown" in (comparison.ram.unavailable_reason or "")

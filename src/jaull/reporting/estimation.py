@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from jaull.domain.estimation import MemoryComponent, MemoryEstimate
+from jaull.domain.estimation import (
+    HardwareFitResult,
+    MemoryComponent,
+    MemoryEstimate,
+)
 from jaull.reporting.serialization import (
     base_resolution_to_dict,
     component_to_dict,
@@ -90,6 +94,7 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
             "reasons": list(assessment.reasons),
             "warnings": list(assessment.warnings),
         },
+        "hardware_fit": _hardware_fit_to_dict(estimate.hardware_fit),
         "assumptions": list(estimate.assumptions),
         "warnings": list(estimate.warnings),
         "base_model_resolution": base_resolution_to_dict(
@@ -101,6 +106,42 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
         },
         "architecture": estimate.architecture,
         "runtime_recommendation": runtime_to_dict(estimate.runtime_recommendation),
+    }
+
+
+def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | None:
+    """Project the structured placement, keeping budget and allocation apart.
+
+    ``gpu_required_bytes`` is the capacity budget the analyzer checked against
+    VRAM; ``gpu_physical_bytes`` is the subset a process is expected to actually
+    allocate, with the device reserve and the safety margin removed. Emitting
+    both is what lets a consumer compare against a measurement without having to
+    know which components are policy.
+    """
+
+    if fit is None:
+        return None
+    return {
+        "mode": fit.mode.value,
+        "memory_topology": fit.memory_topology.value,
+        "placement_method": fit.placement_method.value,
+        "gpu_layers": fit.gpu_layers,
+        "total_layers": fit.total_layers,
+        "gpu_required_bytes": fit.gpu_required_bytes,
+        "gpu_physical_bytes": fit.gpu_physical_bytes,
+        "gpu_weight_bytes": fit.gpu_weight_bytes,
+        "gpu_overhead_bytes": fit.gpu_overhead_bytes,
+        "gpu_safety_margin_bytes": fit.gpu_safety_margin_bytes,
+        "ram_required_bytes": fit.ram_required_bytes,
+        "ram_physical_bytes": fit.ram_physical_bytes,
+        "ram_weight_bytes": fit.ram_weight_bytes,
+        "ram_overhead_bytes": fit.ram_overhead_bytes,
+        "ram_safety_margin_bytes": fit.ram_safety_margin_bytes,
+        "device_reserve_bytes": fit.device_reserve_bytes,
+        "available_vram_bytes": fit.available_vram_bytes,
+        "available_ram_bytes": fit.available_ram_bytes,
+        "reason": fit.reason,
+        "warnings": list(fit.warnings),
     }
 
 

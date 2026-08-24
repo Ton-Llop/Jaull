@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
@@ -174,6 +176,57 @@ def _available_vram(hardware: HardwareProfile) -> int | None:
     return max(gpu.vram_available_bytes for gpu in hardware.gpus)
 
 
+class ComponentAssessment(NamedTuple):
+    """Both outputs of one component-level assessment.
+
+    ``assessment`` is the compatibility summary every existing caller already
+    consumes; ``fit`` is the structured placement it was derived from, and is
+    ``None`` whenever the analyzer did not run — a pinned (non-AUTO) target
+    device, or a missing memory component.
+    """
+
+    assessment: CompatibilityAssessment
+    fit: HardwareFitResult | None
+
+
+def assess_components_with_fit(
+    *,
+    weights_bytes: int | None,
+    kv_cache_bytes: int | None,
+    overhead_bytes: int | None,
+    device_reserve_bytes: int,
+    safety_margin_bytes: int,
+    total_bytes: int | None,
+    total_layers: int | None,
+    hardware: HardwareProfile,
+    device_target: TargetDevice,
+) -> ComponentAssessment:
+    """Assess placement, keeping the structured fit alongside the summary.
+
+    The summary is lossy by design — one status and one ratio — so callers that
+    need the placement itself (layer split, per-pool bytes) would otherwise have
+    to re-run the analyzer and risk drifting from the assessment they were
+    given. Returning both from one analysis keeps them consistent.
+    """
+
+    if device_target is not TargetDevice.AUTO:
+        return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
+
+    if weights_bytes is None or kv_cache_bytes is None or overhead_bytes is None:
+        return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
+
+    fit = hardware_fit.analyze_components(
+        weights_bytes=weights_bytes,
+        kv_cache_bytes=kv_cache_bytes,
+        overhead_bytes=overhead_bytes,
+        device_reserve_bytes=device_reserve_bytes,
+        safety_margin_bytes=safety_margin_bytes,
+        total_layers=total_layers,
+        hardware=hardware,
+    )
+    return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
+
+
 def assess_components(
     *,
     weights_bytes: int | None,
@@ -188,22 +241,17 @@ def assess_components(
 ) -> CompatibilityAssessment:
     """Assess placement using separated memory components when available."""
 
-    if device_target is not TargetDevice.AUTO:
-        return assess(total_bytes, hardware, device_target)
-
-    if weights_bytes is None or kv_cache_bytes is None or overhead_bytes is None:
-        return assess(total_bytes, hardware, device_target)
-
-    fit = hardware_fit.analyze_components(
+    return assess_components_with_fit(
         weights_bytes=weights_bytes,
         kv_cache_bytes=kv_cache_bytes,
         overhead_bytes=overhead_bytes,
         device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
+        total_bytes=total_bytes,
         total_layers=total_layers,
         hardware=hardware,
-    )
-    return _assessment_from_fit(fit, device_target)
+        device_target=device_target,
+    ).assessment
 
 
 def _assessment_from_fit(
@@ -291,4 +339,9 @@ def _max_known_ratio(*pairs: tuple[int | None, int | None]) -> float | None:
     return max(ratios)
 
 
-__all__ = ["assess", "assess_components"]
+__all__ = [
+    "ComponentAssessment",
+    "assess",
+    "assess_components",
+    "assess_components_with_fit",
+]

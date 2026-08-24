@@ -179,6 +179,61 @@ class HardwareFitResult(BaseModel):
     reason: str
     warnings: list[str] = Field(default_factory=list)
 
+    @property
+    def places_weights_on_gpu(self) -> bool:
+        """Whether this placement actually puts model weights in VRAM.
+
+        ``CPU_RAM`` and ``TOO_LARGE`` still report ``gpu_required_bytes`` when a
+        GPU exists, but that number is the *hypothetical* resident requirement
+        used to explain why the GPU was rejected — not a prediction of what any
+        process will allocate. Consumers comparing against a measurement must
+        check this first.
+        """
+
+        return self.mode in {HardwareFitMode.GPU_RESIDENT, HardwareFitMode.GPU_OFFLOAD}
+
+    @property
+    def gpu_physical_bytes(self) -> int | None:
+        """VRAM this placement expects a process to actually allocate.
+
+        ``gpu_required_bytes`` is a *capacity budget*: it also carries the
+        device reserve (memory deliberately left free for the display server and
+        other processes) and the safety margin (policy padding). Neither is ever
+        allocated by the inference process, so neither belongs in a comparison
+        against a process-attributed measurement.
+
+        Subtracting exactly those two leaves weights, KV cache and runtime
+        overhead — the components that model real allocations. This reads the
+        placement the analyzer already decided; it does not decide anything.
+
+        ``None`` when the placement puts nothing on the GPU.
+        """
+
+        if not self.places_weights_on_gpu or self.gpu_required_bytes is None:
+            return None
+        return (
+            self.gpu_required_bytes
+            - self.device_reserve_bytes
+            - self.gpu_safety_margin_bytes
+        )
+
+    @property
+    def ram_physical_bytes(self) -> int | None:
+        """System memory this placement expects a process to actually allocate.
+
+        The RAM counterpart of :attr:`gpu_physical_bytes`, and the same
+        subtraction: the safety margin is policy, never an allocation. The
+        device reserve is only charged to RAM on unified-memory hardware, where
+        the accelerator draws from the same pool, so it is removed only there.
+        """
+
+        if self.ram_required_bytes is None:
+            return None
+        physical = self.ram_required_bytes - self.ram_safety_margin_bytes
+        if self.memory_topology is HardwareMemoryTopology.UNIFIED_MEMORY:
+            physical -= self.device_reserve_bytes
+        return physical
+
 
 class MemoryEstimate(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -193,6 +248,13 @@ class MemoryEstimate(BaseModel):
     safety_margin: MemoryComponent | None
     total_bytes: int | None
     assessment: CompatibilityAssessment
+    # ``assessment`` is the compatibility *summary*: one status, one ratio, one
+    # effective device. ``hardware_fit`` is the structured placement the summary
+    # was derived from — mode, layer split, and the per-pool byte breakdown.
+    # Present only when the analyzer ran, which today means an AUTO target with
+    # all three memory components known; ``None`` otherwise, so consumers
+    # written before this field keep working unchanged.
+    hardware_fit: HardwareFitResult | None = None
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     # Additive fields introduced in Fase 3 (GGUF enrichment). Both default to None/empty
