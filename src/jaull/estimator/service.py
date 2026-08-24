@@ -99,8 +99,16 @@ def estimate_memory(
 
     total_bytes = _sum_components([subtotal, safety_margin.bytes if safety_margin else 0])
 
-    assessment = compatibility.assess(
+    assessment = compatibility.assess_components(
+        weights_bytes=weight_estimate.component.bytes,
+        kv_cache_bytes=kv_estimate.component.bytes,
+        overhead_bytes=overhead_estimate.component.bytes,
+        device_reserve_bytes=device_reserve.bytes or 0,
+        safety_margin_bytes=(
+            safety_margin.bytes if safety_margin is not None and safety_margin.bytes else 0
+        ),
         total_bytes=total_bytes,
+        total_layers=kv_estimate.layers,
         hardware=hardware,
         device_target=inference_cfg.target_device,
     )

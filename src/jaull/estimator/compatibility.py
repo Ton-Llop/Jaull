@@ -6,9 +6,13 @@ from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
     EstimationConfidence,
+    HardwareFitMode,
+    HardwareFitPlacementMethod,
+    HardwareFitResult,
 )
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import TargetDevice
+from jaull.estimator import hardware_fit
 from jaull.estimator.policies import (
     COMFORTABLE_MAX,
     COMPATIBLE_MAX,
@@ -170,4 +174,121 @@ def _available_vram(hardware: HardwareProfile) -> int | None:
     return max(gpu.vram_available_bytes for gpu in hardware.gpus)
 
 
-__all__ = ["assess"]
+def assess_components(
+    *,
+    weights_bytes: int | None,
+    kv_cache_bytes: int | None,
+    overhead_bytes: int | None,
+    device_reserve_bytes: int,
+    safety_margin_bytes: int,
+    total_bytes: int | None,
+    total_layers: int | None,
+    hardware: HardwareProfile,
+    device_target: TargetDevice,
+) -> CompatibilityAssessment:
+    """Assess placement using separated memory components when available."""
+
+    if device_target is not TargetDevice.AUTO:
+        return assess(total_bytes, hardware, device_target)
+
+    if weights_bytes is None or kv_cache_bytes is None or overhead_bytes is None:
+        return assess(total_bytes, hardware, device_target)
+
+    fit = hardware_fit.analyze_components(
+        weights_bytes=weights_bytes,
+        kv_cache_bytes=kv_cache_bytes,
+        overhead_bytes=overhead_bytes,
+        device_reserve_bytes=device_reserve_bytes,
+        safety_margin_bytes=safety_margin_bytes,
+        total_layers=total_layers,
+        hardware=hardware,
+    )
+    return _assessment_from_fit(fit, device_target)
+
+
+def _assessment_from_fit(
+    fit: HardwareFitResult,
+    target_device: TargetDevice,
+) -> CompatibilityAssessment:
+    vram = fit.available_vram_bytes
+    ram = fit.available_ram_bytes
+
+    if fit.mode is HardwareFitMode.GPU_RESIDENT:
+        assert fit.gpu_required_bytes is not None
+        ratio = _ratio(fit.gpu_required_bytes, vram)
+        return CompatibilityAssessment(
+            status=_status_from_ratio(ratio),
+            confidence=EstimationConfidence.HIGH,
+            target_device=target_device,
+            effective_device=TargetDevice.GPU,
+            available_vram_bytes=vram,
+            available_ram_bytes=ram,
+            ratio=ratio,
+            reasons=[fit.reason],
+            warnings=fit.warnings,
+        )
+
+    if fit.mode is HardwareFitMode.GPU_OFFLOAD:
+        offload_ratio = _max_known_ratio(
+            (fit.gpu_required_bytes, vram),
+            (fit.ram_required_bytes, ram),
+        )
+        confidence = (
+            EstimationConfidence.MEDIUM
+            if fit.placement_method is HardwareFitPlacementMethod.LAYERS
+            else EstimationConfidence.LOW
+        )
+        return CompatibilityAssessment(
+            status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            confidence=confidence,
+            target_device=target_device,
+            effective_device=TargetDevice.GPU,
+            available_vram_bytes=vram,
+            available_ram_bytes=ram,
+            ratio=offload_ratio,
+            reasons=[fit.reason],
+            warnings=fit.warnings,
+        )
+
+    if fit.mode is HardwareFitMode.CPU_RAM:
+        assert fit.ram_required_bytes is not None
+        ratio = _ratio(fit.ram_required_bytes, ram)
+        return CompatibilityAssessment(
+            status=_status_from_ratio(ratio),
+            confidence=EstimationConfidence.HIGH,
+            target_device=target_device,
+            effective_device=TargetDevice.CPU,
+            available_vram_bytes=vram,
+            available_ram_bytes=ram,
+            ratio=ratio,
+            reasons=[fit.reason],
+            warnings=fit.warnings,
+        )
+
+    return CompatibilityAssessment(
+        status=CompatibilityStatus.INSUFFICIENT,
+        confidence=EstimationConfidence.HIGH,
+        target_device=target_device,
+        effective_device=TargetDevice.CPU,
+        available_vram_bytes=vram,
+        available_ram_bytes=ram,
+        ratio=None,
+        reasons=[fit.reason],
+        warnings=fit.warnings,
+    )
+
+
+def _ratio(need: int, capacity: int | None) -> float:
+    if capacity is None or capacity <= 0:
+        return 1.0
+    return need / capacity
+
+
+def _max_known_ratio(*pairs: tuple[int | None, int | None]) -> float | None:
+    ratios = [_ratio(need, capacity) for need, capacity in pairs if need is not None]
+    if not ratios:
+        return None
+    return max(ratios)
+
+
+__all__ = ["assess", "assess_components"]
