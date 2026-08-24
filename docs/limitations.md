@@ -35,8 +35,20 @@ README roadmap says so.
   `estimator/policies.py` and explicitly tagged `ASSUMED`.
 - Weight bytes for theoretical dtypes ignore scales and block metadata (typically under
   10% for real quantized formats); that path is tagged `DERIVED`, not `EXACT`.
-- **Per-layer offloading is not modelled.** `offloading_required` means "would need to spill
-  to RAM", not "load N layers on the GPU".
+- Per-layer offloading **is** modelled, but only as a placement, not as a measured layer
+  cost. `HardwareFitResult` reports a mode, a `gpu_layers` / `total_layers` split and a
+  per-pool byte breakdown, and travels on `MemoryEstimate.hardware_fit`. The split assumes
+  every transformer layer weighs the same — token embeddings and the output head are not
+  separated out — so `gpu_layers` is a plan, not a promise about what a runtime will do.
+- **Hardware capacity is not the same thing as current memory occupancy**, and Jaull only
+  models the second. The fit is computed against *available* VRAM and RAM at scan time, so
+  the same machine answers differently depending on what else happens to be running.
+  Measured against llama.cpp on an RTX 2060, NVML reported 4599 MiB free while llama.cpp
+  saw 5095 MiB — a ~496 MiB gap large enough to flip a verdict near the boundary. Planning
+  ("could this machine ever run this model?") and running now ("can it start this minute?")
+  need different budgets; today both get the instantaneous one. The discovery shortlist
+  already takes the other view, budgeting from `vram_total_bytes`, so the two halves of the
+  product currently disagree. Not yet resolved.
 - GGUF header reads are HTTP-Range based and capped at 8 MiB. If the header is not inside
   that prefix, enrichment gives up rather than reading further.
 - Gated base models require `HF_TOKEN`; without it, enrichment degrades to GGUF-only.
@@ -86,8 +98,18 @@ README roadmap says so.
 
 - Benchmarks measure single-process throughput. There is no load generator, no concurrency
   sweep, no capacity curve and no sustainable-concurrency estimate.
-- VRAM prediction vs observation is always reported as `methodologically_unavailable`: the
-  estimate does not retain VRAM attributed to the executed PID and configuration.
+- VRAM prediction vs observation is compared only when the estimate carries a hardware fit
+  that places weights on the GPU **and** the run can be shown to have used that placement
+  (a llama.cpp `--n-gpu-layers` matching the predicted split). The predicted side is
+  `gpu_physical_bytes` — weights, KV cache and runtime overhead — with the device reserve
+  and safety margin removed, because those are capacity policy and no process allocates
+  them. Everything else is still `methodologically_unavailable`, with the reason naming
+  what was missing: Transformers, which decides device placement internally and exposes no
+  equivalent flag, is always reported that way.
+- Runtime overhead stays inside the compared figure even though it is a coarse `ASSUMED`
+  heuristic. It models allocations that really happen (allocator, compute and activation
+  buffers), so its error is a calibration result rather than a methodological mismatch —
+  but expect it to dominate the reported error until it is calibrated.
 - RAM comparison is only available for CPU-only or non-offloaded configurations, because
   Jaull does not yet keep a host/device breakdown under offload.
 - Benchmark comparison deliberately produces no single winner score, and warns instead of

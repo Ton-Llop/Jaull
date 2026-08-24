@@ -9,7 +9,12 @@ from jaull.domain.comparison import (
     MetricComparisonAvailability,
     PredictionComparison,
 )
-from jaull.domain.estimation import CompatibilityStatus, MemoryEstimate
+from jaull.domain.estimation import (
+    CompatibilityStatus,
+    HardwareFitMode,
+    HardwareFitResult,
+    MemoryEstimate,
+)
 from jaull.domain.execution import ExecutionObservation
 from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
@@ -18,9 +23,19 @@ _RAM_GPU_UNAVAILABLE_REASON = (
     "MemoryEstimate does not preserve a host/device breakdown for the selected "
     "GPU-offloaded runtime, so process RSS is not comparable."
 )
-_VRAM_UNAVAILABLE_REASON = (
-    "MemoryEstimate does not preserve process-attributed VRAM for the selected "
-    "runtime configuration."
+_VRAM_NO_FIT_REASON = (
+    "MemoryEstimate carries no structured hardware fit, so there is no "
+    "device-specific VRAM prediction to compare."
+)
+_VRAM_NO_GPU_PLACEMENT_REASON = (
+    "The predicted placement puts no weights on the GPU, so Jaull predicts no "
+    "process-attributed VRAM for this configuration."
+)
+_VRAM_UNVERIFIED_PLACEMENT_REASON = (
+    "The executed placement cannot be verified against the prediction: without "
+    "a llama.cpp --n-gpu-layers value there is no evidence the run split the "
+    "model the way the estimate assumed, and a difference could not be "
+    "attributed to the memory model rather than to a different placement."
 )
 
 
@@ -39,6 +54,11 @@ def compare_prediction(
     RAM is compared only when the selected runtime is CPU-only/no-offload. For
     GPU offload Jaull currently lacks a host/device memory split, so returning a
     number would compare different quantities.
+
+    VRAM is compared when the estimate carries a hardware fit that places
+    weights on the GPU *and* the run can be shown to have used that placement.
+    Both sides are then process-attributed allocations; see
+    :func:`_predicted_vram` for which components qualify and why.
     """
 
     ram_predicted, ram_availability, ram_reason = _predicted_ram(
@@ -52,13 +72,15 @@ def compare_prediction(
         unavailable_reason=ram_reason,
     )
 
+    vram_predicted, vram_availability, vram_reason = _predicted_vram(
+        estimate=estimate,
+        runtime=runtime,
+    )
     vram = _metric_comparison(
-        predicted_bytes=None,
+        predicted_bytes=vram_predicted,
         measured_bytes=observation.peak_vram_bytes,
-        unavailable_availability=(
-            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
-        ),
-        unavailable_reason=_VRAM_UNAVAILABLE_REASON,
+        unavailable_availability=vram_availability,
+        unavailable_reason=vram_reason,
     )
 
     predicted_runnable = _predicted_runnable(
@@ -199,6 +221,104 @@ def _predicted_ram(
     if any(part is None for part in parts):
         return (None, None, None)
     return (sum(part for part in parts if part is not None), None, None)
+
+
+def _predicted_vram(
+    *,
+    estimate: MemoryEstimate,
+    runtime: RuntimeRecommendation | None,
+) -> tuple[int | None, MetricComparisonAvailability | None, str | None]:
+    """The VRAM figure that is comparable with a process-attributed measurement.
+
+    ``peak_vram_bytes`` is what NVML attributed to the inference process, so the
+    prediction has to be the bytes that process is expected to allocate — not
+    the capacity budget the analyzer checked against the card. ``device_reserve``
+    is memory deliberately left free for *other* processes and ``safety_margin``
+    is policy padding; including either would compare a budget with an
+    allocation and report an error that is really just the size of the policy.
+    ``HardwareFitResult.gpu_physical_bytes`` is that budget with both removed.
+
+    Runtime overhead stays in: it models allocator, compute and activation
+    buffers, which the process really does allocate. It is a coarse heuristic,
+    but being wrong about a real quantity is a calibration result — which is
+    exactly what this comparison exists to surface.
+    """
+
+    fit = estimate.hardware_fit
+    if fit is None:
+        return (
+            None,
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE,
+            _VRAM_NO_FIT_REASON,
+        )
+    if not fit.places_weights_on_gpu:
+        return (
+            None,
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE,
+            _VRAM_NO_GPU_PLACEMENT_REASON,
+        )
+
+    predicted = fit.gpu_physical_bytes
+    if predicted is None:
+        return (
+            None,
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE,
+            _VRAM_NO_FIT_REASON,
+        )
+
+    mismatch = _placement_mismatch(fit, runtime)
+    if mismatch is not None:
+        return (
+            None,
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE,
+            mismatch,
+        )
+    return (predicted, None, None)
+
+
+def _placement_mismatch(
+    fit: HardwareFitResult,
+    runtime: RuntimeRecommendation | None,
+) -> str | None:
+    """Explain why the run cannot be held to this prediction, or ``None``.
+
+    A VRAM figure only tests the memory model if the execution placed the model
+    the way the estimate assumed. llama.cpp states that placement explicitly in
+    ``--n-gpu-layers``, so it can be checked; Transformers decides device
+    placement internally and exposes no equivalent, so there the prediction is
+    reported as unverifiable rather than compared on trust.
+    """
+
+    if runtime is None or runtime.runtime is not RuntimeName.LLAMA_CPP:
+        return _VRAM_UNVERIFIED_PLACEMENT_REASON
+
+    requested = _n_gpu_layers(runtime)
+    if requested is None:
+        return _VRAM_UNVERIFIED_PLACEMENT_REASON
+
+    # llama.cpp spells "every layer" as a negative value rather than a count.
+    if requested < 0:
+        if fit.mode is HardwareFitMode.GPU_RESIDENT:
+            return None
+        return (
+            f"Run placed every layer on the GPU (--n-gpu-layers {requested}) but "
+            f"the prediction is a {fit.mode.value} placement, so the two describe "
+            "different splits."
+        )
+
+    if fit.gpu_layers is None:
+        return (
+            "The predicted placement was sized in bytes rather than layers, so "
+            f"it cannot be checked against --n-gpu-layers {requested}."
+        )
+
+    if requested != fit.gpu_layers:
+        return (
+            f"Run placed {requested} layers on the GPU but the prediction "
+            f"assumed {fit.gpu_layers}, so the difference would measure the "
+            "placement, not the memory model."
+        )
+    return None
 
 
 def _uses_gpu_memory(

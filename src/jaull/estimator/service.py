@@ -99,7 +99,7 @@ def estimate_memory(
 
     total_bytes = _sum_components([subtotal, safety_margin.bytes if safety_margin else 0])
 
-    assessment = compatibility.assess_components(
+    assessment, fit = compatibility.assess_components_with_fit(
         weights_bytes=weight_estimate.component.bytes,
         kv_cache_bytes=kv_estimate.component.bytes,
         overhead_bytes=overhead_estimate.component.bytes,
@@ -136,6 +136,7 @@ def estimate_memory(
         safety_margin=safety_margin,
         total_bytes=total_bytes,
         assessment=assessment,
+        hardware_fit=fit,
         assumptions=assumptions,
         warnings=warnings,
         base_model_resolution=enrichment.base_model_resolution,
