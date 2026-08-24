@@ -65,6 +65,7 @@ def analyze_components(
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
             overhead_bytes=overhead_bytes,
+            device_reserve_bytes=device_reserve_bytes,
             safety_margin_bytes=safety_margin_bytes,
             available_ram=available_ram,
             total_layers=total_layers,
@@ -140,7 +141,7 @@ def analyze_components(
             ram_weight_bytes=weights_bytes,
             ram_overhead_bytes=overhead_bytes,
             ram_safety_margin_bytes=safety_margin_bytes,
-            gpu_layers=0,
+            gpu_layers=_gpu_layers_when_unused(available_vram),
             total_layers=total_layers,
             placement_method=HardwareFitPlacementMethod.NONE,
             reason=f"{prefix}; full model fits in system RAM.",
@@ -164,7 +165,7 @@ def analyze_components(
         ram_weight_bytes=weights_bytes,
         ram_overhead_bytes=overhead_bytes,
         ram_safety_margin_bytes=safety_margin_bytes,
-        gpu_layers=0 if available_vram is not None else None,
+        gpu_layers=_gpu_layers_when_unused(available_vram),
         total_layers=total_layers,
         placement_method=HardwareFitPlacementMethod.NONE,
         reason=(
@@ -376,11 +377,28 @@ def _analyze_unified_memory(
     weights_bytes: int,
     kv_cache_bytes: int,
     overhead_bytes: int,
+    device_reserve_bytes: int,
     safety_margin_bytes: int,
     available_ram: int,
     total_layers: int | None,
 ) -> HardwareFitResult:
-    required = weights_bytes + kv_cache_bytes + overhead_bytes + safety_margin_bytes
+    """Fit against the single shared pool, reserve included.
+
+    A device reserve is memory held back for the accelerator. On discrete
+    hardware it is VRAM, which is why a ``CPU_RAM`` placement there does not
+    pay for it. Here the accelerator draws from the same pool as the CPU, so
+    the reserve genuinely consumes the budget and is counted. The caller's
+    value is never silently discarded: whatever it passes shows up in
+    ``ram_required_bytes`` and is echoed back in ``device_reserve_bytes``.
+    """
+
+    required = (
+        weights_bytes
+        + kv_cache_bytes
+        + overhead_bytes
+        + device_reserve_bytes
+        + safety_margin_bytes
+    )
     if required <= available_ram:
         return HardwareFitResult(
             mode=HardwareFitMode.CPU_RAM,
@@ -388,6 +406,7 @@ def _analyze_unified_memory(
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
             overhead_bytes=overhead_bytes,
+            device_reserve_bytes=device_reserve_bytes,
             safety_margin_bytes=safety_margin_bytes,
             available_ram_bytes=available_ram,
             ram_required_bytes=required,
@@ -399,7 +418,8 @@ def _analyze_unified_memory(
             placement_method=HardwareFitPlacementMethod.NONE,
             reason=(
                 "Unified-memory hardware uses one shared pool; fit was checked "
-                "against available system memory without summing VRAM and RAM."
+                "against available system memory without summing VRAM and RAM. "
+                "The device reserve is charged to that shared pool."
             ),
         )
     return HardwareFitResult(
@@ -408,6 +428,7 @@ def _analyze_unified_memory(
         weights_bytes=weights_bytes,
         kv_cache_bytes=kv_cache_bytes,
         overhead_bytes=overhead_bytes,
+        device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
         available_ram_bytes=available_ram,
         ram_required_bytes=required,
@@ -453,6 +474,19 @@ def _available_vram(hardware: HardwareProfile) -> int | None:
 
 def _valid_layer_count(total_layers: int | None) -> bool:
     return total_layers is not None and total_layers > 0
+
+
+def _gpu_layers_when_unused(available_vram: int | None) -> int | None:
+    """How many layers sit on a GPU that this placement does not use.
+
+    ``0`` and ``None`` are not interchangeable here, and consumers downstream
+    will read them as different facts: ``0`` means a GPU exists and none of the
+    layers were placed on it — a number ``--n-gpu-layers`` can be validated
+    against — while ``None`` means the question does not apply because there is
+    no GPU at all.
+    """
+
+    return 0 if available_vram is not None else None
 
 
 __all__ = ["analyze_components", "analyze_estimate"]
