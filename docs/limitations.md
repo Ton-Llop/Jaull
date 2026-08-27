@@ -46,9 +46,9 @@ README roadmap says so.
   Measured against llama.cpp on an RTX 2060, NVML reported 4599 MiB free while llama.cpp
   saw 5095 MiB — a ~496 MiB gap large enough to flip a verdict near the boundary. Planning
   ("could this machine ever run this model?") and running now ("can it start this minute?")
-  need different budgets; today both get the instantaneous one. The discovery shortlist
-  already takes the other view, budgeting from `vram_total_bytes`, so the two halves of the
-  product currently disagree. Not yet resolved.
+  need different budgets; final estimation still answers the run-now question, while the
+  discovery shortlist intentionally uses physical capacity for coarse preselection. Not yet
+  resolved.
 - GGUF header reads are HTTP-Range based and capped at 8 MiB. If the header is not inside
   that prefix, enrichment gives up rather than reading further.
 - Gated base models require `HF_TOKEN`; without it, enrichment degrades to GGUF-only.

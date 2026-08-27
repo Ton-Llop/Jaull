@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 
+from jaull.domain.artifact_profile import is_packed_transformers_quantization_config
 from jaull.domain.candidates import ModelCandidate
 from jaull.domain.estimation import (
     EstimateSource,
@@ -106,7 +107,8 @@ def resolve_parameter_count(
     5. Nothing → UNKNOWN.
     """
     packed_quantization = (
-        analysis is not None and _has_packed_quantization_config(analysis.config)
+        analysis is not None
+        and is_packed_transformers_quantization_config(analysis.config)
     )
     if analysis is not None and not packed_quantization:
         summary = getattr(analysis, "safetensors_summary", None)
@@ -220,13 +222,6 @@ def _from_repo_id(repo_id: str) -> int | None:
             multiplier = 1_000_000_000 if unit == "b" else 1_000_000
             return int(value * multiplier)
     return None
-
-
-def _has_packed_quantization_config(config: ModelConfig | None) -> bool:
-    if config is None or not config.quantization_config:
-        return False
-    method = str(config.quantization_config.get("quant_method") or "").lower()
-    return method in {"awq", "gptq"}
 
 
 def _family_from_repo_id(repo_id: str) -> str | None:

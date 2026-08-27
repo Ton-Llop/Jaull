@@ -26,6 +26,7 @@ _CONFIDENCE_SIGNAL: dict[EstimationConfidence, float] = {
     EstimationConfidence.HIGH: 0.85,
     EstimationConfidence.MEDIUM: 0.65,
     EstimationConfidence.LOW: 0.45,
+    EstimationConfidence.UNKNOWN: 0.25,
 }
 
 _REPOSITORY_TYPE_SIGNAL: dict[RepositoryType, float] = {

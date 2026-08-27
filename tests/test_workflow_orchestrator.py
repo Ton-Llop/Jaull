@@ -228,6 +228,42 @@ def test_deep_inspection_is_capped() -> None:
     assert len(state.candidates) <= policies.MAX_UNIQUE_CANDIDATES
 
 
+def test_hardware_aware_shortlist_preserves_offload_without_extra_inspection() -> None:
+    inspected: list[str] = []
+    offload_repo = "Qwen/Qwen2.5-14B-Q4_K_M-GGUF"
+    impossible_repo = "Huge/Huge-70B-Q8_0-GGUF"
+    candidates = [
+        candidate(repo_id=f"Qwen/Qwen2.5-{index}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for index in range(1, 12)
+    ]
+    candidates.extend(
+        [
+            candidate(repo_id=offload_repo, tags=["gguf", "Q4_K_M"]),
+            candidate(repo_id=impossible_repo, tags=["gguf", "Q8_0"]),
+        ]
+    )
+    services = _container(FakeSearchClient(default=candidates))
+    original = services.inspect_model
+
+    def counting(repo_id: str, client: object = None) -> object:
+        inspected.append(repo_id)
+        return original(repo_id, client)
+
+    services = ServiceContainer(
+        hf_client=services.hf_client,
+        search_client=services.search_client,
+        detect_hardware=services.detect_hardware,
+        inspect_model=counting,  # type: ignore[arg-type]
+        estimate_memory=services.estimate_memory,
+    )
+
+    orchestrator.run_workflow(answers(), hardware(vram_gib=8, ram_gib=32), services)
+    inspected_unique = set(inspected)
+    assert len(inspected_unique) <= policies.MAX_DEEP_INSPECTION
+    assert offload_repo in inspected_unique
+    assert impossible_repo not in inspected_unique
+
+
 def test_the_same_repository_is_inspected_once_per_run() -> None:
     """The cache is what stops the quantization ladder re-fetching metadata."""
     calls: list[str] = []

@@ -20,6 +20,7 @@ from jaull.domain.artifact_profile import (
     ArtifactConfirmation,
     ArtifactFormat,
     ArtifactProfile,
+    packed_transformers_quantization_bits,
 )
 from jaull.domain.candidates import ModelCandidate
 from jaull.domain.enums import RepositoryType
@@ -144,8 +145,7 @@ def _detect_from_config(
 
     method_raw = qcfg.get("quant_method") or qcfg.get("quantization_method")
     method = str(method_raw).lower() if method_raw else ""
-    bits_raw = qcfg.get("bits") or qcfg.get("w_bit")
-    bits = _coerce_int(bits_raw)
+    bits = packed_transformers_quantization_bits(analysis.config)
     quant_label = f"int{bits}" if bits else None
 
     if "awq" in method:

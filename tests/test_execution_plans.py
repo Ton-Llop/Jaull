@@ -394,6 +394,16 @@ def test_gptq_recommendation_variant_uses_config_quantization_semantics() -> Non
     assert variant.label == "safetensors GPTQ 4-bit"
 
 
+def test_compressed_tensors_variant_uses_config_quantization_semantics() -> None:
+    rec = _packed_transformers_recommendation("compressed-tensors")
+    variant = variant_from_recommendation(rec)
+
+    assert variant.format is ArtifactVariantFormat.SAFETENSORS
+    assert variant.quantization == "Compressed Tensors 4-bit"
+    assert variant.precision is None
+    assert variant.label == "safetensors Compressed Tensors 4-bit"
+
+
 def test_gguf_recommendation_variant_lists_all_quantization_metadata() -> None:
     rec = _gguf_recommendation()
     variant = variant_from_recommendation(rec)
@@ -653,13 +663,27 @@ def _packed_transformers_recommendation(method: str) -> ModelRecommendation:
     repo_id = f"Qwen/Qwen2.5-7B-Instruct-{method.upper()}"
     analysis = rec.evaluated.analysis
     assert analysis.config is not None
-    updated_config = analysis.config.model_copy(
-        update={
-            "quantization_config": {
-                "bits": 4,
-                "quant_method": method,
-            }
+    quantization_config: dict[str, object]
+    if method == "compressed-tensors":
+        quantization_config = {
+            "format": "pack-quantized",
+            "quant_method": method,
+            "config_groups": {
+                "group_0": {
+                    "weights": {
+                        "num_bits": 4,
+                        "group_size": 128,
+                    }
+                }
+            },
         }
+    else:
+        quantization_config = {
+            "bits": 4,
+            "quant_method": method,
+        }
+    updated_config = analysis.config.model_copy(
+        update={"quantization_config": quantization_config}
     )
     updated_repo = analysis.repo.model_copy(update={"repo_id": repo_id})
     updated_analysis = analysis.model_copy(
