@@ -9,6 +9,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
 from jaull.tui.widgets.logo import Logo
+from jaull.tui.widgets.ocean import OceanBand
 
 if TYPE_CHECKING:
     from jaull.tui.app import JaullApp
@@ -62,6 +63,9 @@ class WelcomeScreen(Screen[None]):
                     ],
                     id="welcome-menu",
                 )
+            # Last child, and the only one that flexes: it takes whatever the
+            # menu leaves rather than pushing anything below the fold.
+            yield OceanBand()
         yield Footer()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:

@@ -46,9 +46,9 @@ README roadmap says so.
   Measured against llama.cpp on an RTX 2060, NVML reported 4599 MiB free while llama.cpp
   saw 5095 MiB — a ~496 MiB gap large enough to flip a verdict near the boundary. Planning
   ("could this machine ever run this model?") and running now ("can it start this minute?")
-  need different budgets; today both get the instantaneous one. The discovery shortlist
-  already takes the other view, budgeting from `vram_total_bytes`, so the two halves of the
-  product currently disagree. Not yet resolved.
+  need different budgets; final estimation still answers the run-now question, while the
+  discovery shortlist intentionally uses physical capacity for coarse preselection. Not yet
+  resolved.
 - GGUF header reads are HTTP-Range based and capped at 8 MiB. If the header is not inside
   that prefix, enrichment gives up rather than reading further.
 - Gated base models require `HF_TOKEN`; without it, enrichment degrades to GGUF-only.
@@ -119,3 +119,12 @@ README roadmap says so.
 
 - The TUI runs on Windows, Linux and WSL, but glyph rendering (borders, shading, colours)
   depends on the terminal — Windows Terminal, WezTerm and iTerm2 give the best result.
+- The home screen's sea is drawn in quadrant blocks (U+2596–U+259F), which buy twice the
+  horizontal resolution of a half-block but are less universally present in fonts than
+  `▀` is. A font without them renders the band as replacement boxes. It is decorative and
+  on the entry screen only, so nothing that reports a number depends on it.
+- That band also assumes a 24-bit colour terminal: it is a per-cell foreground/background
+  gradient, and on a 256-colour terminal Rich will quantize it to something flatter.
+- It animates at roughly eight frames a second for as long as the home screen is open,
+  which costs a few percent of one core at 110x32 and around ten at 200x40. Every other
+  screen is static.

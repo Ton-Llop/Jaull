@@ -93,6 +93,7 @@ from jaull.tui.screens.recommendation_validation import (  # noqa: E402
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # noqa: E402
 from jaull.tui.widgets.logo import Logo  # noqa: E402
+from jaull.tui.widgets.ocean import OceanBand  # noqa: E402
 from jaull.workflow.container import ServiceContainer  # noqa: E402
 from jaull.workflow.progress import HARDWARE_STEPS  # noqa: E402
 
@@ -464,6 +465,27 @@ def _pin_logo_frame() -> None:
     Logo.on_mount = on_mount  # type: ignore[method-assign]
 
 
+#: Milliseconds into the jump cycle to freeze the sea at. Lands on the frame
+#: where the shark is clear of the water with its jaw open, rather than on the
+#: resting swell — the capture only gets one moment, so it may as well be that
+#: one. See ``jaull.tui.widgets.ocean`` for the cycle.
+_PINNED_OCEAN_MS = 1000
+
+
+def _pin_ocean_frame() -> None:
+    """Freeze the home screen's sea, for the same reason as the logo.
+
+    The swell and the shark are both timers, so an unpinned capture depends on
+    how long the run took to reach the welcome screen and the SVG churns on
+    every regeneration.
+    """
+
+    def on_mount(self: OceanBand) -> None:
+        self._elapsed_ms = _PINNED_OCEAN_MS
+
+    OceanBand.on_mount = on_mount  # type: ignore[method-assign]
+
+
 async def _wait_for(
     pilot,  # type: ignore[no-untyped-def]
     predicate: Callable[[], bool],
@@ -726,6 +748,7 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
     """Write every documented screenshot into `out_dir`. Returns their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
     _pin_logo_frame()
+    _pin_ocean_frame()
 
     gates = Gates()
     scan_gate, search_gate, artifact_gate = gates.scan, gates.search, gates.artifact

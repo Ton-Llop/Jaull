@@ -35,6 +35,7 @@ GIB = 1024**3
 @dataclass
 class _FakeClient:
     summaries: dict[str, SafetensorsSummary | None] = field(default_factory=dict)
+    summary_calls: list[str] = field(default_factory=list)
 
     def model_info(self, repo_id: str):  # pragma: no cover - not exercised here
         raise NotImplementedError
@@ -43,6 +44,7 @@ class _FakeClient:
         raise NotImplementedError
 
     def safetensors_summary(self, repo_id: str) -> SafetensorsSummary | None:
+        self.summary_calls.append(repo_id)
         return self.summaries.get(repo_id)
 
 
@@ -204,6 +206,69 @@ def test_packed_quantized_transformers_uses_file_size_not_safetensors_summary(
     assert est.weights.component.bytes == int(7.6 * GIB)
     assert est.weights.num_parameters is None
     assert any("Packed quantized safetensors metadata ignored" in item for item in est.warnings)
+    assert client.summary_calls == []
+
+
+def test_compressed_tensors_transformers_uses_file_size_not_requested_int8() -> None:
+    config = ModelConfig(
+        num_hidden_layers=50,
+        num_attention_heads=32,
+        num_key_value_heads=8,
+        hidden_size=4096,
+        torch_dtype="bfloat16",
+        quantization_config={
+            "format": "pack-quantized",
+            "quant_method": "compressed-tensors",
+            "quantization_status": "compressed",
+            "config_groups": {
+                "group_0": {
+                    "weights": {
+                        "num_bits": 4,
+                        "group_size": 128,
+                        "type": "int",
+                    }
+                }
+            },
+        },
+    )
+    analysis = _transformers_analysis(config).model_copy(
+        update={
+            "repo": ModelRepositoryInfo(repo_id="speakleash/Bielik-11B-v3.0-Instruct-awq"),
+            "files": [
+                ModelFile(path="config.json", size_bytes=1476),
+                ModelFile(path="model-00001-of-00002.safetensors", size_bytes=4_992_601_480),
+                ModelFile(path="model-00002-of-00002.safetensors", size_bytes=1_200_378_608),
+            ],
+            "total_size_bytes": 6_197_175_414,
+        }
+    )
+    cfg = InferenceConfiguration(
+        context_length=4096,
+        target_device=TargetDevice.AUTO,
+        precision=WeightPrecision.INT8,
+    )
+    client = _FakeClient(
+        summaries={
+            "speakleash/Bielik-11B-v3.0-Instruct-awq": SafetensorsSummary(
+                total_parameters=1_960_000_000,
+                parameters_by_dtype={"I4": 1_960_000_000},
+            )
+        }
+    )
+
+    est = service.estimate_memory(
+        analysis=analysis,
+        hardware=_hardware(ram=32 * GIB, vram=12 * GIB),
+        inference_cfg=cfg,
+        client=client,
+    )
+
+    expected_weight_bytes = 4_992_601_480 + 1_200_378_608
+    assert est.weights.component.bytes == expected_weight_bytes
+    assert est.weights.precision is WeightPrecision.BFLOAT16
+    assert est.weights.bits_per_parameter == 16
+    assert est.weights.num_parameters is None
+    assert client.summary_calls == []
 
 
 def test_transformers_float16_cpu_only_when_no_gpu() -> None:

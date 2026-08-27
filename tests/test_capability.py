@@ -72,6 +72,16 @@ def test_thin_metadata_without_size_stays_moderate() -> None:
     assert 0.35 <= signal.score <= 0.55
 
 
+def test_unknown_metadata_confidence_does_not_break_capability_analysis() -> None:
+    candidate = _candidate(
+        "random-user/random-model-7B",
+        confidence=EstimationConfidence.UNKNOWN,
+    )
+    signal = MetadataCapabilityAnalyzer().analyze(candidate, None)
+    assert signal.confidence is EstimationConfidence.UNKNOWN
+    assert 0.0 <= signal.score <= 1.0
+
+
 def test_popularity_is_secondary_to_parameter_count() -> None:
     analyzer = MetadataCapabilityAnalyzer()
     tiny_popular = analyzer.analyze(
@@ -139,6 +149,55 @@ def test_packed_awq_safetensors_count_is_not_logical_parameter_count() -> None:
     assert resolved.source is not ParameterCountSource.SAFETENSORS_METADATA
     assert resolved.count is not None
     assert resolved.count > 7_000_000_000
+
+
+def test_compressed_tensors_safetensors_count_is_not_logical_parameter_count() -> None:
+    config = _model_config_from_dict(
+        {
+            "model_type": "llama",
+            "num_hidden_layers": 50,
+            "num_attention_heads": 32,
+            "num_key_value_heads": 8,
+            "hidden_size": 4096,
+            "intermediate_size": 14336,
+            "vocab_size": 32128,
+            "quantization_config": {
+                "format": "pack-quantized",
+                "quant_method": "compressed-tensors",
+                "config_groups": {
+                    "group_0": {
+                        "weights": {
+                            "num_bits": 4,
+                            "group_size": 128,
+                        }
+                    }
+                },
+            },
+        }
+    )
+    analysis = ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="speakleash/Bielik-11B-v3.0-Instruct-awq"),
+        files=[],
+        classification=RepositoryClassification(
+            primary_type=RepositoryType.TRANSFORMERS,
+            detected_types={RepositoryType.TRANSFORMERS},
+            formats={Format.SAFETENSORS},
+        ),
+        config=config,
+        safetensors_summary=SafetensorsSummary(
+            total_parameters=1_960_000_000,
+            parameters_by_dtype={"I4": 1_960_000_000},
+        ),
+    )
+
+    resolved = resolve_parameter_count(
+        _candidate("speakleash/Bielik-11B-v3.0-Instruct-awq"),
+        analysis,
+    )
+
+    assert resolved.source is not ParameterCountSource.SAFETENSORS_METADATA
+    assert resolved.count is not None
+    assert resolved.count > 10_000_000_000
 
 
 @pytest.mark.parametrize(

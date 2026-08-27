@@ -67,7 +67,9 @@ relying on a single string. Results are then:
    commercial use is required) non-commercial licenses are rejected. Thin metadata is
    *never* a rejection; it becomes a recorded penalty and lower confidence.
 4. **Shortlisted** down to the deep-inspection budget using cheap pre-inspection signals
-   only.
+   only. This preselection uses repository metadata and a coarse hardware placement hint
+   to keep GPU-resident, GPU-offload and CPU-RAM candidates in play without treating RAM
+   and VRAM as one memory pool.
 
 Budgets are centralised in `workflow/policies.py`:
 
@@ -82,8 +84,10 @@ Budgets are centralised in `workflow/policies.py`:
 
 Only the shortlist pays for inspection, which reuses the existing `inspect_model`, the
 analyzers, the base-model resolver and `estimate_memory` — the guided flow computes no
-memory figures of its own. Analyses are cached between runs so a repeated search does not
-re-inspect the same repositories.
+final memory figures of its own. The shortlist hint is not persisted, reported or used for
+ranking; after inspection, `MemoryEstimate` and `HardwareFitResult` are the source of truth.
+Analyses are cached between runs so a repeated search does not re-inspect the same
+repositories.
 
 ---
 

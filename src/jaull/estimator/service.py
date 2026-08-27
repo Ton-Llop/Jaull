@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 
+from jaull.domain.artifact_profile import is_packed_transformers_quantization_config
 from jaull.domain.enrichment import EnrichmentResult
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
@@ -222,7 +223,7 @@ def _estimate_weights(
 
     if classification.primary_type is RepositoryType.TRANSFORMERS:
         summary = None
-        if not _has_packed_quantization_config(analysis.config):
+        if not is_packed_transformers_quantization_config(analysis.config):
             try:
                 summary = client.safetensors_summary(analysis.repo.repo_id)
             except HuggingFaceUnavailableError as exc:
@@ -246,7 +247,7 @@ def _estimate_weights(
                 analysis=analysis,
                 requested_precision=(
                     None
-                    if _has_packed_quantization_config(analysis.config)
+                    if is_packed_transformers_quantization_config(analysis.config)
                     else inference_cfg.precision
                 ),
                 config=analysis.config,
@@ -262,13 +263,6 @@ def _estimate_weights(
         ),
         None,
     )
-
-
-def _has_packed_quantization_config(config: ModelConfig | None) -> bool:
-    if config is None or not config.quantization_config:
-        return False
-    method = str(config.quantization_config.get("quant_method") or "").lower()
-    return method in {"awq", "gptq"}
 
 
 def _device_reserve_component(reserve_bytes: int) -> MemoryComponent:

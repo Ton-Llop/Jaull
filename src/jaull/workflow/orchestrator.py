@@ -132,6 +132,7 @@ def run_workflow(
                 requirements,
                 policies.MAX_DEEP_INSPECTION,
                 budget_bytes=_memory_budget(hardware),
+                hardware=hardware,
             )
         reporter.done(
             "filter",

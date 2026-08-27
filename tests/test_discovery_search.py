@@ -15,6 +15,7 @@ from huggingface_hub.errors import HfHubHTTPError
 
 from jaull.discovery import query_builder
 from jaull.discovery.candidate_filter import (
+    coarse_placement_hint,
     deduplicate,
     filter_candidates,
     parameter_count_hint,
@@ -25,7 +26,7 @@ from jaull.discovery.search_client import (
     candidate_from_model_info,
 )
 from jaull.domain.candidates import SearchQuery
-from jaull.domain.estimation import EstimationConfidence
+from jaull.domain.estimation import EstimationConfidence, HardwareFitMode
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import CommercialUse, UseCase
 from jaull.exceptions import HuggingFaceUnavailableError
@@ -390,6 +391,201 @@ def test_shortlist_is_deterministic_and_respects_the_limit() -> None:
     second = [c.repo_id for c in shortlist(list(reversed(pool)), req, limit=5)]
     assert first == second
     assert len(first) == 5
+
+
+def test_coarse_shortlist_marks_gpu_resident_candidates() -> None:
+    req = _requirements()
+    hint = coarse_placement_hint(
+        candidate(repo_id="org/Assistant-3B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        req,
+        hardware(vram_gib=8, ram_gib=32),
+    )
+    assert hint.mode is HardwareFitMode.GPU_RESIDENT
+    assert hint.gpu_weight_bytes > 0
+    assert hint.ram_weight_bytes == 0
+
+
+def test_coarse_shortlist_marks_gpu_offload_without_vram_ram_pooling() -> None:
+    req = _requirements()
+    hint = coarse_placement_hint(
+        candidate(repo_id="org/Assistant-14B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        req,
+        hardware(vram_gib=8, ram_gib=32),
+    )
+    assert hint.mode is HardwareFitMode.GPU_OFFLOAD
+    assert hint.gpu_weight_bytes > 0
+    assert hint.ram_weight_bytes > 0
+    assert hint.gpu_required_bytes is not None
+    assert hint.gpu_required_bytes <= 8 * 1024**3
+
+
+def test_coarse_shortlist_uses_cpu_ram_when_gpu_placement_is_not_viable() -> None:
+    req = _requirements()
+    hint = coarse_placement_hint(
+        candidate(repo_id="org/Assistant-7B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        req,
+        hardware(vram_gib=1, ram_gib=32),
+    )
+    assert hint.mode is HardwareFitMode.CPU_RAM
+    assert hint.gpu_weight_bytes == 0
+    assert hint.ram_weight_bytes > 0
+
+
+def test_coarse_shortlist_marks_too_large_candidates() -> None:
+    req = _requirements()
+    hint = coarse_placement_hint(
+        candidate(repo_id="org/Assistant-70B-Q8_0-GGUF", tags=["gguf", "Q8_0"]),
+        req,
+        hardware(vram_gib=6, ram_gib=16),
+    )
+    assert hint.mode is HardwareFitMode.TOO_LARGE
+
+
+def test_hardware_aware_shortlist_includes_offload_candidate_on_8gb_gpu() -> None:
+    req = _requirements()
+    pool = [
+        candidate(repo_id=f"Qwen/Qwen2.5-{index}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for index in (0.5, 1.5, 3, 7)
+    ]
+    pool.extend(
+        [
+            candidate(repo_id="Qwen/Qwen2.5-14B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+            candidate(repo_id="Huge/Huge-70B-Q8_0-GGUF", tags=["gguf", "Q8_0"]),
+        ]
+    )
+    picked = shortlist(pool, req, limit=5, hardware=hardware(vram_gib=8, ram_gib=32))
+    modes = {
+        item.repo_id: coarse_placement_hint(item, req, hardware(vram_gib=8, ram_gib=32)).mode
+        for item in picked
+    }
+    assert len(picked) == 5
+    assert "Qwen/Qwen2.5-14B-Q4_K_M-GGUF" in modes
+    assert modes["Qwen/Qwen2.5-14B-Q4_K_M-GGUF"] is HardwareFitMode.GPU_OFFLOAD
+    assert "Huge/Huge-70B-Q8_0-GGUF" not in modes
+
+
+def test_hardware_aware_shortlist_expands_scale_on_larger_gpu() -> None:
+    req = _requirements()
+    pool = [
+        candidate(repo_id=f"org/Model-{size}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for size in (1, 3, 7, 14, 32, 70)
+    ]
+    picked = shortlist(pool, req, limit=4, hardware=hardware(vram_gib=24, ram_gib=64))
+    picked_sizes = {
+        parameter_count_hint(item.repo_id)
+        for item in picked
+        if parameter_count_hint(item.repo_id) is not None
+    }
+    assert len(picked) == 4
+    assert any(size is not None and size >= 14 for size in picked_sizes)
+
+
+def test_hardware_aware_shortlist_handles_cpu_only() -> None:
+    req = _requirements()
+    pool = [
+        candidate(repo_id="org/Small-3B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        candidate(repo_id="org/Huge-70B-Q8_0-GGUF", tags=["gguf", "Q8_0"]),
+    ]
+    picked = shortlist(pool, req, limit=2, hardware=hardware(vram_gib=None, ram_gib=32))
+    assert picked[0].repo_id == "org/Small-3B-Q4_K_M-GGUF"
+
+
+def test_hardware_aware_shortlist_rejects_fake_offload_with_tiny_ram() -> None:
+    req = _requirements()
+    hint = coarse_placement_hint(
+        candidate(repo_id="org/Assistant-14B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        req,
+        hardware(vram_gib=8, ram_gib=2),
+    )
+    assert hint.mode is not HardwareFitMode.GPU_OFFLOAD
+
+
+def test_hardware_aware_shortlist_is_quantization_sensitive() -> None:
+    req = _requirements()
+    q4 = candidate(repo_id="org/Assistant-14B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+    q8 = candidate(repo_id="org/Assistant-14B-Q8_0-GGUF", tags=["gguf", "Q8_0"])
+    profile = hardware(vram_gib=8, ram_gib=10)
+    assert coarse_placement_hint(q4, req, profile).mode is HardwareFitMode.GPU_OFFLOAD
+    assert coarse_placement_hint(q8, req, profile).mode is HardwareFitMode.TOO_LARGE
+
+
+def test_hardware_aware_shortlist_uses_family_diversity_without_a_quota() -> None:
+    req = _requirements()
+    qwen = [
+        candidate(repo_id=f"Qwen/Qwen2.5-{index}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for index in (1, 2, 3, 4, 5, 6)
+    ]
+    others = [
+        candidate(repo_id="LiquidAI/LFM2-3B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+        candidate(repo_id="Google/Gemma-3B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]),
+    ]
+    picked = shortlist(qwen + others, req, limit=5, hardware=hardware(vram_gib=8))
+    families = {item.repo_id.split("/", maxsplit=1)[0] for item in picked}
+    assert {"Qwen", "LiquidAI", "Google"} <= families
+    assert sum(item.repo_id.startswith("Qwen/") for item in picked) > 1
+
+
+def test_hardware_aware_shortlist_is_order_deterministic() -> None:
+    req = _requirements()
+    pool = [
+        candidate(repo_id=f"org/Model-{index}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for index in range(1, 18)
+    ]
+    profile = hardware(vram_gib=8, ram_gib=32)
+    first = [item.repo_id for item in shortlist(pool, req, limit=12, hardware=profile)]
+    second = [
+        item.repo_id for item in shortlist(list(reversed(pool)), req, limit=12, hardware=profile)
+    ]
+    assert first == second
+    assert len(first) == 12
+
+
+def test_hardware_aware_shortlist_changes_with_context_and_concurrency() -> None:
+    req = _requirements()
+    profile = hardware(vram_gib=8, ram_gib=32)
+    model = candidate(repo_id="org/Assistant-7B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+    short_context = coarse_placement_hint(model, req, profile)
+    long_busy = coarse_placement_hint(
+        model,
+        req.model_copy(update={"desired_context": 32768, "concurrent_users": 4}),
+        profile,
+    )
+    assert short_context.mode is HardwareFitMode.GPU_RESIDENT
+    assert long_busy.mode is not HardwareFitMode.GPU_RESIDENT
+
+
+def test_hardware_aware_shortlist_does_not_let_impossible_models_flood_the_budget() -> None:
+    req = _requirements()
+    impossible = [
+        candidate(repo_id=f"Huge/Huge-{70 + index}B-Q8_0-GGUF", tags=["gguf", "Q8_0"])
+        for index in range(30)
+    ]
+    plausible = [
+        candidate(repo_id=f"Small/Small-{index}B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"])
+        for index in (1, 3, 7, 14)
+    ]
+    picked = shortlist(
+        impossible + plausible,
+        req,
+        limit=12,
+        hardware=hardware(vram_gib=8, ram_gib=32),
+    )
+    assert {item.repo_id for item in plausible} <= {item.repo_id for item in picked}
+    assert sum(item.repo_id.startswith("Huge/") for item in picked) <= 2
+
+
+def test_hardware_aware_shortlist_keeps_borderline_plausible_candidate() -> None:
+    req = _requirements()
+    borderline = candidate(
+        repo_id="org/Borderline-14B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"]
+    )
+    picked = shortlist(
+        [borderline, candidate(repo_id="org/Impossible-70B-Q8_0-GGUF", tags=["gguf", "Q8_0"])],
+        req,
+        limit=1,
+        hardware=hardware(vram_gib=8, ram_gib=32),
+    )
+    assert picked == [borderline]
 
 
 def test_valid_gguf_and_transformers_repositories_survive() -> None:
