@@ -792,6 +792,20 @@ DataTable > .datatable--header {
 }
 
 /* ---------------------------------------------------------------------
+   Home screen sea.
+
+   The one widget in the app that is allowed to flex. Everything else is
+   sized to its content so the scroll region does the flexing, but this is
+   the opposite case: it exists to absorb whatever height is left under the
+   menu, and it draws nothing at all when that is zero.
+   --------------------------------------------------------------------- */
+.ocean {
+    width: 1fr;
+    height: 1fr;
+    min-height: 0;
+}
+
+/* ---------------------------------------------------------------------
    Screen bodies. One padding rule rather than one per screen.
    --------------------------------------------------------------------- */
 #welcome-body,
