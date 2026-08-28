@@ -17,6 +17,8 @@ from jaull.domain.comparison import PredictionComparison
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.execution import ExecutionObservation
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
+from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.model import ModelAnalysis
 from jaull.domain.runtime import (
     ExecutionReadiness,
     RuntimeBackendSelection,
@@ -25,6 +27,8 @@ from jaull.domain.runtime import (
 )
 
 EXPERIMENT_RECORD_SCHEMA_VERSION = 1
+EXPERIMENT_PREDICTION_ENGINE_VERSION = "memory-estimator-v1"
+EXPERIMENT_COMPARISON_ENGINE_VERSION = "prediction-comparison-v1"
 
 
 class RequestedComputeBackend(StrEnum):
@@ -33,6 +37,18 @@ class RequestedComputeBackend(StrEnum):
     CUDA = "cuda"
     VULKAN = "vulkan"
     HIP = "hip"
+
+
+class ExperimentReplayMode(StrEnum):
+    RE_EVALUATION = "re_evaluation"
+    EXACT_REPLAY = "exact_replay"
+    APPROXIMATE_RECONSTRUCTION = "approximate_reconstruction"
+
+
+class ExperimentReplayabilityStatus(StrEnum):
+    REPRODUCIBLE = "reproducible"
+    APPROXIMATE_ONLY = "approximate_only"
+    NOT_REPRODUCIBLE = "not_reproducible"
 
 
 class ExperimentIdentity(BaseModel):
@@ -105,6 +121,18 @@ class ExperimentWorkload(BaseModel):
         return value
 
 
+class ExperimentPredictionInput(BaseModel):
+    """Frozen inputs needed to run Jaull's current predictor offline later."""
+
+    model_config = ConfigDict(frozen=True)
+
+    analysis: ModelAnalysis
+    inference_configuration: InferenceConfiguration
+    resolve_base_model: bool = False
+    recommend_runtime: bool = False
+    reproducibility_notes: list[str] = Field(default_factory=list)
+
+
 class ExperimentRequest(BaseModel):
     """Concrete experiment configuration.
 
@@ -118,6 +146,7 @@ class ExperimentRequest(BaseModel):
     artifact: ModelArtifact
     runtime: RuntimeRecommendation
     prediction: MemoryEstimate
+    prediction_input: ExperimentPredictionInput | None = None
     backend_selection: RuntimeBackendSelection
     requested_backend: RequestedComputeBackend = RequestedComputeBackend.AUTO
     workload: ExperimentWorkload
@@ -133,6 +162,39 @@ class ExperimentBackendTrace(BaseModel):
     requested_backend: RequestedComputeBackend = RequestedComputeBackend.AUTO
     observed_backend: ComputeBackend | None = None
     observed_source: str | None = None
+
+
+class ExperimentReplayability(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: ExperimentReplayabilityStatus
+    reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ExperimentReevaluationProvenance(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    environment: ExperimentEnvironment
+    prediction_engine: str
+    comparison_engine: str
+
+
+class ExperimentReevaluationResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    experiment_id: str
+    mode: ExperimentReplayMode = ExperimentReplayMode.RE_EVALUATION
+    replayability: ExperimentReplayability
+    original_prediction: MemoryEstimate | None = None
+    original_comparison: PredictionComparison | None = None
+    original_provenance: ExperimentEnvironment | None = None
+    original_prediction_engine: str | None = None
+    original_comparison_engine: str | None = None
+    observation: ExecutionObservation | None = None
+    current_prediction: MemoryEstimate | None = None
+    current_comparison: PredictionComparison | None = None
+    current_provenance: ExperimentReevaluationProvenance | None = None
 
 
 class ExperimentRecord(BaseModel):
@@ -154,9 +216,12 @@ class ExperimentRecord(BaseModel):
     backend_trace: ExperimentBackendTrace = Field(default_factory=ExperimentBackendTrace)
     runtime: RuntimeRecommendation
     prediction: MemoryEstimate
+    prediction_engine: str | None = None
+    prediction_input: ExperimentPredictionInput | None = None
     preflight: ExperimentPreflight
     observation: ExecutionObservation
     comparison: PredictionComparison
+    comparison_engine: str | None = None
     notes: list[str] = Field(default_factory=list)
 
     @classmethod
@@ -169,10 +234,13 @@ class ExperimentRecord(BaseModel):
         backend_trace: ExperimentBackendTrace | None = None,
         runtime: RuntimeRecommendation,
         prediction: MemoryEstimate,
+        prediction_engine: str | None = EXPERIMENT_PREDICTION_ENGINE_VERSION,
+        prediction_input: ExperimentPredictionInput | None = None,
         runtime_capability: RuntimeCapability,
         execution_readiness: ExecutionReadiness,
         observation: ExecutionObservation,
         comparison: PredictionComparison,
+        comparison_engine: str | None = EXPERIMENT_COMPARISON_ENGINE_VERSION,
         identity: ExperimentIdentity | None = None,
         environment: ExperimentEnvironment | None = None,
         notes: list[str] | None = None,
@@ -186,12 +254,15 @@ class ExperimentRecord(BaseModel):
             backend_trace=backend_trace or ExperimentBackendTrace(),
             runtime=runtime,
             prediction=prediction,
+            prediction_engine=prediction_engine,
+            prediction_input=prediction_input,
             preflight=ExperimentPreflight(
                 runtime_capability=runtime_capability,
                 execution_readiness=execution_readiness,
             ),
             observation=observation,
             comparison=comparison,
+            comparison_engine=comparison_engine,
             notes=notes or [],
         )
 
@@ -206,6 +277,14 @@ class ExperimentRecord(BaseModel):
         if predicted_runtime is not None and predicted_runtime != self.runtime:
             raise ValueError(
                 "Experiment runtime must match MemoryEstimate.runtime_recommendation"
+            )
+        if (
+            self.prediction_input is not None
+            and self.prediction_input.inference_configuration
+            != self.prediction.inference_configuration
+        ):
+            raise ValueError(
+                "Experiment prediction_input must match MemoryEstimate configuration"
             )
         if self.preflight.execution_readiness.runtime_capability != (
             self.preflight.runtime_capability
@@ -225,12 +304,20 @@ class ExperimentRunResult(BaseModel):
 
 
 __all__ = [
+    "EXPERIMENT_COMPARISON_ENGINE_VERSION",
+    "EXPERIMENT_PREDICTION_ENGINE_VERSION",
     "EXPERIMENT_RECORD_SCHEMA_VERSION",
     "ExperimentBackendTrace",
     "ExperimentEnvironment",
     "ExperimentIdentity",
+    "ExperimentPredictionInput",
     "ExperimentPreflight",
     "ExperimentRecord",
+    "ExperimentReevaluationProvenance",
+    "ExperimentReevaluationResult",
+    "ExperimentReplayMode",
+    "ExperimentReplayability",
+    "ExperimentReplayabilityStatus",
     "ExperimentRequest",
     "ExperimentRunResult",
     "ExperimentWorkload",

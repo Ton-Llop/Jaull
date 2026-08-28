@@ -30,6 +30,7 @@ from jaull.domain.experiments import (
     ExperimentBackendTrace,
     ExperimentEnvironment,
     ExperimentIdentity,
+    ExperimentPredictionInput,
     ExperimentRecord,
     RequestedComputeBackend,
 )
@@ -45,7 +46,12 @@ from jaull.domain.hardware import (
     MemoryInfo,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
-from jaull.domain.model import ModelAnalysis, ModelRepositoryInfo, SafetensorsSummary
+from jaull.domain.model import (
+    ModelAnalysis,
+    ModelRepositoryInfo,
+    RepositoryClassification,
+    SafetensorsSummary,
+)
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     LlamaCppBackendCapability,
@@ -76,6 +82,8 @@ def test_complete_record_can_be_built() -> None:
     assert record.hardware.cpu.model == "Ryzen 5 5500U"
     assert record.artifact.filename == "tinyllama.Q4_K_M.gguf"
     assert record.runtime is runtime
+    assert record.prediction_engine == "memory-estimator-v1"
+    assert record.comparison_engine == "prediction-comparison-v1"
     assert isinstance(record.comparison, PredictionComparison)
     assert record.observation.success is True
 
@@ -221,6 +229,32 @@ def test_backend_trace_separates_requested_selected_and_observed() -> None:
     assert record.backend_trace.observed_backend is None
 
 
+def test_prediction_input_snapshot_is_preserved() -> None:
+    runtime = _runtime(n_gpu_layers=0)
+    prediction = _estimate(runtime=runtime)
+    snapshot = ExperimentPredictionInput(
+        analysis=_analysis(),
+        inference_configuration=prediction.inference_configuration,
+    )
+    capability = _capability(ComputeBackend.CPU)
+
+    record = build_experiment_record(
+        hardware=_hardware(),
+        artifact=_artifact(),
+        runtime=runtime,
+        prediction=prediction,
+        prediction_input=snapshot,
+        runtime_capability=capability,
+        execution_readiness=_readiness(
+            selection=_selection(ComputeBackend.CPU),
+            capability=capability,
+        ),
+        observation=_observation(),
+    )
+
+    assert record.prediction_input == snapshot
+
+
 def test_advisor_build_experiment_record_delegates_to_builder() -> None:
     runtime = _runtime(n_gpu_layers=0)
     prediction = _estimate(runtime=runtime)
@@ -305,6 +339,13 @@ class _FakeHfClient:
 def _unused_inspect(repo_id: str, client: object | None = None) -> ModelAnalysis:
     del repo_id, client
     raise NotImplementedError
+
+
+def _analysis() -> ModelAnalysis:
+    return ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF"),
+        classification=RepositoryClassification(primary_type=RepositoryType.TRANSFORMERS),
+    )
 
 
 def _unused_estimate(**kwargs: object) -> MemoryEstimate:

@@ -28,6 +28,7 @@ from jaull.domain.execution import (
     InferenceResult,
 )
 from jaull.domain.experiments import (
+    ExperimentPredictionInput,
     ExperimentRequest,
     ExperimentWorkload,
     RequestedComputeBackend,
@@ -44,7 +45,12 @@ from jaull.domain.hardware import (
     MemoryInfo,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
-from jaull.domain.model import ModelAnalysis, ModelRepositoryInfo, SafetensorsSummary
+from jaull.domain.model import (
+    ModelAnalysis,
+    ModelRepositoryInfo,
+    RepositoryClassification,
+    SafetensorsSummary,
+)
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     PyTorchRuntimeStatus,
@@ -275,6 +281,27 @@ def test_comparison_is_generated_by_runner(tmp_path: Path) -> None:
 
     assert result.record.comparison.ram.predicted_bytes == 1000
     assert result.record.comparison.ram.measured_bytes == 1000
+
+
+def test_runner_preserves_prediction_input_snapshot(tmp_path: Path) -> None:
+    runner = _experiment_runner(tmp_path, devices="Available devices:\n")
+    runtime = _runtime(n_gpu_layers=0)
+    prediction = _estimate(runtime)
+    snapshot = ExperimentPredictionInput(
+        analysis=_analysis(),
+        inference_configuration=prediction.inference_configuration,
+    )
+    request = _request(
+        tmp_path,
+        backend=ComputeBackend.CPU,
+        runtime=runtime,
+        prediction=prediction,
+        persist=False,
+    ).model_copy(update={"prediction_input": snapshot})
+
+    result = runner.run(request)
+
+    assert result.record.prediction_input == snapshot
 
 
 def test_no_persistence_leaves_store_untouched(tmp_path: Path) -> None:
@@ -658,6 +685,13 @@ def _transformers_estimate(runtime: RuntimeRecommendation) -> MemoryEstimate:
                 precision=None,
             ),
         }
+    )
+
+
+def _analysis() -> ModelAnalysis:
+    return ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="owner/repo"),
+        classification=RepositoryClassification(primary_type=RepositoryType.GGUF),
     )
 
 

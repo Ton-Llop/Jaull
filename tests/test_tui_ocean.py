@@ -2,9 +2,12 @@
 
 The band is decorative, so nothing here asserts what it looks like. What it
 does assert is that it cannot break the screen it sits on: no crash, no colour
-Rich will reject, no character outside the block set, no strip wider than the
-widget, and no shark drawn outside the band. Those are the ways a purely visual
-widget turns into a bug report.
+Rich will reject, no character outside the block set, and no shark drawn
+outside the band.
+
+The quadrant encoder, the strip cache and the baked art these share with the
+search screen are covered in ``test_tui_subpixel.py``. What is left here is the
+sea itself: where the waterline goes, and where the shark goes relative to it.
 
 Sizes are given in characters; the widget works in subpixels, two to a
 character in each direction, so anything passed to ``_layout`` is doubled.
@@ -19,7 +22,8 @@ from textual.geometry import Size
 
 from jaull.tui.app import JaullApp
 from jaull.tui.widgets import shark_art
-from jaull.tui.widgets.ocean import _QUADRANTS, _REST_MS, OceanBand, _layout, _quadrant
+from jaull.tui.widgets.ocean import _REST_MS, OceanBand, _layout
+from jaull.tui.widgets.subpixel import QUADRANTS
 
 # 80x24 leaves the band about seven rows and no room for a shark; the taller
 # sizes are where it breaches. 200x60 is not a supported layout, it is here
@@ -47,70 +51,9 @@ def _all_lines(band: _Band, height: int) -> list:
 # ---------------------------------------------------------------------------
 # The baked art
 # ---------------------------------------------------------------------------
-def test_every_frame_is_the_declared_shape() -> None:
-    for index, frame in enumerate(shark_art.FRAMES):
-        rows = frame.strip("\n").splitlines()
-        assert len(rows) == shark_art.HEIGHT, f"frame {index} is not HEIGHT rows"
-        for y, row in enumerate(rows):
-            assert len(row) == shark_art.WIDTH, f"frame {index} row {y} is short"
-
-
-def test_every_subpixel_indexes_a_real_colour() -> None:
-    """A stray character would silently render as a hole in the shark."""
-    allowed = set(shark_art.INDEX_CHARS) | {shark_art.TRANSPARENT}
-    for index, frame in enumerate(shark_art.FRAMES):
-        unknown = set(frame.strip("\n").replace("\n", "")) - allowed
-        assert not unknown, f"frame {index} uses unbaked characters {unknown}"
-
-
-def test_the_palette_and_its_index_agree() -> None:
-    assert len(shark_art.INDEX_CHARS) == len(shark_art.PALETTE)
-    assert len(set(shark_art.INDEX_CHARS)) == len(shark_art.INDEX_CHARS)
-    assert len(shark_art.DURATIONS) == len(shark_art.FRAMES)
-
-
-def test_no_index_character_could_end_the_literal_it_lives_in() -> None:
-    """The frames are baked into triple-quoted strings by the generator."""
-    assert '"' not in shark_art.INDEX_CHARS
-    assert "\\" not in shark_art.INDEX_CHARS
-    assert shark_art.TRANSPARENT not in shark_art.INDEX_CHARS
-
-
 def test_the_waterline_is_inside_the_sprite() -> None:
+    """The sea meets the drawn splash at this row, so it has to be on the art."""
     assert 0 < shark_art.WATERLINE < shark_art.HEIGHT
-
-
-# ---------------------------------------------------------------------------
-# Quadrant encoding
-# ---------------------------------------------------------------------------
-def test_four_equal_subpixels_need_no_block_glyph() -> None:
-    """Most of the band is empty sky; it must collapse to spaces."""
-    grey = (30, 40, 50)
-    glyph, fore, back = _quadrant(grey, grey, grey, grey)
-    assert glyph == " "
-    assert fore == back == (30 << 16) | (40 << 8) | 50
-
-
-def test_a_light_top_over_a_dark_bottom_is_an_upper_half_block() -> None:
-    light, dark = (200, 240, 220), (10, 20, 30)
-    glyph, fore, back = _quadrant(light, light, dark, dark)
-    assert glyph == "▀"
-    assert fore == (200 << 16) | (240 << 8) | 220
-    assert back == (10 << 16) | (20 << 8) | 30
-
-
-def test_a_single_light_corner_is_its_own_quadrant() -> None:
-    light, dark = (200, 240, 220), (10, 20, 30)
-    assert _quadrant(light, dark, dark, dark)[0] == "▘"
-    assert _quadrant(dark, light, dark, dark)[0] == "▝"
-    assert _quadrant(dark, dark, light, dark)[0] == "▖"
-    assert _quadrant(dark, dark, dark, light)[0] == "▗"
-
-
-def test_a_diagonal_split_keeps_both_halves() -> None:
-    light, dark = (200, 240, 220), (10, 20, 30)
-    assert _quadrant(light, dark, dark, light)[0] == "▚"
-    assert _quadrant(dark, light, light, dark)[0] == "▞"
 
 
 # ---------------------------------------------------------------------------
@@ -169,20 +112,11 @@ def test_the_sprite_is_never_scaled_past_the_baked_art() -> None:
 # Drawing
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("size", SIZES)
-def test_every_strip_fills_exactly_the_widget_width(size: tuple[int, int]) -> None:
-    """A strip that is too long or too short corrupts the whole screen."""
-    width, height = size
-    band = _Band(width, height)
-    for y, strip in enumerate(_all_lines(band, height)):
-        assert strip.cell_length == width, f"row {y} is {strip.cell_length} wide"
-
-
-@pytest.mark.parametrize("size", SIZES)
 def test_nothing_but_block_glyphs_reaches_the_terminal(size: tuple[int, int]) -> None:
     """Every glyph must be one the stylesheet's font requirement covers."""
     width, height = size
     band = _Band(width, height)
-    allowed = set(_QUADRANTS)
+    allowed = set(QUADRANTS)
     for tick in range(0, sum(shark_art.DURATIONS) + _REST_MS, 240):
         band._elapsed_ms = tick
         for strip in _all_lines(band, height):
@@ -215,12 +149,6 @@ def test_no_colour_the_terminal_would_reject(size: tuple[int, int]) -> None:
                     assert 0 <= triplet.blue <= 255
 
 
-def test_a_band_with_no_height_draws_nothing() -> None:
-    """At 80x24 minus a long menu the band can legitimately be squeezed to zero."""
-    band = _Band(60, 0)
-    assert band.render_line(0).cell_length == 60
-
-
 def test_the_sea_moves() -> None:
     band = _Band(110, 15)
     band._elapsed_ms = 6000  # resting, so only the water can differ
@@ -228,16 +156,6 @@ def test_the_sea_moves() -> None:
     band._elapsed_ms = 6600
     after = [str(strip) for strip in _all_lines(band, 15)]
     assert before != after
-
-
-def test_the_scene_is_built_once_per_tick() -> None:
-    """Textual asks line by line; recomposing per line is twenty times the work."""
-    band = _Band(110, 15)
-    first = band.render_line(0)
-    assert band.render_line(0) is first
-    assert band.render_line(5) is not first
-    band._elapsed_ms += 120
-    assert band.render_line(0) is not first
 
 
 # ---------------------------------------------------------------------------
