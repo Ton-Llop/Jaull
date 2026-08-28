@@ -203,14 +203,19 @@ def test_the_lane_never_writes_past_its_own_width() -> None:
         assert all(len(row) == 60 for row in rows)
 
 
-def test_both_sprites_are_drawn_at_the_same_scale() -> None:
-    """The fin that comes back has to be the same animal that went past."""
+def test_the_fin_is_drawn_a_touch_larger_than_the_swim() -> None:
+    """Same animal, same distance — plus the deliberate bump in _Crossing.scale.
+
+    Without the bump the two would draw at the same per-source-pixel scale; the
+    fin carries a small enlargement so its bare tip still reads as a fin.
+    """
     swim = _ink(_at(_CROSSING_MS // 2, 200, 14))
     back = _ink(_at(_CROSSING_MS + _PAUSE_MS + _CROSSING_MS // 2, 200, 14))
     assert swim is not None and back is not None
     swim_length = (swim[1] - swim[0]) / SWIM.sprite.width
     fin_length = (back[1] - back[0]) / FIN.sprite.width
-    assert abs(swim_length - fin_length) < 0.08
+    assert FIN.scale > 1.0, "the fin is supposed to be bumped up"
+    assert abs(fin_length - swim_length * FIN.scale) < 0.08
 
 
 def test_the_swim_sits_low_in_the_lane_but_not_at_the_bottom() -> None:
