@@ -115,9 +115,10 @@ class Sprite(NamedTuple):
     drawn_by: str
 
 
-# The two search sprites are deliberately baked at one shared scale — 18
-# subpixel rows to the swimming shark's 83 source rows — so the fin that comes
-# back is the same animal at the same distance as the one that went past.
+# The fin that comes back is scaled to read as the same animal at the same
+# distance as the swim: 18 subpixel rows to 83 source rows of fin window. The
+# swim itself is now a fixed crop off a sprite sheet (see its entry), and
+# patrol.py's per-crossing scale does the final size match between the two.
 #
 # 18 rather than something smaller because the wake is drawn as thin bright
 # lines and scattered spray: under about sixteen rows the area average turns
@@ -127,7 +128,7 @@ _SEARCH_SOURCE_ROWS = 83
 
 
 def _search_size(window: int, rows: int) -> tuple[int, int]:
-    """Subpixel size of a search sprite, at the scale both of them share."""
+    """Subpixel size of the fin sprite, at the scale it is baked to."""
     scale = _SEARCH_ROWS / _SEARCH_SOURCE_ROWS
     # Doubled across, because a subpixel is half a cell wide and a whole
     # half-cell tall. Rounded to even columns so the sprite lands on cell
@@ -154,23 +155,28 @@ SPRITES: dict[str, Sprite] = {
         headline="the shark breaching",
         drawn_by="Drawn by :mod:`jaull.tui.widgets.ocean` over the home screen's sea.",
     ),
-    # 276 is a few pixels over the widest the shark and its wake ever get, so
-    # the window never clips the tail of the trail.
+    # A sprite-sheet cycle, not a traverse: the shark swims on the spot and
+    # patrol.py slides it across. The crop is the body alone — the sheet's drop
+    # shadow is stripped in the clean-up — a hair under 3:1, baked to 18 rows so
+    # it fills the lane the way the old wide-canvas swim did.
     "swim": Sprite(
         module="swim_art",
-        crop=None,
-        travel=Travel(lead="right", window=276, rows=(21, 104)),
-        width=_search_size(276, 83)[0],
-        height=_search_size(276, 83)[1],
+        crop=(0, 38, 148, 86),
+        travel=None,
+        width=112,
+        height=18,
         waterline_source_y=None,
         lift="channels",
         headline="the shark crossing to the right",
         drawn_by="Drawn by :mod:`jaull.tui.widgets.patrol` while the search runs.",
     ),
+    # 188 keeps the fin and the near half of its wake; the faint tail past that
+    # is let go. rows spans 70 for the 18-to-83 fin scale — here the fin sits at
+    # source y 70..129, so the window is centred on that.
     "fin": Sprite(
         module="fin_art",
         crop=None,
-        travel=Travel(lead="left", window=188, rows=(28, 98)),
+        travel=Travel(lead="left", window=188, rows=(62, 132)),
         width=_search_size(188, 70)[0],
         height=_search_size(188, 70)[1],
         waterline_source_y=None,

@@ -30,15 +30,21 @@ from jaull.tui.widgets.subpixel import BG_RGB, RGB, Sprite, SubpixelWidget
 
 
 class _Crossing(NamedTuple):
-    """One traverse of the lane: which sprite, and which way it goes."""
+    """One traverse of the lane: which sprite, which way it goes, how big."""
 
     sprite: Sprite
     rightward: bool
+    #: Extra size on top of the shared base scale. The swim keeps 1.0: it is the
+    #: reference the distance is set from. Strictly the fin is the same animal at
+    #: the same distance and would keep 1.0 too, but the fin that comes back is a
+    #: bare triangle a handful of subpixels tall, and a small bump is what keeps
+    #: it reading as a fin rather than as a nick in the water.
+    scale: float = 1.0
 
 
 _PASSES = (
     _Crossing(Sprite(swim_art), rightward=True),
-    _Crossing(Sprite(fin_art), rightward=False),
+    _Crossing(Sprite(fin_art), rightward=False, scale=1.2),
 )
 
 #: How long a sprite takes to cross, and how long the water stays empty after
@@ -53,13 +59,15 @@ _PAUSE_MS = 3500
 _CYCLE_MS = len(_PASSES) * (_CROSSING_MS + _PAUSE_MS)
 
 #: Subpixel rows the reference sprite is drawn at, and the sprite everything is
-#: measured against. Both sprites take *one* scale, from this one: sizing each
-#: to its own baked height would draw the fin at a different distance from the
-#: shark that just went past, and they are supposed to be the same animal.
+#: measured against. Both sprites take *one* base scale, from this one: sizing
+#: each to its own baked height would draw the fin at a different distance from
+#: the shark that just went past, and they are meant to be the same animal —
+#: give or take the small deliberate bump in :attr:`_Crossing.scale`.
 #:
-#: It is the baked art's own height, so nothing is resampled on a terminal with
-#: room for it. Smaller was tried and the dorsal fin — a dark triangle perhaps
-#: four subpixels across — stopped being identifiable as one.
+#: It is the baked art's own height, so the reference is never resampled on a
+#: terminal with room for it. Smaller was tried and the dorsal fin — a dark
+#: triangle perhaps four subpixels across — stopped being identifiable as one,
+#: which is also why the fin that comes back is nudged up a little from here.
 _LANE_ROWS = 18
 _REFERENCE = _PASSES[0].sprite
 
@@ -112,10 +120,10 @@ class SearchPatrol(SubpixelWidget):
         crossing, elapsed = phase
         sprite = crossing.sprite
 
-        # One scale for both sprites, and never an enlargement: the art is only
-        # shrunk further when the lane has been squeezed below the height it
-        # was designed for.
-        scale = min(_LANE_ROWS, height) / _REFERENCE.height
+        # One shared scale sets the distance for both sprites, and the baked art
+        # is only ever shrunk from there — never blown up past its stored
+        # resolution — save for the small per-crossing bump the fin carries.
+        scale = min(_LANE_ROWS, height) / _REFERENCE.height * crossing.scale
         drawn_height = round(sprite.height * scale)
         drawn_width = round(sprite.width * scale)
         if drawn_height <= 0 or drawn_width <= 0:
