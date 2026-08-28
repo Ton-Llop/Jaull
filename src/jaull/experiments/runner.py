@@ -115,6 +115,7 @@ class ExperimentRunner:
             ),
             runtime=request.runtime,
             prediction=request.prediction,
+            prediction_input=request.prediction_input,
             runtime_capability=runtime_capability,
             execution_readiness=readiness,
             observation=observation,

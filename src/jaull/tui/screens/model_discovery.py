@@ -13,6 +13,7 @@ from textual.widgets import Button, Footer, Static
 
 from jaull.domain.requirements import UserAnswers
 from jaull.tui.widgets.action_button import ActionButton
+from jaull.tui.widgets.patrol import SearchPatrol
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
@@ -75,6 +76,9 @@ class ModelDiscoveryScreen(Screen[None]):
             yield Vertical(id="discovery-messages")
             with Horizontal(id="discovery-actions"):
                 yield ActionButton("Cancel", id="discovery-cancel")
+            # A lane of open water under the checklist, for the minutes this
+            # screen is on for. Last child, so it never pushes anything up.
+            yield SearchPatrol()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -154,6 +158,10 @@ class ModelDiscoveryScreen(Screen[None]):
 
     def _finish(self, state: RecommendationWorkflowState) -> None:
         self._shutdown_discovery_executor()
+        # Nothing is being searched for any more. Leaving the shark patrolling
+        # under a cancellation notice or an error would say the opposite of
+        # every other thing on the screen.
+        self._set_working(False)
         app = self._app()
         app.workflow_state = state
 
@@ -197,6 +205,10 @@ class ModelDiscoveryScreen(Screen[None]):
             ]
         )
 
+    def _set_working(self, working: bool) -> None:
+        """Show the waiting animation only while there is something to wait for."""
+        self.query_one(SearchPatrol).display = working
+
     def _replace_actions(self, buttons: list[Button]) -> None:
         actions = self.query_one("#discovery-actions", Horizontal)
         actions.remove_children()
@@ -215,6 +227,7 @@ class ModelDiscoveryScreen(Screen[None]):
             )
             self.query_one("#discovery-messages", Vertical).remove_children()
             self._replace_actions([ActionButton("Cancel", id="discovery-cancel")])
+            self._set_working(True)
             self._start_discovery()
         elif button_id == "discovery-restart":
             app.restart_workflow()

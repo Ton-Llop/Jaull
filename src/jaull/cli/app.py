@@ -8,6 +8,7 @@ import typer
 
 from jaull.cli.doctor import run_doctor
 from jaull.cli.estimate import EstimateOptions, run_estimate
+from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
 from jaull.cli.inspect import run_inspect
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.scan import run_scan
@@ -26,6 +27,11 @@ app = typer.Typer(
     invoke_without_command=True,
     help="Analyze local hardware and inspect Hugging Face model repositories.",
 )
+experiments_app = typer.Typer(
+    add_completion=False,
+    help="Inspect stored experiment records.",
+)
+app.add_typer(experiments_app, name="experiments")
 
 
 def _is_interactive_terminal() -> bool:
@@ -225,6 +231,26 @@ def run_command(
         full_verify=full_verify,
     )
     raise typer.Exit(code=run_model(reference, options))
+
+
+@experiments_app.command(
+    "reevaluate",
+    help="Re-evaluate a stored experiment with the current prediction logic.",
+)
+def reevaluate_experiment_command(
+    experiment_id: str = typer.Argument(..., metavar="EXPERIMENT_ID"),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(
+        code=run_reevaluate(
+            experiment_id,
+            ReevaluateOptions(as_json=as_json),
+        )
+    )
 
 
 if __name__ == "__main__":

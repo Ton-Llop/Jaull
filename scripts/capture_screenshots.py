@@ -94,6 +94,7 @@ from jaull.tui.screens.recommendation_validation import (  # noqa: E402
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # noqa: E402
 from jaull.tui.widgets.logo import Logo  # noqa: E402
 from jaull.tui.widgets.ocean import OceanBand  # noqa: E402
+from jaull.tui.widgets.patrol import SearchPatrol  # noqa: E402
 from jaull.workflow.container import ServiceContainer  # noqa: E402
 from jaull.workflow.progress import HARDWARE_STEPS  # noqa: E402
 
@@ -486,6 +487,22 @@ def _pin_ocean_frame() -> None:
     OceanBand.on_mount = on_mount  # type: ignore[method-assign]
 
 
+#: Milliseconds into the patrol to freeze the search lane at. Halfway through
+#: the outbound crossing, so the capture gets the whole shark mid-lane rather
+#: than a tail leaving the frame or an empty stretch between passes. See
+#: ``jaull.tui.widgets.patrol``.
+_PINNED_PATROL_MS = 2500
+
+
+def _pin_patrol_frame() -> None:
+    """Freeze the search screen's shark, for the same reason as the sea."""
+
+    def on_mount(self: SearchPatrol) -> None:
+        self._elapsed_ms = _PINNED_PATROL_MS
+
+    SearchPatrol.on_mount = on_mount  # type: ignore[method-assign]
+
+
 async def _wait_for(
     pilot,  # type: ignore[no-untyped-def]
     predicate: Callable[[], bool],
@@ -749,6 +766,7 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     _pin_logo_frame()
     _pin_ocean_frame()
+    _pin_patrol_frame()
 
     gates = Gates()
     scan_gate, search_gate, artifact_gate = gates.scan, gates.search, gates.artifact

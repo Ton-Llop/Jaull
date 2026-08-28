@@ -119,12 +119,16 @@ README roadmap says so.
 
 - The TUI runs on Windows, Linux and WSL, but glyph rendering (borders, shading, colours)
   depends on the terminal — Windows Terminal, WezTerm and iTerm2 give the best result.
-- The home screen's sea is drawn in quadrant blocks (U+2596–U+259F), which buy twice the
-  horizontal resolution of a half-block but are less universally present in fonts than
-  `▀` is. A font without them renders the band as replacement boxes. It is decorative and
-  on the entry screen only, so nothing that reports a number depends on it.
-- That band also assumes a 24-bit colour terminal: it is a per-cell foreground/background
-  gradient, and on a 256-colour terminal Rich will quantize it to something flatter.
-- It animates at roughly eight frames a second for as long as the home screen is open,
-  which costs a few percent of one core at 110x32 and around ten at 200x40. Every other
-  screen is static.
+- Two screens carry animated artwork: the home screen's sea, and the lane of water the
+  shark patrols while the search runs. Both are decorative — nothing that reports a
+  number depends on either, and both draw nothing at all when the layout leaves them no
+  height.
+- Both are drawn in quadrant blocks (U+2596–U+259F), which buy twice the horizontal
+  resolution of a half-block but are less universally present in fonts than `▀` is. A
+  font without them renders those bands as replacement boxes.
+- Both also assume a 24-bit colour terminal: they are per-cell foreground/background
+  gradients, and on a 256-colour terminal Rich will quantize them to something flatter.
+- They animate for as long as their screen is open. The sea costs a few percent of one
+  core at 110x32 and around ten at 200x40; the search lane is far cheaper, under one
+  percent at 110x32 and about two on a 200-column terminal, and what it overlaps with is
+  a search that spends its time waiting on the network. Every other screen is static.

@@ -21,7 +21,7 @@ def test_no_args_prints_help_when_output_is_not_a_terminal(monkeypatch: Any) -> 
     assert result.exit_code == 0
     assert launched == []
     assert "Usage" in result.stdout
-    for command in ("scan", "inspect", "estimate", "doctor", "ui", "run"):
+    for command in ("scan", "inspect", "estimate", "doctor", "ui", "run", "experiments"):
         assert command in result.stdout
 
 

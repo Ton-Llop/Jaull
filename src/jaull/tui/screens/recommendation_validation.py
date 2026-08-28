@@ -17,6 +17,7 @@ from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.experiments import (
+    ExperimentPredictionInput,
     ExperimentRecord,
     ExperimentRequest,
     ExperimentRunResult,
@@ -257,6 +258,7 @@ class RecommendationValidationScreen(Screen[None]):
                 artifact=artifact,
                 runtime=runtime,
                 prediction=estimate,
+                prediction_input=_prediction_input(self._recommendation, estimate),
                 backend_selection=selection,
                 requested_backend=RequestedComputeBackend.AUTO,
                 workload=ExperimentWorkload(prompt=VALIDATION_PROMPT),
@@ -667,6 +669,25 @@ def _technical_observation_rows(record: ExperimentRecord) -> list[tuple[str, str
         ("Peak RAM", format_bytes(observation.peak_ram_bytes)),
         ("Peak VRAM", format_bytes(observation.peak_vram_bytes)),
     ]
+
+
+def _prediction_input(
+    recommendation: ModelRecommendation,
+    estimate: MemoryEstimate,
+) -> ExperimentPredictionInput | None:
+    analysis = recommendation.evaluated.analysis
+    if analysis is None:
+        return None
+    return ExperimentPredictionInput(
+        analysis=analysis,
+        inference_configuration=estimate.inference_configuration,
+        resolve_base_model=False,
+        recommend_runtime=False,
+        reproducibility_notes=[
+            "prediction input was captured from recommendation state; enriched "
+            "base-model metadata may be unavailable"
+        ],
+    )
 
 
 def _metric_error(value: float | None) -> str:

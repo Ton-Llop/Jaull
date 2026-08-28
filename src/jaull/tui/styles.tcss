@@ -806,6 +806,28 @@ DataTable > .datatable--header {
 }
 
 /* ---------------------------------------------------------------------
+   Search screen patrol.
+
+   Takes whatever height is left under the checklist, and draws the shark at
+   a fixed size low down in it rather than filling it — so the swim sits clear
+   of the last checklist line on a tall terminal and is simply shrunk on a
+   short one, instead of a fixed margin that fits one terminal and overflows
+   the next. It draws nothing at all when there is no room left.
+   --------------------------------------------------------------------- */
+.patrol {
+    width: 1fr;
+    height: 1fr;
+    min-height: 0;
+}
+
+/* The lane needs the scroll region to have height to give it, so the search
+   body flexes where the other bodies are sized to their content. It scrolls
+   the same way once the checklist is taller than the terminal. */
+#discovery-body {
+    height: 1fr;
+}
+
+/* ---------------------------------------------------------------------
    Screen bodies. One padding rule rather than one per screen.
    --------------------------------------------------------------------- */
 #welcome-body,
@@ -839,7 +861,6 @@ DataTable > .datatable--header {
 
 #hardware-content,
 #hardware-summary,
-#discovery-body,
 #discovery-messages,
 #wizard-errors,
 #paths-list,
