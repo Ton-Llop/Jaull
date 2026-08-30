@@ -583,7 +583,7 @@ class ExportReportModal(ModalScreen[None]):
                 yield ActionButton("Close", id="res-export-close")
 
     def on_mount(self) -> None:
-        self.query_one("#res-export-path", Input).focus()
+        self.call_after_refresh(self._focus_path_input)
         self._set_error("")
         self._set_status("")
 
@@ -618,6 +618,12 @@ class ExportReportModal(ModalScreen[None]):
         widget = self.query_one("#res-export-status", Static)
         widget.update(message)
         widget.display = bool(message)
+
+    def _focus_path_input(self) -> None:
+        path_inputs = list(self.query("#res-export-path").results(Input))
+        if not path_inputs:
+            return
+        path_inputs[0].focus()
 
 
 def _results_actions(has_results: bool) -> ComposeResult:
