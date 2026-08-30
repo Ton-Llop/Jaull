@@ -410,13 +410,25 @@ def test_reporting_json_carries_the_offload_decision_boundary() -> None:
     assert rejected["excess_bytes"] == (
         rejected["gpu_required_bytes"] - rejected["available_vram_bytes"]
     )
-    assert rejected["gpu_required_bytes"] == (
-        rejected["gpu_weight_bytes"]
-        + rejected["kv_cache_bytes"]
-        + rejected["device_reserve_bytes"]
-        + rejected["gpu_overhead_bytes"]
-        + rejected["gpu_safety_margin_bytes"]
-    )
+    for candidate in (selected, rejected):
+        assert candidate["gpu_required_bytes"] == (
+            candidate["gpu_weight_bytes"]
+            + candidate["gpu_kv_cache_bytes"]
+            + candidate["device_reserve_bytes"]
+            + candidate["gpu_overhead_bytes"]
+            + candidate["gpu_safety_margin_bytes"]
+        )
+        assert candidate["ram_required_bytes"] == (
+            candidate["ram_weight_bytes"]
+            + candidate["ram_kv_cache_bytes"]
+            + candidate["ram_overhead_bytes"]
+            + candidate["ram_safety_margin_bytes"]
+        )
+        # The total is carried alongside the two shares so the split is
+        # auditable from the payload rather than taken on trust.
+        assert candidate["gpu_kv_cache_bytes"] + candidate["ram_kv_cache_bytes"] == (
+            candidate["kv_cache_bytes"]
+        )
 
 
 def test_legacy_hardware_fit_layer_fields_still_load() -> None:

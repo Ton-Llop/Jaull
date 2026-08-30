@@ -169,9 +169,23 @@ class HardwareFitOffloadCandidate(BaseModel):
 
     These bytes are capacity-planning budget terms. They are not CUDA
     allocations and they are not backend-specific runtime offload units.
+
+    The two pools reconstruct exactly from their own components::
+
+        gpu_required_bytes == gpu_weight_bytes + gpu_kv_cache_bytes
+                              + device_reserve_bytes + gpu_overhead_bytes
+                              + gpu_safety_margin_bytes
+
+        ram_required_bytes == ram_weight_bytes + ram_kv_cache_bytes
+                              + ram_overhead_bytes + ram_safety_margin_bytes
+
+    ``kv_cache_bytes`` is the *total* KV cache being split, kept alongside the
+    two shares so ``gpu_kv_cache_bytes + ram_kv_cache_bytes == kv_cache_bytes``
+    is visible in the payload rather than having to be trusted. It is context,
+    not a GPU term: only ``gpu_kv_cache_bytes`` belongs in the GPU sum.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     gpu_transformer_blocks: int
     gpu_required_bytes: int
@@ -182,9 +196,19 @@ class HardwareFitOffloadCandidate(BaseModel):
     gpu_weight_bytes: int
     ram_weight_bytes: int
     kv_cache_bytes: int
+    # Before KV placement followed the transformer-block split, a candidate
+    # carried one ``kv_cache_bytes`` charged entirely to VRAM. Reading that as
+    # the GPU share is what it meant at the time.
+    gpu_kv_cache_bytes: int = Field(
+        default=0,
+        validation_alias=AliasChoices("gpu_kv_cache_bytes", "kv_cache_bytes"),
+    )
+    ram_kv_cache_bytes: int = 0
     device_reserve_bytes: int
     gpu_overhead_bytes: int
     gpu_safety_margin_bytes: int
+    ram_overhead_bytes: int = 0
+    ram_safety_margin_bytes: int = 0
 
 
 class HardwareFitOffloadDiagnostics(BaseModel):
@@ -217,6 +241,10 @@ class HardwareFitResult(BaseModel):
     ram_weight_bytes: int = 0
     ram_overhead_bytes: int = 0
     ram_safety_margin_bytes: int = 0
+    # How ``kv_cache_bytes`` is split between the two pools. Always sums back to
+    # ``kv_cache_bytes``; a placement that uses no GPU leaves the GPU share at 0.
+    gpu_kv_cache_bytes: int = 0
+    ram_kv_cache_bytes: int = 0
     gpu_transformer_blocks: int | None = Field(
         default=None,
         validation_alias=AliasChoices("gpu_transformer_blocks", "gpu_layers"),

@@ -135,11 +135,13 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
         "gpu_required_bytes": fit.gpu_required_bytes,
         "gpu_physical_bytes": fit.gpu_physical_bytes,
         "gpu_weight_bytes": fit.gpu_weight_bytes,
+        "gpu_kv_cache_bytes": fit.gpu_kv_cache_bytes,
         "gpu_overhead_bytes": fit.gpu_overhead_bytes,
         "gpu_safety_margin_bytes": fit.gpu_safety_margin_bytes,
         "ram_required_bytes": fit.ram_required_bytes,
         "ram_physical_bytes": fit.ram_physical_bytes,
         "ram_weight_bytes": fit.ram_weight_bytes,
+        "ram_kv_cache_bytes": fit.ram_kv_cache_bytes,
         "ram_overhead_bytes": fit.ram_overhead_bytes,
         "ram_safety_margin_bytes": fit.ram_safety_margin_bytes,
         "device_reserve_bytes": fit.device_reserve_bytes,
@@ -181,9 +183,13 @@ def hardware_fit_offload_candidate_to_dict(
         "gpu_weight_bytes": candidate.gpu_weight_bytes,
         "ram_weight_bytes": candidate.ram_weight_bytes,
         "kv_cache_bytes": candidate.kv_cache_bytes,
+        "gpu_kv_cache_bytes": candidate.gpu_kv_cache_bytes,
+        "ram_kv_cache_bytes": candidate.ram_kv_cache_bytes,
         "device_reserve_bytes": candidate.device_reserve_bytes,
         "gpu_overhead_bytes": candidate.gpu_overhead_bytes,
         "gpu_safety_margin_bytes": candidate.gpu_safety_margin_bytes,
+        "ram_overhead_bytes": candidate.ram_overhead_bytes,
+        "ram_safety_margin_bytes": candidate.ram_safety_margin_bytes,
     }
 
 

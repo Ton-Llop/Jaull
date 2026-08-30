@@ -30,6 +30,8 @@ class _OffloadPlacement:
     ram_required_bytes: int
     gpu_weight_bytes: int
     ram_weight_bytes: int
+    gpu_kv_cache_bytes: int
+    ram_kv_cache_bytes: int
     gpu_overhead_bytes: int
     ram_overhead_bytes: int
     gpu_safety_margin_bytes: int
@@ -120,6 +122,9 @@ def analyze_components(
             gpu_safety_margin_bytes=safety_margin_bytes,
             ram_required_bytes=0,
             ram_weight_bytes=0,
+            # Every block is resident, so the whole cache is.
+            gpu_kv_cache_bytes=kv_cache_bytes,
+            ram_kv_cache_bytes=0,
             gpu_transformer_blocks=total_transformer_blocks,
             total_transformer_blocks=total_transformer_blocks,
             placement_method=(
@@ -170,6 +175,9 @@ def analyze_components(
             ram_weight_bytes=weights_bytes,
             ram_overhead_bytes=overhead_bytes,
             ram_safety_margin_bytes=safety_margin_bytes,
+            # No block runs on the GPU, so no part of the cache lives there.
+            gpu_kv_cache_bytes=0,
+            ram_kv_cache_bytes=kv_cache_bytes,
             gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
             total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
@@ -194,6 +202,8 @@ def analyze_components(
         ram_weight_bytes=weights_bytes,
         ram_overhead_bytes=overhead_bytes,
         ram_safety_margin_bytes=safety_margin_bytes,
+        gpu_kv_cache_bytes=0,
+        ram_kv_cache_bytes=kv_cache_bytes,
         gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
         total_transformer_blocks=total_transformer_blocks,
         placement_method=HardwareFitPlacementMethod.NONE,
@@ -216,11 +226,6 @@ def _try_gpu_offload(
     total_transformer_blocks: int | None,
     topology: HardwareMemoryTopology,
 ) -> HardwareFitResult | None:
-    gpu_fixed_bytes = kv_cache_bytes + device_reserve_bytes
-    available_for_gpu_weights = available_vram - gpu_fixed_bytes
-    if available_for_gpu_weights <= 0:
-        return None
-
     method: HardwareFitPlacementMethod
     if _valid_transformer_block_count(total_transformer_blocks):
         assert total_transformer_blocks is not None
@@ -229,9 +234,26 @@ def _try_gpu_offload(
         )
         if estimated_bytes_per_transformer_block <= 0:
             return None
+        # Where the search may start. A placement of ``n`` blocks charges VRAM
+        # at least its weights, its share of the KV cache and the reserve, so
+        # feasibility implies
+        #     n * bytes_per_block + kv * n / T + reserve <= available_vram
+        # and therefore
+        #     n <= T * (available_vram - reserve) / (T * bytes_per_block + kv).
+        # Dropping overhead and margin keeps this an upper bound, so no feasible
+        # placement is ever skipped; it is only a starting point, not a verdict.
+        # It has to follow the KV split: bounding with the whole cache charged
+        # to VRAM would now cut off placements that do fit.
+        blocks_budget = available_vram - device_reserve_bytes
+        if blocks_budget <= 0:
+            return None
         max_gpu_transformer_blocks = min(
             total_transformer_blocks,
-            available_for_gpu_weights // estimated_bytes_per_transformer_block,
+            (blocks_budget * total_transformer_blocks)
+            // (
+                estimated_bytes_per_transformer_block * total_transformer_blocks
+                + kv_cache_bytes
+            ),
         )
         search_ceiling_transformer_blocks = int(max_gpu_transformer_blocks)
         last_rejected: HardwareFitOffloadCandidate | None = None
@@ -297,6 +319,11 @@ def _try_gpu_offload(
         "Transformer block count unavailable; GPU offload placement is "
         "estimated by bytes."
     ]
+    # No block count means no split to follow, so this branch keeps charging the
+    # whole KV cache to VRAM and bounds the search accordingly.
+    available_for_gpu_weights = available_vram - kv_cache_bytes - device_reserve_bytes
+    if available_for_gpu_weights <= 0:
+        return None
     low = 1
     high = min(weights_bytes - 1, available_for_gpu_weights)
     best: HardwareFitResult | None = None
@@ -396,12 +423,31 @@ def _calculate_offload_placement(
         return None
     ram_weight_bytes = weights_bytes - gpu_weight_bytes
 
-    gpu_physical_bytes = gpu_weight_bytes + kv_cache_bytes + device_reserve_bytes
-    ram_physical_bytes = ram_weight_bytes
+    # The KV cache follows the blocks. Without a block count there is no split
+    # to follow, so the whole cache stays charged to VRAM: the byte-estimated
+    # fallback must not invent a per-block precision it does not have.
+    if gpu_transformer_blocks is not None and _valid_transformer_block_count(
+        total_transformer_blocks
+    ):
+        assert total_transformer_blocks is not None
+        gpu_kv_cache_bytes, ram_kv_cache_bytes = _split_kv_cache_by_transformer_blocks(
+            kv_cache_bytes,
+            gpu_transformer_blocks=gpu_transformer_blocks,
+            total_transformer_blocks=total_transformer_blocks,
+        )
+    else:
+        gpu_kv_cache_bytes, ram_kv_cache_bytes = kv_cache_bytes, 0
+
+    gpu_physical_bytes = gpu_weight_bytes + gpu_kv_cache_bytes + device_reserve_bytes
+    ram_physical_bytes = ram_weight_bytes + ram_kv_cache_bytes
+    # Overhead and margin are split on the placement they are padding, so the
+    # KV share has to be in both bases. Subtracting KV from the GPU after the
+    # fact would leave the two heuristics weighted by a placement that is no
+    # longer the one being described.
     gpu_overhead_bytes, ram_overhead_bytes = _split_heuristic_bytes(
         overhead_bytes,
-        gpu_basis_bytes=gpu_weight_bytes + kv_cache_bytes,
-        ram_basis_bytes=ram_weight_bytes,
+        gpu_basis_bytes=gpu_weight_bytes + gpu_kv_cache_bytes,
+        ram_basis_bytes=ram_weight_bytes + ram_kv_cache_bytes,
     )
     gpu_margin_basis = gpu_physical_bytes + gpu_overhead_bytes
     ram_margin_basis = ram_physical_bytes + ram_overhead_bytes
@@ -421,6 +467,8 @@ def _calculate_offload_placement(
         ram_required_bytes=ram_required,
         gpu_weight_bytes=gpu_weight_bytes,
         ram_weight_bytes=ram_weight_bytes,
+        gpu_kv_cache_bytes=gpu_kv_cache_bytes,
+        ram_kv_cache_bytes=ram_kv_cache_bytes,
         gpu_overhead_bytes=gpu_overhead_bytes,
         ram_overhead_bytes=ram_overhead_bytes,
         gpu_safety_margin_bytes=gpu_safety_margin_bytes,
@@ -461,6 +509,8 @@ def _offload_result_from_placement(
         ram_weight_bytes=placement.ram_weight_bytes,
         ram_overhead_bytes=placement.ram_overhead_bytes,
         ram_safety_margin_bytes=placement.ram_safety_margin_bytes,
+        gpu_kv_cache_bytes=placement.gpu_kv_cache_bytes,
+        ram_kv_cache_bytes=placement.ram_kv_cache_bytes,
         gpu_transformer_blocks=placement.gpu_transformer_blocks,
         total_transformer_blocks=placement.total_transformer_blocks,
         placement_method=placement_method,
@@ -491,9 +541,13 @@ def _offload_candidate(
         gpu_weight_bytes=placement.gpu_weight_bytes,
         ram_weight_bytes=placement.ram_weight_bytes,
         kv_cache_bytes=kv_cache_bytes,
+        gpu_kv_cache_bytes=placement.gpu_kv_cache_bytes,
+        ram_kv_cache_bytes=placement.ram_kv_cache_bytes,
         device_reserve_bytes=device_reserve_bytes,
         gpu_overhead_bytes=placement.gpu_overhead_bytes,
         gpu_safety_margin_bytes=placement.gpu_safety_margin_bytes,
+        ram_overhead_bytes=placement.ram_overhead_bytes,
+        ram_safety_margin_bytes=placement.ram_safety_margin_bytes,
     )
 
 
@@ -538,6 +592,9 @@ def _analyze_unified_memory(
             ram_weight_bytes=weights_bytes,
             ram_overhead_bytes=overhead_bytes,
             ram_safety_margin_bytes=safety_margin_bytes,
+            # One shared pool: the cache is charged to it, not split across two.
+            gpu_kv_cache_bytes=0,
+            ram_kv_cache_bytes=kv_cache_bytes,
             gpu_transformer_blocks=None,
             total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
@@ -560,6 +617,8 @@ def _analyze_unified_memory(
         ram_weight_bytes=weights_bytes,
         ram_overhead_bytes=overhead_bytes,
         ram_safety_margin_bytes=safety_margin_bytes,
+        gpu_kv_cache_bytes=0,
+        ram_kv_cache_bytes=kv_cache_bytes,
         gpu_transformer_blocks=None,
         total_transformer_blocks=total_transformer_blocks,
         placement_method=HardwareFitPlacementMethod.NONE,
@@ -571,6 +630,42 @@ def _memory_topology(hardware: HardwareProfile) -> HardwareMemoryTopology:
     if any(accelerator.shared_memory for accelerator in hardware.accelerators):
         return HardwareMemoryTopology.UNIFIED_MEMORY
     return HardwareMemoryTopology.DISCRETE_MEMORY
+
+
+def _split_kv_cache_by_transformer_blocks(
+    kv_cache_bytes: int,
+    *,
+    gpu_transformer_blocks: int,
+    total_transformer_blocks: int,
+) -> tuple[int, int]:
+    """Place the KV cache the way the transformer blocks were placed.
+
+    A block's KV entries live wherever that block runs, so a placement that puts
+    ``N`` of ``T`` blocks on the GPU keeps ``N/T`` of the cache there and the
+    rest in system memory. Charging the whole cache to VRAM — which is what the
+    analyzer did before — overstates the GPU requirement of every partial
+    offload and understates the RAM one.
+
+    Rounding follows :func:`_split_heuristic_bytes`: the GPU share rounds up and
+    RAM takes the remainder, so the split is conservative for the scarcer pool
+    and ``gpu + ram == kv_cache_bytes`` holds exactly, with no byte created or
+    lost.
+
+    This is the runtime-agnostic default. A backend that can override where the
+    cache lives is free to refine it in its own adapter; the analyzer does not
+    model any specific runtime's flags.
+    """
+
+    if kv_cache_bytes <= 0 or total_transformer_blocks <= 0:
+        return 0, max(0, kv_cache_bytes)
+    if gpu_transformer_blocks <= 0:
+        return 0, kv_cache_bytes
+    if gpu_transformer_blocks >= total_transformer_blocks:
+        return kv_cache_bytes, 0
+    gpu_bytes = math.ceil(
+        kv_cache_bytes * (gpu_transformer_blocks / total_transformer_blocks)
+    )
+    return gpu_bytes, kv_cache_bytes - gpu_bytes
 
 
 def _split_heuristic_bytes(

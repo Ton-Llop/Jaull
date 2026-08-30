@@ -71,6 +71,8 @@ OBSERVED_FIELDS: tuple[str, ...] = (
     "ram_required_bytes",
     "gpu_weight_bytes",
     "ram_weight_bytes",
+    "gpu_kv_cache_bytes",
+    "ram_kv_cache_bytes",
     "gpu_overhead_bytes",
     "ram_overhead_bytes",
     "gpu_safety_margin_bytes",
@@ -256,20 +258,24 @@ SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         name="cpu_ram_when_no_gpu_placement_is_viable",
-        question="KV cache alone exhausts VRAM, so only RAM execution is left.",
+        question="One transformer block exceeds the whole card, so only RAM is left.",
         machine=DISCRETE_4GB_24GB,
-        weights_bytes=6 * GIB,
+        weights_bytes=16 * GIB,
         kv_cache_bytes=4 * GIB,
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_transformer_blocks=32,
+        total_transformer_blocks=4,
         expected_mode=HardwareFitMode.CPU_RAM,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"cpu_ram"}),
         notes=(
-            "KV cache (4 GiB) plus reserve already exceeds the 4 GiB of VRAM, so "
-            "no weight byte can be placed on the GPU at all.",
+            "The smallest placeable unit is one block, 4 GiB, which already "
+            "fills the 4 GiB card before its KV share or the reserve.",
+            "This case used to be reached by charging the whole KV cache to "
+            "VRAM. Once the cache follows the block placement, a single-block "
+            "offload is cheap, so CPU_RAM on discrete hardware now means the "
+            "block itself does not fit — not that the cache did not.",
         ),
     ),
     Scenario(

@@ -108,6 +108,41 @@ When the placement is block-aware, the result uses `gpu_transformer_blocks` and
 `total_transformer_blocks`. Those are runtime-agnostic planning units, not
 llama.cpp `--n-gpu-layers` values.
 
+### The KV cache follows the blocks
+
+A block's KV entries live wherever that block runs, so the cache is split the way the blocks
+were split:
+
+```text
+gpu_kv_cache_bytes = ceil(kv_cache_bytes × gpu_transformer_blocks / total_transformer_blocks)
+ram_kv_cache_bytes = kv_cache_bytes − gpu_kv_cache_bytes
+```
+
+Rounding matches the overhead and margin splits — the GPU share rounds up, RAM takes the
+remainder — so the scarcer pool is never understated and `gpu + ram == kv_cache_bytes` holds
+exactly, with no byte created or lost.
+
+The split reaches both budgets, not just the GPU one:
+
+```text
+gpu_required_bytes = gpu weights + gpu KV + reserve + gpu overhead + gpu margin
+ram_required_bytes = ram weights + ram KV + ram overhead + ram margin
+```
+
+and it also sets the bases the overhead and margin heuristics are weighted on, so the two
+padding terms describe the placement actually chosen rather than one where VRAM carried the
+whole cache.
+
+Charging the entire cache to VRAM — which the analyzer did before — overstated every partial
+offload and left RAM with no cache at all. Measurements against llama.cpp on a partial offload
+show the cache distributed across both pools in proportion to the blocks, which is what this
+models. This is the runtime-agnostic default: a backend able to override where the cache
+lives can refine it in its own adapter.
+
+Two cases have no ratio to follow, and both keep the previous conservative answer: the
+byte-estimated fallback has no block count, so the whole cache stays charged to VRAM; and
+unified memory has one pool, so it is charged there.
+
 For partial GPU offload, `offload_diagnostics` records the selected transformer-block
 boundary and the first higher block count that exceeded the estimated VRAM budget. This is
 capacity-planning evidence, not a measured CUDA allocation and not a runtime mapping.

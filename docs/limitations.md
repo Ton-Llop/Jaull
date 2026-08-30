@@ -43,6 +43,11 @@ README roadmap says so.
   output head are not separated out. `gpu_transformer_blocks` is a
   runtime-agnostic planning estimate, not a promise about what a backend will
   pass to `--n-gpu-layers`.
+- The KV cache is placed **proportionally to the blocks**, which is the generic
+  default rather than a guarantee. A runtime may keep the cache entirely in host
+  memory, quantize it separately, or page it; none of that is modelled here, and
+  a backend that can do so should refine the placement in its own adapter. The
+  proportional rule was validated on one model, one build and one GPU.
 - **Hardware capacity is not the same thing as current memory occupancy**, and Jaull only
   models the second. The fit is computed against *available* VRAM and RAM at scan time, so
   the same machine answers differently depending on what else happens to be running.
