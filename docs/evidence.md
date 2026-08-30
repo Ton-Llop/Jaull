@@ -75,6 +75,12 @@ Those three feed `ExecutionReadiness`, the preflight decision:
 > selection and the observed runtime capability. It is not proof that inference will
 > succeed; the definitive outcome remains `ExecutionObservation.success`.
 
+Readiness governs **acting**, never **recommending**. It decides whether Run, Validate and
+Benchmark are attempted or blocked with a reason, and it is what the *Ready* evidence state
+below reports — but it is deliberately excluded from the recommendation ranking, so a model
+does not become a worse recommendation because a binary has not been installed yet. See
+[recommendation.md](recommendation.md).
+
 ## Execution
 
 | Path | Runtime | Artifacts |

@@ -1,6 +1,6 @@
 Jaull analiza tu hardware, busca modelos, estima cuáles encajan, los recomienda, puede descargar un GGUF y ya puede ejecutarlo realmente con llama.cpp.
 
-Aunque tengas 18 carpetas, en realidad son 4 bloques grandes:
+Aunque tengas 27 carpetas, en realidad son 4 bloques grandes:
 
                                              JAULL
                                              │

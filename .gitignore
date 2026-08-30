@@ -150,3 +150,4 @@ benchmarks/results/
 # Informes generados
 reports/
 *.html.out
+*.gif

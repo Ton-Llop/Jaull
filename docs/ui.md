@@ -41,6 +41,13 @@ Six plain-language questions — no model names, quantizations or dtypes.
 
 The search reports what it is really doing, and stays cancellable throughout.
 
+This is the one step that genuinely takes minutes — a Hub search, then a metadata round-trip
+and a header read per shortlisted repository — and the checklist only moves every twenty or
+thirty seconds. The lane of water under it exists to fill that gap: a shark crosses it, the
+water is empty for a beat, then only a fin comes back. It reports nothing, because between
+checklist ticks nothing is known; it is there because a completely still screen is what a
+stalled program looks like.
+
 ![Searching Hugging Face](assets/tui-search.svg)
 
 ## Recommendations
@@ -72,6 +79,18 @@ the observation.
 A failed run is still a result: the record is kept, and the failure reason is shown.
 
 ![A failed validation](assets/tui-validation-failure.svg)
+
+## Benchmarking
+
+The same plan can be measured rather than estimated: `llama-bench` for llama.cpp, an isolated
+Python worker for Transformers. The result is persisted as a `BenchmarkRecord` tied to a
+fingerprint of this machine, so two plans are only ever compared when they were measured on
+the same hardware.
+
+When the runtime is not ready, the screen says why and what to install instead of invoking a
+binary that is not there — the same sentence the Run and Validate screens use.
+
+> No screenshot yet: `scripts/capture_screenshots.py` does not capture this screen.
 
 ## Running a model
 
