@@ -86,6 +86,32 @@ model fits combined memory, then CPU, then `insufficient`.
 VRAM comes from NVML, so this comparison is NVIDIA-only. On other vendors the accelerator
 is still detected and its backends probed, but the memory model falls back to system RAM.
 
+## Where it fits, not just whether it fits
+
+A single verdict hides the question that actually matters on a mixed machine: *which memory
+would this run out of?* `estimator/hardware_fit.py` answers that separately, as a placement:
+
+| Mode | Meaning |
+|---|---|
+| `GPU_RESIDENT` | The whole model lives in VRAM |
+| `GPU_OFFLOAD` | Part in VRAM, part in system RAM |
+| `CPU_RAM` | System RAM only, no GPU |
+| `TOO_LARGE` | Does not fit anywhere |
+
+`analyze_components()` places each component of the estimate rather than the total, and
+records how the placement was decided (`HardwareFitPlacementMethod`) so a figure derived from
+estimated bytes is never confused with one read off an artifact. The result is a
+`HardwareFitResult`, which travels with the candidate from inspection all the way to the
+recommendation.
+
+The point of keeping this separate from the compatibility status is that **RAM and VRAM are
+never treated as one pool**. A 7B model that fits in 32 GiB of system RAM and not in 8 GiB of
+VRAM is a real option with a real cost, not a failure — and saying so requires naming the
+placement, not just the verdict.
+
+The same analysis is what the guided shortlist approximates cheaply, before any inspection has
+happened: see the placement hint in [recommendation.md](recommendation.md).
+
 ---
 
 ## Base model resolution and GGUF enrichment

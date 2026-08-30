@@ -147,6 +147,22 @@ Exit codes: `2` invalid model reference, `3` quantization not found, `4` artifac
 Current limitation: only single-file GGUF artifacts are supported here. Multipart GGUF is
 rejected explicitly, and Transformers execution is only available from the TUI.
 
+## `experiments` — stored experiment records
+
+```bash
+uv run jaull experiments reevaluate EXPERIMENT_ID
+uv run jaull experiments reevaluate EXPERIMENT_ID --json
+```
+
+Re-runs the **current** prediction logic against an experiment that was recorded earlier, and
+shows how today's estimator would have judged that same execution. Nothing is executed again
+and the stored record is never modified: experiment records are immutable, so a re-evaluation
+is a new derived view, not an edit.
+
+This is how a change to the estimator can be checked against evidence that already exists,
+instead of re-running every measurement. See
+[replay-reevaluation.md](replay-reevaluation.md).
+
 ## `doctor` — environment health
 
 ```bash

@@ -6,15 +6,36 @@ Diccionari de consulta ràpida per recordar els conceptes principals del project
 
 ## A
 
+### Actionability / actionabilitat
+Fins a quin punt un pla **arrencaria de veritat**, i no només sobre el paper.
+
+Distingeix tres graus: artefacte confirmat, probable, o purament especulatiu (una
+quantització teòrica que ningú ha publicat). Un pla especulatiu es continua rankejant, però
+mai no pot encapçalar la targeta com a `BEST MATCH`.
+
 ### Adapter
 Fitxer o conjunt de pesos petits que modifica el comportament d’un model base sense copiar tots els pesos originals.
 
 Un adapter normalment no es pot executar sol: necessita saber quin és el seu `base_model`.
 
+### Advisor / AdvisorService
+La façana única que utilitzen la CLI i la TUI per arribar als serveis.
+
+Cap pantalla construeix un client de Hugging Face, un detector de maquinari o un estimador
+pel seu compte: tot passa per aquí. Té dues factories, `default()` per producció i `build()`
+per tests, amb cada servei injectat com a callable.
+
 ### API
 Interfície que permet que un programa parli amb un altre servei.
 
 `jaull` utilitza l’API de Hugging Face per cercar models, consultar repositoris i obtenir metadades.
+
+### Application layer / capa d’aplicació
+La carpeta `application/`: els casos d’ús del sistema.
+
+Respon *quina pregunta es resol*, sense saber d’on venen les dades. No importa mai
+infraestructura; parla amb el domini i amb els [ports](#port-i-adapter), i
+[bootstrap](#bootstrap--arrel-de-composició) li injecta les implementacions concretes.
 
 ### Architecture / arquitectura
 Estructura interna del model: nombre de capes, tipus d’atenció, `hidden_size`, caps, etc.
@@ -41,6 +62,14 @@ Exemples:
 
 El **model** és el concepte o família. L’**artefacte** és la representació concreta que es descarrega i executa.
 
+### Assessment level / nivell d’avaluació
+El vocabulari amb què s’expressa cada eix d’un
+[plan assessment](#plan-assessment--avaluació-dun-pla):
+`STRONG`, `ADEQUATE`, `WEAK`, `BLOCKED`, `UNKNOWN`.
+
+Deliberadament són nivells i no números: permeten ordenar sense inventar-se una precisió
+que les dades no tenen.
+
 ### Attention / atenció
 Mecanisme que permet al model relacionar tokens entre si durant la inferència.
 
@@ -59,6 +88,13 @@ Un repositori AWQ no és automàticament executable amb qualsevol runtime. Cal c
 Implementació tècnica que executa el model.
 
 En aquest projecte, `llama.cpp`, Transformers i vLLM es poden considerar backends o runtimes d’inferència.
+
+### Backend selection / selecció de backend
+Tria **pura** del backend de còmput a partir del maquinari ja detectat: CUDA, HIP, Vulkan o
+CPU, amb el motiu de la tria.
+
+Pura vol dir que no toca el sistema: rep un `HardwareProfile` i retorna una decisió, cosa que
+la fa provable sense GPU.
 
 ### Base model
 Model original del qual deriva un altre repositori.
@@ -93,6 +129,14 @@ Mètriques típiques:
 
 Una estimació teòrica no substitueix un benchmark.
 
+### Benchmark record
+Registre persistit d’un benchmark: quin pla d’execució s’ha mesurat, en quina màquina
+(veure [Hardware fingerprint](#hardware-fingerprint--empremta-de-la-màquina)) i amb quins
+resultats.
+
+Es guarda en JSON i és immutable. És el que permet comparar plans amb evidència mesurada en
+lloc d’estimacions.
+
 ### BF16 / bfloat16
 Format numèric de 16 bits.
 
@@ -109,6 +153,14 @@ Exemples teòrics:
 - INT4: 4 bits.
 
 Els formats reals poden afegir escales, blocs, metadades i overhead.
+
+### Bootstrap / arrel de composició
+`bootstrap/container.py`: l’únic lloc del projecte autoritzat a construir adaptadors
+concrets —client HTTP, analitzador de capacitat, caché persistent— i muntar-los en un
+[service container](#service-container).
+
+La resta del codi rep les dependències ja construïdes. Això és el que permet que els tests
+substitueixin qualsevol peça sense tocar la lògica.
 
 ---
 
@@ -230,6 +282,14 @@ Biblioteca i estructura de repositoris habitual per models de difusió, especial
 
 El workflow guiat actual està centrat en models de text.
 
+### Diversity / diversificació
+El pas que evita que les cinc recomanacions siguin cinc maneres d’executar el mateix model.
+
+Els plans ja ordenats es col·lapsen per [model identity](#model-identity--identitat-lògica):
+el millor pla de cada model és el primari i els altres queden com a alternatives, sense
+gastar cap dels cinc llocs. Si el següent candidat té la mateixa signatura d’avaluació que el
+líder, es prefereix un que canviï de família, de mida o de perfil d’execució.
+
 ### Download count
 Nombre de descàrregues declarat per Hugging Face.
 
@@ -271,9 +331,40 @@ Càlcul teòric basat en metadades, fórmules i heurístiques.
 No és una mesura real d’execució.
 
 ### Executability / executabilitat
-Grau de confiança que una combinació model + artefacte + runtime + hardware es pot executar realment.
+Si un pla d’execució és **tècnicament coherent**: aquest runtime pot carregar aquest format
+d’artefacte?
 
-Un model pot cabre teòricament en memòria i, tot i així, no tenir una ruta d’execució compatible confirmada.
+Un model pot cabre teòricament en memòria i, tot i així, no tenir una ruta d’execució
+compatible.
+
+No s’ha de confondre amb [Runtime readiness](#runtime-readiness--enllestiment-del-runtime),
+que és una pregunta diferent: *aquesta màquina ho podria llançar ara mateix?*
+L’executability entra al rànquing; la readiness no hi entra mai.
+
+### Execution plan / pla d’execució
+La unitat que el recomanador realment avalua i ordena. **No és un repositori**: és una manera
+concreta d’executar-lo.
+
+```text
+artefacte + runtime + backend + compatibilitat + predicció de memòria
+```
+
+Un mateix model lògic pot donar molts plans (Q4_K_M amb llama.cpp sobre CUDA, Q5_K_M sobre
+Vulkan, el repositori Transformers original en FP16…), i cadascun s’avalua per separat.
+
+### Execution readiness / enllestiment de l’execució
+La decisió de *preflight*: aquesta màquina pot llançar aquest pla ara mateix? Comprova que el
+binari existeix, que és funcional i que està compilat amb el backend que s’ha seleccionat.
+
+És el que decideix si Run, Validate i Benchmark s’intenten o mostren el motiu del bloqueig.
+Descarregar mai no depèn d’això: baixar un artefacte no necessita runtime.
+
+### Experiment record
+Registre persistit d’una execució controlada: prompt, configuració, sortida, durada i
+l’observació del procés (RSS màxim, VRAM atribuïda quan es pot).
+
+És immutable, i és la meitat «real» de la
+[prediction comparison](#prediction-comparison--comparació-de-predicció).
 
 ---
 
@@ -351,10 +442,43 @@ En el projecte, les GPU NVIDIA es detecten mitjançant NVML.
 
 ## H
 
-### Hardware fit
-Subscore que representa com encaixa la memòria estimada del candidat al maquinari detectat.
+### Hard constraint / restricció dura
+Una condició que **elimina** un pla del resultat, en comptes de penalitzar-lo.
 
-No mesura la qualitat de les respostes.
+N’hi ha quatre, i totes són incompatibilitats reals: artefacte incompatible amb el runtime,
+memòria insuficient, llicència incompatible i idioma incompatible.
+
+Que un binari no estigui instal·lat **no** n’és una: això és
+[runtime readiness](#runtime-readiness--enllestiment-del-runtime), i es tracta a la capa
+d’accions.
+
+### Hardware fingerprint / empremta de la màquina
+Identitat estable de l’ordinador on s’ha mesurat alguna cosa.
+
+Serveix per no comparar mai un benchmark fet en una màquina amb una predicció feta per una
+altra.
+
+### Hardware fit (subscore)
+Component del [score](#score) compost que representa com encaixa la memòria estimada del
+candidat al maquinari detectat.
+
+No mesura la qualitat de les respostes, i no s’ha de confondre amb el
+[HardwareFit](#hardwarefit--anàlisi-de-collocació) de l’estimador, que és una anàlisi de
+col·locació i no una puntuació.
+
+### HardwareFit / anàlisi de col·locació
+L’anàlisi que no pregunta «hi cap?» sinó **«on hi cap?»**:
+
+| Mode | Significat |
+|---|---|
+| `GPU_RESIDENT` | Tot el model viu a la VRAM |
+| `GPU_OFFLOAD` | Part a VRAM, part a RAM del sistema |
+| `CPU_RAM` | Només RAM, sense GPU |
+| `TOO_LARGE` | No hi cap enlloc |
+
+És el que fa que la RAM i la VRAM no es tractin mai com una sola bossa de memòria. Viu a
+`estimator/hardware_fit.py` i el resultat és un `HardwareFitResult`, que acompanya el
+candidat des de la inspecció fins a la recomanació.
 
 ### Head / cap d’atenció
 Unitat paral·lela dins del mecanisme d’atenció.
@@ -522,6 +646,13 @@ Pot contenir text i una capçalera YAML amb:
 
 La qualitat de la model card depèn de l’autor.
 
+### Model identity / identitat lògica
+El model **conceptual** que hi ha darrere de diversos repositoris.
+
+`Qwen/Qwen2.5-7B-Instruct` i una conversió GGUF feta per un tercer són repositoris diferents
+i el mateix model lògic. La identitat és el que permet que les cinc recomanacions siguin
+cinc models i no cinc quantitzacions del mateix.
+
 ### Model parameters / paràmetres
 Valors numèrics apresos durant l’entrenament.
 
@@ -604,7 +735,9 @@ Inclou:
 ### Parameter count hint
 Estimació aproximada de la mida del model extreta del nom, com `7B`.
 
-En el projecte només s’utilitza per prioritzar el shortlist. No és una dada prou fiable per mostrar-la com a recompte real.
+En el projecte només s’utilitza per ordenar la cua del [shortlist](#shortlist), juntament amb
+el [placement hint](#placement-hint--pista-de-collocació). No és una dada prou fiable per
+mostrar-la com a recompte real, i no arriba mai al rànquing.
 
 ### Pipeline tag
 Etiqueta de Hugging Face que indica la tasca principal.
@@ -615,15 +748,59 @@ Exemples:
 - `image-text-to-text`;
 - `automatic-speech-recognition`.
 
+### Placement hint / pista de col·locació
+Una estimació **barata**, feta només amb metadades del repositori, de si un candidat cauria a
+VRAM, a offload, a RAM o enlloc.
+
+Existeix perquè decidir quins 12 candidats mereixen inspecció profunda s’ha de fer *abans* de
+poder calcular res de debò. No es persisteix ni s’informa; és una heurística de cua.
+
+### Plan assessment / avaluació d’un pla
+El resultat d’avaluar un [pla d’execució](#execution-plan--pla-dexecució), amb els eixos
+**separats** i sense cap nota global:
+
+| Eix | Què respon |
+|---|---|
+| `suitability` | Encaixa amb la tasca declarada? |
+| `capability` | Senyal de família + nombre de paràmetres |
+| `feasibility` | Hi cap, en aquest maquinari? |
+| `executability` | El pla és tècnicament coherent? |
+| `execution_fitness` | Els dos anteriors combinats |
+| `performance_evidence` | Hi ha benchmark mesurat d’aquest pla? |
+| `confidence` | Confiança de l’estimació de base |
+| `runtime_readiness` | Només operatiu; mai es rankeja |
+
+Mantenir-los separats és el que permet explicar una posició dient quin eix l’ha decidit.
+
 ### Popularity score
 Subscore derivat de descàrregues i likes.
 
 Està comprimit logarítmicament perquè els models molt populars no dominin tot el rànquing.
 
+### Port i adapter
+Un **port** és un protocol de frontera, declarat només on la infraestructura és realment
+substituïble. Un **adapter** és la implementació concreta d’aquest protocol.
+
+La regla que els fa útils: un port que coneix la seva implementació no és un port.
+
 ### Precision / precisió
 Format numèric dels pesos o tensors.
 
 Més precisió acostuma a implicar més memòria, però la relació amb la qualitat depèn del model i la quantització.
+
+### Prediction comparison / comparació de predicció
+La comparació entre el que Jaull va predir i el que va passar de veritat:
+
+```text
+error_bytes   = mesurat − predit
+error_percent = (mesurat − predit) / predit × 100
+```
+
+Un error **positiu** vol dir que Jaull ha infraestimat. La comparació no calibra cap fórmula:
+la predicció, l’observació i la comparació són tres coses separades.
+
+La de RAM només es calcula en execucions CPU-only o sense offload; amb offload, i sempre per
+la VRAM, queda marcada `methodologically_unavailable` en lloc de fingir un número.
 
 ### Prompt
 Text d’entrada enviat al model.
@@ -681,7 +858,13 @@ Memòria principal del sistema.
 En CPU inference o offloading, és crítica.
 
 ### Ranking
-Ordenació dels candidats segons el score i les regles de desempat.
+Ordenació de les recomanacions. Des de l’engine v2 **no és una puntuació única**: es
+comparen [plans d’execució](#execution-plan--pla-dexecució) mitjançant una tupla
+lexicogràfica d’eixos d’avaluació (`_ranking_key`), on la prioritat de l’usuari decideix
+*quin eix es consulta primer*, no quant pesa.
+
+Totes les tuples acaben igual —evidència, confiança, `repo_id`, quantització, runtime— de
+manera que els empats es trenquen sempre igual i la mateixa entrada dona el mateix informe.
 
 ### Repo ID
 Identificador canònic d’un repositori de Hugging Face:
@@ -695,6 +878,13 @@ Exemple:
 ```text
 Qwen/Qwen2.5-1.5B-Instruct
 ```
+
+### Report schema version
+Número de versió de l’esquema de l’informe exportat (`REPORT_SCHEMA_VERSION`).
+
+L’informe JSON i el Markdown són un contracte **byte a byte**, comprovat contra fitxers
+snapshot. Qualsevol canvi que trenqui la igualtat exacta obliga a pujar aquest número
+explícitament.
 
 ### Repository / repositori
 Contenidor publicat al Hugging Face Hub.
@@ -720,6 +910,24 @@ Exemples:
 - Transformers;
 - vLLM.
 
+### Runtime readiness / enllestiment del runtime
+Si **aquesta instal·lació** podria llançar un pla ara mateix.
+
+És purament operatiu i **mai** entra al rànquing. La recomanació respon *quin és el millor pla
+per a aquest maquinari*, i aquesta resposta no canvia perquè encara no hi hagi un binari
+instal·lat.
+
+Tractar-ho com si canviés era actiu­ment nociu: un runtime absent eliminava el pla, de manera
+que en una màquina sense llama.cpp desapareixien totes les recomanacions GGUF; i un binari
+funcional però compilat sense el backend seleccionat també comptava com a no llest, així que
+una màquina CUDA podia quedar per sota d’un portàtil CPU-only. Millor maquinari, pitjor
+resultat.
+
+Continua calculant-se, informant-se i mostrant-se: és el xip **Ready** de la pantalla
+Execution Paths, i el que bloqueja Run, Validate i Benchmark amb un motiu i una guia
+d’instal·lació. Veure també
+[Executability](#executability--executabilitat).
+
 ---
 
 ## S
@@ -734,24 +942,35 @@ Avantatges respecte a formats basats en `pickle`:
 - facilita metadades i sharding.
 
 ### Score
-Puntuació composta del recomanador.
+Puntuació composta de vuit components (memory fit, concurrency fit, capability, task match,
+language match, license, metadata quality, popularity).
 
-En l’estat actual representa **adequació segons les regles**, no qualitat absoluta del model.
+**Ja no ordena el mode guiat.** Continua existint per dos motius: és el mecanisme del camí
+sense maquinari, que no té plans d’execució per avaluar, i s’exporta a l’informe perquè
+l’esquema del report és un contracte byte a byte. No es mostra a la TUI.
+
+Quan es mostra, representa **adequació segons les regles**, no qualitat absoluta del model.
 
 ### Score breakdown
-Desglossament del score en components:
+Desglossament del score en els seus components, tal com apareix al JSON i al Markdown
+exportats. Veure [Report schema version](#report-schema-version).
 
-- hardware fit;
-- task match;
-- language match;
-- license;
-- metadata quality;
-- popularity.
+### Series / sèrie
+Un conjunt de models de la mateixa família amb mides de paràmetres diferents:
+
+```text
+Qwen2.5 → 0.5B · 1.5B · 3B · 7B · 14B
+```
+
+No s’ha de confondre amb [família](#family--família-de-model), que agrupa un original i les
+seves conversions.
 
 ### Service container
-Objecte que agrupa dependències i serveis.
+Objecte que agrupa dependències i serveis, construït per `bootstrap/container.py`.
 
-Evita que cada pantalla construeixi directament clients reals.
+Evita que cada pantalla construeixi directament clients reals: la CLI i la TUI només parlen
+amb l’[Advisor](#advisor--advisorservice). Veure
+[Bootstrap](#bootstrap--arrel-de-composició).
 
 ### Shard
 Una part d’un model dividit en diversos fitxers.
@@ -767,9 +986,17 @@ model-00002-of-00004.safetensors
 Tots els shards formen conjuntament un artefacte.
 
 ### Shortlist
-Subconjunt de candidats que passa de la cerca barata a la inspecció profunda.
+Subconjunt de candidats que passa de la cerca barata a la inspecció profunda. Actualment són
+12 llocs, perquè consultar configuracions i metadades detallades és lent.
 
-Es limita perquè consultar configuracions i metadades detallades és més lent.
+Des de l’agost del 2026 la tria és **conscient del maquinari**: un
+[placement hint](#placement-hint--pista-de-collocació) calculat només amb metadades pondera
+la cua (`GPU_RESIDENT` +4.0, `GPU_OFFLOAD` +3.0, `CPU_RAM` +1.5, `TOO_LARGE` −9.0), de manera
+que les tres col·locacions viables continuïn representades en comptes de gastar tots els
+llocs en una sola classe de mida.
+
+La pista no es persisteix, no s’informa i no entra al rànquing: després de la inspecció, el
+`MemoryEstimate` i el [HardwareFit](#hardwarefit) són la font de veritat.
 
 ### Sliding window attention
 Atenció limitada a una finestra recent de tokens en determinades capes o arquitectures.
@@ -795,6 +1022,12 @@ Subscore que intenta decidir si el model sembla adequat per al cas d’ús.
 
 Actualment utilitza sobretot pipeline, tags i paraules clau. No és un benchmark de qualitat.
 
+### Telemetry / telemetria
+Comptadors i temps lleugers de les etapes llargues (`filter`, `deep_inspection`…), a
+`observability/`.
+
+No és un sistema de mètriques i no surt mai de la màquina.
+
 ### Text generation
 Tasca on el model rep text i genera continuació o resposta.
 
@@ -807,6 +1040,15 @@ Framework Python utilitzat per construir la TUI.
 Quantitat de treball processat per unitat de temps.
 
 En LLM se sol expressar en tokens/s totals o peticions simultànies.
+
+### Tier
+El titular de la targeta de recomanació: `BEST MATCH`, `RECOMMENDED`, `CLOSEST OPTION` o
+`BEST-EFFORT SUGGESTION`.
+
+Es tria a partir de la compatibilitat, la confiança, la penalització dura i la
+[actionability](#actionability--actionabilitat). Existeix perquè una targeta que sempre crida
+*BEST MATCH* és deshonesta: si el resultat és una estimació de baixa confiança d’un model que
+tot just hi cap amb offload, el titular ho ha de dir.
 
 ### Token
 Unitat en què el tokenizer divideix el text.
@@ -908,13 +1150,16 @@ Paquet binari/distribuïble de Python amb extensió `.whl`.
 Ha d’incloure el codi i recursos com `styles.tcss`.
 
 ### Workflow
-Seqüència completa de passos del mode guiat.
-
-En aquest projecte:
+Seqüència completa de passos del mode guiat:
 
 ```text
-hardware → requisits → cerca → filtratge → estimació → rànquing → resultat
+hardware → requisits → cerca → filtratge → shortlist → inspecció profunda
+→ estimació + HardwareFit → plans d’execució → avaluació i rànquing
+→ diversificació → resultat
 ```
+
+La carpeta `workflow/` ja no és el centre del producte: conserva l’orquestrador i els DTO de
+progrés, però els casos d’ús viuen a `application/` i el cablejat a `bootstrap/`.
 
 ### WSL2
 Entorn Linux virtualitzat dins de Windows.

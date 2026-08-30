@@ -134,7 +134,7 @@ class RecommendationExecutionScreen(Screen[None]):
             )
             self.query_one("#run-generate", Button).disabled = True
             return
-        self.query_one("#run-prompt-input", TextArea).focus()
+        self.call_after_refresh(self._focus_prompt_input)
 
     def on_unmount(self) -> None:
         self._run_closing.set()
@@ -288,6 +288,12 @@ class RecommendationExecutionScreen(Screen[None]):
         self._set_busy(False, "Ready to retry", marker="○ ")
         self._render_error(message)
         self.query_one("#run-prompt-input", TextArea).focus()
+
+    def _focus_prompt_input(self) -> None:
+        prompt_inputs = list(self.query("#run-prompt-input").results(TextArea))
+        if not prompt_inputs:
+            return
+        prompt_inputs[0].focus()
 
     def _remember_artifact(self, artifact: ModelArtifact) -> None:
         self._artifact = artifact

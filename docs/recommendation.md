@@ -42,8 +42,9 @@ Recommendations
    system feeds the model a few chunks at a time.
 6. **Must the model allow commercial use?** — yes / no / not sure, defaulting to yes.
 
-Answers are normalised into a `UserRequirements` object (`workflow/requirements.py`) that
-records every assumption it made, and those assumptions appear in the exported report.
+Answers are normalised into a `UserRequirements` object (`application/requirements.py`, still
+importable as `workflow/requirements.py`) that records every assumption it made, and those
+assumptions appear in the exported report.
 
 This is not a workload model. It captures intent and a concurrency bucket, not throughput,
 latency or time-to-first-token objectives — see the roadmap in the README.
@@ -67,11 +68,19 @@ relying on a single string. Results are then:
    commercial use is required) non-commercial licenses are rejected. Thin metadata is
    *never* a rejection; it becomes a recorded penalty and lower confidence.
 4. **Shortlisted** down to the deep-inspection budget using cheap pre-inspection signals
-   only. This preselection uses repository metadata and a coarse hardware placement hint
-   to keep GPU-resident, GPU-offload and CPU-RAM candidates in play without treating RAM
-   and VRAM as one memory pool.
+   only.
 
-Budgets are centralised in `workflow/policies.py`:
+The shortlist is **hardware-aware** (`discovery/candidate_filter.py`). From repository
+metadata alone it derives a `coarse_placement_hint` — would this candidate plausibly sit in
+VRAM, need offload, run from system RAM, or not fit at all — and weights the queue with it
+(`GPU_RESIDENT` +4.0, `GPU_OFFLOAD` +3.0, `CPU_RAM` +1.5, `TOO_LARGE` −9.0). The point is to
+keep all three viable placements in play instead of spending every slot on one size class,
+and to do it **without treating RAM and VRAM as a single memory pool**. A parameter-count
+hint parsed from the repository name (`…-7B-…`) only orders this queue; it is never
+presented as a measurement.
+
+Budgets are centralised in `application/recommendation/policies.py`, re-exported by
+`workflow/policies.py`:
 
 | Budget | Value |
 |---|---|
@@ -93,8 +102,99 @@ repositories.
 
 ## How the ranking works
 
-A composite score over eight normalised components, weighted and then renormalised to 1.0
-(`recommendation/policies.py`):
+Ranking runs over **execution plans**, not over repositories. Every candidate that survives
+inspection is expanded into the concrete ways it could actually run — one plan per artifact
+variant and runtime — and it is those plans that `recommendation/engine_v2.py` assesses and
+orders.
+
+There is deliberately **no global numeric score**. `PlanAssessment` keeps the dimensions
+apart and the ranking policy reads them as an ordered tuple, so every position in the list
+can be explained by naming the axis that decided it:
+
+| Axis | What it answers |
+|---|---|
+| `suitability` | Does the repository match the declared task? Instruct/chat signals raise it; a base model is capped. |
+| `capability` | Family and parameter-count signal (`recommendation/capability.py`). |
+| `feasibility` | Does the memory prediction fit this hardware? Read from `CompatibilityStatus`. |
+| `executability` | Is the plan technically coherent — does that runtime accept that artifact? |
+| `execution_fitness` | The two above combined; `BLOCKED` if either one is. |
+| `performance_evidence` | Is there a measured benchmark for this exact plan on this machine? |
+| `confidence` | Confidence of the estimate the plan was built on. |
+| `runtime_readiness` | **Operational only.** Whether this installation could launch it right now — never read by ranking. |
+
+Levels are `STRONG` / `ADEQUATE` / `WEAK` / `BLOCKED` / `UNKNOWN`. `_ranking_key` turns them
+into a lexicographic tuple per priority, so the priority decides *which axis is consulted
+first*, not how much weight it carries:
+
+| Priority | Axes, in order |
+|---|---|
+| **Quality** | suitability → capability → quantization quality → execution fitness |
+| **Speed** | executability → throughput → quantization chosen for speed → memory efficiency |
+| **Memory** | memory efficiency → execution fitness → executability |
+| **Balanced** | suitability → runnability → capability → execution fitness → executability → memory headroom |
+
+Every key ends with the same tail — performance evidence, confidence, `repo_id`,
+quantization, runtime name — so ties break deterministically and identical inputs always
+produce an identical report.
+
+### What removes a plan from the list
+
+A plan carrying any `HardConstraint` is rejected before ordering begins. Four codes do that,
+and all four are genuine incompatibilities rather than states of this particular machine:
+
+| Code | Meaning |
+|---|---|
+| `ARTIFACT_RUNTIME_INCOMPATIBLE` | That runtime cannot load that artifact format |
+| `MEMORY_INSUFFICIENT` | The model does not fit, offload included |
+| `LICENSE_INCOMPATIBLE` | Commercial use is required and the license forbids it |
+| `LANGUAGE_INCOMPATIBLE` | A required language the model does not declare |
+
+Compatibility therefore remains a hard gate: a plan assessed `insufficient` never appears at
+all, and one assessed `unknown` can only ever be a flagged low-confidence alternative.
+
+### Ranking does not depend on what you have installed
+
+A missing `llama-cli` does not change the Top 5. This is a deliberate decision, and it is why
+the assessment carries two separate axes:
+
+- **`executability`** is technical and *is* ranked — could this runtime load this artifact
+  format at all?
+- **`runtime_readiness`** is operational and is *never* ranked — could this machine launch
+  the plan at this moment?
+
+The question a recommendation answers is *what is the best plan for this hardware?*, and the
+answer does not change because a binary has not been installed yet. Treating it as if it did
+was actively harmful. A missing runtime used to raise `RUNTIME_NOT_READY` as a hard
+constraint, which **deleted** the plan: on a machine without llama.cpp every GGUF
+recommendation disappeared, and when the whole shortlist was GGUF the run reported "no
+compatible models". Worse, a working binary compiled without the backend the hardware had
+selected also counted as not ready — so a CUDA machine with a CPU-only build ranked *below*
+a plain CPU laptop. Better hardware, worse result.
+
+`runtime_readiness` is still computed, reported and rendered. It is what the **Ready** chip on
+the Execution Paths screen shows, and it is what gates Run, Validate and Benchmark: those
+fail with the reason and the install hint instead of invoking a binary that is not there.
+Download is deliberately *not* gated — fetching an artifact needs no runtime.
+`HardConstraintCode.RUNTIME_NOT_READY` still exists in the enum, but it is now raised in the
+action layer, where *can I launch this now?* is the actual question.
+
+The invariant is pinned by `tests/test_recommendation_runtime_agnostic.py`: with the same
+hardware, requirements, candidates and artifacts the ranking is identical with and without
+the runtime installed, and only `runtime_readiness` differs.
+
+### One slot per logical model
+
+Ranked plans are collapsed by `recommendation/diversity.py` before they become
+recommendations. The best plan for a `ModelIdentity` becomes the primary; the remaining plans
+for that identity stay attached as alternatives rather than consuming another of the five
+slots. When the next candidate carries the same assessment signature as the current leader,
+the diversifier prefers one that differs in family, parameter tier or execution profile — so
+the list does not degenerate into five quantizations of the same model.
+
+### The composite score still exists, but no longer decides
+
+The eight-component weighted score (`recommendation/scoring.py`, weights in
+`recommendation/policies.py`) predates the plan-based engine:
 
 | Component | Base weight | What it measures |
 |---|---|---|
@@ -109,37 +209,48 @@ A composite score over eight normalised components, weighted and then renormalis
 
 Priority shifts these — *quality* raises task match and capability, *speed* and *memory*
 raise both memory fit and concurrency fit. The total is then scaled by the estimate's
-confidence, and one more multiplier is applied on top: the **hard-requirement penalty**. A
-candidate that requires commercial use but declares a restricted license is multiplied by
-0, effectively removed; language misses and concurrency shortfalls apply softer penalties
-(0.15 and 0.35) that still let the candidate compete.
-
-Memory fit is itself multiplied by an **artifact realism** factor: a real GGUF variant or an
-explicit `bnb-4bit` / `gptq` / `awq` tag scores 1.0, a Transformers repo loaded at its
-native dtype scores 0.75, and a theoretical `int4` / `int8` selection with no confirmed
-artifact drops to 0.4. This is what stops "Qwen-7B in int4" from beating a real Qwen-7B
+confidence and by the **hard-requirement penalty**: a candidate that requires commercial use
+but declares a restricted license is multiplied by 0, effectively removed, while language
+misses and concurrency shortfalls apply softer penalties (0.15 and 0.35) that still let the
+candidate compete. Memory fit is itself multiplied by an **artifact realism** factor: a real
+GGUF variant or an explicit `bnb-4bit` / `gptq` / `awq` tag scores 1.0, a Transformers repo
+loaded at its native dtype 0.75, and a theoretical `int4` / `int8` selection with no
+confirmed artifact 0.4. That is what stops "Qwen-7B in int4" from beating a real Qwen-7B
 GGUF at the same nominal size.
 
-Compatibility remains a hard gate: a model assessed `insufficient` never appears at all,
-and one assessed `unknown` can only ever be a flagged low-confidence alternative. The
-heading on the primary card reflects the resulting tier:
+It survives in two places, and in neither of them does it order the guided results:
+
+1. **The exported report.** `score_breakdown` is still written into the JSON and the
+   Markdown, because the report schema is a byte-identical contract
+   (`tests/test_reporting_regression.py`). It is no longer shown in the TUI.
+2. **The no-hardware path.** `recommend(..., hardware=None)` has no execution plans to
+   assess, so it still ranks with the composite score and the older series grouping.
+
+On the guided path — where hardware is always known — the order comes from `_ranking_key`,
+and the composite score is descriptive only.
+
+### The heading on the card
+
+The tier is chosen by `recommendation/tier.py` from four signals: compatibility status,
+confidence, the hard-requirement penalty, and **actionability** — whether the artifact and
+runtime path is confirmed, likely or merely speculative. Strongest downgrade first:
 
 | Tier | Heading | Trigger |
 |---|---|---|
-| Best match | `BEST MATCH` | HIGH confidence + comfortable/compatible + no hard-fail |
-| Recommended | `RECOMMENDED` | Tight fit or MEDIUM confidence |
+| Best-effort suggestion | `BEST-EFFORT SUGGESTION` | Any hard requirement missed, LOW/UNKNOWN confidence, or a speculative artifact path |
 | Closest option | `CLOSEST OPTION` | Offloading required, or status unknown |
-| Best-effort suggestion | `BEST-EFFORT SUGGESTION` | LOW confidence, or any hard requirement missed |
+| Recommended | `RECOMMENDED` | Tight fit, MEDIUM confidence, or actionable but not confirmed |
+| Best match | `BEST MATCH` | Everything else, at HIGH confidence |
 
-Within a family (Qwen2.5, Llama 3.1, Gemma 2, …), the recommender picks the single size
-that best matches the priority — the other sizes are shown as a **series ladder**
-underneath: *"Same series, other sizes: 0.5B · 1.5B · 3B · 7B"*, each with its own status.
+A speculative plan is still ranked, but it can never earn a `BEST MATCH` heading, because the
+path that would run it has not been confirmed.
+
+The alternatives under the primary card come from the diversifier — other execution plans for
+the same logical model. The older **series ladder** (*"Same series, other sizes: 0.5B · 1.5B ·
+3B · 7B"*) is only populated on the no-hardware path; the guided path leaves it empty.
 
 Every reason and warning is generated by rules in `recommendation/explanations.py`. **No
 language model is involved in ranking or in writing the explanations.**
-
-Ties break deterministically (status → confidence → downloads → `repo_id`), so the same
-inputs always give the same report.
 
 ---
 
