@@ -122,6 +122,18 @@ def test_architecture_dependency_rules_do_not_gain_new_violations() -> None:
     )
 
 
+def test_runtime_launch_policy_does_not_consume_hardware_fit_placement() -> None:
+    """Runtime flags must not treat HFA transformer blocks as runtime layers."""
+
+    violations = sorted(_hardware_fit_runtime_policy_violations())
+
+    assert not violations, (
+        "Runtime/execution-plan modules must not derive backend layer flags "
+        "from HardwareFitResult or estimator.hardware_fit:\n"
+        + "\n".join(f"- {violation}" for violation in violations)
+    )
+
+
 def _python_import_edges() -> set[ImportEdge]:
     edges: set[ImportEdge] = set()
     for path in JAULL.rglob("*.py"):
@@ -133,6 +145,58 @@ def _python_import_edges() -> set[ImportEdge]:
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 edges.update(_from_import_edges(source, node))
     return edges
+
+
+def _hardware_fit_runtime_policy_violations() -> set[str]:
+    violations: set[str] = set()
+    for root in (JAULL / "runtime", JAULL / "execution_plans"):
+        for path in root.rglob("*.py"):
+            source = path.relative_to(ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=source)
+            for node in ast.walk(tree):
+                violation = _hardware_fit_runtime_policy_violation(source, node)
+                if violation is not None:
+                    violations.add(violation)
+    return violations
+
+
+def _hardware_fit_runtime_policy_violation(
+    source: str,
+    node: ast.AST,
+) -> str | None:
+    line = getattr(node, "lineno", "?")
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            if _matches_prefix(alias.name, "jaull.estimator.hardware_fit"):
+                return f"{source}:{line} imports {alias.name}"
+        return None
+    if isinstance(node, ast.ImportFrom):
+        module = node.module or ""
+        if _matches_prefix(module, "jaull.estimator.hardware_fit"):
+            return f"{source}:{line} imports from {module}"
+        if module == "jaull.estimator" and any(
+            alias.name == "hardware_fit" for alias in node.names
+        ):
+            return f"{source}:{line} imports jaull.estimator.hardware_fit"
+        if module == "jaull.domain.estimation" and any(
+            alias.name
+            in {
+                "HardwareFitResult",
+                "HardwareFitOffloadCandidate",
+                "HardwareFitOffloadDiagnostics",
+            }
+            for alias in node.names
+        ):
+            return f"{source}:{line} imports HardwareFit placement diagnostics"
+        return None
+    if isinstance(node, ast.Attribute) and node.attr in {
+        "hardware_fit",
+        "gpu_transformer_blocks",
+        "total_transformer_blocks",
+        "offload_diagnostics",
+    }:
+        return f"{source}:{line} reads {node.attr}"
+    return None
 
 
 def _from_import_edges(source: str, node: ast.ImportFrom) -> set[ImportEdge]:

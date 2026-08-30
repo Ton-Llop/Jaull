@@ -145,7 +145,7 @@
       ],
       "warnings": [],
       "memory": {
-        "schema_version": 1,
+        "schema_version": 2,
         "model": {
           "repo_id": "org/Coder-7B",
           "repository_type": "transformers",

@@ -31,6 +31,7 @@ from tests._hardware_fit_scenarios import (  # noqa: E402
     GIB,
     OBSERVED_FIELDS,
     SCENARIOS,
+    Scenario,
 )
 
 SNAPSHOT = REPO_ROOT / "tests" / "snapshots" / "hardware_fit_scenarios.json"
@@ -49,8 +50,8 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     ("ram_overhead_bytes", "ram ovh"),
     ("gpu_safety_margin_bytes", "gpu mrg"),
     ("ram_safety_margin_bytes", "ram mrg"),
-    ("gpu_layers", "gpu L"),
-    ("total_layers", "tot L"),
+    ("gpu_transformer_blocks", "gpu blocks"),
+    ("total_transformer_blocks", "tot blocks"),
 )
 
 _BYTE_FIELDS = frozenset(
@@ -125,7 +126,11 @@ def _table() -> str:
 def _inputs_block() -> str:
     lines = ["Inputs (GiB unless stated):", ""]
     for case in SCENARIOS:
-        layers = case.total_layers if case.total_layers is not None else "no metadata"
+        blocks = (
+            case.total_transformer_blocks
+            if case.total_transformer_blocks is not None
+            else "no metadata"
+        )
         lines.append(
             f"  {case.name}\n"
             f"    machine   {case.machine.name}\n"
@@ -134,7 +139,7 @@ def _inputs_block() -> str:
             f"   overhead {case.overhead_bytes / GIB:.3f}"
             f"   reserve {case.device_reserve_bytes / GIB:.3f}"
             f"   margin {case.safety_margin_bytes / GIB:.3f}\n"
-            f"    layers    {layers}\n"
+            f"    blocks    {blocks}\n"
             f"    asks      {case.question}"
         )
     return "\n".join(lines)
@@ -167,11 +172,17 @@ def _markdown() -> str:
         f"overhead {case.overhead_bytes / GIB:.3f}, "
         f"reserve {case.device_reserve_bytes / GIB:.3f}, "
         f"margin {case.safety_margin_bytes / GIB:.3f}, "
-        f"layers {case.total_layers if case.total_layers is not None else 'none'}. "
+        f"blocks {_transformer_blocks_label(case)}. "
         f"{case.question}"
         for case in SCENARIOS
     )
     return "\n".join(lines)
+
+
+def _transformer_blocks_label(case: Scenario) -> str:
+    if case.total_transformer_blocks is None:
+        return "none"
+    return str(case.total_transformer_blocks)
 
 
 # ---------------------------------------------------------------------------

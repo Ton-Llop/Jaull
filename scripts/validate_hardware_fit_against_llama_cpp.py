@@ -15,10 +15,12 @@ only states the error.
 1. Asks Jaull — `AdvisorService` for the hardware scan and the memory estimate,
    `estimator.hardware_fit.analyze_estimate` for the placement — so the
    prediction comes from production code rather than a re-derivation here.
-2. Runs llama.cpp at `-ngl 0` for a CPU baseline, then at the predicted layer
-   count, sampling VRAM throughout.
-3. Optionally sweeps `-ngl` around the prediction to find the real maximum that
-   still starts, and optionally repeats one run with `--no-kv-offload`.
+2. Runs llama.cpp at `-ngl 0` for a CPU baseline, then at the HFA transformer
+   block count as a diagnostic probe, sampling VRAM throughout. This probe is
+   deliberately not a claim that transformer blocks are the same thing as
+   llama.cpp offload units.
+3. Optionally sweeps `-ngl` around that probe value to find the real maximum
+   that still starts, and optionally repeats one run with `--no-kv-offload`.
 
 ## Measurement caveats, stated once
 
@@ -62,6 +64,7 @@ from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
+from jaull.reporting.estimation import hardware_fit_offload_diagnostics_to_dict
 from jaull.runtime.locator import RuntimeLocator
 
 MIB = 1024**2
@@ -84,6 +87,12 @@ _BUFFER = re.compile(
     r"^(?P<what>.+?)\s+(?P<kind>model|KV|compute|output)\s+buffer size\s*=\s*"
     r"(?P<mib>[\d.]+)\s*MiB",
     re.IGNORECASE,
+)
+_VRAM_COMPARISON_REQUIRES_RUNTIME_MAPPING = (
+    "Not available: the run uses llama.cpp --n-gpu-layers units, while "
+    "HardwareFitResult reports runtime-agnostic transformer blocks. A validated "
+    "mapping between transformer blocks and runtime offload units is required "
+    "before this probe can be reported as a prediction error."
 )
 
 
@@ -134,8 +143,11 @@ class Prediction:
                 "mode": fit.mode.value,
                 "memory_topology": fit.memory_topology.value,
                 "placement_method": fit.placement_method.value,
-                "gpu_layers": fit.gpu_layers,
-                "total_layers": fit.total_layers,
+                "gpu_transformer_blocks": fit.gpu_transformer_blocks,
+                "total_transformer_blocks": fit.total_transformer_blocks,
+                "offload_diagnostics": hardware_fit_offload_diagnostics_to_dict(
+                    fit.offload_diagnostics
+                ),
                 "gpu_required_bytes": fit.gpu_required_bytes,
                 "ram_required_bytes": fit.ram_required_bytes,
                 "gpu_weight_bytes": fit.gpu_weight_bytes,
@@ -487,7 +499,7 @@ def _cuda_buffers_mib(run: Run) -> float | None:
 def build_report(
     prediction: Prediction,
     baseline: Run,
-    predicted_run: Run,
+    hfa_block_probe: Run,
     sweep: list[Run],
     kv_runs: list[Run],
     llama_version: str,
@@ -496,25 +508,25 @@ def build_report(
     predicted_vram_mib = (
         fit.gpu_required_bytes / MIB if fit.gpu_required_bytes is not None else None
     )
-    observed_vram_mib = predicted_run.vram_delta_mib
+    observed_vram_mib = hfa_block_probe.vram_delta_mib
     # Only the CUDA0 buffers live in VRAM. CPU_Mapped / CPU / CUDA_Host ones are
     # host memory, and summing all of them would compare a VRAM prediction
     # against a figure that is partly system RAM.
-    observed_buffers_mib = _cuda_buffers_mib(predicted_run)
+    observed_buffers_mib = _cuda_buffers_mib(hfa_block_probe)
 
     starting = [run for run in sweep if run.started]
     real_max_layers = max(
         (int(run.gpu_layers) for run in starting if isinstance(run.gpu_layers, int)),
         default=None,
     )
-    predicted_layers = fit.gpu_layers
+    predicted_transformer_blocks = fit.gpu_transformer_blocks
 
     return {
         "llama_cpp_version": llama_version,
         "prediction": prediction.as_dict(),
         "runs": {
             "cpu_baseline": baseline.as_dict(),
-            "at_predicted_layers": predicted_run.as_dict(),
+            "at_hfa_transformer_block_count": hfa_block_probe.as_dict(),
             "sweep": [run.as_dict() for run in sweep],
             "kv_offload": [run.as_dict() for run in kv_runs],
         },
@@ -522,24 +534,21 @@ def build_report(
             "predicted_vram_mib": predicted_vram_mib,
             "observed_vram_device_delta_mib": observed_vram_mib,
             "observed_vram_llama_buffers_mib": observed_buffers_mib,
-            "vram_error_pct_vs_device_delta": _pct_error(
-                observed_vram_mib, predicted_vram_mib
-            ),
-            "vram_error_pct_vs_llama_buffers": _pct_error(
-                observed_buffers_mib, predicted_vram_mib
-            ),
+            "vram_error_pct_vs_device_delta": None,
+            "vram_error_pct_vs_llama_buffers": None,
+            "vram_error_note": _VRAM_COMPARISON_REQUIRES_RUNTIME_MAPPING,
             "observed_vram_llama_buffers_note": (
                 "CUDA0 device buffers only; CPU/CPU_Mapped/CUDA_Host are host memory"
             ),
-            "predicted_gpu_layers": predicted_layers,
-            "real_max_gpu_layers": real_max_layers,
-            "layer_difference": (
-                real_max_layers - predicted_layers
-                if real_max_layers is not None and predicted_layers is not None
-                else None
+            "predicted_gpu_transformer_blocks": predicted_transformer_blocks,
+            "real_max_runtime_gpu_layers": real_max_layers,
+            "runtime_layer_difference": None,
+            "runtime_layer_difference_note": (
+                "Not computed: HardwareFitResult reports transformer blocks, "
+                "while llama.cpp reports backend-specific --n-gpu-layers units."
             ),
             "predicted_ram_bytes": fit.ram_required_bytes,
-            "observed_peak_rss_bytes": predicted_run.peak_rss_bytes,
+            "observed_peak_rss_bytes": hfa_block_probe.peak_rss_bytes,
             "cpu_baseline_peak_rss_bytes": baseline.peak_rss_bytes,
         },
     }
@@ -563,7 +572,8 @@ def render(report: dict[str, Any]) -> str:
         "PREDICTION (frozen before any run)",
         f"  mode              {fit['mode']}",
         f"  placement         {fit['placement_method']}",
-        f"  gpu_layers        {fit['gpu_layers']} / {fit['total_layers']}",
+        "  transformer blocks "
+        f"{fit['gpu_transformer_blocks']} / {fit['total_transformer_blocks']}",
         f"  gpu_required      {_mib(fit['gpu_required_bytes'])}",
         f"  ram_required      {_mib(fit['ram_required_bytes'])}",
         f"  weights           {_mib(estimate['weights_bytes'])}",
@@ -572,14 +582,17 @@ def render(report: dict[str, Any]) -> str:
         f"  device_reserve    {_mib(estimate['device_reserve_bytes'])}",
         f"  safety_margin     {_mib(estimate['safety_margin_bytes'])}",
         f"  status/conf       {estimate['status']} / {estimate['confidence']}",
-        "",
-        "OBSERVED",
     ]
+    lines.extend(_render_hfa_decision_boundary(fit))
+    lines.extend(["", "OBSERVED"])
     lines.append(
         f"  {'-ngl':>6}  {'started':>7}  {'offloaded':>10}  "
         f"{'VRAM d':>9}  {'CUDA buf':>9}  {'RSS':>10}"
     )
-    runs = [report["runs"]["cpu_baseline"], report["runs"]["at_predicted_layers"]]
+    runs = [
+        report["runs"]["cpu_baseline"],
+        report["runs"]["at_hfa_transformer_block_count"],
+    ]
     runs.extend(report["runs"]["sweep"])
     runs.extend(report["runs"]["kv_offload"])
     seen: set[str] = set()
@@ -604,9 +617,11 @@ def render(report: dict[str, Any]) -> str:
             f"  observed VRAM (llama bufs)  {_mib_num(metrics['observed_vram_llama_buffers_mib'])}",
             f"  VRAM error vs device Δ      {_pct(metrics['vram_error_pct_vs_device_delta'])}",
             f"  VRAM error vs llama bufs    {_pct(metrics['vram_error_pct_vs_llama_buffers'])}",
-            f"  predicted gpu_layers        {metrics['predicted_gpu_layers']}",
-            f"  real max gpu_layers         {metrics['real_max_gpu_layers']}",
-            f"  layer difference            {metrics['layer_difference']}",
+            f"  VRAM error note             {metrics['vram_error_note']}",
+            f"  predicted transformer blocks {metrics['predicted_gpu_transformer_blocks']}",
+            f"  real max runtime gpu layers  {metrics['real_max_runtime_gpu_layers']}",
+            f"  runtime layer difference     {metrics['runtime_layer_difference']}",
+            f"  runtime layer note           {metrics['runtime_layer_difference_note']}",
             f"  predicted RAM               {_mib(metrics['predicted_ram_bytes'])}",
             f"  observed peak RSS           {_mib(metrics['observed_peak_rss_bytes'])}",
             "",
@@ -615,6 +630,45 @@ def render(report: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
+    diagnostics = fit.get("offload_diagnostics")
+    if diagnostics is None:
+        return []
+    search_ceiling = diagnostics["search_ceiling_transformer_blocks"]
+    selected = diagnostics["selected"]
+    rejected = diagnostics["first_rejected_higher"]
+    lines = [
+        "",
+        "HFA DECISION BOUNDARY",
+        f"  search ceiling     {search_ceiling} transformer blocks",
+        "  selected",
+        f"    transformer blocks  {selected['gpu_transformer_blocks']}",
+        f"    estimated required  {_mib(selected['gpu_required_bytes'])}",
+        f"    measured available  {_mib(selected['available_vram_bytes'])}",
+        f"    headroom            {_mib(selected['headroom_bytes'])}",
+    ]
+    if rejected is None:
+        lines.extend(["  first rejected", "    none"])
+        return lines
+    lines.extend(
+        [
+            "  first rejected",
+            f"    transformer blocks  {rejected['gpu_transformer_blocks']}",
+            f"    estimated required  {_mib(rejected['gpu_required_bytes'])}",
+            f"    measured available  {_mib(rejected['available_vram_bytes'])}",
+            f"    headroom            {_mib(rejected['headroom_bytes'])}",
+            f"    excess              {_mib(rejected['excess_bytes'])}",
+            "  rejected estimated budget breakdown",
+            f"    weight budget       {_mib(rejected['gpu_weight_bytes'])}",
+            f"    KV cache budget     {_mib(rejected['kv_cache_bytes'])}",
+            f"    reserve budget      {_mib(rejected['device_reserve_bytes'])}",
+            f"    overhead budget     {_mib(rejected['gpu_overhead_bytes'])}",
+            f"    safety margin budget {_mib(rejected['gpu_safety_margin_bytes'])}",
+        ]
+    )
+    return lines
 
 
 def _cuda_only(buffers: dict[str, float]) -> float | None:
@@ -699,13 +753,24 @@ def main() -> int:
     }
 
     baseline = run_llama(gpu_layers=0, **common)  # type: ignore[arg-type]
-    predicted_layers = prediction.fit.gpu_layers
-    target = predicted_layers if predicted_layers is not None else 0
-    predicted_run = run_llama(gpu_layers=target, tag="predicted", **common)  # type: ignore[arg-type]
+    predicted_transformer_blocks = prediction.fit.gpu_transformer_blocks
+    target = (
+        predicted_transformer_blocks
+        if predicted_transformer_blocks is not None
+        else 0
+    )
+    hfa_block_probe = run_llama(
+        gpu_layers=target,
+        tag="hfa-block-count-probe",
+        **common,  # type: ignore[arg-type]
+    )
 
     sweep: list[Run] = []
     if args.sweep:
-        total = prediction.fit.total_layers or target
+        total = prediction.fit.total_transformer_blocks or target
+        # ``total + 1`` is deliberate: llama.cpp may expose backend-specific
+        # offload units beyond the model's transformer block count. This probes
+        # the runtime ceiling; it is not a general mapping rule.
         candidates = sorted(
             {
                 value
@@ -727,8 +792,12 @@ def main() -> int:
             )
         )
 
-    report = build_report(prediction, baseline, predicted_run, sweep, kv_runs, version)
-    (log_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report = build_report(
+        prediction, baseline, hfa_block_probe, sweep, kv_runs, version
+    )
+    (log_dir / "report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
     print(render(report))
     print(f"\nArtifacts: {log_dir}")
     return EXIT_OK

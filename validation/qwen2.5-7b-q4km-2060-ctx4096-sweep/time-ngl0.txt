@@ -1,0 +1,23 @@
+	Command being timed: "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 0 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is."
+	User time (seconds): 42.13
+	System time (seconds): 0.84
+	Percent of CPU this job got: 511%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:08.40
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 5120020
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 57
+	Minor (reclaiming a frame) page faults: 127989
+	Voluntary context switches: 1074
+	Involuntary context switches: 71
+	Swaps: 0
+	File system inputs: 7340
+	File system outputs: 272
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

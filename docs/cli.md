@@ -96,7 +96,7 @@ behind those numbers.
 | `--kv-dtype` | `float16` | KV cache element precision |
 | `--safety-margin-percent` | 10 | Extra on top of the subtotal |
 | `--device-reserve-gib` | 0.5 | Memory to leave free on the target device |
-| `--json` | off | Emit stable JSON to stdout (`schema_version = 1`) |
+| `--json` | off | Emit stable JSON to stdout (`schema_version` identifies the current estimation contract) |
 | `--no-resolve-base-model` | off | Skip base-model resolution and GGUF-header enrichment |
 | `--no-runtime-recommendation` | off | Skip the runtime recommendation section |
 

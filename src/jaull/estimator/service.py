@@ -109,7 +109,7 @@ def estimate_memory(
             safety_margin.bytes if safety_margin is not None and safety_margin.bytes else 0
         ),
         total_bytes=total_bytes,
-        total_layers=kv_estimate.layers,
+        total_transformer_blocks=kv_estimate.layers,
         hardware=hardware,
         device_target=inference_cfg.target_device,
     )

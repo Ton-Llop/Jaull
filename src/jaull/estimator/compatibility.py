@@ -197,16 +197,16 @@ def assess_components_with_fit(
     device_reserve_bytes: int,
     safety_margin_bytes: int,
     total_bytes: int | None,
-    total_layers: int | None,
+    total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
 ) -> ComponentAssessment:
     """Assess placement, keeping the structured fit alongside the summary.
 
     The summary is lossy by design — one status and one ratio — so callers that
-    need the placement itself (layer split, per-pool bytes) would otherwise have
-    to re-run the analyzer and risk drifting from the assessment they were
-    given. Returning both from one analysis keeps them consistent.
+    need the placement itself (transformer-block split, per-pool bytes) would
+    otherwise have to re-run the analyzer and risk drifting from the assessment
+    they were given. Returning both from one analysis keeps them consistent.
     """
 
     if device_target is not TargetDevice.AUTO:
@@ -221,7 +221,7 @@ def assess_components_with_fit(
         overhead_bytes=overhead_bytes,
         device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
-        total_layers=total_layers,
+        total_transformer_blocks=total_transformer_blocks,
         hardware=hardware,
     )
     return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
@@ -235,7 +235,7 @@ def assess_components(
     device_reserve_bytes: int,
     safety_margin_bytes: int,
     total_bytes: int | None,
-    total_layers: int | None,
+    total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
 ) -> CompatibilityAssessment:
@@ -248,7 +248,7 @@ def assess_components(
         device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
         total_bytes=total_bytes,
-        total_layers=total_layers,
+        total_transformer_blocks=total_transformer_blocks,
         hardware=hardware,
         device_target=device_target,
     ).assessment
@@ -283,7 +283,7 @@ def _assessment_from_fit(
         )
         confidence = (
             EstimationConfidence.MEDIUM
-            if fit.placement_method is HardwareFitPlacementMethod.LAYERS
+            if fit.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
             else EstimationConfidence.LOW
         )
         return CompatibilityAssessment(

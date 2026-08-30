@@ -84,8 +84,9 @@ class Case:
     context_length: int
     machine: Machine
     # llmfit's embedded database, field ``num_hidden_layers``. Jaull needs it
-    # to express an offload split in layers rather than in estimated bytes.
-    total_layers: int
+    # to express an offload split in transformer blocks rather than in
+    # estimated bytes.
+    total_transformer_blocks: int
     asks: str
 
     def llmfit_flags(self) -> list[str]:
@@ -139,7 +140,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=2048,
         machine=RTX_4060,
-        total_layers=22,
+        total_transformer_blocks=22,
         asks="A small model with room to spare — both tools should say GPU.",
     ),
     Case(
@@ -148,7 +149,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=RTX_4060,
-        total_layers=36,
+        total_transformer_blocks=36,
         asks="The size Jaull's Top 5 currently favours on this machine.",
     ),
     Case(
@@ -157,7 +158,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=RTX_4060,
-        total_layers=28,
+        total_transformer_blocks=28,
         asks="The reference case: does 7B Q4 stay resident on 8 GiB?",
     ),
     Case(
@@ -166,7 +167,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=32768,
         machine=RTX_4060,
-        total_layers=28,
+        total_transformer_blocks=28,
         asks="Same artifact, 8x the context: does the KV cache move the fit?",
     ),
     Case(
@@ -175,7 +176,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=RTX_2060_LAPTOP,
-        total_layers=28,
+        total_transformer_blocks=28,
         asks="Same artifact, smaller GPU: where does each tool draw the line?",
     ),
     Case(
@@ -184,7 +185,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=ENTRY_GPU,
-        total_layers=28,
+        total_transformer_blocks=28,
         asks="Below the artifact's size: does llmfit answer about this build?",
     ),
     Case(
@@ -193,7 +194,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=NO_GPU,
-        total_layers=28,
+        total_transformer_blocks=28,
         asks="No GPU at all — can llmfit even express that?",
     ),
     Case(
@@ -202,7 +203,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=RTX_4060,
-        total_layers=48,
+        total_transformer_blocks=48,
         asks="Clearly beyond VRAM, comfortably inside RAM: split or CPU?",
     ),
     Case(
@@ -211,7 +212,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=RTX_2060_LAPTOP,
-        total_layers=64,
+        total_transformer_blocks=64,
         asks="Beyond both pools — Jaull's TOO_LARGE. Has llmfit a mode for it?",
     ),
     Case(
@@ -220,7 +221,7 @@ CASES: tuple[Case, ...] = (
         quantization="Q4_K_M",
         context_length=4096,
         machine=WORKSTATION,
-        total_layers=80,
+        total_transformer_blocks=80,
         asks="Large model, large machine: offload rather than refusal.",
     ),
 )
@@ -328,7 +329,7 @@ def _jaull_view(case: Case, weights_bytes: int, kv_cache_bytes: int) -> dict[str
         kv_cache_bytes=kv_cache_bytes,
         overhead_bytes=0,
         hardware=case.machine.profile(),
-        total_layers=case.total_layers,
+        total_transformer_blocks=case.total_transformer_blocks,
     )
 
     overhead_bytes = estimate_overhead(weights_bytes).component.bytes or 0
@@ -342,7 +343,7 @@ def _jaull_view(case: Case, weights_bytes: int, kv_cache_bytes: int) -> dict[str
         hardware=case.machine.profile(),
         device_reserve_bytes=reserve_bytes,
         safety_margin_bytes=margin_bytes,
-        total_layers=case.total_layers,
+        total_transformer_blocks=case.total_transformer_blocks,
     )
 
     return {
@@ -362,8 +363,8 @@ def _fit_summary(result: HardwareFitResult) -> dict[str, object]:
         "ram_required_gib": _gib(result.ram_required_bytes),
         "gpu_weight_gib": _gib(result.gpu_weight_bytes),
         "ram_weight_gib": _gib(result.ram_weight_bytes),
-        "gpu_layers": result.gpu_layers,
-        "total_layers": result.total_layers,
+        "gpu_transformer_blocks": result.gpu_transformer_blocks,
+        "total_transformer_blocks": result.total_transformer_blocks,
     }
 
 

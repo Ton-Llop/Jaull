@@ -1,0 +1,364 @@
+ton@DESKTOP-NL5Q0T1:~/projects/TFG/AI-checker$ uv run python scripts/validate_hardware_fit_against_llama_cpp.py \
+  --model ~/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+  --repo-id bartowski/Qwen2.5-7B-Instruct-GGUF \
+  --context 4096 \
+  --llama-cli /home/ton/tools/llama.cpp/build-cuda/bin/llama-cli \
+  --log-dir ./validation/qwen2.5-7b-q4km-2060-ctx4096-sweep \
+  --sweep \
+  --kv-offload-test
+{
+  "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+  "quantization": "Q4_K_M",
+  "context_length": 4096,
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2060",
+    "vram_total_bytes": 6442450944,
+    "vram_available_bytes": 4985380864,
+    "ram_total_bytes": 8278130688,
+    "ram_available_bytes": 7593828352
+  },
+  "estimate": {
+    "weights_bytes": 4683074240,
+    "kv_cache_bytes": 234881024,
+    "kv_cache_layers": 28,
+    "kv_cache_formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+    "runtime_overhead_bytes": 1005178336,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 646000452,
+    "total_bytes": 7106004964,
+    "status": "offloading_required",
+    "confidence": "low"
+  },
+  "fit": {
+    "mode": "gpu_offload",
+    "memory_topology": "discrete_memory",
+    "placement_method": "layers",
+    "gpu_layers": 18,
+    "total_layers": 28,
+    "gpu_required_bytes": 4890194299,
+    "ram_required_bytes": 2215810665,
+    "gpu_weight_bytes": 3010547736,
+    "ram_weight_bytes": 1672526504,
+    "gpu_overhead_bytes": 663331508,
+    "ram_overhead_bytes": 341846828,
+    "gpu_safety_margin_bytes": 444563119,
+    "ram_safety_margin_bytes": 201437333,
+    "reason": "Model does not fit fully in VRAM, but a valid GPU/RAM weight placement fits without treating RAM and VRAM as one pool.",
+    "warnings": []
+  }
+}
+
+Prediction frozen. Launching llama.cpp...
+
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a type of natural language processing (NLP) model that is specifically trained on data from a particular language or set of languages. These
+
+[ Prompt: 51.0 t/s | Generation: 5.5 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a type of natural language processing (NLP) model that is designed to operate on a specific language or set of languages. These models
+
+[ Prompt: 125.0 t/s | Generation: 13.1 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a type of machine learning model that is designed to process and generate text in a specific natural language, such as English, Chinese, Spanish
+
+[ Prompt: 109.1 t/s | Generation: 11.1 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a type of machine learning model designed to understand and generate text in a specific language, typically the language spoken in a particular geographic region or
+
+[ Prompt: 106.6 t/s | Generation: 12.8 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a machine learning model designed to understand and generate text in a specific language, focusing on the linguistic and cultural nuances of that particular language.
+
+[ Prompt: 145.9 t/s | Generation: 13.7 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a machine learning model designed to understand and generate text in a specific language, typically focusing on the nuances, idioms, and context specific
+
+[ Prompt: 127.2 t/s | Generation: 15.9 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a machine learning model designed to understand and generate text in a specific language or set of languages, focusing on the local linguistic and cultural context
+
+[ Prompt: 624.4 t/s | Generation: 56.0 t/s ]
+
+
+Exiting...
+
+
+Loading model...
+
+▄▄ ▄▄
+██ ██
+██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄
+██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██
+██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀
+                                    ██    ██
+                                    ▀▀    ▀▀
+
+build      : b10357-689e227db
+model      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+ftype      : Q4_K - Medium
+modalities : text
+
+available commands:
+  /exit or Ctrl+C     stop or exit
+  /regen              regenerate the last response
+  /clear              clear the chat history
+  /read <file>        add a text file
+  /glob <pattern>     add text files using globbing pattern
+
+
+
+> Explain briefly what a local language model is.
+A local language model is a type of natural language processing (NLP) model that is designed to operate on text data in a specific language. These models are
+
+[ Prompt: 119.0 t/s | Generation: 11.7 t/s ]
+
+
+Exiting...
+Hardware fit prediction vs llama.cpp
+==============================================================================
+  model        bartowski/Qwen2.5-7B-Instruct-GGUF  Q4_K_M
+  context      4096
+  llama.cpp    version: 10357 (689e227db)
+  GPU          NVIDIA GeForce RTX 2060
+  VRAM avail   4754.4 MiB
+  RAM avail    7242.0 MiB
+
+PREDICTION (frozen before any run)
+  mode              gpu_offload
+  placement         layers
+  gpu_layers        18 / 28
+  gpu_required      4663.7 MiB
+  ram_required      2113.2 MiB
+  weights           4466.1 MiB
+  kv_cache          224.0 MiB
+  runtime_overhead  958.6 MiB
+  device_reserve    512.0 MiB
+  safety_margin     616.1 MiB
+  status/conf       offloading_required / low
+
+OBSERVED
+    -ngl  started   offloaded     VRAM d   CUDA buf         RSS
+       0     True        0/29      277.0      183.4  5000.0 MiB
+      18     True       18/29     3125.0     3026.1  4722.2 MiB
+      15     True       15/29     2709.0     2609.8  4722.3 MiB
+      19     True       19/29     3257.0     3159.2  4722.0 MiB
+      21     True       21/29     3526.0     3425.8  4722.1 MiB
+      29     True       29/29     4264.0     4528.1  4722.0 MiB
+      18     True       18/29     3033.0     2890.1  4722.1 MiB
+
+METRICS
+  predicted VRAM              4663.7
+  observed VRAM (device Δ)    3125.0
+  observed VRAM (llama bufs)  3026.1
+  VRAM error vs device Δ      49.2%
+  VRAM error vs llama bufs    54.1%
+  predicted gpu_layers        18
+  real max gpu_layers         29
+  layer difference            11
+  predicted RAM               2113.2 MiB
+  observed peak RSS           4722.2 MiB
+
+  RSS is not ram_required_bytes: it counts mmap'd weight pages that
+  were faulted in and excludes driver-side allocations.
+
+Artifacts: validation/qwen2.5-7b-q4km-2060-ctx4096-sweep

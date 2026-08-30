@@ -134,12 +134,12 @@ def test_a_claimed_placement_fits_the_pools_it_claims(case: Scenario) -> None:
 
 
 @_ALL
-def test_gpu_layers_never_exceed_the_layers_the_model_has(case: Scenario) -> None:
+def test_gpu_transformer_blocks_never_exceed_the_blocks_the_model_has(case: Scenario) -> None:
     result = case.analyze()
-    if result.gpu_layers is None or result.total_layers is None:
+    if result.gpu_transformer_blocks is None or result.total_transformer_blocks is None:
         return
 
-    assert 0 <= result.gpu_layers <= result.total_layers
+    assert 0 <= result.gpu_transformer_blocks <= result.total_transformer_blocks
 
 
 @_ALL
@@ -199,18 +199,18 @@ def test_concurrency_moves_the_same_weights_off_the_gpu() -> None:
     assert four.gpu_weight_bytes < one.gpu_weight_bytes
 
 
-def test_layer_metadata_decides_how_the_split_is_expressed() -> None:
+def test_transformer_block_metadata_decides_how_the_split_is_expressed() -> None:
     """Same placement question, two vocabularies for the answer."""
-    with_layers = scenario("layer_placement_with_layer_metadata").analyze()
-    without = scenario("byte_fallback_without_layer_metadata").analyze()
+    with_blocks = scenario("transformer_block_placement_with_metadata").analyze()
+    without = scenario("byte_fallback_without_transformer_block_metadata").analyze()
 
-    assert with_layers.placement_method is HardwareFitPlacementMethod.LAYERS
-    assert with_layers.gpu_layers is not None
+    assert with_blocks.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
+    assert with_blocks.gpu_transformer_blocks is not None
     assert without.placement_method is HardwareFitPlacementMethod.ESTIMATED_BYTES
-    assert without.gpu_layers is None
+    assert without.gpu_transformer_blocks is None
     assert without.warnings, "a byte-estimated split must say so"
     # Both are GPU_OFFLOAD; only the granularity of the split differs.
-    assert with_layers.mode is without.mode is HardwareFitMode.GPU_OFFLOAD
+    assert with_blocks.mode is without.mode is HardwareFitMode.GPU_OFFLOAD
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ def test_unified_memory_reports_no_separate_vram_pool() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_gpu_layers_is_none_when_there_is_no_gpu_and_zero_when_there_is_one() -> None:
+def test_gpu_transformer_blocks_is_none_when_there_is_no_gpu_and_zero_when_there_is_one() -> None:
     """``0`` and ``None`` answer different questions and must stay distinct.
 
     ``0`` means a GPU exists and no layer was placed on it — a count that can
@@ -273,12 +273,12 @@ def test_gpu_layers_is_none_when_there_is_no_gpu_and_zero_when_there_is_one() ->
     with_gpu = scenario("cpu_ram_when_no_gpu_placement_is_viable").analyze()
 
     assert no_gpu_fits.available_vram_bytes is None
-    assert no_gpu_fits.gpu_layers is None
+    assert no_gpu_fits.gpu_transformer_blocks is None
     assert no_gpu_too_large.available_vram_bytes is None
-    assert no_gpu_too_large.gpu_layers is None
+    assert no_gpu_too_large.gpu_transformer_blocks is None
 
     assert with_gpu.available_vram_bytes is not None
-    assert with_gpu.gpu_layers == 0
+    assert with_gpu.gpu_transformer_blocks == 0
 
 
 def test_unified_memory_charges_the_device_reserve_to_the_shared_pool() -> None:

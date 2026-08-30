@@ -1,0 +1,41 @@
+{
+  "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+  "quantization": "Q4_K_M",
+  "context_length": 4096,
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2060",
+    "vram_total_bytes": 6442450944,
+    "vram_available_bytes": 4847185920,
+    "ram_total_bytes": 8278130688,
+    "ram_available_bytes": 7592308736
+  },
+  "estimate": {
+    "weights_bytes": 4683074240,
+    "kv_cache_bytes": 234881024,
+    "kv_cache_layers": 28,
+    "kv_cache_formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+    "runtime_overhead_bytes": 1005178336,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 646000452,
+    "total_bytes": 7106004964,
+    "status": "offloading_required",
+    "confidence": "low"
+  },
+  "fit": {
+    "mode": "gpu_offload",
+    "memory_topology": "discrete_memory",
+    "placement_method": "layers",
+    "gpu_layers": 17,
+    "total_layers": 28,
+    "gpu_required_bytes": 4668613231,
+    "ram_required_bytes": 2437391733,
+    "gpu_weight_bytes": 2843295084,
+    "ram_weight_bytes": 1839779156,
+    "gpu_overhead_bytes": 629146825,
+    "ram_overhead_bytes": 376031511,
+    "gpu_safety_margin_bytes": 424419386,
+    "ram_safety_margin_bytes": 221581066,
+    "reason": "Model does not fit fully in VRAM, but a valid GPU/RAM weight placement fits without treating RAM and VRAM as one pool.",
+    "warnings": []
+  }
+}

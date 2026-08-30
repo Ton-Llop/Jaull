@@ -35,11 +35,19 @@ README roadmap says so.
   `estimator/policies.py` and explicitly tagged `ASSUMED`.
 - Weight bytes for theoretical dtypes ignore scales and block metadata (typically under
   10% for real quantized formats); that path is tagged `DERIVED`, not `EXACT`.
-- Per-layer offloading **is** modelled, but only as a placement, not as a measured layer
-  cost. `HardwareFitResult` reports a mode, a `gpu_layers` / `total_layers` split and a
-  per-pool byte breakdown, and travels on `MemoryEstimate.hardware_fit`. The split assumes
-  every transformer layer weighs the same — token embeddings and the output head are not
-  separated out — so `gpu_layers` is a plan, not a promise about what a runtime will do.
+- Per-transformer-block offloading **is** modelled, but only as a placement,
+  not as a measured runtime layer cost. `HardwareFitResult` reports a mode, a
+  `gpu_transformer_blocks` / `total_transformer_blocks` split and a per-pool
+  byte breakdown, and travels on `MemoryEstimate.hardware_fit`. The split
+  assumes every transformer block weighs the same: token embeddings and the
+  output head are not separated out. `gpu_transformer_blocks` is a
+  runtime-agnostic planning estimate, not a promise about what a backend will
+  pass to `--n-gpu-layers`.
+- The KV cache is placed **proportionally to the blocks**, which is the generic
+  default rather than a guarantee. A runtime may keep the cache entirely in host
+  memory, quantize it separately, or page it; none of that is modelled here, and
+  a backend that can do so should refine the placement in its own adapter. The
+  proportional rule was validated on one model, one build and one GPU.
 - **Hardware capacity is not the same thing as current memory occupancy**, and Jaull only
   models the second. The fit is computed against *available* VRAM and RAM at scan time, so
   the same machine answers differently depending on what else happens to be running.
@@ -99,19 +107,21 @@ README roadmap says so.
 - Benchmarks measure single-process throughput. There is no load generator, no concurrency
   sweep, no capacity curve and no sustainable-concurrency estimate.
 - VRAM prediction vs observation is compared only when the estimate carries a hardware fit
-  that places weights on the GPU **and** the run can be shown to have used that placement
-  (a llama.cpp `--n-gpu-layers` matching the predicted split). The predicted side is
-  `gpu_physical_bytes` — weights, KV cache and runtime overhead — with the device reserve
-  and safety margin removed, because those are capacity policy and no process allocates
-  them. Everything else is still `methodologically_unavailable`, with the reason naming
-  what was missing: Transformers, which decides device placement internally and exposes no
-  equivalent flag, is always reported that way.
+  with a device-specific prediction and the execution path used an unambiguous GPU setup.
+  The predicted side is `gpu_physical_bytes` — weights, KV cache and runtime overhead —
+  with the device reserve and safety margin removed, because those are capacity policy and
+  no process allocates them. Partial llama.cpp offload is currently
+  `methodologically_unavailable`: `HardwareFitResult` reports runtime-agnostic transformer
+  blocks, while llama.cpp `--n-gpu-layers` uses backend-specific offload units.
+  Transformers, which decides device placement internally and exposes no equivalent flag,
+  is always reported that way.
 - Runtime overhead stays inside the compared figure even though it is a coarse `ASSUMED`
   heuristic. It models allocations that really happen (allocator, compute and activation
   buffers), so its error is a calibration result rather than a methodological mismatch —
   but expect it to dominate the reported error until it is calibrated.
 - RAM comparison is only available for CPU-only or non-offloaded configurations, because
-  Jaull does not yet keep a host/device breakdown under offload.
+  Jaull does not yet have a runtime-specific mapping from transformer-block placement to
+  observed host/device allocations under offload.
 - Benchmark comparison deliberately produces no single winner score, and warns instead of
   ranking when records come from different machines or methodologies.
 
