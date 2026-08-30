@@ -748,6 +748,14 @@ def _set_prompt(screen: RecommendationExecutionScreen, prompt: str) -> None:
     screen.query_one("#run-prompt-input", TextArea).load_text(prompt)
 
 
+def _export_modal_is_ready(screen: object) -> bool:
+    return (
+        isinstance(screen, ExportReportModal)
+        and bool(screen.query("#res-export-path"))
+        and bool(screen.query("#res-export-confirm"))
+    )
+
+
 def test_results_screen_runs_an_alternative_recommendation() -> None:
     async def scenario() -> None:
         first = _recommendation(rank=1, repo_id="org/First-GGUF", quantization="Q4_K_M")
@@ -1095,7 +1103,7 @@ def test_results_export_modal_can_cancel_reopen_export_and_reopen(
             results.query_one("#res-export", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, ExportReportModal),
+                lambda: _export_modal_is_ready(pilot.app.screen),
             )
             assert isinstance(pilot.app.screen, ExportReportModal)
             pilot.app.screen.query_one("#res-export-cancel", Button).press()
@@ -1108,7 +1116,7 @@ def test_results_export_modal_can_cancel_reopen_export_and_reopen(
             pilot.app.screen.query_one("#res-export", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, ExportReportModal),
+                lambda: _export_modal_is_ready(pilot.app.screen),
             )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
@@ -1134,7 +1142,7 @@ def test_results_export_modal_can_cancel_reopen_export_and_reopen(
             pilot.app.screen.query_one("#res-export", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, ExportReportModal),
+                lambda: _export_modal_is_ready(pilot.app.screen),
             )
             assert isinstance(pilot.app.screen, ExportReportModal)
 
@@ -1163,7 +1171,7 @@ def test_results_export_modal_shows_filesystem_errors_without_rebuilding_form(
             pilot.app.screen.query_one("#res-export", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, ExportReportModal),
+                lambda: _export_modal_is_ready(pilot.app.screen),
             )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
@@ -2085,7 +2093,7 @@ def test_tui_results_execution_export_details_stress_flow(
                 pilot.app.screen.query_one("#res-export", Button).press()
                 await _wait_until(
                     pilot,
-                    lambda: isinstance(pilot.app.screen, ExportReportModal),
+                    lambda: _export_modal_is_ready(pilot.app.screen),
                 )
                 assert isinstance(pilot.app.screen, ExportReportModal)
                 pilot.app.screen.query_one("#res-export-cancel", Button).press()
@@ -2145,7 +2153,7 @@ def test_tui_results_execution_export_details_stress_flow(
             pilot.app.screen.query_one("#res-export", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, ExportReportModal),
+                lambda: _export_modal_is_ready(pilot.app.screen),
             )
             modal = pilot.app.screen
             assert isinstance(modal, ExportReportModal)
