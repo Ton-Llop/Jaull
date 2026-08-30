@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from jaull.domain.enums import RepositoryType
 from jaull.domain.inference import InferenceConfiguration, TargetDevice, WeightPrecision
@@ -59,9 +59,20 @@ class HardwareMemoryTopology(StrEnum):
 
 
 class HardwareFitPlacementMethod(StrEnum):
-    LAYERS = "layers"
+    TRANSFORMER_BLOCKS = "transformer_blocks"
     ESTIMATED_BYTES = "estimated_bytes"
     NONE = "none"
+
+    # Compatibility alias for callers compiled against the first Hardware Fit
+    # contract. New code should use TRANSFORMER_BLOCKS because these are model
+    # blocks, not runtime-specific offload units.
+    LAYERS = "transformer_blocks"
+
+    @classmethod
+    def _missing_(cls, value: object) -> HardwareFitPlacementMethod | None:
+        if value == "layers":
+            return cls.TRANSFORMER_BLOCKS
+        return None
 
 
 class MetadataSource(StrEnum):
@@ -153,8 +164,41 @@ class CompatibilityAssessment(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class HardwareFitResult(BaseModel):
+class HardwareFitOffloadCandidate(BaseModel):
+    """One estimated transformer-block placement considered by Hardware Fit.
+
+    These bytes are capacity-planning budget terms. They are not CUDA
+    allocations and they are not backend-specific runtime offload units.
+    """
+
     model_config = ConfigDict(frozen=True)
+
+    gpu_transformer_blocks: int
+    gpu_required_bytes: int
+    ram_required_bytes: int
+    available_vram_bytes: int
+    excess_bytes: int = 0
+    headroom_bytes: int = 0
+    gpu_weight_bytes: int
+    ram_weight_bytes: int
+    kv_cache_bytes: int
+    device_reserve_bytes: int
+    gpu_overhead_bytes: int
+    gpu_safety_margin_bytes: int
+
+
+class HardwareFitOffloadDiagnostics(BaseModel):
+    """Boundary that explains why the selected offload point was chosen."""
+
+    model_config = ConfigDict(frozen=True)
+
+    search_ceiling_transformer_blocks: int
+    selected: HardwareFitOffloadCandidate
+    first_rejected_higher: HardwareFitOffloadCandidate | None = None
+
+
+class HardwareFitResult(BaseModel):
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     mode: HardwareFitMode
     memory_topology: HardwareMemoryTopology
@@ -173,11 +217,35 @@ class HardwareFitResult(BaseModel):
     ram_weight_bytes: int = 0
     ram_overhead_bytes: int = 0
     ram_safety_margin_bytes: int = 0
-    gpu_layers: int | None = None
-    total_layers: int | None = None
+    gpu_transformer_blocks: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("gpu_transformer_blocks", "gpu_layers"),
+    )
+    total_transformer_blocks: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("total_transformer_blocks", "total_layers"),
+    )
     placement_method: HardwareFitPlacementMethod = HardwareFitPlacementMethod.NONE
+    offload_diagnostics: HardwareFitOffloadDiagnostics | None = None
     reason: str
     warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def gpu_layers(self) -> int | None:
+        """Deprecated compatibility alias for transformer-block placement.
+
+        llama.cpp and other runtimes may expose their own layer/offload units.
+        This value is the runtime-agnostic Hardware Fit transformer-block
+        estimate and must not be treated as ``--n-gpu-layers``.
+        """
+
+        return self.gpu_transformer_blocks
+
+    @property
+    def total_layers(self) -> int | None:
+        """Deprecated compatibility alias for total transformer blocks."""
+
+        return self.total_transformer_blocks
 
     @property
     def places_weights_on_gpu(self) -> bool:
@@ -250,7 +318,8 @@ class MemoryEstimate(BaseModel):
     assessment: CompatibilityAssessment
     # ``assessment`` is the compatibility *summary*: one status, one ratio, one
     # effective device. ``hardware_fit`` is the structured placement the summary
-    # was derived from — mode, layer split, and the per-pool byte breakdown.
+    # was derived from — mode, transformer-block split, and the per-pool byte
+    # breakdown.
     # Present only when the analyzer ran, which today means an AUTO target with
     # all three memory components known; ``None`` otherwise, so consumers
     # written before this field keep working unchanged.

@@ -1,0 +1,244 @@
+{
+  "llama_cpp_version": "version: 10357 (689e227db)",
+  "prediction": {
+    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "quantization": "Q4_K_M",
+    "context_length": 4096,
+    "hardware": {
+      "gpu": "NVIDIA GeForce RTX 2060",
+      "vram_total_bytes": 6442450944,
+      "vram_available_bytes": 4985380864,
+      "ram_total_bytes": 8278130688,
+      "ram_available_bytes": 7593828352
+    },
+    "estimate": {
+      "weights_bytes": 4683074240,
+      "kv_cache_bytes": 234881024,
+      "kv_cache_layers": 28,
+      "kv_cache_formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+      "runtime_overhead_bytes": 1005178336,
+      "device_reserve_bytes": 536870912,
+      "safety_margin_bytes": 646000452,
+      "total_bytes": 7106004964,
+      "status": "offloading_required",
+      "confidence": "low"
+    },
+    "fit": {
+      "mode": "gpu_offload",
+      "memory_topology": "discrete_memory",
+      "placement_method": "layers",
+      "gpu_layers": 18,
+      "total_layers": 28,
+      "gpu_required_bytes": 4890194299,
+      "ram_required_bytes": 2215810665,
+      "gpu_weight_bytes": 3010547736,
+      "ram_weight_bytes": 1672526504,
+      "gpu_overhead_bytes": 663331508,
+      "ram_overhead_bytes": 341846828,
+      "gpu_safety_margin_bytes": 444563119,
+      "ram_safety_margin_bytes": 201437333,
+      "reason": "Model does not fit fully in VRAM, but a valid GPU/RAM weight placement fits without treating RAM and VRAM as one pool.",
+      "warnings": []
+    }
+  },
+  "runs": {
+    "cpu_baseline": {
+      "gpu_layers": 0,
+      "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 0 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+      "exit_code": 0,
+      "seconds": 8.44,
+      "started": true,
+      "oom": false,
+      "offloaded_layers": "0/29",
+      "buffers_mib": {
+        "CPU_Mapped model": 4460.45,
+        "CPU output": 0.58,
+        "CPU kv": 224.0,
+        "CUDA0 compute": 183.44,
+        "CUDA_Host compute": 18.01
+      },
+      "vram_baseline_mib": 1199,
+      "vram_peak_mib": 1476,
+      "vram_delta_mib": 277,
+      "peak_rss_bytes": 5242900480,
+      "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl0.log"
+    },
+    "at_predicted_layers": {
+      "gpu_layers": 18,
+      "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 18 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+      "exit_code": 0,
+      "seconds": 5.03,
+      "started": true,
+      "oom": false,
+      "offloaded_layers": "18/29",
+      "buffers_mib": {
+        "CPU_Mapped model": 2198.74,
+        "CUDA0 model": 2706.7,
+        "CUDA_Host output": 0.58,
+        "CPU kv": 88.0,
+        "CUDA0 kv": 136.0,
+        "CUDA0 compute": 183.44,
+        "CUDA_Host compute": 18.01
+      },
+      "vram_baseline_mib": 1199,
+      "vram_peak_mib": 4324,
+      "vram_delta_mib": 3125,
+      "peak_rss_bytes": 4951547904,
+      "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-predicted.log"
+    },
+    "sweep": [
+      {
+        "gpu_layers": 15,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 15 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.73,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "15/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2314.38,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 112.0,
+          "CUDA0 kv": 112.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1199,
+        "vram_peak_mib": 3908,
+        "vram_delta_mib": 2709,
+        "peak_rss_bytes": 4951658496,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl15.log"
+      },
+      {
+        "gpu_layers": 18,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 18 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.58,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "18/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2706.7,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 88.0,
+          "CUDA0 kv": 136.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1198,
+        "vram_peak_mib": 4324,
+        "vram_delta_mib": 3126,
+        "peak_rss_bytes": 4951609344,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl18.log"
+      },
+      {
+        "gpu_layers": 19,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 19 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.48,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "19/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2831.76,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 80.0,
+          "CUDA0 kv": 144.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1198,
+        "vram_peak_mib": 4455,
+        "vram_delta_mib": 3257,
+        "peak_rss_bytes": 4951408640,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl19.log"
+      },
+      {
+        "gpu_layers": 21,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 21 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.03,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "21/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 1948.17,
+          "CUDA0 model": 3082.33,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 64.0,
+          "CUDA0 kv": 160.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1198,
+        "vram_peak_mib": 4724,
+        "vram_delta_mib": 3526,
+        "peak_rss_bytes": 4951449600,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl21.log"
+      },
+      {
+        "gpu_layers": 29,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 29 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 3.32,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "29/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 292.36,
+          "CUDA0 model": 4168.09,
+          "CUDA_Host output": 0.58,
+          "CUDA0 kv": 224.0,
+          "CUDA0 compute": 136.01,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1199,
+        "vram_peak_mib": 5463,
+        "vram_delta_mib": 4264,
+        "peak_rss_bytes": 4951363584,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-ngl29.log"
+      }
+    ],
+    "kv_offload": [
+      {
+        "gpu_layers": 18,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 18 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is. --no-kv-offload",
+        "exit_code": 0,
+        "seconds": 4.93,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "18/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2706.7,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 224.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 831,
+        "vram_peak_mib": 3864,
+        "vram_delta_mib": 3033,
+        "peak_rss_bytes": 4951482368,
+        "log": "validation/qwen2.5-7b-q4km-2060-ctx4096-sweep/llama-nokvoffload.log"
+      }
+    ]
+  },
+  "metrics": {
+    "predicted_vram_mib": 4663.652705192566,
+    "observed_vram_device_delta_mib": 3125,
+    "observed_vram_llama_buffers_mib": 3026.14,
+    "vram_error_pct_vs_device_delta": 49.236886566162106,
+    "vram_error_pct_vs_llama_buffers": 54.112258692346224,
+    "observed_vram_llama_buffers_note": "CUDA0 device buffers only; CPU/CPU_Mapped/CUDA_Host are host memory",
+    "predicted_gpu_layers": 18,
+    "real_max_gpu_layers": 29,
+    "layer_difference": 11,
+    "predicted_ram_bytes": 2215810665,
+    "observed_peak_rss_bytes": 4951547904,
+    "cpu_baseline_peak_rss_bytes": 5242900480
+  }
+}

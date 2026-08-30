@@ -545,9 +545,11 @@ def _fit(
     gpu_overhead: int = 100,
     device_reserve: int = 250,
     gpu_margin: int = 50,
-    gpu_layers: int | None = 32,
-    total_layers: int | None = 32,
-    placement: HardwareFitPlacementMethod = HardwareFitPlacementMethod.LAYERS,
+    gpu_transformer_blocks: int | None = 32,
+    total_transformer_blocks: int | None = 32,
+    placement: HardwareFitPlacementMethod = (
+        HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
+    ),
     ram_weight: int = 0,
 ) -> HardwareFitResult:
     """A placement in round numbers so the arithmetic reads by hand.
@@ -572,8 +574,8 @@ def _fit(
         gpu_safety_margin_bytes=gpu_margin,
         ram_required_bytes=ram_weight,
         ram_weight_bytes=ram_weight,
-        gpu_layers=gpu_layers,
-        total_layers=total_layers,
+        gpu_transformer_blocks=gpu_transformer_blocks,
+        total_transformer_blocks=total_transformer_blocks,
         placement_method=placement,
         reason="test placement",
     )
@@ -660,13 +662,13 @@ def test_vram_without_a_fit_stays_methodologically_unavailable() -> None:
     assert "no structured hardware fit" in (comparison.vram.unavailable_reason or "")
 
 
-def test_offload_compares_only_the_gpu_side() -> None:
+def test_partial_offload_is_not_compared_without_a_runtime_mapping() -> None:
     fit = _fit(
         mode=HardwareFitMode.GPU_OFFLOAD,
         gpu_weight=600,
         ram_weight=400,
-        gpu_layers=24,
-        total_layers=32,
+        gpu_transformer_blocks=24,
+        total_transformer_blocks=32,
     )
 
     comparison = compare_prediction(
@@ -675,9 +677,13 @@ def test_offload_compares_only_the_gpu_side() -> None:
         runtime=_runtime(n_gpu_layers=24),
     )
 
-    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
-    # The 400 bytes of RAM-side weights are not part of a VRAM prediction.
-    assert comparison.vram.predicted_bytes == 1000
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert comparison.vram.predicted_bytes is None
+    reason = comparison.vram.unavailable_reason or ""
+    assert "transformer blocks" in reason
+    assert "--n-gpu-layers" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -686,7 +692,7 @@ def test_offload_compares_only_the_gpu_side() -> None:
 def test_a_cpu_placement_predicts_no_process_vram() -> None:
     """``gpu_required_bytes`` on a rejected GPU is hypothetical, not a forecast."""
 
-    fit = _fit(mode=HardwareFitMode.CPU_RAM, gpu_weight=0, gpu_layers=0)
+    fit = _fit(mode=HardwareFitMode.CPU_RAM, gpu_weight=0, gpu_transformer_blocks=0)
 
     comparison = compare_prediction(
         estimate=_gpu_estimate(fit),
@@ -700,10 +706,14 @@ def test_a_cpu_placement_predicts_no_process_vram() -> None:
     assert "no weights on the GPU" in (comparison.vram.unavailable_reason or "")
 
 
-def test_a_different_layer_split_is_not_comparable() -> None:
-    """Otherwise the number would measure the placement, not the memory model."""
+def test_a_backend_specific_layer_count_is_not_a_transformer_block_count() -> None:
+    """Do not treat llama.cpp offload units as Hardware Fit transformer blocks."""
 
-    fit = _fit(mode=HardwareFitMode.GPU_OFFLOAD, gpu_layers=24, total_layers=32)
+    fit = _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_transformer_blocks=24,
+        total_transformer_blocks=32,
+    )
 
     comparison = compare_prediction(
         estimate=_gpu_estimate(fit),
@@ -715,11 +725,16 @@ def test_a_different_layer_split_is_not_comparable() -> None:
         MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
     )
     reason = comparison.vram.unavailable_reason or ""
-    assert "30" in reason and "24" in reason
+    assert "transformer blocks" in reason
+    assert "--n-gpu-layers" in reason
 
 
-def test_running_every_layer_on_the_gpu_contradicts_an_offload_prediction() -> None:
-    fit = _fit(mode=HardwareFitMode.GPU_OFFLOAD, gpu_layers=24, total_layers=32)
+def test_running_every_runtime_layer_on_gpu_contradicts_offload_prediction() -> None:
+    fit = _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_transformer_blocks=24,
+        total_transformer_blocks=32,
+    )
 
     comparison = compare_prediction(
         estimate=_gpu_estimate(fit),
@@ -736,8 +751,8 @@ def test_running_every_layer_on_the_gpu_contradicts_an_offload_prediction() -> N
 def test_a_byte_sized_placement_cannot_be_checked_against_a_layer_flag() -> None:
     fit = _fit(
         mode=HardwareFitMode.GPU_OFFLOAD,
-        gpu_layers=None,
-        total_layers=None,
+        gpu_transformer_blocks=None,
+        total_transformer_blocks=None,
         placement=HardwareFitPlacementMethod.ESTIMATED_BYTES,
     )
 
@@ -785,16 +800,33 @@ def test_transformers_placement_is_reported_as_unverifiable() -> None:
     )
 
 
-def test_resident_prediction_accepts_an_explicit_full_layer_count() -> None:
-    """``-1`` and ``32 of 32`` say the same thing; both must be comparable."""
+def test_resident_prediction_accepts_runtime_full_offload() -> None:
+    """``-1`` is the runtime-specific spelling of full GPU residency."""
 
     comparison = compare_prediction(
-        estimate=_gpu_estimate(_fit(gpu_layers=32, total_layers=32)),
+        estimate=_gpu_estimate(
+            _fit(gpu_transformer_blocks=32, total_transformer_blocks=32)
+        ),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+
+
+def test_resident_prediction_rejects_explicit_runtime_count_without_mapping() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(
+            _fit(gpu_transformer_blocks=32, total_transformer_blocks=32)
+        ),
         observation=_observation(ram=None, vram=1000),
         runtime=_runtime(n_gpu_layers=32),
     )
 
-    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "transformer blocks" in (comparison.vram.unavailable_reason or "")
 
 
 def test_wiring_vram_did_not_change_the_ram_verdict() -> None:

@@ -14,8 +14,9 @@
     "gpu_safety_margin_bytes",
     "ram_safety_margin_bytes",
     "device_reserve_bytes",
-    "gpu_layers",
-    "total_layers"
+    "gpu_transformer_blocks",
+    "total_transformer_blocks",
+    "offload_diagnostics"
   ],
   "scenarios": {
     "gpu_resident_comfortable": {
@@ -26,12 +27,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 268435456,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "gpu_resident",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8321499136,
@@ -43,11 +44,12 @@
         "gpu_safety_margin_bytes": 268435456,
         "ram_safety_margin_bytes": 0,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 32,
-        "total_layers": 32
+        "gpu_transformer_blocks": 32,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
-    "gpu_offload_layer_split": {
+    "gpu_offload_transformer_block_split": {
       "inputs": {
         "machine": "8 GiB VRAM / 24 GiB free RAM",
         "weights_bytes": 10737418240,
@@ -55,12 +57,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 40
+        "total_transformer_blocks": 40
       },
       "observed": {
         "mode": "gpu_offload",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8476703637,
@@ -72,8 +74,39 @@
         "gpu_safety_margin_bytes": 326027063,
         "ram_safety_margin_bytes": 210843849,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 22,
-        "total_layers": 40
+        "gpu_transformer_blocks": 22,
+        "total_transformer_blocks": 40,
+        "offload_diagnostics": {
+          "search_ceiling_transformer_blocks": 26,
+          "selected": {
+            "gpu_transformer_blocks": 22,
+            "gpu_required_bytes": 8476703637,
+            "ram_required_bytes": 5481940075,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 0,
+            "headroom_bytes": 113230955,
+            "gpu_weight_bytes": 5905580032,
+            "ram_weight_bytes": 4831838208,
+            "kv_cache_bytes": 1073741824,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 634483806,
+            "gpu_safety_margin_bytes": 326027063
+          },
+          "first_rejected_higher": {
+            "gpu_transformer_blocks": 23,
+            "gpu_required_bytes": 8781255864,
+            "ram_required_bytes": 5177387848,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 191321272,
+            "headroom_bytes": 0,
+            "gpu_weight_bytes": 6174015488,
+            "ram_weight_bytes": 4563402752,
+            "kv_cache_bytes": 1073741824,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 658887029,
+            "gpu_safety_margin_bytes": 337740611
+          }
+        }
       }
     },
     "cpu_ram_when_no_gpu_placement_is_viable": {
@@ -84,7 +117,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "cpu_ram",
@@ -101,8 +134,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 536870912,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 0,
-        "total_layers": 32
+        "gpu_transformer_blocks": 0,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
     "too_large_for_both_pools": {
@@ -113,7 +147,7 @@
         "overhead_bytes": 4294967296,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 4294967296,
-        "total_layers": 80
+        "total_transformer_blocks": 80
       },
       "observed": {
         "mode": "too_large",
@@ -130,8 +164,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 4294967296,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 0,
-        "total_layers": 80
+        "gpu_transformer_blocks": 0,
+        "total_transformer_blocks": 80,
+        "offload_diagnostics": null
       }
     },
     "exact_vram_boundary_is_a_fit": {
@@ -142,12 +177,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "gpu_resident",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8589934592,
@@ -159,8 +194,9 @@
         "gpu_safety_margin_bytes": 536870912,
         "ram_safety_margin_bytes": 0,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 32,
-        "total_layers": 32
+        "gpu_transformer_blocks": 32,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
     "exact_ram_boundary_is_a_fit": {
@@ -171,7 +207,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 0,
         "safety_margin_bytes": 1073741824,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "cpu_ram",
@@ -188,8 +224,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 1073741824,
         "device_reserve_bytes": 0,
-        "gpu_layers": null,
-        "total_layers": 32
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
     "no_gpu_too_large": {
@@ -200,7 +237,7 @@
         "overhead_bytes": 2147483648,
         "device_reserve_bytes": 0,
         "safety_margin_bytes": 2147483648,
-        "total_layers": 48
+        "total_transformer_blocks": 48
       },
       "observed": {
         "mode": "too_large",
@@ -217,8 +254,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 2147483648,
         "device_reserve_bytes": 0,
-        "gpu_layers": null,
-        "total_layers": 48
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": 48,
+        "offload_diagnostics": null
       }
     },
     "kv_small_keeps_the_model_on_the_gpu": {
@@ -229,12 +267,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "gpu_resident",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8053063680,
@@ -246,8 +284,9 @@
         "gpu_safety_margin_bytes": 536870912,
         "ram_safety_margin_bytes": 0,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 32,
-        "total_layers": 32
+        "gpu_transformer_blocks": 32,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
     "kv_large_pushes_the_model_off_the_gpu": {
@@ -258,12 +297,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "gpu_offload",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8551965104,
@@ -275,8 +314,39 @@
         "gpu_safety_margin_bytes": 427598256,
         "ram_safety_margin_bytes": 109272656,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 21,
-        "total_layers": 32
+        "gpu_transformer_blocks": 21,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": {
+          "search_ceiling_transformer_blocks": 28,
+          "selected": {
+            "gpu_transformer_blocks": 21,
+            "gpu_required_bytes": 8551965104,
+            "ram_required_bytes": 2185453136,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 0,
+            "headroom_bytes": 37969488,
+            "gpu_weight_bytes": 3523215360,
+            "ram_weight_bytes": 1845493760,
+            "kv_cache_bytes": 3221225472,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 843055104,
+            "gpu_safety_margin_bytes": 427598256
+          },
+          "first_rejected_higher": {
+            "gpu_transformer_blocks": 22,
+            "gpu_required_bytes": 8750642662,
+            "ram_required_bytes": 1986775578,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 160708070,
+            "headroom_bytes": 0,
+            "gpu_weight_bytes": 3690987520,
+            "ram_weight_bytes": 1677721600,
+            "kv_cache_bytes": 3221225472,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 864026624,
+            "gpu_safety_margin_bytes": 437532134
+          }
+        }
       }
     },
     "single_user_kv_fits_on_the_gpu": {
@@ -287,12 +357,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 28
+        "total_transformer_blocks": 28
       },
       "observed": {
         "mode": "gpu_resident",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 7516192768,
@@ -304,8 +374,9 @@
         "gpu_safety_margin_bytes": 536870912,
         "ram_safety_margin_bytes": 0,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 28,
-        "total_layers": 28
+        "gpu_transformer_blocks": 28,
+        "total_transformer_blocks": 28,
+        "offload_diagnostics": null
       }
     },
     "four_concurrent_users_force_offload": {
@@ -316,12 +387,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 536870912,
         "safety_margin_bytes": 536870912,
-        "total_layers": 28
+        "total_transformer_blocks": 28
       },
       "observed": {
         "mode": "gpu_offload",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8557641622,
@@ -333,11 +404,42 @@
         "gpu_safety_margin_bytes": 427882082,
         "ram_safety_margin_bytes": 108988830,
         "device_reserve_bytes": 536870912,
-        "gpu_layers": 16,
-        "total_layers": 28
+        "gpu_transformer_blocks": 16,
+        "total_transformer_blocks": 28,
+        "offload_diagnostics": {
+          "search_ceiling_transformer_blocks": 24,
+          "selected": {
+            "gpu_transformer_blocks": 16,
+            "gpu_required_bytes": 8557641622,
+            "ram_required_bytes": 2179776618,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 0,
+            "headroom_bytes": 32292970,
+            "gpu_weight_bytes": 2454267040,
+            "ram_weight_bytes": 1840700256,
+            "kv_cache_bytes": 4294967296,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 843654292,
+            "gpu_safety_margin_bytes": 427882082
+          },
+          "first_rejected_higher": {
+            "gpu_transformer_blocks": 17,
+            "gpu_required_bytes": 8739289676,
+            "ram_required_bytes": 1998128564,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 149355084,
+            "headroom_bytes": 0,
+            "gpu_weight_bytes": 2607658730,
+            "ram_weight_bytes": 1687308566,
+            "kv_cache_bytes": 4294967296,
+            "device_reserve_bytes": 536870912,
+            "gpu_overhead_bytes": 862828254,
+            "gpu_safety_margin_bytes": 436964484
+          }
+        }
       }
     },
-    "layer_placement_with_layer_metadata": {
+    "transformer_block_placement_with_metadata": {
       "inputs": {
         "machine": "8 GiB VRAM / 24 GiB free RAM",
         "weights_bytes": 9663676416,
@@ -345,12 +447,12 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 268435456,
         "safety_margin_bytes": 536870912,
-        "total_layers": 36
+        "total_transformer_blocks": 36
       },
       "observed": {
         "mode": "gpu_offload",
         "memory_topology": "discrete_memory",
-        "placement_method": "layers",
+        "placement_method": "transformer_blocks",
         "available_vram_bytes": 8589934592,
         "available_ram_bytes": 25769803776,
         "gpu_required_bytes": 8298831254,
@@ -362,11 +464,42 @@
         "gpu_safety_margin_bytes": 353141756,
         "ram_safety_margin_bytes": 183729156,
         "device_reserve_bytes": 268435456,
-        "gpu_layers": 22,
-        "total_layers": 36
+        "gpu_transformer_blocks": 22,
+        "total_transformer_blocks": 36,
+        "offload_diagnostics": {
+          "search_ceiling_transformer_blocks": 27,
+          "selected": {
+            "gpu_transformer_blocks": 22,
+            "gpu_required_bytes": 8298831254,
+            "ram_required_bytes": 4317635178,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 0,
+            "headroom_bytes": 291103338,
+            "gpu_weight_bytes": 5905580032,
+            "ram_weight_bytes": 3758096384,
+            "kv_cache_bytes": 1073741824,
+            "device_reserve_bytes": 268435456,
+            "gpu_overhead_bytes": 697932186,
+            "gpu_safety_margin_bytes": 353141756
+          },
+          "first_rejected_higher": {
+            "gpu_transformer_blocks": 23,
+            "gpu_required_bytes": 8607233767,
+            "ram_required_bytes": 4009232665,
+            "available_vram_bytes": 8589934592,
+            "excess_bytes": 17299175,
+            "headroom_bytes": 0,
+            "gpu_weight_bytes": 6174015488,
+            "ram_weight_bytes": 3489660928,
+            "kv_cache_bytes": 1073741824,
+            "device_reserve_bytes": 268435456,
+            "gpu_overhead_bytes": 724775732,
+            "gpu_safety_margin_bytes": 366265267
+          }
+        }
       }
     },
-    "byte_fallback_without_layer_metadata": {
+    "byte_fallback_without_transformer_block_metadata": {
       "inputs": {
         "machine": "8 GiB VRAM / 24 GiB free RAM",
         "weights_bytes": 9663676416,
@@ -374,7 +507,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 268435456,
         "safety_margin_bytes": 536870912,
-        "total_layers": null
+        "total_transformer_blocks": null
       },
       "observed": {
         "mode": "gpu_offload",
@@ -391,8 +524,9 @@
         "gpu_safety_margin_bytes": 365529132,
         "ram_safety_margin_bytes": 171341780,
         "device_reserve_bytes": 268435456,
-        "gpu_layers": null,
-        "total_layers": null
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": null,
+        "offload_diagnostics": null
       }
     },
     "vram_plus_ram_is_not_a_single_pool": {
@@ -403,7 +537,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 0,
         "safety_margin_bytes": 0,
-        "total_layers": 10
+        "total_transformer_blocks": 10
       },
       "observed": {
         "mode": "too_large",
@@ -420,8 +554,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 0,
         "device_reserve_bytes": 0,
-        "gpu_layers": 0,
-        "total_layers": 10
+        "gpu_transformer_blocks": 0,
+        "total_transformer_blocks": 10,
+        "offload_diagnostics": null
       }
     },
     "unified_memory_uses_one_shared_pool": {
@@ -432,7 +567,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 0,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "cpu_ram",
@@ -449,8 +584,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 536870912,
         "device_reserve_bytes": 0,
-        "gpu_layers": null,
-        "total_layers": 32
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     },
     "unified_memory_too_large": {
@@ -461,7 +597,7 @@
         "overhead_bytes": 3221225472,
         "device_reserve_bytes": 0,
         "safety_margin_bytes": 3221225472,
-        "total_layers": 64
+        "total_transformer_blocks": 64
       },
       "observed": {
         "mode": "too_large",
@@ -478,8 +614,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 3221225472,
         "device_reserve_bytes": 0,
-        "gpu_layers": null,
-        "total_layers": 64
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": 64,
+        "offload_diagnostics": null
       }
     },
     "unified_memory_charges_device_reserve_to_the_pool": {
@@ -490,7 +627,7 @@
         "overhead_bytes": 1073741824,
         "device_reserve_bytes": 1073741824,
         "safety_margin_bytes": 536870912,
-        "total_layers": 32
+        "total_transformer_blocks": 32
       },
       "observed": {
         "mode": "cpu_ram",
@@ -507,8 +644,9 @@
         "gpu_safety_margin_bytes": 0,
         "ram_safety_margin_bytes": 536870912,
         "device_reserve_bytes": 1073741824,
-        "gpu_layers": null,
-        "total_layers": 32
+        "gpu_transformer_blocks": null,
+        "total_transformer_blocks": 32,
+        "offload_diagnostics": null
       }
     }
   }

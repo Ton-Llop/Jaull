@@ -129,8 +129,8 @@ person, which is the situation Jaull is built for.
 `--memory 0M` caps VRAM at zero but leaves `has_gpu: true` and the detected GPU
 name in the payload, so `info` still answers `CPU+GPU`. Jaull models "no GPU"
 as a distinct topology: `available_vram_bytes` is `None`, `gpu_required_bytes`
-is `None`, `gpu_layers` is `None`, and the reason string reads "No GPU
-detected".
+is `None`, `gpu_transformer_blocks` is `None`, and the reason string reads
+"No GPU detected".
 
 This is a limitation of the *override flags* rather than of llmfit's model — on
 a machine that genuinely has no GPU its own detection would presumably say so.
@@ -170,9 +170,9 @@ Jaull (policy)  → GPU_OFFLOAD      after overhead + reserve + margin
 llmfit          → CpuOffload
 ```
 
-Both tools end up recommending a split; they reach it through different layers.
-llmfit folds its caution into the placement decision itself. Jaull keeps the
-two apart:
+Both tools end up recommending a split; they reach it through different policy
+layers. llmfit folds its caution into the placement decision itself. Jaull keeps
+the two apart:
 
 ```
 physical placement   ─ does the arithmetic allow it?
@@ -201,11 +201,11 @@ it is the reason a naive `info`-vs-Jaull comparison is invalid.
 The battery surfaced two internal inconsistencies in the analyzer. Both are now
 fixed in `src/jaull/estimator/hardware_fit.py` and pinned by tests, because
 both would become load-bearing as soon as reports, execution plans and
-validation against `--n-gpu-layers` start reading these fields.
+validation against runtime placement starts reading these fields.
 
-**1. `gpu_layers` was `0` on machines with no GPU.** `CPU_RAM` set it to `0`
-unconditionally while `TOO_LARGE` set it to `None`, so the two branches
-disagreed about a machine with no GPU at all. The values are not
+**1. `gpu_transformer_blocks` was `0` on machines with no GPU.** `CPU_RAM` set
+it to `0` unconditionally while `TOO_LARGE` set it to `None`, so the two
+branches disagreed about a machine with no GPU at all. The values are not
 interchangeable:
 
 | value | means |
@@ -214,9 +214,9 @@ interchangeable:
 | `0` | a GPU exists and no layer was placed on it |
 
 Every branch now returns `None` whenever no GPU is present, through a single
-`_gpu_layers_when_unused` helper.
-`test_gpu_layers_is_none_when_there_is_no_gpu_and_zero_when_there_is_one` pins
-all three cases.
+`_gpu_transformer_blocks_when_unused` helper.
+`test_gpu_transformer_blocks_is_none_when_there_is_no_gpu_and_zero_when_there_is_one`
+pins all three cases.
 
 **2. Unified memory silently discarded `device_reserve_bytes`.** The caller
 passed a reserve and the branch neither charged it to the requirement nor
@@ -253,8 +253,9 @@ the result *says* about the placement it reached.
   `--max-context`. It derives available RAM as 90% of total, while Jaull is
   given available RAM directly; the harness records the pools each tool
   actually saw so the difference is visible rather than assumed.
-- **Layer counts** for the Jaull side come from llmfit's own database
-  (`num_hidden_layers`), so both tools describe the same model geometry.
+- **Transformer block counts** for the Jaull side come from llmfit's own
+  database (`num_hidden_layers`), so both tools describe the same model
+  geometry.
 - **Not compared:** throughput estimates, quality scores, ranking, and
   llmfit's upgrade-planning output. This is a comparison of placement, not of
   the two products.
@@ -263,7 +264,7 @@ the result *says* about the placement it reached.
 - **Where this stops being useful.** The comparison has served its purpose:
   the placement rule agrees with an independent implementation on 8 of 10
   cases, and the two that differ are explained. The next experiment is not
-  another tool but reality — Jaull's predicted mode, `gpu_layers`, VRAM and RAM
-  against what llama.cpp actually loads and reports. That is a
-  prediction-versus-observation study, and it is the reason §4's `gpu_layers`
-  fix had to land first.
+  another tool but reality — Jaull's predicted mode, transformer-block
+  placement, VRAM and RAM against what llama.cpp actually loads and reports.
+  That is a prediction-versus-observation study, and it is the reason §4's
+  transformer-block semantics had to land first.

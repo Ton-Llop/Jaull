@@ -1,9 +1,9 @@
 """The structured hardware fit survives to the public estimate contract.
 
 ``CompatibilityAssessment`` is a summary: one status, one ratio, one effective
-device. Everything the analyzer decided about *placement* — the mode, the layer
-split, the per-pool byte breakdown — used to stop at that boundary, so no
-consumer above the estimator could see it.
+device. Everything the analyzer decided about *placement* — the mode, the
+transformer-block split, the per-pool byte breakdown — used to stop at that
+boundary, so no consumer above the estimator could see it.
 
 These tests pin the two halves of the fix: the analyzer's result reaches
 ``MemoryEstimate`` unchanged, and the summary that consumers already depend on
@@ -75,7 +75,7 @@ def _assess(scenario: Scenario, *, device_target: TargetDevice = TargetDevice.AU
         device_reserve_bytes=scenario.device_reserve_bytes,
         safety_margin_bytes=scenario.safety_margin_bytes,
         total_bytes=total,
-        total_layers=scenario.total_layers,
+        total_transformer_blocks=scenario.total_transformer_blocks,
         hardware=scenario.machine.profile(),
         device_target=device_target,
     )
@@ -118,7 +118,7 @@ def test_returning_the_fit_does_not_change_the_summary(scenario: Scenario) -> No
         device_reserve_bytes=scenario.device_reserve_bytes,
         safety_margin_bytes=scenario.safety_margin_bytes,
         total_bytes=total,
-        total_layers=scenario.total_layers,
+        total_transformer_blocks=scenario.total_transformer_blocks,
         hardware=scenario.machine.profile(),
         device_target=TargetDevice.AUTO,
     )
@@ -129,41 +129,41 @@ def test_returning_the_fit_does_not_change_the_summary(scenario: Scenario) -> No
 # ---------------------------------------------------------------------------
 # One test per mode, on the detail that mode exists to express
 # ---------------------------------------------------------------------------
-def test_gpu_resident_keeps_its_mode_and_full_layer_placement() -> None:
+def test_gpu_resident_keeps_its_mode_and_full_transformer_block_placement() -> None:
     fit = _assess(_scenario("gpu_resident_comfortable")).fit
 
     assert fit is not None
     assert fit.mode is HardwareFitMode.GPU_RESIDENT
-    assert fit.placement_method is HardwareFitPlacementMethod.LAYERS
-    assert fit.gpu_layers == fit.total_layers
+    assert fit.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
+    assert fit.gpu_transformer_blocks == fit.total_transformer_blocks
     assert fit.ram_weight_bytes == 0
     assert fit.places_weights_on_gpu
 
 
-def test_gpu_offload_keeps_the_layer_split_and_both_pools() -> None:
-    """The number that only offload produces: how many layers went to the GPU."""
+def test_gpu_offload_keeps_transformer_block_split_and_both_pools() -> None:
+    """The offload count is model transformer blocks, not runtime units."""
 
-    scenario = _scenario("gpu_offload_layer_split")
+    scenario = _scenario("gpu_offload_transformer_block_split")
     fit = _assess(scenario).fit
 
     assert fit is not None
     assert fit.mode is HardwareFitMode.GPU_OFFLOAD
-    assert fit.placement_method is HardwareFitPlacementMethod.LAYERS
-    assert fit.gpu_layers is not None
-    assert fit.total_layers is not None
-    assert 0 < fit.gpu_layers < fit.total_layers
+    assert fit.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
+    assert fit.gpu_transformer_blocks is not None
+    assert fit.total_transformer_blocks is not None
+    assert 0 < fit.gpu_transformer_blocks < fit.total_transformer_blocks
     # Both pools carry weight, and together they carry all of it.
     assert fit.gpu_weight_bytes > 0
     assert fit.ram_weight_bytes > 0
     assert fit.gpu_weight_bytes + fit.ram_weight_bytes == scenario.weights_bytes
 
 
-def test_byte_placement_survives_without_a_layer_count() -> None:
-    fit = _assess(_scenario("byte_fallback_without_layer_metadata")).fit
+def test_byte_placement_survives_without_a_transformer_block_count() -> None:
+    fit = _assess(_scenario("byte_fallback_without_transformer_block_metadata")).fit
 
     assert fit is not None
     assert fit.placement_method is HardwareFitPlacementMethod.ESTIMATED_BYTES
-    assert fit.gpu_layers is None
+    assert fit.gpu_transformer_blocks is None
 
 
 def test_cpu_ram_keeps_the_mode_and_places_no_weights_on_the_gpu() -> None:
@@ -186,11 +186,11 @@ def test_too_large_survives_as_a_placement_result() -> None:
     assert fit.reason
 
 
-def test_no_gpu_reports_layers_as_not_applicable() -> None:
+def test_no_gpu_reports_transformer_blocks_as_not_applicable() -> None:
     fit = _assess(_scenario("no_gpu_too_large")).fit
 
     assert fit is not None
-    assert fit.gpu_layers is None
+    assert fit.gpu_transformer_blocks is None
     assert fit.available_vram_bytes is None
 
 
@@ -215,7 +215,7 @@ def test_a_missing_memory_component_produces_no_fit() -> None:
         device_reserve_bytes=0,
         safety_margin_bytes=0,
         total_bytes=None,
-        total_layers=32,
+        total_transformer_blocks=32,
         hardware=_scenario("gpu_resident_comfortable").machine.profile(),
         device_target=TargetDevice.AUTO,
     )
@@ -344,7 +344,7 @@ def _estimate(*, vram: int | None, context: int = 4096) -> MemoryEstimate:
         inference_cfg=InferenceConfiguration(
             context_length=context,
             target_device=TargetDevice.AUTO,
-            ),
+        ),
         client=_Client(),
         resolve_base_model=False,
     )
@@ -374,10 +374,69 @@ def test_reporting_json_carries_the_placement() -> None:
     fit = payload["hardware_fit"]
     assert fit is not None
     assert fit["mode"] == "gpu_resident"
-    assert fit["placement_method"] in {"layers", "estimated_bytes"}
+    assert fit["placement_method"] in {"transformer_blocks", "estimated_bytes"}
+    assert fit["gpu_transformer_blocks"] == 32
+    assert fit["total_transformer_blocks"] == 32
+    assert "gpu_layers" not in fit
+    assert "total_layers" not in fit
     assert fit["gpu_required_bytes"] > fit["gpu_physical_bytes"]
     assert fit["ram_required_bytes"] == 0
+    assert fit["offload_diagnostics"] is None
     assert isinstance(fit["reason"], str)
+
+
+def test_reporting_json_carries_the_offload_decision_boundary() -> None:
+    fit = _scenario("gpu_offload_transformer_block_split").analyze()
+    estimate = _estimate(vram=24 * GIB).model_copy(update={"hardware_fit": fit})
+
+    payload = estimate_to_json_dict(estimate)
+
+    diagnostics = payload["hardware_fit"]["offload_diagnostics"]
+    assert diagnostics is not None
+    assert diagnostics["search_ceiling_transformer_blocks"] >= (
+        fit.gpu_transformer_blocks
+    )
+    selected = diagnostics["selected"]
+    rejected = diagnostics["first_rejected_higher"]
+    assert selected["gpu_transformer_blocks"] == fit.gpu_transformer_blocks
+    assert selected["gpu_required_bytes"] == fit.gpu_required_bytes
+    assert selected["headroom_bytes"] == (
+        selected["available_vram_bytes"] - selected["gpu_required_bytes"]
+    )
+    assert selected["excess_bytes"] == 0
+    assert rejected["gpu_transformer_blocks"] == fit.gpu_transformer_blocks + 1
+    assert rejected["gpu_required_bytes"] > rejected["available_vram_bytes"]
+    assert rejected["headroom_bytes"] == 0
+    assert rejected["excess_bytes"] == (
+        rejected["gpu_required_bytes"] - rejected["available_vram_bytes"]
+    )
+    assert rejected["gpu_required_bytes"] == (
+        rejected["gpu_weight_bytes"]
+        + rejected["kv_cache_bytes"]
+        + rejected["device_reserve_bytes"]
+        + rejected["gpu_overhead_bytes"]
+        + rejected["gpu_safety_margin_bytes"]
+    )
+
+
+def test_legacy_hardware_fit_layer_fields_still_load() -> None:
+    fit = HardwareFitResult.model_validate(
+        {
+            "mode": "gpu_offload",
+            "memory_topology": "discrete_memory",
+            "weights_bytes": 100,
+            "kv_cache_bytes": 10,
+            "overhead_bytes": 5,
+            "gpu_layers": 18,
+            "total_layers": 28,
+            "placement_method": "layers",
+            "reason": "legacy",
+        }
+    )
+
+    assert fit.gpu_transformer_blocks == 18
+    assert fit.total_transformer_blocks == 28
+    assert fit.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
 
 
 def test_reporting_json_says_null_when_there_is_no_placement() -> None:
@@ -412,7 +471,7 @@ def test_ranking_is_identical_with_and_without_a_fit() -> None:
     from tests.test_recommendation_ranking import _evaluated
 
     without = _evaluated()
-    fit = _scenario("gpu_offload_layer_split").analyze()
+    fit = _scenario("gpu_offload_transformer_block_split").analyze()
     with_fit = without.model_copy(
         update={
             "memory_estimate": without.memory_estimate.model_copy(

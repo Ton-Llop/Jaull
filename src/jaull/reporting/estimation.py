@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from jaull.domain.estimation import (
+    HardwareFitOffloadCandidate,
+    HardwareFitOffloadDiagnostics,
     HardwareFitResult,
     MemoryComponent,
     MemoryEstimate,
@@ -22,7 +24,7 @@ from jaull.reporting.serialization import (
     runtime_to_dict,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
@@ -125,8 +127,11 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
         "mode": fit.mode.value,
         "memory_topology": fit.memory_topology.value,
         "placement_method": fit.placement_method.value,
-        "gpu_layers": fit.gpu_layers,
-        "total_layers": fit.total_layers,
+        "gpu_transformer_blocks": fit.gpu_transformer_blocks,
+        "total_transformer_blocks": fit.total_transformer_blocks,
+        "offload_diagnostics": hardware_fit_offload_diagnostics_to_dict(
+            fit.offload_diagnostics
+        ),
         "gpu_required_bytes": fit.gpu_required_bytes,
         "gpu_physical_bytes": fit.gpu_physical_bytes,
         "gpu_weight_bytes": fit.gpu_weight_bytes,
@@ -145,6 +150,43 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
     }
 
 
+def hardware_fit_offload_diagnostics_to_dict(
+    diagnostics: HardwareFitOffloadDiagnostics | None,
+) -> dict[str, Any] | None:
+    if diagnostics is None:
+        return None
+    return {
+        "search_ceiling_transformer_blocks": (
+            diagnostics.search_ceiling_transformer_blocks
+        ),
+        "selected": hardware_fit_offload_candidate_to_dict(diagnostics.selected),
+        "first_rejected_higher": hardware_fit_offload_candidate_to_dict(
+            diagnostics.first_rejected_higher
+        ),
+    }
+
+
+def hardware_fit_offload_candidate_to_dict(
+    candidate: HardwareFitOffloadCandidate | None,
+) -> dict[str, int] | None:
+    if candidate is None:
+        return None
+    return {
+        "gpu_transformer_blocks": candidate.gpu_transformer_blocks,
+        "gpu_required_bytes": candidate.gpu_required_bytes,
+        "ram_required_bytes": candidate.ram_required_bytes,
+        "available_vram_bytes": candidate.available_vram_bytes,
+        "excess_bytes": candidate.excess_bytes,
+        "headroom_bytes": candidate.headroom_bytes,
+        "gpu_weight_bytes": candidate.gpu_weight_bytes,
+        "ram_weight_bytes": candidate.ram_weight_bytes,
+        "kv_cache_bytes": candidate.kv_cache_bytes,
+        "device_reserve_bytes": candidate.device_reserve_bytes,
+        "gpu_overhead_bytes": candidate.gpu_overhead_bytes,
+        "gpu_safety_margin_bytes": candidate.gpu_safety_margin_bytes,
+    }
+
+
 def _components(estimate: MemoryEstimate) -> list[MemoryComponent]:
     parts = [
         estimate.weights.component,
@@ -157,4 +199,9 @@ def _components(estimate: MemoryEstimate) -> list[MemoryComponent]:
     return parts
 
 
-__all__ = ["SCHEMA_VERSION", "estimate_to_json_dict"]
+__all__ = [
+    "SCHEMA_VERSION",
+    "estimate_to_json_dict",
+    "hardware_fit_offload_candidate_to_dict",
+    "hardware_fit_offload_diagnostics_to_dict",
+]

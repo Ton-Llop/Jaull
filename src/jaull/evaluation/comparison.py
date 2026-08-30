@@ -37,6 +37,12 @@ _VRAM_UNVERIFIED_PLACEMENT_REASON = (
     "model the way the estimate assumed, and a difference could not be "
     "attributed to the memory model rather than to a different placement."
 )
+_VRAM_RUNTIME_MAPPING_UNAVAILABLE_REASON = (
+    "The Hardware Fit prediction is expressed in runtime-agnostic transformer "
+    "blocks, while llama.cpp --n-gpu-layers uses backend-specific offload "
+    "units. Jaull has no validated mapping between the two yet, so this run "
+    "cannot be held to the transformer-block placement."
+)
 
 
 class PredictionRuntimeMismatchError(ValueError):
@@ -283,10 +289,13 @@ def _placement_mismatch(
     """Explain why the run cannot be held to this prediction, or ``None``.
 
     A VRAM figure only tests the memory model if the execution placed the model
-    the way the estimate assumed. llama.cpp states that placement explicitly in
-    ``--n-gpu-layers``, so it can be checked; Transformers decides device
-    placement internally and exposes no equivalent, so there the prediction is
-    reported as unverifiable rather than compared on trust.
+    the way the estimate assumed. Hardware Fit expresses offload placement in
+    runtime-agnostic transformer blocks. llama.cpp exposes backend-specific
+    ``--n-gpu-layers`` units, which the Qwen2.5 validation showed are not the
+    same vocabulary, so partial offload is reported as unverifiable until a
+    backend mapping exists. Transformers decides device placement internally and
+    exposes no equivalent, so there the prediction is also reported as
+    unverifiable rather than compared on trust.
     """
 
     if runtime is None or runtime.runtime is not RuntimeName.LLAMA_CPP:
@@ -306,19 +315,14 @@ def _placement_mismatch(
             "different splits."
         )
 
-    if fit.gpu_layers is None:
+    if fit.gpu_transformer_blocks is None:
         return (
-            "The predicted placement was sized in bytes rather than layers, so "
+            "The predicted placement was sized in bytes rather than transformer "
+            "blocks, so "
             f"it cannot be checked against --n-gpu-layers {requested}."
         )
 
-    if requested != fit.gpu_layers:
-        return (
-            f"Run placed {requested} layers on the GPU but the prediction "
-            f"assumed {fit.gpu_layers}, so the difference would measure the "
-            "placement, not the memory model."
-        )
-    return None
+    return _VRAM_RUNTIME_MAPPING_UNAVAILABLE_REASON
 
 
 def _uses_gpu_memory(

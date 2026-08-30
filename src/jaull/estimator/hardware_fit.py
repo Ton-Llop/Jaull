@@ -8,15 +8,32 @@ estimated memory can be placed on the detected hardware.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from jaull.domain.estimation import (
     HardwareFitMode,
+    HardwareFitOffloadCandidate,
+    HardwareFitOffloadDiagnostics,
     HardwareFitPlacementMethod,
     HardwareFitResult,
     HardwareMemoryTopology,
     MemoryEstimate,
 )
 from jaull.domain.hardware import HardwareProfile
+
+
+@dataclass(frozen=True)
+class _OffloadPlacement:
+    total_transformer_blocks: int | None
+    gpu_transformer_blocks: int | None
+    gpu_required_bytes: int
+    ram_required_bytes: int
+    gpu_weight_bytes: int
+    ram_weight_bytes: int
+    gpu_overhead_bytes: int
+    ram_overhead_bytes: int
+    gpu_safety_margin_bytes: int
+    ram_safety_margin_bytes: int
 
 
 def analyze_estimate(
@@ -40,7 +57,7 @@ def analyze_estimate(
         device_reserve_bytes=estimate.device_reserve.bytes or 0,
         safety_margin_bytes=safety_margin_bytes or 0,
         hardware=hardware,
-        total_layers=estimate.kv_cache.layers,
+        total_transformer_blocks=estimate.kv_cache.layers,
     )
 
 
@@ -52,10 +69,22 @@ def analyze_components(
     hardware: HardwareProfile,
     device_reserve_bytes: int = 0,
     safety_margin_bytes: int = 0,
+    total_transformer_blocks: int | None = None,
     total_layers: int | None = None,
 ) -> HardwareFitResult:
     """Classify model placement without collapsing RAM and VRAM into one pool."""
 
+    if (
+        total_transformer_blocks is not None
+        and total_layers is not None
+        and total_transformer_blocks != total_layers
+    ):
+        raise ValueError(
+            "total_layers is a legacy alias for total_transformer_blocks; "
+            "both values were provided and they differ."
+        )
+    if total_transformer_blocks is None:
+        total_transformer_blocks = total_layers
     topology = _memory_topology(hardware)
     available_vram = _available_vram(hardware)
     available_ram = hardware.memory.available_bytes
@@ -68,7 +97,7 @@ def analyze_components(
             device_reserve_bytes=device_reserve_bytes,
             safety_margin_bytes=safety_margin_bytes,
             available_ram=available_ram,
-            total_layers=total_layers,
+            total_transformer_blocks=total_transformer_blocks,
         )
 
     gpu_fixed_bytes = kv_cache_bytes + overhead_bytes + device_reserve_bytes
@@ -91,11 +120,11 @@ def analyze_components(
             gpu_safety_margin_bytes=safety_margin_bytes,
             ram_required_bytes=0,
             ram_weight_bytes=0,
-            gpu_layers=total_layers,
-            total_layers=total_layers,
+            gpu_transformer_blocks=total_transformer_blocks,
+            total_transformer_blocks=total_transformer_blocks,
             placement_method=(
-                HardwareFitPlacementMethod.LAYERS
-                if _valid_layer_count(total_layers)
+                HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
+                if _valid_transformer_block_count(total_transformer_blocks)
                 else HardwareFitPlacementMethod.ESTIMATED_BYTES
             ),
             reason="Weights, KV cache, overhead, reserve, and margin fit in VRAM.",
@@ -110,7 +139,7 @@ def analyze_components(
             safety_margin_bytes=safety_margin_bytes,
             available_vram=available_vram,
             available_ram=available_ram,
-            total_layers=total_layers,
+            total_transformer_blocks=total_transformer_blocks,
             topology=topology,
         )
         if offload is not None:
@@ -141,8 +170,8 @@ def analyze_components(
             ram_weight_bytes=weights_bytes,
             ram_overhead_bytes=overhead_bytes,
             ram_safety_margin_bytes=safety_margin_bytes,
-            gpu_layers=_gpu_layers_when_unused(available_vram),
-            total_layers=total_layers,
+            gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
+            total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
             reason=f"{prefix}; full model fits in system RAM.",
         )
@@ -165,8 +194,8 @@ def analyze_components(
         ram_weight_bytes=weights_bytes,
         ram_overhead_bytes=overhead_bytes,
         ram_safety_margin_bytes=safety_margin_bytes,
-        gpu_layers=_gpu_layers_when_unused(available_vram),
-        total_layers=total_layers,
+        gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
+        total_transformer_blocks=total_transformer_blocks,
         placement_method=HardwareFitPlacementMethod.NONE,
         reason=(
             "No supported placement fits: VRAM cannot hold a viable GPU placement "
@@ -184,7 +213,7 @@ def _try_gpu_offload(
     safety_margin_bytes: int,
     available_vram: int,
     available_ram: int,
-    total_layers: int | None,
+    total_transformer_blocks: int | None,
     topology: HardwareMemoryTopology,
 ) -> HardwareFitResult | None:
     gpu_fixed_bytes = kv_cache_bytes + device_reserve_bytes
@@ -193,43 +222,87 @@ def _try_gpu_offload(
         return None
 
     method: HardwareFitPlacementMethod
-    if _valid_layer_count(total_layers):
-        assert total_layers is not None
-        bytes_per_layer = math.ceil(weights_bytes / total_layers)
-        if bytes_per_layer <= 0:
+    if _valid_transformer_block_count(total_transformer_blocks):
+        assert total_transformer_blocks is not None
+        estimated_bytes_per_transformer_block = math.ceil(
+            weights_bytes / total_transformer_blocks
+        )
+        if estimated_bytes_per_transformer_block <= 0:
             return None
-        max_gpu_layers = min(total_layers, available_for_gpu_weights // bytes_per_layer)
-        for gpu_layers in range(int(max_gpu_layers), 0, -1):
-            gpu_weight_bytes = min(weights_bytes, gpu_layers * bytes_per_layer)
-            result = _offload_result(
+        max_gpu_transformer_blocks = min(
+            total_transformer_blocks,
+            available_for_gpu_weights // estimated_bytes_per_transformer_block,
+        )
+        search_ceiling_transformer_blocks = int(max_gpu_transformer_blocks)
+        last_rejected: HardwareFitOffloadCandidate | None = None
+        for gpu_transformer_blocks in range(
+            search_ceiling_transformer_blocks, 0, -1
+        ):
+            gpu_weight_bytes = min(
+                weights_bytes,
+                gpu_transformer_blocks * estimated_bytes_per_transformer_block,
+            )
+            placement = _calculate_offload_placement(
                 weights_bytes=weights_bytes,
                 kv_cache_bytes=kv_cache_bytes,
                 overhead_bytes=overhead_bytes,
                 device_reserve_bytes=device_reserve_bytes,
                 safety_margin_bytes=safety_margin_bytes,
-                available_vram=available_vram,
-                available_ram=available_ram,
-                total_layers=total_layers,
-                gpu_layers=gpu_layers,
+                total_transformer_blocks=total_transformer_blocks,
+                gpu_transformer_blocks=gpu_transformer_blocks,
                 gpu_weight_bytes=gpu_weight_bytes,
-                placement_method=HardwareFitPlacementMethod.LAYERS,
-                topology=topology,
-                warnings=[],
             )
-            if result is not None:
+            if placement is None:
+                continue
+            if (
+                placement.gpu_required_bytes <= available_vram
+                and placement.ram_required_bytes <= available_ram
+            ):
+                result = _offload_result_from_placement(
+                    weights_bytes=weights_bytes,
+                    kv_cache_bytes=kv_cache_bytes,
+                    overhead_bytes=overhead_bytes,
+                    device_reserve_bytes=device_reserve_bytes,
+                    safety_margin_bytes=safety_margin_bytes,
+                    available_vram=available_vram,
+                    available_ram=available_ram,
+                    placement=placement,
+                    placement_method=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
+                    topology=topology,
+                    warnings=[],
+                    offload_diagnostics=HardwareFitOffloadDiagnostics(
+                        search_ceiling_transformer_blocks=(
+                            search_ceiling_transformer_blocks
+                        ),
+                        selected=_offload_candidate(
+                            placement,
+                            kv_cache_bytes=kv_cache_bytes,
+                            device_reserve_bytes=device_reserve_bytes,
+                            available_vram=available_vram,
+                        ),
+                        first_rejected_higher=last_rejected,
+                    ),
+                )
                 return result
+            last_rejected = _offload_candidate(
+                placement,
+                kv_cache_bytes=kv_cache_bytes,
+                device_reserve_bytes=device_reserve_bytes,
+                available_vram=available_vram,
+            )
         return None
 
     method = HardwareFitPlacementMethod.ESTIMATED_BYTES
     warnings = [
-        "Layer count unavailable; GPU offload placement is estimated by bytes."
+        "Transformer block count unavailable; GPU offload placement is "
+        "estimated by bytes."
     ]
     low = 1
     high = min(weights_bytes - 1, available_for_gpu_weights)
     best: HardwareFitResult | None = None
     while low <= high:
         gpu_weight_bytes = (low + high) // 2
-        result = _build_offload_result(
+        byte_result = _build_offload_result(
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
             overhead_bytes=overhead_bytes,
@@ -237,19 +310,19 @@ def _try_gpu_offload(
             safety_margin_bytes=safety_margin_bytes,
             available_vram=available_vram,
             available_ram=available_ram,
-            total_layers=total_layers,
-            gpu_layers=None,
+            total_transformer_blocks=total_transformer_blocks,
+            gpu_transformer_blocks=None,
             gpu_weight_bytes=gpu_weight_bytes,
             placement_method=method,
             topology=topology,
             warnings=warnings,
         )
         if (
-            result is not None
-            and result.gpu_required_bytes is not None
-            and result.gpu_required_bytes <= available_vram
+            byte_result is not None
+            and byte_result.gpu_required_bytes is not None
+            and byte_result.gpu_required_bytes <= available_vram
         ):
-            best = result
+            best = byte_result
             low = gpu_weight_bytes + 1
         else:
             high = gpu_weight_bytes - 1
@@ -258,49 +331,6 @@ def _try_gpu_offload(
     if best.ram_required_bytes > available_ram:
         return None
     return best
-
-
-def _offload_result(
-    *,
-    weights_bytes: int,
-    kv_cache_bytes: int,
-    overhead_bytes: int,
-    device_reserve_bytes: int,
-    safety_margin_bytes: int,
-    available_vram: int,
-    available_ram: int,
-    total_layers: int | None,
-    gpu_layers: int | None,
-    gpu_weight_bytes: int,
-    placement_method: HardwareFitPlacementMethod,
-    topology: HardwareMemoryTopology,
-    warnings: list[str],
-) -> HardwareFitResult | None:
-    result = _build_offload_result(
-        weights_bytes=weights_bytes,
-        kv_cache_bytes=kv_cache_bytes,
-        overhead_bytes=overhead_bytes,
-        device_reserve_bytes=device_reserve_bytes,
-        safety_margin_bytes=safety_margin_bytes,
-        available_vram=available_vram,
-        available_ram=available_ram,
-        total_layers=total_layers,
-        gpu_layers=gpu_layers,
-        gpu_weight_bytes=gpu_weight_bytes,
-        placement_method=placement_method,
-        topology=topology,
-        warnings=warnings,
-    )
-    if result is None:
-        return None
-    if (
-        result.gpu_required_bytes is None
-        or result.ram_required_bytes is None
-        or result.gpu_required_bytes > available_vram
-        or result.ram_required_bytes > available_ram
-    ):
-        return None
-    return result
 
 
 def _build_offload_result(
@@ -312,13 +342,56 @@ def _build_offload_result(
     safety_margin_bytes: int,
     available_vram: int,
     available_ram: int,
-    total_layers: int | None,
-    gpu_layers: int | None,
+    total_transformer_blocks: int | None,
+    gpu_transformer_blocks: int | None,
     gpu_weight_bytes: int,
     placement_method: HardwareFitPlacementMethod,
     topology: HardwareMemoryTopology,
     warnings: list[str],
 ) -> HardwareFitResult | None:
+    placement = _calculate_offload_placement(
+        weights_bytes=weights_bytes,
+        kv_cache_bytes=kv_cache_bytes,
+        overhead_bytes=overhead_bytes,
+        device_reserve_bytes=device_reserve_bytes,
+        safety_margin_bytes=safety_margin_bytes,
+        total_transformer_blocks=total_transformer_blocks,
+        gpu_transformer_blocks=gpu_transformer_blocks,
+        gpu_weight_bytes=gpu_weight_bytes,
+    )
+    if placement is None:
+        return None
+    if (
+        placement.gpu_required_bytes > available_vram
+        or placement.ram_required_bytes > available_ram
+    ):
+        return None
+    return _offload_result_from_placement(
+        weights_bytes=weights_bytes,
+        kv_cache_bytes=kv_cache_bytes,
+        overhead_bytes=overhead_bytes,
+        device_reserve_bytes=device_reserve_bytes,
+        safety_margin_bytes=safety_margin_bytes,
+        available_vram=available_vram,
+        available_ram=available_ram,
+        placement=placement,
+        placement_method=placement_method,
+        topology=topology,
+        warnings=warnings,
+    )
+
+
+def _calculate_offload_placement(
+    *,
+    weights_bytes: int,
+    kv_cache_bytes: int,
+    overhead_bytes: int,
+    device_reserve_bytes: int,
+    safety_margin_bytes: int,
+    total_transformer_blocks: int | None,
+    gpu_transformer_blocks: int | None,
+    gpu_weight_bytes: int,
+) -> _OffloadPlacement | None:
     if gpu_weight_bytes <= 0 or gpu_weight_bytes >= weights_bytes:
         return None
     ram_weight_bytes = weights_bytes - gpu_weight_bytes
@@ -340,9 +413,36 @@ def _build_offload_result(
 
     gpu_required = gpu_physical_bytes + gpu_overhead_bytes + gpu_safety_margin_bytes
     ram_required = ram_physical_bytes + ram_overhead_bytes + ram_safety_margin_bytes
-    if gpu_required > available_vram or ram_required > available_ram:
-        return None
 
+    return _OffloadPlacement(
+        total_transformer_blocks=total_transformer_blocks,
+        gpu_transformer_blocks=gpu_transformer_blocks,
+        gpu_required_bytes=gpu_required,
+        ram_required_bytes=ram_required,
+        gpu_weight_bytes=gpu_weight_bytes,
+        ram_weight_bytes=ram_weight_bytes,
+        gpu_overhead_bytes=gpu_overhead_bytes,
+        ram_overhead_bytes=ram_overhead_bytes,
+        gpu_safety_margin_bytes=gpu_safety_margin_bytes,
+        ram_safety_margin_bytes=ram_safety_margin_bytes,
+    )
+
+
+def _offload_result_from_placement(
+    *,
+    weights_bytes: int,
+    kv_cache_bytes: int,
+    overhead_bytes: int,
+    device_reserve_bytes: int,
+    safety_margin_bytes: int,
+    available_vram: int,
+    available_ram: int,
+    placement: _OffloadPlacement,
+    placement_method: HardwareFitPlacementMethod,
+    topology: HardwareMemoryTopology,
+    warnings: list[str],
+    offload_diagnostics: HardwareFitOffloadDiagnostics | None = None,
+) -> HardwareFitResult:
     return HardwareFitResult(
         mode=HardwareFitMode.GPU_OFFLOAD,
         memory_topology=topology,
@@ -353,22 +453,47 @@ def _build_offload_result(
         safety_margin_bytes=safety_margin_bytes,
         available_vram_bytes=available_vram,
         available_ram_bytes=available_ram,
-        gpu_required_bytes=gpu_required,
-        gpu_weight_bytes=gpu_weight_bytes,
-        gpu_overhead_bytes=gpu_overhead_bytes,
-        gpu_safety_margin_bytes=gpu_safety_margin_bytes,
-        ram_required_bytes=ram_required,
-        ram_weight_bytes=ram_weight_bytes,
-        ram_overhead_bytes=ram_overhead_bytes,
-        ram_safety_margin_bytes=ram_safety_margin_bytes,
-        gpu_layers=gpu_layers,
-        total_layers=total_layers,
+        gpu_required_bytes=placement.gpu_required_bytes,
+        gpu_weight_bytes=placement.gpu_weight_bytes,
+        gpu_overhead_bytes=placement.gpu_overhead_bytes,
+        gpu_safety_margin_bytes=placement.gpu_safety_margin_bytes,
+        ram_required_bytes=placement.ram_required_bytes,
+        ram_weight_bytes=placement.ram_weight_bytes,
+        ram_overhead_bytes=placement.ram_overhead_bytes,
+        ram_safety_margin_bytes=placement.ram_safety_margin_bytes,
+        gpu_transformer_blocks=placement.gpu_transformer_blocks,
+        total_transformer_blocks=placement.total_transformer_blocks,
         placement_method=placement_method,
+        offload_diagnostics=offload_diagnostics,
         reason=(
             "Model does not fit fully in VRAM, but a valid GPU/RAM weight "
             "placement fits without treating RAM and VRAM as one pool."
         ),
         warnings=warnings,
+    )
+
+
+def _offload_candidate(
+    placement: _OffloadPlacement,
+    *,
+    kv_cache_bytes: int,
+    device_reserve_bytes: int,
+    available_vram: int,
+) -> HardwareFitOffloadCandidate:
+    assert placement.gpu_transformer_blocks is not None
+    return HardwareFitOffloadCandidate(
+        gpu_transformer_blocks=placement.gpu_transformer_blocks,
+        gpu_required_bytes=placement.gpu_required_bytes,
+        ram_required_bytes=placement.ram_required_bytes,
+        available_vram_bytes=available_vram,
+        excess_bytes=max(0, placement.gpu_required_bytes - available_vram),
+        headroom_bytes=max(0, available_vram - placement.gpu_required_bytes),
+        gpu_weight_bytes=placement.gpu_weight_bytes,
+        ram_weight_bytes=placement.ram_weight_bytes,
+        kv_cache_bytes=kv_cache_bytes,
+        device_reserve_bytes=device_reserve_bytes,
+        gpu_overhead_bytes=placement.gpu_overhead_bytes,
+        gpu_safety_margin_bytes=placement.gpu_safety_margin_bytes,
     )
 
 
@@ -380,7 +505,7 @@ def _analyze_unified_memory(
     device_reserve_bytes: int,
     safety_margin_bytes: int,
     available_ram: int,
-    total_layers: int | None,
+    total_transformer_blocks: int | None,
 ) -> HardwareFitResult:
     """Fit against the single shared pool, reserve included.
 
@@ -413,8 +538,8 @@ def _analyze_unified_memory(
             ram_weight_bytes=weights_bytes,
             ram_overhead_bytes=overhead_bytes,
             ram_safety_margin_bytes=safety_margin_bytes,
-            gpu_layers=None,
-            total_layers=total_layers,
+            gpu_transformer_blocks=None,
+            total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
             reason=(
                 "Unified-memory hardware uses one shared pool; fit was checked "
@@ -435,8 +560,8 @@ def _analyze_unified_memory(
         ram_weight_bytes=weights_bytes,
         ram_overhead_bytes=overhead_bytes,
         ram_safety_margin_bytes=safety_margin_bytes,
-        gpu_layers=None,
-        total_layers=total_layers,
+        gpu_transformer_blocks=None,
+        total_transformer_blocks=total_transformer_blocks,
         placement_method=HardwareFitPlacementMethod.NONE,
         reason="Unified-memory pool is insufficient for the estimated requirement.",
     )
@@ -472,18 +597,17 @@ def _available_vram(hardware: HardwareProfile) -> int | None:
     return max(gpu.vram_available_bytes for gpu in hardware.gpus)
 
 
-def _valid_layer_count(total_layers: int | None) -> bool:
-    return total_layers is not None and total_layers > 0
+def _valid_transformer_block_count(total_transformer_blocks: int | None) -> bool:
+    return total_transformer_blocks is not None and total_transformer_blocks > 0
 
 
-def _gpu_layers_when_unused(available_vram: int | None) -> int | None:
-    """How many layers sit on a GPU that this placement does not use.
+def _gpu_transformer_blocks_when_unused(available_vram: int | None) -> int | None:
+    """How many transformer blocks sit on a GPU this placement does not use.
 
     ``0`` and ``None`` are not interchangeable here, and consumers downstream
     will read them as different facts: ``0`` means a GPU exists and none of the
-    layers were placed on it — a number ``--n-gpu-layers`` can be validated
-    against — while ``None`` means the question does not apply because there is
-    no GPU at all.
+    transformer blocks were placed on it, while ``None`` means the question
+    does not apply because there is no GPU at all.
     """
 
     return 0 if available_vram is not None else None

@@ -52,7 +52,7 @@ REQUIRED_COVERAGE = frozenset(
         "exact_boundary",
         "kv_sensitivity",
         "concurrency_sensitivity",
-        "layer_placement",
+        "transformer_block_placement",
         "byte_fallback",
         "false_pool_sum",
         "no_gpu_topology",
@@ -76,8 +76,9 @@ OBSERVED_FIELDS: tuple[str, ...] = (
     "gpu_safety_margin_bytes",
     "ram_safety_margin_bytes",
     "device_reserve_bytes",
-    "gpu_layers",
-    "total_layers",
+    "gpu_transformer_blocks",
+    "total_transformer_blocks",
+    "offload_diagnostics",
 )
 
 
@@ -184,7 +185,7 @@ class Scenario:
     covers: frozenset[str]
     device_reserve_bytes: int = 0
     safety_margin_bytes: int = 0
-    total_layers: int | None = None
+    total_transformer_blocks: int | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
 
     def analyze(self) -> HardwareFitResult:
@@ -195,7 +196,7 @@ class Scenario:
             hardware=self.machine.profile(),
             device_reserve_bytes=self.device_reserve_bytes,
             safety_margin_bytes=self.safety_margin_bytes,
-            total_layers=self.total_layers,
+            total_transformer_blocks=self.total_transformer_blocks,
         )
 
     def inputs(self) -> dict[str, object]:
@@ -206,7 +207,7 @@ class Scenario:
             "overhead_bytes": self.overhead_bytes,
             "device_reserve_bytes": self.device_reserve_bytes,
             "safety_margin_bytes": self.safety_margin_bytes,
-            "total_layers": self.total_layers,
+            "total_transformer_blocks": self.total_transformer_blocks,
         }
 
     def observe(self) -> dict[str, object]:
@@ -215,7 +216,10 @@ class Scenario:
         observed: dict[str, object] = {}
         for name in OBSERVED_FIELDS:
             value = getattr(result, name)
-            observed[name] = value.value if hasattr(value, "value") else value
+            if hasattr(value, "model_dump"):
+                observed[name] = value.model_dump(mode="json")
+            else:
+                observed[name] = value.value if hasattr(value, "value") else value
         return observed
 
 
@@ -229,25 +233,25 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=256 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.GPU_RESIDENT,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_resident"}),
         notes=("7.75 GiB required against 8 GiB of VRAM.",),
     ),
     Scenario(
-        name="gpu_offload_layer_split",
-        question="Weights exceed VRAM, but a layer split fits both pools.",
+        name="gpu_offload_transformer_block_split",
+        question="Weights exceed VRAM, but a transformer-block split fits both pools.",
         machine=DISCRETE_8GB_24GB,
         weights_bytes=10 * GIB,
         kv_cache_bytes=1 * GIB,
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=40,
+        total_transformer_blocks=40,
         expected_mode=HardwareFitMode.GPU_OFFLOAD,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
-        covers=frozenset({"gpu_offload", "layer_placement"}),
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
+        covers=frozenset({"gpu_offload", "transformer_block_placement"}),
         notes=("13 GiB resident requirement; 6.5 GiB of VRAM left for weights.",),
     ),
     Scenario(
@@ -259,7 +263,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.CPU_RAM,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"cpu_ram"}),
@@ -277,7 +281,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=4 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=4 * GIB,
-        total_layers=80,
+        total_transformer_blocks=80,
         expected_mode=HardwareFitMode.TOO_LARGE,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"too_large"}),
@@ -292,9 +296,9 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.GPU_RESIDENT,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_resident", "exact_boundary"}),
         notes=("gpu_required_bytes is exactly 8 GiB; the comparison is <=.",),
     ),
@@ -306,32 +310,35 @@ SCENARIOS: tuple[Scenario, ...] = (
         kv_cache_bytes=2 * GIB,
         overhead_bytes=1 * GIB,
         safety_margin_bytes=1 * GIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.CPU_RAM,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"cpu_ram", "exact_boundary", "no_gpu_topology"}),
         notes=(
             "ram_required_bytes is exactly 12 GiB. On discrete hardware a device "
             "reserve is VRAM, so a CPU_RAM placement does not pay for it. "
-            "gpu_layers is None, not 0: there is no GPU for a layer count to "
-            "describe.",
+            "gpu_transformer_blocks is None, not 0: there is no GPU for a "
+            "transformer-block count to describe.",
         ),
     ),
     Scenario(
         name="no_gpu_too_large",
-        question="No GPU and not enough RAM — does gpu_layers stay None?",
+        question=(
+            "No GPU and not enough RAM — does gpu_transformer_blocks stay None?"
+        ),
         machine=NO_GPU_12GB,
         weights_bytes=20 * GIB,
         kv_cache_bytes=2 * GIB,
         overhead_bytes=2 * GIB,
         safety_margin_bytes=2 * GIB,
-        total_layers=48,
+        total_transformer_blocks=48,
         expected_mode=HardwareFitMode.TOO_LARGE,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"too_large", "no_gpu_topology"}),
         notes=(
-            "Pairs with exact_ram_boundary_is_a_fit: both report gpu_layers None "
-            "because the machine has no GPU, regardless of the mode reached.",
+            "Pairs with exact_ram_boundary_is_a_fit: both report "
+            "gpu_transformer_blocks None because the machine has no GPU, "
+            "regardless of the mode reached.",
         ),
     ),
     Scenario(
@@ -343,9 +350,9 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.GPU_RESIDENT,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_resident", "kv_sensitivity"}),
         notes=("Pairs with kv_large_pushes_the_model_off_the_gpu.",),
     ),
@@ -358,9 +365,9 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.GPU_OFFLOAD,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_offload", "kv_sensitivity"}),
         notes=("Pairs with kv_small_keeps_the_model_on_the_gpu.",),
     ),
@@ -373,9 +380,9 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=28,
+        total_transformer_blocks=28,
         expected_mode=HardwareFitMode.GPU_RESIDENT,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_resident", "concurrency_sensitivity"}),
         notes=("Pairs with four_concurrent_users_force_offload.",),
     ),
@@ -388,41 +395,44 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=512 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=28,
+        total_transformer_blocks=28,
         expected_mode=HardwareFitMode.GPU_OFFLOAD,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
         covers=frozenset({"gpu_offload", "concurrency_sensitivity"}),
         notes=("Pairs with single_user_kv_fits_on_the_gpu.",),
     ),
     Scenario(
-        name="layer_placement_with_layer_metadata",
-        question="With a layer count, the split is expressed in layers.",
+        name="transformer_block_placement_with_metadata",
+        question=(
+            "With a transformer-block count, the split is expressed in "
+            "transformer blocks."
+        ),
         machine=DISCRETE_8GB_24GB,
         weights_bytes=9 * GIB,
         kv_cache_bytes=1 * GIB,
         overhead_bytes=1 * GIB,
         device_reserve_bytes=256 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=36,
+        total_transformer_blocks=36,
         expected_mode=HardwareFitMode.GPU_OFFLOAD,
-        expected_placement=HardwareFitPlacementMethod.LAYERS,
-        covers=frozenset({"gpu_offload", "layer_placement"}),
-        notes=("Pairs with byte_fallback_without_layer_metadata.",),
+        expected_placement=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
+        covers=frozenset({"gpu_offload", "transformer_block_placement"}),
+        notes=("Pairs with byte_fallback_without_transformer_block_metadata.",),
     ),
     Scenario(
-        name="byte_fallback_without_layer_metadata",
-        question="Without a layer count, the split is estimated in bytes.",
+        name="byte_fallback_without_transformer_block_metadata",
+        question="Without a transformer-block count, the split is estimated in bytes.",
         machine=DISCRETE_8GB_24GB,
         weights_bytes=9 * GIB,
         kv_cache_bytes=1 * GIB,
         overhead_bytes=1 * GIB,
         device_reserve_bytes=256 * MIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=None,
+        total_transformer_blocks=None,
         expected_mode=HardwareFitMode.GPU_OFFLOAD,
         expected_placement=HardwareFitPlacementMethod.ESTIMATED_BYTES,
         covers=frozenset({"gpu_offload", "byte_fallback"}),
-        notes=("Pairs with layer_placement_with_layer_metadata.",),
+        notes=("Pairs with transformer_block_placement_with_metadata.",),
     ),
     Scenario(
         name="vram_plus_ram_is_not_a_single_pool",
@@ -431,7 +441,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         weights_bytes=10 * GIB,
         kv_cache_bytes=5 * GIB,
         overhead_bytes=1 * GIB,
-        total_layers=10,
+        total_transformer_blocks=10,
         expected_mode=HardwareFitMode.TOO_LARGE,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"too_large", "false_pool_sum"}),
@@ -450,7 +460,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         kv_cache_bytes=1 * GIB,
         overhead_bytes=1 * GIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.CPU_RAM,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"cpu_ram"}),
@@ -464,7 +474,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         kv_cache_bytes=4 * GIB,
         overhead_bytes=3 * GIB,
         safety_margin_bytes=3 * GIB,
-        total_layers=64,
+        total_transformer_blocks=64,
         expected_mode=HardwareFitMode.TOO_LARGE,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"too_large"}),
@@ -478,7 +488,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         overhead_bytes=1 * GIB,
         device_reserve_bytes=1 * GIB,
         safety_margin_bytes=512 * MIB,
-        total_layers=32,
+        total_transformer_blocks=32,
         expected_mode=HardwareFitMode.CPU_RAM,
         expected_placement=HardwareFitPlacementMethod.NONE,
         covers=frozenset({"cpu_ram", "unified_reserve"}),
@@ -507,9 +517,9 @@ CONTROLLED_PAIRS: tuple[tuple[str, str, str], ...] = (
         "kv_cache_bytes",
     ),
     (
-        "layer_placement_with_layer_metadata",
-        "byte_fallback_without_layer_metadata",
-        "total_layers",
+        "transformer_block_placement_with_metadata",
+        "byte_fallback_without_transformer_block_metadata",
+        "total_transformer_blocks",
     ),
     (
         "unified_memory_uses_one_shared_pool",

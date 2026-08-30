@@ -140,6 +140,10 @@ temp/
 *.tmp
 *.bak
 
+# Hardware validation evidence is intentionally reviewable/versionable even
+# though regular application logs stay ignored.
+!validation/**/*.log
+
 # =====================================================================
 # Artefactos específicos del TFG (fases futuras)
 # =====================================================================
@@ -151,3 +155,4 @@ benchmarks/results/
 reports/
 *.html.out
 *.gif
+validation/**/*.log

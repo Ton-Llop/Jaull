@@ -104,6 +104,19 @@ estimated bytes is never confused with one read off an artifact. The result is a
 `HardwareFitResult`, which travels with the candidate from inspection all the way to the
 recommendation.
 
+When the placement is block-aware, the result uses `gpu_transformer_blocks` and
+`total_transformer_blocks`. Those are runtime-agnostic planning units, not
+llama.cpp `--n-gpu-layers` values.
+
+For partial GPU offload, `offload_diagnostics` records the selected transformer-block
+boundary and the first higher block count that exceeded the estimated VRAM budget. This is
+capacity-planning evidence, not a measured CUDA allocation and not a runtime mapping.
+`search_ceiling_transformer_blocks` is the coarse upper bound the analyzer considered before
+the loop; if it equals the selected block count, `first_rejected_higher = null` means no
+higher partial candidate was evaluated. Each candidate reports non-negative
+`headroom_bytes = max(0, available_vram_bytes - gpu_required_bytes)` and
+`excess_bytes = max(0, gpu_required_bytes - available_vram_bytes)`.
+
 The point of keeping this separate from the compatibility status is that **RAM and VRAM are
 never treated as one pool**. A 7B model that fits in 32 GiB of system RAM and not in 8 GiB of
 VRAM is a real option with a real cost, not a failure — and saying so requires naming the

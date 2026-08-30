@@ -186,7 +186,10 @@ def test_no_resolve_base_model_skips_enrichment() -> None:
 
 
 def test_estimate_json_includes_enrichment_fields() -> None:
-    from jaull.presentation.estimation_report import estimate_to_json_dict
+    from jaull.presentation.estimation_report import (
+        SCHEMA_VERSION,
+        estimate_to_json_dict,
+    )
 
     analysis = _gguf_analysis()
     client = _StubHfClient(
@@ -219,7 +222,7 @@ def test_estimate_json_includes_enrichment_fields() -> None:
         range_client=_StubRangeClient(body=header_body),
     )
     payload = estimate_to_json_dict(estimate)
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["base_model_resolution"]["repo_id"] == "meta-llama/Meta-Llama-3.1-8B-Instruct"
     assert payload["configuration_sources"]  # non-empty
     for value in payload["configuration_sources"].values():
