@@ -38,11 +38,15 @@ README roadmap says so.
 - Per-transformer-block offloading **is** modelled, but only as a placement,
   not as a measured runtime layer cost. `HardwareFitResult` reports a mode, a
   `gpu_transformer_blocks` / `total_transformer_blocks` split and a per-pool
-  byte breakdown, and travels on `MemoryEstimate.hardware_fit`. The split
-  assumes every transformer block weighs the same: token embeddings and the
-  output head are not separated out. `gpu_transformer_blocks` is a
-  runtime-agnostic planning estimate, not a promise about what a backend will
-  pass to `--n-gpu-layers`.
+  byte breakdown, and travels on `MemoryEstimate.hardware_fit`.
+- `WeightEstimate.transformer_block_decomposition` now separates an estimated
+  transformer-block aggregate from estimated non-block weights when a supported
+  dense config is complete. The split is derived from parameter fractions, not
+  GGUF tensor bytes; mixed tensor quantization, alignment and omitted small
+  tensors can differ from it. Hardware Fit does not use this decomposition yet:
+  non-block placement is unresolved, so its current placement boundary remains
+  conservative. `gpu_transformer_blocks` is a runtime-agnostic planning
+  estimate, not a promise about what a backend will pass to `--n-gpu-layers`.
 - The KV cache is placed **proportionally to the blocks**, which is the generic
   default rather than a guarantee. A runtime may keep the cache entirely in host
   memory, quantize it separately, or page it; none of that is modelled here, and

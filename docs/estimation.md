@@ -30,6 +30,31 @@ Highest-confidence source first:
 quantized formats add scales and block metadata (typically under 10%), so that path is
 tagged `DERIVED` to make the approximation visible.
 
+When a supported dense transformer config exposes all required dimensions and explicitly
+states whether input embeddings and the output head are tied, `WeightEstimate` also carries a
+`transformer_block_decomposition`. Jaull first estimates the parameter split:
+
+```text
+transformer-block parameters = blocks × (attention parameters + gated-FFN parameters)
+non-block parameters         = token embeddings + separate output head (when untied)
+```
+
+It projects that parameter fraction onto the artifact's total weight bytes. The block aggregate
+is rounded down once and the non-block aggregate receives the exact remainder, so the two always
+sum back to the artifact byte count. The displayed per-block estimate rounds the block aggregate
+up over the transformer-block count.
+
+This is an **estimate, not tensor-level measurement**. GGUF can quantize tensor classes
+differently and carries alignment and format metadata, so parameter fraction and byte fraction
+need not be identical. Unknown tying, incomplete configs, unsupported architectures and MoE
+models use the explicit `uniform_weight_fallback`; a missing block count produces no
+decomposition.
+
+The decomposition is currently informational. Hardware Fit still uses its existing conservative
+`total_weight_bytes / total_transformer_blocks` placement cost because Jaull has not yet defined
+where non-block weights belong. Consequently this addition does not change GPU/RAM budgets,
+placement modes or the selected transformer-block boundary.
+
 ### 2. KV cache
 
 ```text

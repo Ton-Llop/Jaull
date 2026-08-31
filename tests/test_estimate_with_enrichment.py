@@ -233,3 +233,72 @@ def test_gguf_header_source_is_labelled_correctly() -> None:
     # Confirms the new EstimateSource values are wired.
     assert EstimateSource.GGUF_HEADER.value == "gguf_header"
     assert EstimateSource.BASE_MODEL_CONFIG.value == "base_model_config"
+
+
+def test_qwen_gguf_estimate_gets_architecture_weight_decomposition() -> None:
+    total_weight_bytes = 4_683_074_240
+    variant = GgufVariant(
+        quantization="Q4_K_M",
+        files=[
+            ModelFile(
+                path="Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+                size_bytes=total_weight_bytes,
+            )
+        ],
+        total_bytes=total_weight_bytes,
+    )
+    analysis = ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="bartowski/Qwen2.5-7B-Instruct-GGUF"),
+        files=variant.files,
+        classification=RepositoryClassification(
+            primary_type=RepositoryType.GGUF,
+            detected_types={RepositoryType.GGUF},
+            formats={Format.GGUF},
+            gguf_variants=[variant],
+        ),
+    )
+    client = _StubHfClient(
+        card_data={"base_model": "Qwen/Qwen2.5-7B-Instruct"},
+        base_config={
+            "model_type": "qwen2",
+            "num_hidden_layers": 28,
+            "num_attention_heads": 28,
+            "num_key_value_heads": 4,
+            "hidden_size": 3584,
+            "head_dim": 128,
+            "intermediate_size": 18944,
+            "vocab_size": 152064,
+            "tie_word_embeddings": False,
+        },
+    )
+    header_body = build_header(
+        {
+            "general.architecture": "qwen2",
+            "qwen2.context_length": 32768,
+            "qwen2.block_count": 28,
+            "qwen2.embedding_length": 3584,
+            "qwen2.attention.head_count": 28,
+            "qwen2.attention.head_count_kv": 4,
+        }
+    )
+
+    estimate = estimator_service.estimate_memory(
+        analysis=analysis,
+        hardware=_hardware_with_gpu(vram_gib=24, ram_gib=64),
+        inference_cfg=InferenceConfiguration(
+            context_length=4096,
+            target_device=TargetDevice.AUTO,
+            quantization="Q4_K_M",
+        ),
+        client=client,
+        range_client=_StubRangeClient(body=header_body),
+        recommend_runtime=False,
+    )
+
+    decomposition = estimate.weights.transformer_block_decomposition
+    assert decomposition is not None
+    assert decomposition.method.value == "config_parameter_decomposition"
+    assert decomposition.total_weight_bytes == total_weight_bytes
+    assert decomposition.estimated_transformer_block_weight_bytes == 4_012_773_975
+    assert decomposition.estimated_non_block_weight_bytes == 670_300_265
+    assert decomposition.estimated_bytes_per_transformer_block == 143_313_357

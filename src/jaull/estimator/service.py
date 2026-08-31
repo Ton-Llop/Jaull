@@ -67,6 +67,10 @@ def estimate_memory(
         )
 
     effective_config = _pick_effective_config(analysis.config, enrichment)
+    weight_estimate = weights.add_transformer_block_decomposition(
+        weight_estimate,
+        effective_config,
+    )
 
     kv_estimate = kv_cache.estimate_kv_cache(
         config=effective_config,

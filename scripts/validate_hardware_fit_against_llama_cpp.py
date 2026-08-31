@@ -64,7 +64,10 @@ from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
-from jaull.reporting.estimation import hardware_fit_offload_diagnostics_to_dict
+from jaull.reporting.estimation import (
+    hardware_fit_offload_diagnostics_to_dict,
+    transformer_block_weight_decomposition_to_dict,
+)
 from jaull.runtime.locator import RuntimeLocator
 
 MIB = 1024**2
@@ -127,6 +130,11 @@ class Prediction:
             },
             "estimate": {
                 "weights_bytes": estimate.weights.component.bytes,
+                "transformer_block_decomposition": (
+                    transformer_block_weight_decomposition_to_dict(
+                        estimate.weights.transformer_block_decomposition
+                    )
+                ),
                 "kv_cache_bytes": estimate.kv_cache.component.bytes,
                 "kv_cache_layers": estimate.kv_cache.layers,
                 "kv_cache_formula": estimate.kv_cache.formula,
@@ -584,6 +592,7 @@ def render(report: dict[str, Any]) -> str:
         f"  status/conf       {estimate['status']} / {estimate['confidence']}",
     ]
     lines.extend(_render_hfa_decision_boundary(fit))
+    lines.extend(_render_weight_decomposition(estimate))
     lines.extend(["", "OBSERVED"])
     lines.append(
         f"  {'-ngl':>6}  {'started':>7}  {'offloaded':>10}  "
@@ -630,6 +639,26 @@ def render(report: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _render_weight_decomposition(estimate: dict[str, Any]) -> list[str]:
+    decomposition = estimate.get("transformer_block_decomposition")
+    if decomposition is None:
+        return []
+    return [
+        "",
+        "WEIGHT DECOMPOSITION (estimated; not used for placement yet)",
+        f"  method                    {decomposition['method']}",
+        "  total artifact weights    "
+        f"{_mib(decomposition['total_weight_bytes'])}",
+        "  transformer-block weights "
+        f"{_mib(decomposition['estimated_transformer_block_weight_bytes'])}",
+        "  non-block weights         "
+        f"{_mib(decomposition['estimated_non_block_weight_bytes'])}",
+        "  estimated per block       "
+        f"{_mib(decomposition['estimated_bytes_per_transformer_block'])}",
+        "  non-block placement       not modelled",
+    ]
 
 
 def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:

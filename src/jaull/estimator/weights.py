@@ -9,6 +9,8 @@ from jaull.domain.estimation import (
     EstimateSource,
     EstimationConfidence,
     MemoryComponent,
+    TransformerBlockWeightDecomposition,
+    TransformerBlockWeightDecompositionMethod,
     WeightEstimate,
 )
 from jaull.domain.inference import WeightPrecision
@@ -18,6 +20,7 @@ from jaull.domain.model import (
     ModelConfig,
     SafetensorsSummary,
 )
+from jaull.domain.parameters import estimate_config_parameter_decomposition
 from jaull.estimator.policies import BYTES_PER_PARAM, bytes_per_parameter
 
 # Map safetensors dtype strings (F16, BF16, I8, ...) to our precision enum where
@@ -141,6 +144,61 @@ def estimate_weights_from_files(
     )
 
 
+def add_transformer_block_decomposition(
+    estimate: WeightEstimate,
+    config: ModelConfig | None,
+) -> WeightEstimate:
+    """Attach an informational block/non-block byte decomposition.
+
+    The projection is deliberately separate from Hardware Fit placement. The
+    estimator may expose a better marginal block estimate while placement keeps
+    using its existing conservative total-weights split until non-block weight
+    placement has a defined policy.
+    """
+
+    total_weight_bytes = estimate.component.bytes
+    total_transformer_blocks = config.num_hidden_layers if config else None
+    if (
+        total_weight_bytes is None
+        or total_weight_bytes < 0
+        or total_transformer_blocks is None
+        or total_transformer_blocks <= 0
+    ):
+        return estimate
+
+    parameter_decomposition = estimate_config_parameter_decomposition(config)
+    if parameter_decomposition is None:
+        block_weight_bytes = total_weight_bytes
+        non_block_weight_bytes = 0
+        method = TransformerBlockWeightDecompositionMethod.UNIFORM_WEIGHT_FALLBACK
+    else:
+        # Floor the projected block share once, then assign every remaining byte
+        # to the non-block aggregate. This makes conservation exact without a
+        # float conversion for multi-billion-parameter models.
+        block_weight_bytes = (
+            total_weight_bytes
+            * parameter_decomposition.transformer_block_parameters
+            // parameter_decomposition.total_parameters
+        )
+        non_block_weight_bytes = total_weight_bytes - block_weight_bytes
+        method = (
+            TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
+        )
+
+    bytes_per_transformer_block = (
+        block_weight_bytes + total_transformer_blocks - 1
+    ) // total_transformer_blocks
+    decomposition = TransformerBlockWeightDecomposition(
+        total_weight_bytes=total_weight_bytes,
+        estimated_transformer_block_weight_bytes=block_weight_bytes,
+        estimated_non_block_weight_bytes=non_block_weight_bytes,
+        estimated_bytes_per_transformer_block=bytes_per_transformer_block,
+        total_transformer_blocks=total_transformer_blocks,
+        method=method,
+    )
+    return estimate.model_copy(update={"transformer_block_decomposition": decomposition})
+
+
 def _unknown_weights(reason: str) -> WeightEstimate:
     return WeightEstimate(
         component=MemoryComponent(
@@ -184,6 +242,7 @@ def _format(byte_count: int) -> str:
 
 __all__ = [
     "BYTES_PER_PARAM",
+    "add_transformer_block_decomposition",
     "estimate_weights_from_files",
     "estimate_weights_from_gguf",
     "estimate_weights_from_safetensors",
