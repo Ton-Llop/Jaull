@@ -326,6 +326,10 @@ def test_qwen_7b_rtx2060_regression_reports_transformer_blocks_not_runtime_layer
     rejected = diagnostics.first_rejected_higher
 
     assert selected.gpu_transformer_blocks == 18
+    # Placement intentionally keeps using the conservative total-weight split.
+    # The architecture-derived WeightEstimate decomposition is diagnostic until
+    # non-block weight placement has a defined policy.
+    assert selected.gpu_weight_bytes == 18 * math.ceil(4_683_074_240 / 28)
     assert selected.gpu_required_bytes == result.gpu_required_bytes
     assert selected.gpu_required_bytes <= selected.available_vram_bytes
     assert selected.excess_bytes == 0

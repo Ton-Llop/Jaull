@@ -26,6 +26,14 @@ class _Prediction:
             },
             "estimate": {
                 "weights_bytes": 4 * harness.GIB,
+                "transformer_block_decomposition": {
+                    "total_weight_bytes": 4 * harness.GIB,
+                    "estimated_transformer_block_weight_bytes": 3 * harness.GIB,
+                    "estimated_non_block_weight_bytes": harness.GIB,
+                    "estimated_bytes_per_transformer_block": 128 * harness.MIB,
+                    "total_transformer_blocks": 24,
+                    "method": "config_parameter_decomposition",
+                },
                 "kv_cache_bytes": harness.GIB,
                 "runtime_overhead_bytes": harness.MIB,
                 "device_reserve_bytes": 512 * harness.MIB,
@@ -119,5 +127,8 @@ def test_hfa_block_probe_keeps_observations_but_not_vram_error_percentages() -> 
     assert "measured available  1050.0 MiB" in rendered
     assert "headroom            50.0 MiB" in rendered
     assert "rejected estimated budget breakdown" in rendered
+    assert "WEIGHT DECOMPOSITION (estimated; not used for placement yet)" in rendered
+    assert "config_parameter_decomposition" in rendered
+    assert "non-block placement       not modelled" in rendered
     assert "VRAM error vs device Δ      -" in rendered
     assert "VRAM error vs llama bufs    -" in rendered

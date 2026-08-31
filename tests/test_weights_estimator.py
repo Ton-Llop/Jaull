@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from jaull.domain.enums import Format, RepositoryType
+from jaull.domain.estimation import (
+    EstimateSource,
+    EstimationConfidence,
+    MemoryComponent,
+    TransformerBlockWeightDecomposition,
+    TransformerBlockWeightDecompositionMethod,
+    WeightEstimate,
+)
 from jaull.domain.inference import WeightPrecision
 from jaull.domain.model import (
     GgufVariant,
@@ -13,6 +23,32 @@ from jaull.domain.model import (
 )
 from jaull.estimator import weights
 from jaull.estimator.policies import bytes_per_parameter
+
+
+def _weight_estimate(total_bytes: int | None) -> WeightEstimate:
+    return WeightEstimate(
+        component=MemoryComponent(
+            name="Weights",
+            bytes=total_bytes,
+            source=EstimateSource.EXACT,
+            confidence=EstimationConfidence.HIGH,
+            explanation="test artifact",
+        )
+    )
+
+
+def _qwen_config(*, tie_word_embeddings: bool | None = False) -> ModelConfig:
+    return ModelConfig(
+        model_type="qwen2",
+        num_hidden_layers=28,
+        num_attention_heads=28,
+        num_key_value_heads=4,
+        hidden_size=3584,
+        head_dim=128,
+        intermediate_size=18944,
+        vocab_size=152064,
+        tie_word_embeddings=tie_word_embeddings,
+    )
 
 
 def _analysis(files: list[ModelFile], primary: RepositoryType) -> ModelAnalysis:
@@ -133,3 +169,139 @@ def test_weights_from_files_unknown_when_no_weights_present() -> None:
     )
     assert est.component.bytes is None
     assert est.component.source.value == "unknown"
+
+
+def test_qwen_weight_decomposition_uses_config_parameter_fraction() -> None:
+    total_bytes = 4_683_074_240
+
+    estimate = weights.add_transformer_block_decomposition(
+        _weight_estimate(total_bytes),
+        _qwen_config(),
+    )
+
+    decomposition = estimate.transformer_block_decomposition
+    assert decomposition is not None
+    assert (
+        decomposition.method
+        is TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
+    )
+    assert decomposition.total_weight_bytes == total_bytes
+    assert decomposition.estimated_transformer_block_weight_bytes == 4_012_773_975
+    assert decomposition.estimated_non_block_weight_bytes == 670_300_265
+    assert decomposition.estimated_bytes_per_transformer_block == 143_313_357
+    assert decomposition.total_transformer_blocks == 28
+    assert (
+        decomposition.estimated_transformer_block_weight_bytes
+        + decomposition.estimated_non_block_weight_bytes
+        == total_bytes
+    )
+
+
+def test_tied_embeddings_remove_the_separate_output_head_from_fraction() -> None:
+    total_bytes = 4_683_074_240
+    untied = weights.add_transformer_block_decomposition(
+        _weight_estimate(total_bytes),
+        _qwen_config(tie_word_embeddings=False),
+    ).transformer_block_decomposition
+    tied = weights.add_transformer_block_decomposition(
+        _weight_estimate(total_bytes),
+        _qwen_config(tie_word_embeddings=True),
+    ).transformer_block_decomposition
+
+    assert untied is not None
+    assert tied is not None
+    assert (
+        tied.estimated_non_block_weight_bytes
+        < untied.estimated_non_block_weight_bytes
+    )
+    assert (
+        tied.estimated_transformer_block_weight_bytes
+        > untied.estimated_transformer_block_weight_bytes
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        _qwen_config(tie_word_embeddings=None),
+        _qwen_config().model_copy(update={"model_type": "unknown_architecture"}),
+        _qwen_config().model_copy(update={"raw_flags": {"num_experts": 8}}),
+        _qwen_config().model_copy(update={"raw_flags": {"vision_config": {}}}),
+        _qwen_config().model_copy(update={"intermediate_size": None}),
+    ],
+)
+def test_incomplete_or_unsupported_config_uses_uniform_fallback(
+    config: ModelConfig,
+) -> None:
+    estimate = weights.add_transformer_block_decomposition(
+        _weight_estimate(101),
+        config,
+    )
+
+    decomposition = estimate.transformer_block_decomposition
+    assert decomposition is not None
+    assert (
+        decomposition.method
+        is TransformerBlockWeightDecompositionMethod.UNIFORM_WEIGHT_FALLBACK
+    )
+    assert decomposition.estimated_transformer_block_weight_bytes == 101
+    assert decomposition.estimated_non_block_weight_bytes == 0
+    assert decomposition.estimated_bytes_per_transformer_block == 4
+
+
+def test_config_decomposition_rounding_conserves_every_artifact_byte() -> None:
+    estimate = weights.add_transformer_block_decomposition(
+        _weight_estimate(101),
+        _qwen_config(),
+    )
+
+    decomposition = estimate.transformer_block_decomposition
+    assert decomposition is not None
+    assert (
+        decomposition.estimated_transformer_block_weight_bytes
+        + decomposition.estimated_non_block_weight_bytes
+        == 101
+    )
+    assert decomposition.estimated_bytes_per_transformer_block == 4
+
+
+@pytest.mark.parametrize("config", [None, ModelConfig(num_hidden_layers=0)])
+def test_missing_or_invalid_block_count_has_no_decomposition(
+    config: ModelConfig | None,
+) -> None:
+    estimate = weights.add_transformer_block_decomposition(
+        _weight_estimate(101),
+        config,
+    )
+
+    assert estimate.transformer_block_decomposition is None
+
+
+def test_legacy_weight_estimate_without_decomposition_still_loads() -> None:
+    estimate = WeightEstimate.model_validate(
+        {
+            "component": {
+                "name": "Weights",
+                "bytes": 123,
+                "source": "exact",
+                "confidence": "high",
+                "explanation": "legacy payload",
+            }
+        }
+    )
+
+    assert estimate.transformer_block_decomposition is None
+
+
+def test_weight_decomposition_rejects_non_conserving_payload() -> None:
+    with pytest.raises(ValueError, match="must sum exactly"):
+        TransformerBlockWeightDecomposition(
+            total_weight_bytes=100,
+            estimated_transformer_block_weight_bytes=80,
+            estimated_non_block_weight_bytes=19,
+            estimated_bytes_per_transformer_block=10,
+            total_transformer_blocks=8,
+            method=(
+                TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
+            ),
+        )

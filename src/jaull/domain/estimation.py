@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from jaull.domain.enums import RepositoryType
 from jaull.domain.inference import InferenceConfiguration, TargetDevice, WeightPrecision
@@ -35,6 +35,13 @@ class EstimationConfidence(StrEnum):
     MEDIUM = "medium"
     LOW = "low"
     UNKNOWN = "unknown"
+
+
+class TransformerBlockWeightDecompositionMethod(StrEnum):
+    """How model-weight bytes were divided into block and non-block weights."""
+
+    CONFIG_PARAMETER_DECOMPOSITION = "config_parameter_decomposition"
+    UNIFORM_WEIGHT_FALLBACK = "uniform_weight_fallback"
 
 
 class CompatibilityStatus(StrEnum):
@@ -117,6 +124,44 @@ class MemoryComponent(BaseModel):
     explanation: str
 
 
+class TransformerBlockWeightDecomposition(BaseModel):
+    """Estimated split of artifact bytes by architectural responsibility.
+
+    The config-based method projects a parameter fraction onto the artifact's
+    total weight bytes. It is not a tensor-level measurement: mixed tensor
+    quantization, alignment and format metadata can make the real byte split
+    differ. The aggregate split conserves bytes exactly. The per-block value is
+    rounded up independently, so multiplying it by the block count can exceed
+    the aggregate block bytes by at most ``total_transformer_blocks - 1``.
+
+    This describes weight estimation only. It does not say whether non-block
+    weights live in GPU or host memory and does not participate in Hardware Fit
+    placement yet.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total_weight_bytes: int = Field(ge=0)
+    estimated_transformer_block_weight_bytes: int = Field(ge=0)
+    estimated_non_block_weight_bytes: int = Field(ge=0)
+    estimated_bytes_per_transformer_block: int = Field(ge=0)
+    total_transformer_blocks: int = Field(gt=0)
+    method: TransformerBlockWeightDecompositionMethod
+
+    @model_validator(mode="after")
+    def _weights_are_conserved(self) -> TransformerBlockWeightDecomposition:
+        if (
+            self.estimated_transformer_block_weight_bytes
+            + self.estimated_non_block_weight_bytes
+            != self.total_weight_bytes
+        ):
+            raise ValueError(
+                "Transformer-block and non-block weight bytes must sum exactly "
+                "to total_weight_bytes."
+            )
+        return self
+
+
 class WeightEstimate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -125,6 +170,7 @@ class WeightEstimate(BaseModel):
     bits_per_parameter: float | None = None
     precision: WeightPrecision | None = None
     gguf_variant: str | None = None
+    transformer_block_decomposition: TransformerBlockWeightDecomposition | None = None
 
 
 class KvCacheEstimate(BaseModel):

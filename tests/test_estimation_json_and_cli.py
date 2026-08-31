@@ -125,6 +125,13 @@ def test_json_output_has_stable_schema(monkeypatch) -> None:
     assert payload["model"]["repo_id"] == "user/model"
     assert payload["memory"]["weights_bytes"] == 500_000_000 * 2
     assert payload["kv_cache"]["layers"] == 8
+    decomposition = payload["weights"]["transformer_block_decomposition"]
+    assert decomposition["method"] == "uniform_weight_fallback"
+    assert decomposition["total_weight_bytes"] == 500_000_000 * 2
+    assert decomposition["estimated_transformer_block_weight_bytes"] == (
+        500_000_000 * 2
+    )
+    assert decomposition["estimated_non_block_weight_bytes"] == 0
     assert payload["assessment"]["status"] in {
         "comfortable",
         "compatible",

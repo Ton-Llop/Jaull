@@ -207,7 +207,8 @@
           "num_parameters": null,
           "bits_per_parameter": null,
           "precision": null,
-          "gguf_variant": null
+          "gguf_variant": null,
+          "transformer_block_decomposition": null
         },
         "kv_cache": {
           "layers": null,

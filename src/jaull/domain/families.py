@@ -19,7 +19,11 @@ from jaull.domain.estimation import (
     WeightEstimate,
 )
 from jaull.domain.model import ModelAnalysis, ModelConfig
-from jaull.domain.parameters import ParameterCount, ParameterCountSource
+from jaull.domain.parameters import (
+    ParameterCount,
+    ParameterCountSource,
+    estimate_total_parameters_from_config,
+)
 
 # Tokens that split a repository name into "family" (kept) and "variant"
 # (bucketed by series). Format tokens (gguf/awq/…) are stripped when building
@@ -177,40 +181,7 @@ def _from_config(config: ModelConfig | None) -> int | None:
     stand in for a real measurement — it lands within a few percent of the
     manufacturer-reported size — but honestly under ``MEDIUM`` confidence.
     """
-    if config is None:
-        return None
-    layers = config.num_hidden_layers
-    hidden = config.hidden_size
-    heads = config.num_attention_heads
-    vocab = config.vocab_size
-    if not layers or not hidden or not heads or not vocab:
-        return None
-
-    head_dim = config.head_dim or (hidden // heads if heads else None)
-    if not head_dim:
-        return None
-    kv_heads = config.num_key_value_heads or heads
-    intermediate = config.intermediate_size or (4 * hidden)
-
-    # Attention: Q = hidden * (heads * head_dim), K/V = hidden * (kv_heads *
-    # head_dim), O = hidden * hidden. Biases are negligible at this scale.
-    attn_per_layer = (
-        hidden * heads * head_dim              # Q
-        + 2 * hidden * kv_heads * head_dim     # K + V
-        + hidden * hidden                      # O
-    )
-    # FFN: assume SwiGLU (gate + up + down = 3 * hidden * intermediate) — that
-    # is what recent 7B-class families ship. For legacy dense FFN this
-    # over-counts by ~1/3; still closer to reality than the old 12·L·H²
-    # formula, which ignored FFN width entirely.
-    ffn_per_layer = 3 * hidden * intermediate
-    layer_total = layers * (attn_per_layer + ffn_per_layer)
-
-    embed = vocab * hidden
-    output_head = 0 if config.tie_word_embeddings else vocab * hidden
-
-    total = embed + layer_total + output_head
-    return total if total > 0 else None
+    return estimate_total_parameters_from_config(config)
 
 
 def _from_repo_id(repo_id: str) -> int | None:
