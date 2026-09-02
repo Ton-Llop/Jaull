@@ -2,6 +2,8 @@
 
 **From local hardware to evidence-backed LLM deployment decisions.**
 
+[![codecov](https://codecov.io/gh/Ton-Llop/Jaull/graph/badge.svg)](https://codecov.io/gh/Ton-Llop/Jaull)
+
 Jaull is an explainable local-AI qualification toolkit. It reads your machine, selects
 candidate language models, resolves the exact artifact you would actually run, verifies it,
 checks whether a local runtime and compute backend can execute it, runs it, benchmarks it,
