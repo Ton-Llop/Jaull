@@ -51,11 +51,23 @@ jobs:
       - name: Type-check
         run: uv run mypy src
 
-      # No GPU, no NVML, no Hugging Face account and no TTY on the runners: the
-      # suite fakes NVML, HfApi and the HTTP client, and Textual is driven
-      # headless through App.run_test().
+      # Generate coverage once on the canonical Linux/Python combination.
+      - name: Test with coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run pytest --cov=jaull --cov-report=xml --cov-report=term
+
+      # The remaining matrix entries still run the complete test suite.
       - name: Test
+        if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.12'
         run: uv run pytest
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: true
 
       - name: Build wheel and source distribution
         run: uv build
@@ -71,6 +83,7 @@ jobs:
   smoke-install:
     name: Installed-wheel smoke test
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 

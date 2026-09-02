@@ -156,3 +156,9 @@ reports/
 *.html.out
 *.gif
 validation/**/*.log
+
+# CODECOV
+
+.coverage
+coverage.xml
+htmlcov/
