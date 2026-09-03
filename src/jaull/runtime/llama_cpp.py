@@ -4,31 +4,28 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from jaull.domain.estimation import (
-    CompatibilityStatus,
-    EstimationConfidence,
-    MemoryEstimate,
-)
+from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import (
     RuntimeFlag,
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
-from jaull.runtime.policies import (
-    LLAMA_CPP_DEFAULT_LAYERS_WHEN_UNKNOWN,
-    LLAMA_CPP_HEADROOM_BYTES,
-)
+from jaull.runtime.llama_cpp_launch_policy import pick_gpu_layers
 
 
 def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecommendation:
+    del hardware  # the launch policy reads everything it needs from the estimate
     cfg = estimate.inference_configuration
     variant = estimate.weights.gguf_variant or "model"
     file_hint = _first_gguf_filename(estimate) or f"{variant}.gguf"
 
-    n_gpu_layers, reasons, warnings, confidence = _pick_layers(estimate, hardware)
+    layer_plan = pick_gpu_layers(estimate)
+    n_gpu_layers = layer_plan.n_gpu_layers
+    reasons = layer_plan.reasons
+    warnings = layer_plan.warnings
+    confidence = layer_plan.confidence
 
     flags = [
         RuntimeFlag(
@@ -75,70 +72,6 @@ def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecomme
         reasons=reasons,
         warnings=warnings,
         confidence=confidence,
-    )
-
-
-def _pick_layers(
-    estimate: MemoryEstimate, hardware: HardwareProfile
-) -> tuple[int, list[str], list[str], EstimationConfidence]:
-    assessment = estimate.assessment
-    device = assessment.effective_device
-    status = assessment.status
-
-    if device is TargetDevice.CPU:
-        return (
-            0,
-            ["Effective device is CPU, so no layers are offloaded to GPU."],
-            [],
-            EstimationConfidence.HIGH,
-        )
-
-    if status in {
-        CompatibilityStatus.COMFORTABLE,
-        CompatibilityStatus.COMPATIBLE,
-        CompatibilityStatus.TIGHT,
-    }:
-        return (
-            -1,
-            [f"Model fits in VRAM ({status.value}); using --n-gpu-layers -1 (all)."],
-            [],
-            EstimationConfidence.HIGH,
-        )
-
-    # Offloading required.
-    weights_bytes = estimate.weights.component.bytes
-    block_count = estimate.kv_cache.layers
-    if weights_bytes and block_count and block_count > 0:
-        bytes_per_layer = weights_bytes // block_count
-        vram = assessment.available_vram_bytes or 0
-        reserve = estimate.inference_configuration.device_reserve_bytes
-        kv_bytes = estimate.kv_cache.component.bytes or 0
-        available_for_layers = (
-            vram - reserve - LLAMA_CPP_HEADROOM_BYTES - kv_bytes
-        )
-        if available_for_layers <= 0 or bytes_per_layer <= 0:
-            n = 0
-        else:
-            n = min(block_count, available_for_layers // bytes_per_layer)
-        return (
-            int(n),
-            [
-                f"Offloading required: {n} of {block_count} layers "
-                f"({bytes_per_layer / (1024**3):.2f} GiB/layer) fit in VRAM."
-            ],
-            [],
-            EstimationConfidence.MEDIUM,
-        )
-
-    return (
-        LLAMA_CPP_DEFAULT_LAYERS_WHEN_UNKNOWN,
-        ["Offloading required but layer count is unknown."],
-        [
-            "Block count unavailable; using a conservative fallback of "
-            f"{LLAMA_CPP_DEFAULT_LAYERS_WHEN_UNKNOWN} layers. "
-            "Increase manually if VRAM allows."
-        ],
-        EstimationConfidence.LOW,
     )
 
 

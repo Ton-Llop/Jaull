@@ -91,6 +91,7 @@ from jaull.tui.screens.recommendation_execution import (
     InferencePrompt,
     InferenceResponse,
     RecommendationExecutionScreen,
+    _run_metadata,
 )
 from jaull.tui.screens.recommendation_results import (
     ExecutionPathBenchmarkCompareScreen,
@@ -754,6 +755,13 @@ def _export_modal_is_ready(screen: object) -> bool:
         and bool(screen.query("#res-export-path"))
         and bool(screen.query("#res-export-confirm"))
     )
+
+
+def test_run_metadata_labels_the_launch_plan_distinctly_from_hardware_fit() -> None:
+    rec = _recommendation(runtime=_runtime(n_gpu_layers=23))
+    values = _run_metadata(rec, None)
+    assert "launch --n-gpu-layers 23" in values
+    assert not any("GPU offload" in value for value in values)
 
 
 def test_results_screen_runs_an_alternative_recommendation() -> None:

@@ -15,6 +15,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from jaull.application.execution import (
+    ExecutionOverrides,
+    plan_execution,
+    plan_launch,
+)
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
 from jaull.bootstrap.container import (
@@ -720,6 +725,50 @@ class AdvisorService:
             )
         return plans or [current]
 
+    def plan_launch(
+        self,
+        *,
+        runtime: RuntimeName,
+        estimate: MemoryEstimate | None,
+        hardware: HardwareProfile | None,
+        overrides: ExecutionOverrides | None = None,
+    ) -> RuntimeRecommendation:
+        """Delegate to the execution planner. No logic here."""
+        return plan_launch(
+            runtime=runtime,
+            estimate=estimate,
+            hardware=hardware,
+            overrides=overrides,
+        )
+
+    def plan_execution(
+        self,
+        *,
+        model_identity: ModelIdentity,
+        artifact: ArtifactVariant,
+        runtime: RuntimeName,
+        estimate: MemoryEstimate | None,
+        hardware: HardwareProfile | None,
+        overrides: ExecutionOverrides | None = None,
+        launch: RuntimeRecommendation | None = None,
+        backend_selection: RuntimeBackendSelection | None = None,
+        runtime_capability: RuntimeCapability | None = None,
+        execution_readiness: ExecutionReadiness | None = None,
+    ) -> ExecutionPlan:
+        """The one place CLI and TUI build a run-ready plan. Delegates; no logic here."""
+        return plan_execution(
+            model_identity=model_identity,
+            artifact=artifact,
+            runtime=runtime,
+            estimate=estimate,
+            hardware=hardware,
+            overrides=overrides,
+            launch=launch,
+            backend_selection=backend_selection,
+            runtime_capability=runtime_capability,
+            execution_readiness=execution_readiness,
+        )
+
     def prepare_execution_plan(
         self,
         plan: ExecutionPlan,
@@ -727,8 +776,6 @@ class AdvisorService:
         hardware: HardwareProfile | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> PreparedExecutionPlan:
-        from jaull.execution_plans import build_execution_plan
-
         def report(message: str) -> None:
             if on_progress is not None:
                 on_progress(message)
@@ -748,12 +795,20 @@ class AdvisorService:
             resolve_base_model=True,
             recommend_runtime=True,
         )
-        runtime = estimate.runtime_recommendation or _runtime_for_variant(plan.artifact)
-        artifact = self._prepare_plan_artifact(plan, runtime, report)
+        # The launch policy is evaluated exactly once, here. The same resolved
+        # RuntimeRecommendation is used to prepare the artifact and, via
+        # ``launch=``, to build the final plan -- no second evaluation, no
+        # post-hoc mutation of a plan that was already built.
+        resolved_runtime = self.plan_launch(
+            runtime=plan.runtime_family,
+            estimate=estimate,
+            hardware=hw,
+        )
+        artifact = self._prepare_plan_artifact(plan, resolved_runtime, report)
         report("Selecting compute backend")
         selection = self.select_runtime_backend(hw)
         report("Checking runtime readiness")
-        if runtime.runtime is RuntimeName.TRANSFORMERS:
+        if resolved_runtime.runtime is RuntimeName.TRANSFORMERS:
             pytorch_capability = self.inspect_pytorch_runtime()
             readiness = self.evaluate_pytorch_execution_readiness(
                 selection=selection,
@@ -775,12 +830,13 @@ class AdvisorService:
                 "quantization": artifact.quantization or plan.artifact.quantization,
             }
         )
-        prepared = build_execution_plan(
+        prepared = self.plan_execution(
             model_identity=plan.model_identity,
             artifact=variant,
-            runtime=runtime,
-            memory_prediction=estimate,
+            runtime=plan.runtime_family,
+            estimate=estimate,
             hardware=hw,
+            launch=resolved_runtime,
             backend_selection=selection,
             runtime_capability=runtime_capability,
             execution_readiness=readiness,
