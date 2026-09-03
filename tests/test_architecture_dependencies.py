@@ -134,6 +134,75 @@ def test_runtime_launch_policy_does_not_consume_hardware_fit_placement() -> None
     )
 
 
+def test_hardware_fit_analyzer_does_not_depend_on_any_runtime() -> None:
+    """The HardwareFitAnalyzer must not import or name any runtime backend concept.
+
+    An AST check, not a text scan: a legitimate comment mentioning "llama.cpp" or
+    "ngl" is fine; an import of ``jaull.runtime.*`` or a reference to
+    ``RuntimeRecommendation`` / ``RuntimeFlag`` / ``RuntimeName`` is not.
+    """
+    path = JAULL / "estimator" / "hardware_fit.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    forbidden_names = {
+        "RuntimeRecommendation",
+        "RuntimeFlag",
+        "RuntimeFlagSource",
+        "RuntimeName",
+        "pick_gpu_layers",
+        "pick_device_map",
+    }
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            violations += [
+                f"import {alias.name}"
+                for alias in node.names
+                if _matches_prefix(alias.name, "jaull.runtime")
+            ]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if _matches_prefix(node.module, "jaull.runtime"):
+                violations.append(f"from {node.module} import ...")
+            if node.module == "jaull.domain.runtime":
+                violations += [
+                    f"from jaull.domain.runtime import {alias.name}"
+                    for alias in node.names
+                ]
+        elif isinstance(node, ast.Name) and node.id in forbidden_names:
+            violations.append(f"name {node.id!r} at line {node.lineno}")
+
+    assert not violations, "hardware_fit.py must stay runtime-agnostic:\n" + "\n".join(
+        f"- {violation}" for violation in sorted(set(violations))
+    )
+
+
+def test_execution_frontends_do_not_construct_their_own_runtime_recommendation() -> None:
+    """CLI run + the TUI execution screen must get the launch plan from the planner.
+
+    Bare RuntimeRecommendations for ranking/display elsewhere (``engine_v2``,
+    ``advisor._runtime_for_variant``) are out of scope and allowed; the two files
+    that actually hand a runtime to a runner are not.
+    """
+    targets = [
+        JAULL / "cli" / "run.py",
+        JAULL / "tui" / "screens" / "recommendation_execution.py",
+    ]
+    violations: list[str] = []
+    for path in targets:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "RuntimeRecommendation"
+            ):
+                violations.append(f"{path.name}:{node.lineno}")
+
+    assert not violations, (
+        "execution frontends must not construct RuntimeRecommendation directly; "
+        "route through AdvisorService.plan_execution: " + ", ".join(violations)
+    )
+
+
 def _python_import_edges() -> set[ImportEdge]:
     edges: set[ImportEdge] = set()
     for path in JAULL.rglob("*.py"):

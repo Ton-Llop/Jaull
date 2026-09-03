@@ -2,26 +2,26 @@
 
 from __future__ import annotations
 
-from jaull.domain.estimation import (
-    CompatibilityStatus,
-    EstimationConfidence,
-    MemoryEstimate,
-)
+from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.inference import TargetDevice, WeightPrecision
+from jaull.domain.inference import WeightPrecision
 from jaull.domain.runtime import (
     RuntimeFlag,
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.runtime.transformers_launch_policy import pick_device_map
 
 
 def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecommendation:
     del hardware  # Not needed once assessment is done — flags come from the estimate.
     precision = estimate.weights.precision or WeightPrecision.FLOAT16
     dtype_expr = _torch_dtype_expr(precision)
-    device_map, reasons, warnings = _pick_device_map(estimate)
+    device_plan = pick_device_map(estimate)
+    device_map = device_plan.device_map
+    reasons = device_plan.reasons
+    warnings = device_plan.warnings
     repo_id = estimate.repository.repo_id
 
     snippet = (
@@ -62,40 +62,6 @@ def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecomme
         reasons=reasons,
         warnings=warnings,
         confidence=confidence,
-    )
-
-
-def _pick_device_map(
-    estimate: MemoryEstimate,
-) -> tuple[str, list[str], list[str]]:
-    assessment = estimate.assessment
-    device = assessment.effective_device
-    status = assessment.status
-
-    if device is TargetDevice.CPU:
-        return (
-            "cpu",
-            ["Effective device is CPU; loading the whole model into RAM."],
-            [],
-        )
-    if status in {
-        CompatibilityStatus.COMFORTABLE,
-        CompatibilityStatus.COMPATIBLE,
-        CompatibilityStatus.TIGHT,
-    }:
-        return (
-            "cuda",
-            [f"Model fits in VRAM ({status.value}); placing everything on the GPU."],
-            [],
-        )
-    # Offloading
-    return (
-        "auto",
-        ["Model does not fit fully in VRAM; letting Accelerate split layers."],
-        [
-            "device_map='auto' requires the `accelerate` package. Actual placement "
-            "depends on Accelerate's heuristics and available disk swap."
-        ],
     )
 
 

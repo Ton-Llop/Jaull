@@ -151,3 +151,27 @@ def test_cpu_recommends_cpu_device_map() -> None:
     assert device_map_flag.value == "cpu"
     assert rec.python_snippet is not None
     assert "cpu" in rec.python_snippet
+
+
+def test_device_map_policy_cpu_when_effective_device_is_cpu() -> None:
+    from jaull.runtime.transformers_launch_policy import pick_device_map
+
+    plan = pick_device_map(
+        _estimate(
+            status=CompatibilityStatus.COMPATIBLE, effective_device=TargetDevice.CPU
+        )
+    )
+    assert plan.device_map == "cpu"
+
+
+def test_device_map_policy_auto_when_offloading() -> None:
+    from jaull.runtime.transformers_launch_policy import pick_device_map
+
+    plan = pick_device_map(
+        _estimate(
+            status=CompatibilityStatus.OFFLOADING_REQUIRED,
+            effective_device=TargetDevice.GPU,
+        )
+    )
+    assert plan.device_map == "auto"
+    assert plan.warnings
