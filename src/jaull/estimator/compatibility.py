@@ -209,10 +209,27 @@ def assess_components_with_fit(
     they were given. Returning both from one analysis keeps them consistent.
     """
 
-    if device_target is not TargetDevice.AUTO:
-        return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
-
     if weights_bytes is None or kv_cache_bytes is None or overhead_bytes is None:
+        missing = [
+            name
+            for name, value in (
+                ("weights", weights_bytes),
+                ("KV cache", kv_cache_bytes),
+                ("runtime overhead", overhead_bytes),
+            )
+            if value is None
+        ]
+        # A known subtotal is a lower bound, not evidence that the model fits.
+        assessment = assess(None, hardware, device_target).model_copy(
+            update={
+                "reasons": [
+                    "Cannot confirm compatibility: missing " + ", ".join(missing) + "."
+                ]
+            }
+        )
+        return ComponentAssessment(assessment, None)
+
+    if device_target is not TargetDevice.AUTO:
         return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
 
     fit = hardware_fit.analyze_components(

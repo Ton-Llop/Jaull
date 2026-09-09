@@ -326,72 +326,27 @@ def _try_gpu_offload(
         return None
     low = 1
     high = min(weights_bytes - 1, available_for_gpu_weights)
-    best: HardwareFitResult | None = None
+    best: _OffloadPlacement | None = None
+    # Maximize the allocation that fits VRAM before checking RAM. A RAM-only
+    # failure requires more weights on GPU, not a lower GPU search ceiling.
     while low <= high:
         gpu_weight_bytes = (low + high) // 2
-        byte_result = _build_offload_result(
+        placement = _calculate_offload_placement(
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
             overhead_bytes=overhead_bytes,
             device_reserve_bytes=device_reserve_bytes,
             safety_margin_bytes=safety_margin_bytes,
-            available_vram=available_vram,
-            available_ram=available_ram,
             total_transformer_blocks=total_transformer_blocks,
             gpu_transformer_blocks=None,
             gpu_weight_bytes=gpu_weight_bytes,
-            placement_method=method,
-            topology=topology,
-            warnings=warnings,
         )
-        if (
-            byte_result is not None
-            and byte_result.gpu_required_bytes is not None
-            and byte_result.gpu_required_bytes <= available_vram
-        ):
-            best = byte_result
+        if placement is not None and placement.gpu_required_bytes <= available_vram:
+            best = placement
             low = gpu_weight_bytes + 1
         else:
             high = gpu_weight_bytes - 1
-    if best is None or best.ram_required_bytes is None:
-        return None
-    if best.ram_required_bytes > available_ram:
-        return None
-    return best
-
-
-def _build_offload_result(
-    *,
-    weights_bytes: int,
-    kv_cache_bytes: int,
-    overhead_bytes: int,
-    device_reserve_bytes: int,
-    safety_margin_bytes: int,
-    available_vram: int,
-    available_ram: int,
-    total_transformer_blocks: int | None,
-    gpu_transformer_blocks: int | None,
-    gpu_weight_bytes: int,
-    placement_method: HardwareFitPlacementMethod,
-    topology: HardwareMemoryTopology,
-    warnings: list[str],
-) -> HardwareFitResult | None:
-    placement = _calculate_offload_placement(
-        weights_bytes=weights_bytes,
-        kv_cache_bytes=kv_cache_bytes,
-        overhead_bytes=overhead_bytes,
-        device_reserve_bytes=device_reserve_bytes,
-        safety_margin_bytes=safety_margin_bytes,
-        total_transformer_blocks=total_transformer_blocks,
-        gpu_transformer_blocks=gpu_transformer_blocks,
-        gpu_weight_bytes=gpu_weight_bytes,
-    )
-    if placement is None:
-        return None
-    if (
-        placement.gpu_required_bytes > available_vram
-        or placement.ram_required_bytes > available_ram
-    ):
+    if best is None or best.ram_required_bytes > available_ram:
         return None
     return _offload_result_from_placement(
         weights_bytes=weights_bytes,
@@ -401,8 +356,8 @@ def _build_offload_result(
         safety_margin_bytes=safety_margin_bytes,
         available_vram=available_vram,
         available_ram=available_ram,
-        placement=placement,
-        placement_method=placement_method,
+        placement=best,
+        placement_method=method,
         topology=topology,
         warnings=warnings,
     )
