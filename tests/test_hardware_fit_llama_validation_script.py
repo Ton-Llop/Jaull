@@ -127,8 +127,8 @@ def test_hfa_block_probe_keeps_observations_but_not_vram_error_percentages() -> 
     assert "measured available  1050.0 MiB" in rendered
     assert "headroom            50.0 MiB" in rendered
     assert "rejected estimated budget breakdown" in rendered
-    assert "WEIGHT DECOMPOSITION (estimated; not used for placement yet)" in rendered
+    assert "WEIGHT DECOMPOSITION (estimated; non-block placement bounded)" in rendered
     assert "config_parameter_decomposition" in rendered
-    assert "non-block placement       not modelled" in rendered
+    assert "non-block placement       unknown" in rendered
     assert "VRAM error vs device Δ      -" in rendered
     assert "VRAM error vs llama bufs    -" in rendered

@@ -253,6 +253,7 @@ def _hardware_fit_runtime_policy_violation(
                 "HardwareFitResult",
                 "HardwareFitOffloadCandidate",
                 "HardwareFitOffloadDiagnostics",
+                "NonBlockPlacementBounds",
             }
             for alias in node.names
         ):
@@ -263,6 +264,7 @@ def _hardware_fit_runtime_policy_violation(
         "gpu_transformer_blocks",
         "total_transformer_blocks",
         "offload_diagnostics",
+        "non_block_placement_bounds",
     }:
         return f"{source}:{line} reads {node.attr}"
     return None

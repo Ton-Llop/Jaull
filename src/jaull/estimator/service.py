@@ -114,6 +114,7 @@ def estimate_memory(
         ),
         total_bytes=total_bytes,
         total_transformer_blocks=kv_estimate.layers,
+        weight_decomposition=weight_estimate.transformer_block_decomposition,
         hardware=hardware,
         device_target=inference_cfg.target_device,
     )

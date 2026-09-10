@@ -100,7 +100,8 @@
             "gpu_overhead_bytes": 617401549,
             "gpu_safety_margin_bytes": 317827580,
             "ram_overhead_bytes": 456340275,
-            "ram_safety_margin_bytes": 219043332
+            "ram_safety_margin_bytes": 219043332,
+            "non_block_placement_bounds": null
           },
           "first_rejected_higher": {
             "gpu_transformer_blocks": 24,
@@ -118,7 +119,8 @@
             "gpu_overhead_bytes": 644245095,
             "gpu_safety_margin_bytes": 330712482,
             "ram_overhead_bytes": 429496729,
-            "ram_safety_margin_bytes": 206158430
+            "ram_safety_margin_bytes": 206158430,
+            "non_block_placement_bounds": null
           }
         }
       }
@@ -362,7 +364,8 @@
             "gpu_overhead_bytes": 838860800,
             "gpu_safety_margin_bytes": 425611480,
             "ram_overhead_bytes": 234881024,
-            "ram_safety_margin_bytes": 111259432
+            "ram_safety_margin_bytes": 111259432,
+            "non_block_placement_bounds": null
           },
           "first_rejected_higher": {
             "gpu_transformer_blocks": 26,
@@ -380,7 +383,8 @@
             "gpu_overhead_bytes": 872415232,
             "gpu_safety_margin_bytes": 441505685,
             "ram_overhead_bytes": 201326592,
-            "ram_safety_margin_bytes": 95365227
+            "ram_safety_margin_bytes": 95365227,
+            "non_block_placement_bounds": null
           }
         }
       }
@@ -464,7 +468,8 @@
             "gpu_overhead_bytes": 843654293,
             "gpu_safety_margin_bytes": 427882082,
             "ram_overhead_bytes": 230087531,
-            "ram_safety_margin_bytes": 108988830
+            "ram_safety_margin_bytes": 108988830,
+            "non_block_placement_bounds": null
           },
           "first_rejected_higher": {
             "gpu_transformer_blocks": 23,
@@ -482,7 +487,8 @@
             "gpu_overhead_bytes": 882002216,
             "gpu_safety_margin_bytes": 446046887,
             "ram_overhead_bytes": 191739608,
-            "ram_safety_margin_bytes": 90824025
+            "ram_safety_margin_bytes": 90824025,
+            "non_block_placement_bounds": null
           }
         }
       }
@@ -534,7 +540,8 @@
             "gpu_overhead_bytes": 715827883,
             "gpu_safety_margin_bytes": 361890763,
             "ram_overhead_bytes": 357913941,
-            "ram_safety_margin_bytes": 174980149
+            "ram_safety_margin_bytes": 174980149,
+            "non_block_placement_bounds": null
           },
           "first_rejected_higher": {
             "gpu_transformer_blocks": 25,
@@ -552,7 +559,8 @@
             "gpu_overhead_bytes": 745654045,
             "gpu_safety_margin_bytes": 376472443,
             "ram_overhead_bytes": 328087779,
-            "ram_safety_margin_bytes": 160398469
+            "ram_safety_margin_bytes": 160398469,
+            "non_block_placement_bounds": null
           }
         }
       }

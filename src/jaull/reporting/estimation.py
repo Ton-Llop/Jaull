@@ -176,6 +176,8 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
         "available_ram_bytes": fit.available_ram_bytes,
         "reason": fit.reason,
         "warnings": list(fit.warnings),
+        **({"non_block_placement_bounds": fit.non_block_placement_bounds.model_dump(mode="json")}
+           if fit.non_block_placement_bounds is not None else {}),
     }
 
 
@@ -197,7 +199,7 @@ def hardware_fit_offload_diagnostics_to_dict(
 
 def hardware_fit_offload_candidate_to_dict(
     candidate: HardwareFitOffloadCandidate | None,
-) -> dict[str, int] | None:
+) -> dict[str, Any] | None:
     if candidate is None:
         return None
     return {
@@ -217,6 +219,9 @@ def hardware_fit_offload_candidate_to_dict(
         "gpu_safety_margin_bytes": candidate.gpu_safety_margin_bytes,
         "ram_overhead_bytes": candidate.ram_overhead_bytes,
         "ram_safety_margin_bytes": candidate.ram_safety_margin_bytes,
+        **({"non_block_placement_bounds":
+            candidate.non_block_placement_bounds.model_dump(mode="json")}
+           if candidate.non_block_placement_bounds is not None else {}),
     }
 
 

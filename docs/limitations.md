@@ -43,9 +43,15 @@ README roadmap says so.
   transformer-block aggregate from estimated non-block weights when a supported
   dense config is complete. The split is derived from parameter fractions, not
   GGUF tensor bytes; mixed tensor quantization, alignment and omitted small
-  tensors can differ from it. Hardware Fit does not use this decomposition yet:
-  non-block placement is unresolved, so its current placement boundary remains
-  conservative. `gpu_transformer_blocks` is a runtime-agnostic planning
+  tensors can differ from it. Hardware Fit now uses GPU-heavy and RAM-heavy
+  endpoints for the unknown non-block share, requiring both pool maxima to fit.
+  These are conditional planning bounds, not measured tensor allocations, and
+  can reject placements a particular backend could execute. The enclosing
+  breakdown describes the GPU-heavy endpoint; optional bounds carry the host
+  maximum. Do not add maxima from different endpoints. Duplication, staging and
+  uneven tensor/block sizes remain outside this model. GPU/host physical point
+  comparisons remain unavailable for an uncertain non-block split.
+  `gpu_transformer_blocks` is a runtime-agnostic planning
   estimate, not a promise about what a backend will pass to `--n-gpu-layers`.
 - The KV cache is placed **proportionally to the blocks**, which is the generic
   default rather than a guarantee. A runtime may keep the cache entirely in host

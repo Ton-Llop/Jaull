@@ -8,7 +8,7 @@ estimated memory can be placed on the detected hardware.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from jaull.domain.estimation import (
     HardwareFitMode,
@@ -18,6 +18,9 @@ from jaull.domain.estimation import (
     HardwareFitResult,
     HardwareMemoryTopology,
     MemoryEstimate,
+    NonBlockPlacementBounds,
+    TransformerBlockWeightDecomposition,
+    TransformerBlockWeightDecompositionMethod,
 )
 from jaull.domain.hardware import HardwareProfile
 
@@ -36,6 +39,7 @@ class _OffloadPlacement:
     ram_overhead_bytes: int
     gpu_safety_margin_bytes: int
     ram_safety_margin_bytes: int
+    non_block_placement_bounds: NonBlockPlacementBounds | None = None
 
 
 def analyze_estimate(
@@ -60,6 +64,7 @@ def analyze_estimate(
         safety_margin_bytes=safety_margin_bytes or 0,
         hardware=hardware,
         total_transformer_blocks=estimate.kv_cache.layers,
+        weight_decomposition=estimate.weights.transformer_block_decomposition,
     )
 
 
@@ -73,6 +78,7 @@ def analyze_components(
     safety_margin_bytes: int = 0,
     total_transformer_blocks: int | None = None,
     total_layers: int | None = None,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> HardwareFitResult:
     """Classify model placement without collapsing RAM and VRAM into one pool."""
 
@@ -87,6 +93,13 @@ def analyze_components(
         )
     if total_transformer_blocks is None:
         total_transformer_blocks = total_layers
+    if weight_decomposition is not None:
+        if weight_decomposition.total_weight_bytes != weights_bytes:
+            raise ValueError("Weight decomposition must match the estimated weights.")
+        if total_transformer_blocks is None:
+            total_transformer_blocks = weight_decomposition.total_transformer_blocks
+        elif total_transformer_blocks != weight_decomposition.total_transformer_blocks:
+            raise ValueError("Weight decomposition must match the transformer block count.")
     topology = _memory_topology(hardware)
     available_vram = _available_vram(hardware)
     available_ram = hardware.memory.available_bytes
@@ -146,10 +159,20 @@ def analyze_components(
             available_ram=available_ram,
             total_transformer_blocks=total_transformer_blocks,
             topology=topology,
+            weight_decomposition=weight_decomposition,
         )
         if offload is not None:
             return offload
 
+    planning_warnings = (
+        ["Partial offload could not be guaranteed across the unknown non-block split. "
+         "A backend-specific placement may still be viable."]
+        if available_vram is not None and weight_decomposition is not None
+        and weight_decomposition.method
+        is TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
+        and weight_decomposition.estimated_non_block_weight_bytes > 0
+        else []
+    )
     cpu_required = weights_bytes + kv_cache_bytes + overhead_bytes + safety_margin_bytes
     if cpu_required <= available_ram:
         prefix = (
@@ -182,6 +205,7 @@ def analyze_components(
             total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
             reason=f"{prefix}; full model fits in system RAM.",
+            warnings=planning_warnings,
         )
 
     return HardwareFitResult(
@@ -211,6 +235,7 @@ def analyze_components(
             "No supported placement fits: VRAM cannot hold a viable GPU placement "
             "and system RAM is insufficient for CPU execution."
         ),
+        warnings=planning_warnings,
     )
 
 
@@ -225,6 +250,7 @@ def _try_gpu_offload(
     available_ram: int,
     total_transformer_blocks: int | None,
     topology: HardwareMemoryTopology,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> HardwareFitResult | None:
     method: HardwareFitPlacementMethod
     if _valid_transformer_block_count(total_transformer_blocks):
@@ -256,6 +282,25 @@ def _try_gpu_offload(
             ),
         )
         search_ceiling_transformer_blocks = int(max_gpu_transformer_blocks)
+        decomposed = (
+            weight_decomposition is not None
+            and weight_decomposition.method
+            is TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
+        )
+        if decomposed:
+            assert weight_decomposition is not None
+            block_bytes = weight_decomposition.estimated_transformer_block_weight_bytes
+            non_block_bytes = weight_decomposition.estimated_non_block_weight_bytes
+            # GPU worst case: ceil(B*n/T) + N + ceil(K*n/T) + reserve.
+            # Dropping overhead/margin and the ceils gives a valid upper bound:
+            # n <= T * (VRAM - reserve - N) / (B + K).
+            denominator = block_bytes + kv_cache_bytes
+            if denominator <= 0 or blocks_budget <= non_block_bytes:
+                return None
+            search_ceiling_transformer_blocks = min(
+                total_transformer_blocks - 1,
+                total_transformer_blocks * (blocks_budget - non_block_bytes) // denominator,
+            )
         last_rejected: HardwareFitOffloadCandidate | None = None
         for gpu_transformer_blocks in range(
             search_ceiling_transformer_blocks, 0, -1
@@ -264,6 +309,11 @@ def _try_gpu_offload(
                 weights_bytes,
                 gpu_transformer_blocks * estimated_bytes_per_transformer_block,
             )
+            if decomposed:
+                gpu_block_bytes = (
+                    block_bytes * gpu_transformer_blocks + total_transformer_blocks - 1
+                ) // total_transformer_blocks
+                gpu_weight_bytes = gpu_block_bytes + non_block_bytes
             placement = _calculate_offload_placement(
                 weights_bytes=weights_bytes,
                 kv_cache_bytes=kv_cache_bytes,
@@ -276,9 +326,36 @@ def _try_gpu_offload(
             )
             if placement is None:
                 continue
+            if decomposed:
+                host_endpoint = _calculate_offload_placement(
+                    weights_bytes=weights_bytes,
+                    kv_cache_bytes=kv_cache_bytes,
+                    overhead_bytes=overhead_bytes,
+                    device_reserve_bytes=device_reserve_bytes,
+                    safety_margin_bytes=safety_margin_bytes,
+                    total_transformer_blocks=total_transformer_blocks,
+                    gpu_transformer_blocks=gpu_transformer_blocks,
+                    gpu_weight_bytes=gpu_block_bytes,
+                )
+                if host_endpoint is None:
+                    continue
+                placement = replace(placement, non_block_placement_bounds=NonBlockPlacementBounds(
+                    gpu_transformer_block_weight_bytes=gpu_block_bytes,
+                    ram_transformer_block_weight_bytes=block_bytes - gpu_block_bytes,
+                    non_block_weight_bytes=non_block_bytes,
+                    gpu_required_min_bytes=host_endpoint.gpu_required_bytes,
+                    ram_required_max_bytes=host_endpoint.ram_required_bytes,
+                    ram_overhead_max_bytes=host_endpoint.ram_overhead_bytes,
+                    ram_safety_margin_max_bytes=host_endpoint.ram_safety_margin_bytes,
+                ))
+            ram_budget = (
+                placement.non_block_placement_bounds.ram_required_max_bytes
+                if placement.non_block_placement_bounds is not None
+                else placement.ram_required_bytes
+            )
             if (
                 placement.gpu_required_bytes <= available_vram
-                and placement.ram_required_bytes <= available_ram
+                and ram_budget <= available_ram
             ):
                 result = _offload_result_from_placement(
                     weights_bytes=weights_bytes,
@@ -291,7 +368,11 @@ def _try_gpu_offload(
                     placement=placement,
                     placement_method=HardwareFitPlacementMethod.TRANSFORMER_BLOCKS,
                     topology=topology,
-                    warnings=[],
+                    warnings=(
+                        ["Non-block placement is unknown. Both GPU-heavy and host-heavy "
+                         "endpoint budgets fit; neither endpoint is a runtime prediction."]
+                        if placement.non_block_placement_bounds is not None else []
+                    ),
                     offload_diagnostics=HardwareFitOffloadDiagnostics(
                         search_ceiling_transformer_blocks=(
                             search_ceiling_transformer_blocks
@@ -470,6 +551,7 @@ def _offload_result_from_placement(
         total_transformer_blocks=placement.total_transformer_blocks,
         placement_method=placement_method,
         offload_diagnostics=offload_diagnostics,
+        non_block_placement_bounds=placement.non_block_placement_bounds,
         reason=(
             "Model does not fit fully in VRAM, but a valid GPU/RAM weight "
             "placement fits without treating RAM and VRAM as one pool."
@@ -503,6 +585,7 @@ def _offload_candidate(
         gpu_safety_margin_bytes=placement.gpu_safety_margin_bytes,
         ram_overhead_bytes=placement.ram_overhead_bytes,
         ram_safety_margin_bytes=placement.ram_safety_margin_bytes,
+        non_block_placement_bounds=placement.non_block_placement_bounds,
     )
 
 

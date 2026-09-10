@@ -135,8 +135,8 @@ class TransformerBlockWeightDecomposition(BaseModel):
     the aggregate block bytes by at most ``total_transformer_blocks - 1``.
 
     This describes weight estimation only. It does not say whether non-block
-    weights live in GPU or host memory and does not participate in Hardware Fit
-    placement yet.
+    weights live in GPU or host memory. Hardware Fit can use the split while
+    bounding that unknown placement separately.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -210,6 +210,28 @@ class CompatibilityAssessment(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class NonBlockPlacementBounds(BaseModel):
+    """Unknown non-block split, conditional on the estimated weight decomposition.
+
+    Non-block GPU bytes range from 0 to ``non_block_weight_bytes``; the host
+    share is the remainder. The enclosing fit/candidate is the GPU-heavy
+    endpoint (GPU maximum, RAM minimum), not a claim about runtime placement.
+    These fields retain the opposite endpoint: GPU minimum and RAM maximum.
+    Both endpoints conserve weights, overhead and margin independently. Never
+    sum maxima from different endpoints as one physical allocation.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    gpu_transformer_block_weight_bytes: int = Field(ge=0)
+    ram_transformer_block_weight_bytes: int = Field(ge=0)
+    non_block_weight_bytes: int = Field(ge=0)
+    gpu_required_min_bytes: int = Field(ge=0)
+    ram_required_max_bytes: int = Field(ge=0)
+    ram_overhead_max_bytes: int = Field(ge=0)
+    ram_safety_margin_max_bytes: int = Field(ge=0)
+
+
 class HardwareFitOffloadCandidate(BaseModel):
     """One estimated transformer-block placement considered by Hardware Fit.
 
@@ -255,6 +277,7 @@ class HardwareFitOffloadCandidate(BaseModel):
     gpu_safety_margin_bytes: int
     ram_overhead_bytes: int = 0
     ram_safety_margin_bytes: int = 0
+    non_block_placement_bounds: NonBlockPlacementBounds | None = None
 
 
 class HardwareFitOffloadDiagnostics(BaseModel):
@@ -301,6 +324,7 @@ class HardwareFitResult(BaseModel):
     )
     placement_method: HardwareFitPlacementMethod = HardwareFitPlacementMethod.NONE
     offload_diagnostics: HardwareFitOffloadDiagnostics | None = None
+    non_block_placement_bounds: NonBlockPlacementBounds | None = None
     reason: str
     warnings: list[str] = Field(default_factory=list)
 
@@ -351,6 +375,11 @@ class HardwareFitResult(BaseModel):
         ``None`` when the placement puts nothing on the GPU.
         """
 
+        if (
+            self.non_block_placement_bounds is not None
+            and self.non_block_placement_bounds.non_block_weight_bytes > 0
+        ):
+            return None  # An endpoint budget is not a point prediction.
         if not self.places_weights_on_gpu or self.gpu_required_bytes is None:
             return None
         return (
@@ -369,6 +398,11 @@ class HardwareFitResult(BaseModel):
         the accelerator draws from the same pool, so it is removed only there.
         """
 
+        if (
+            self.non_block_placement_bounds is not None
+            and self.non_block_placement_bounds.non_block_weight_bytes > 0
+        ):
+            return None
         if self.ram_required_bytes is None:
             return None
         physical = self.ram_required_bytes - self.ram_safety_margin_bytes

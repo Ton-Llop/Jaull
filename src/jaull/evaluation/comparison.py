@@ -264,6 +264,15 @@ def _predicted_vram(
             _VRAM_NO_GPU_PLACEMENT_REASON,
         )
 
+    if (
+        fit.non_block_placement_bounds is not None
+        and fit.non_block_placement_bounds.non_block_weight_bytes > 0
+    ):
+        return (
+            None,
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE,
+            "Non-block weight placement is bounded, not a device-specific point prediction.",
+        )
     predicted = fit.gpu_physical_bytes
     if predicted is None:
         return (

@@ -11,6 +11,7 @@ from jaull.domain.estimation import (
     HardwareFitMode,
     HardwareFitPlacementMethod,
     HardwareFitResult,
+    TransformerBlockWeightDecomposition,
 )
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import TargetDevice
@@ -200,6 +201,7 @@ def assess_components_with_fit(
     total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> ComponentAssessment:
     """Assess placement, keeping the structured fit alongside the summary.
 
@@ -239,6 +241,7 @@ def assess_components_with_fit(
         device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
         total_transformer_blocks=total_transformer_blocks,
+        weight_decomposition=weight_decomposition,
         hardware=hardware,
     )
     return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
@@ -255,6 +258,7 @@ def assess_components(
     total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> CompatibilityAssessment:
     """Assess placement using separated memory components when available."""
 
@@ -268,6 +272,7 @@ def assess_components(
         total_transformer_blocks=total_transformer_blocks,
         hardware=hardware,
         device_target=device_target,
+        weight_decomposition=weight_decomposition,
     ).assessment
 
 
@@ -294,9 +299,13 @@ def _assessment_from_fit(
         )
 
     if fit.mode is HardwareFitMode.GPU_OFFLOAD:
+        ram_budget = (
+            fit.non_block_placement_bounds.ram_required_max_bytes
+            if fit.non_block_placement_bounds is not None else fit.ram_required_bytes
+        )
         offload_ratio = _max_known_ratio(
             (fit.gpu_required_bytes, vram),
-            (fit.ram_required_bytes, ram),
+            (ram_budget, ram),
         )
         confidence = (
             EstimationConfidence.MEDIUM

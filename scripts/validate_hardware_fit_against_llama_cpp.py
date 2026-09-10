@@ -647,7 +647,7 @@ def _render_weight_decomposition(estimate: dict[str, Any]) -> list[str]:
         return []
     return [
         "",
-        "WEIGHT DECOMPOSITION (estimated; not used for placement yet)",
+        "WEIGHT DECOMPOSITION (estimated; non-block placement bounded)",
         f"  method                    {decomposition['method']}",
         "  total artifact weights    "
         f"{_mib(decomposition['total_weight_bytes'])}",
@@ -657,7 +657,7 @@ def _render_weight_decomposition(estimate: dict[str, Any]) -> list[str]:
         f"{_mib(decomposition['estimated_non_block_weight_bytes'])}",
         "  estimated per block       "
         f"{_mib(decomposition['estimated_bytes_per_transformer_block'])}",
-        "  non-block placement       not modelled",
+        "  non-block placement       unknown; discrete block offload checks endpoint budgets",
     ]
 
 
@@ -678,6 +678,7 @@ def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
         f"    measured available  {_mib(selected['available_vram_bytes'])}",
         f"    headroom            {_mib(selected['headroom_bytes'])}",
     ]
+    lines.extend(_render_non_block_bounds(selected))
     if rejected is None:
         lines.extend(["  first rejected", "    none"])
         return lines
@@ -691,13 +692,33 @@ def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
             f"    excess              {_mib(rejected['excess_bytes'])}",
             "  rejected estimated budget breakdown",
             f"    weight budget       {_mib(rejected['gpu_weight_bytes'])}",
-            f"    KV cache budget     {_mib(rejected['kv_cache_bytes'])}",
+            "    KV cache budget     "
+            f"{_mib(rejected.get('gpu_kv_cache_bytes', rejected['kv_cache_bytes']))}",
             f"    reserve budget      {_mib(rejected['device_reserve_bytes'])}",
             f"    overhead budget     {_mib(rejected['gpu_overhead_bytes'])}",
             f"    safety margin budget {_mib(rejected['gpu_safety_margin_bytes'])}",
         ]
     )
+    lines.extend(_render_non_block_bounds(rejected))
     return lines
+
+
+def _render_non_block_bounds(candidate: dict[str, Any]) -> list[str]:
+    bounds = candidate.get("non_block_placement_bounds")
+    if bounds is None:
+        return []
+    return [
+        "    non-block placement unknown; planning endpoint budgets, not measured allocations",
+        f"    estimated block weights GPU {_mib(bounds['gpu_transformer_block_weight_bytes'])}",
+        f"    estimated block weights RAM {_mib(bounds['ram_transformer_block_weight_bytes'])}",
+        f"    non-block GPU range 0 .. {_mib(bounds['non_block_weight_bytes'])}",
+        "    non-block RAM share is the remainder",
+        f"    estimated GPU minimum {_mib(bounds['gpu_required_min_bytes'])}",
+        f"    estimated RAM maximum {_mib(bounds['ram_required_max_bytes'])}",
+        f"    host-heavy overhead {_mib(bounds['ram_overhead_max_bytes'])}",
+        f"    host-heavy margin {_mib(bounds['ram_safety_margin_max_bytes'])}",
+        "    GPU maximum and RAM minimum are the enclosing candidate fields",
+    ]
 
 
 def _cuda_only(buffers: dict[str, float]) -> float | None:
