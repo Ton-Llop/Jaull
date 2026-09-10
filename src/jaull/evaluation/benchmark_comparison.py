@@ -11,13 +11,18 @@ from jaull.domain.benchmarks import (
 )
 from jaull.domain.execution_plans import ModelIdentity
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.runtime import LlamaCppRuntimeCapability, PyTorchRuntimeCapability
+from jaull.domain.runtime import LlamaCppRuntimeCapability, PyTorchRuntimeCapability, RuntimeName
 from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 
 _PREFERRED_METHODOLOGY_BY_RUNTIME = {
     "llama.cpp": "llama_bench_v1",
     "transformers": "transformers_isolated_inference_v2",
 }
+
+
+def preferred_benchmark_methodology(runtime: RuntimeName) -> str | None:
+    """Current measurement protocol understood for this runtime."""
+    return _PREFERRED_METHODOLOGY_BY_RUNTIME.get(runtime.value)
 
 
 class BenchmarkPlanSummary(BaseModel):
@@ -124,7 +129,7 @@ def _prefer_current_methodologies(
     selected: list[BenchmarkRecord] = []
     omitted = False
     for group in grouped.values():
-        preferred = _PREFERRED_METHODOLOGY_BY_RUNTIME.get(group[0].runtime.runtime.value)
+        preferred = preferred_benchmark_methodology(group[0].runtime.runtime)
         preferred_records = [
             record for record in group if record.observation.methodology == preferred
         ]
