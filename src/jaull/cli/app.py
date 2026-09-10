@@ -205,13 +205,17 @@ def run_command(
         "--llama-cli",
         help="Path to llama-cli. Defaults to resolving llama-cli from PATH.",
     ),
-    context_size: int = typer.Option(
-        4096, "--ctx-size", min=1, help="Context size passed to llama-cli."
+    context_size: int | None = typer.Option(
+        None,
+        "--ctx-size",
+        min=1,
+        help="Context length passed to llama-cli. Omit for the automatic default (4096).",
     ),
-    n_gpu_layers: int = typer.Option(
-        0,
+    n_gpu_layers: int | None = typer.Option(
+        None,
         "--n-gpu-layers",
-        help="Number of layers to offload to GPU. Defaults to CPU-only.",
+        min=-1,
+        help="Layers to offload to GPU. Omit for automatic; 0 forces CPU-only; -1 is all.",
     ),
     timeout_seconds: float = typer.Option(
         300.0, "--timeout-seconds", min=0.1, help="llama-cli timeout."

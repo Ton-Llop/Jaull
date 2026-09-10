@@ -118,7 +118,7 @@ can be explained by naming the axis that decided it:
 | `feasibility` | Does the memory prediction fit this hardware? Read from `CompatibilityStatus`. |
 | `executability` | Is the plan technically coherent — does that runtime accept that artifact? |
 | `execution_fitness` | The two above combined; `BLOCKED` if either one is. |
-| `performance_evidence` | Is there a measured benchmark for this exact plan on this machine? |
+| `performance_evidence` | Is there an eligible local microbenchmark for this artifact/runtime/backend on this machine? Not a workload throughput prediction; see [eligibility and limitations](evidence.md#eligibility-for-recommendation-ranking). |
 | `confidence` | Confidence of the estimate the plan was built on. |
 | `runtime_readiness` | **Operational only.** Whether this installation could launch it right now — never read by ranking. |
 

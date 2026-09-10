@@ -152,6 +152,36 @@ the current methodology per runtime, and warns when records come from different 
 different methodologies rather than quietly ranking them against each other. There is
 deliberately no single "winner" score.
 
+### Eligibility for recommendation ranking
+
+`recommendation/local_evidence.py` checks stored observations offline before v2
+uses them. Hardware fingerprint and selected backend must be known; missing
+plan context is not a wildcard. Runtime readiness is not an eligibility gate.
+Artifact repository, revision, filename, format and quantization must match;
+conflicting known sizes or hashes reject a match. Experiments additionally
+require the same context, batch, concurrency, precision, quantization, KV dtype
+and runtime flag values. An observed backend fallback cannot validate the
+originally selected backend. Planning reserves and safety margins are not
+workload identity.
+
+Benchmarks must succeed, use the runtime's current recognized methodology and
+contain generation measurements consistent with requested generation sizes.
+The actual requested llama.cpp offload count (or Transformers compute dtype)
+must agree with the plan. Transformer-block estimates are never used as runtime
+offload counts. The latest eligible record wins, with record ID breaking equal
+timestamps deterministically. Failed experiments remain negative evidence;
+failed benchmarks do not become strong performance evidence. Records are never
+rewritten or deleted by matching.
+
+Limits: matching metadata is not proof of identical file contents. Discovery
+plans have no digest, and mutable revisions such as `main` are not immutable
+artifact identities. No network request resolves these uncertainties. A
+benchmark is evidence for its recorded microbenchmark, not a prediction of the
+user's context/concurrency workload. Cross-plan normalization of token budgets,
+runtime builds and methodologies, and pool-specific measured-memory ranking,
+remain separate work. Historical records that no longer qualify still load and
+remain available for inspection; no persisted schema changes are required.
+
 ## Prediction vs observation
 
 `compare_prediction` produces a `PredictionComparison` from a `MemoryEstimate` and an

@@ -16,6 +16,7 @@ from jaull.domain.estimation import (
     HardwareFitResult,
     MemoryComponent,
     MemoryEstimate,
+    TransformerBlockWeightDecomposition,
 )
 from jaull.reporting.serialization import (
     base_resolution_to_dict,
@@ -72,6 +73,11 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
                 else None
             ),
             "gguf_variant": estimate.weights.gguf_variant,
+            "transformer_block_decomposition": (
+                transformer_block_weight_decomposition_to_dict(
+                    estimate.weights.transformer_block_decomposition
+                )
+            ),
         },
         "kv_cache": {
             "layers": estimate.kv_cache.layers,
@@ -108,6 +114,27 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
         },
         "architecture": estimate.architecture,
         "runtime_recommendation": runtime_to_dict(estimate.runtime_recommendation),
+    }
+
+
+def transformer_block_weight_decomposition_to_dict(
+    decomposition: TransformerBlockWeightDecomposition | None,
+) -> dict[str, Any] | None:
+    if decomposition is None:
+        return None
+    return {
+        "total_weight_bytes": decomposition.total_weight_bytes,
+        "estimated_transformer_block_weight_bytes": (
+            decomposition.estimated_transformer_block_weight_bytes
+        ),
+        "estimated_non_block_weight_bytes": (
+            decomposition.estimated_non_block_weight_bytes
+        ),
+        "estimated_bytes_per_transformer_block": (
+            decomposition.estimated_bytes_per_transformer_block
+        ),
+        "total_transformer_blocks": decomposition.total_transformer_blocks,
+        "method": decomposition.method.value,
     }
 
 
@@ -149,6 +176,8 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
         "available_ram_bytes": fit.available_ram_bytes,
         "reason": fit.reason,
         "warnings": list(fit.warnings),
+        **({"non_block_placement_bounds": fit.non_block_placement_bounds.model_dump(mode="json")}
+           if fit.non_block_placement_bounds is not None else {}),
     }
 
 
@@ -170,7 +199,7 @@ def hardware_fit_offload_diagnostics_to_dict(
 
 def hardware_fit_offload_candidate_to_dict(
     candidate: HardwareFitOffloadCandidate | None,
-) -> dict[str, int] | None:
+) -> dict[str, Any] | None:
     if candidate is None:
         return None
     return {
@@ -190,6 +219,9 @@ def hardware_fit_offload_candidate_to_dict(
         "gpu_safety_margin_bytes": candidate.gpu_safety_margin_bytes,
         "ram_overhead_bytes": candidate.ram_overhead_bytes,
         "ram_safety_margin_bytes": candidate.ram_safety_margin_bytes,
+        **({"non_block_placement_bounds":
+            candidate.non_block_placement_bounds.model_dump(mode="json")}
+           if candidate.non_block_placement_bounds is not None else {}),
     }
 
 
@@ -210,4 +242,5 @@ __all__ = [
     "estimate_to_json_dict",
     "hardware_fit_offload_candidate_to_dict",
     "hardware_fit_offload_diagnostics_to_dict",
+    "transformer_block_weight_decomposition_to_dict",
 ]

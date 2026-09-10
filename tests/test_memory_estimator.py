@@ -118,6 +118,14 @@ def test_gguf_q4_km_fits_in_gpu_with_headroom() -> None:
         total_bytes=int(4.9 * GIB),
     )
     analysis = _gguf_analysis([variant])
+    analysis = analysis.model_copy(
+        update={"config": ModelConfig(
+            num_hidden_layers=28,
+            num_attention_heads=28,
+            num_key_value_heads=4,
+            hidden_size=3584,
+        )},
+    )
     cfg = InferenceConfiguration(
         context_length=4096,
         target_device=TargetDevice.GPU,
@@ -333,7 +341,8 @@ def test_insufficient_when_ram_too_small() -> None:
     assert est.assessment.status is CompatibilityStatus.INSUFFICIENT
 
 
-def test_confidence_reflects_unknown_kv_cache() -> None:
+@pytest.mark.parametrize("target", list(TargetDevice))
+def test_confidence_reflects_unknown_kv_cache(target: TargetDevice) -> None:
     variant = GgufVariant(
         quantization="Q4_K_M",
         files=[ModelFile(path="model.gguf", size_bytes=int(4 * GIB))],
@@ -342,7 +351,7 @@ def test_confidence_reflects_unknown_kv_cache() -> None:
     analysis = _gguf_analysis([variant])
     cfg = InferenceConfiguration(
         context_length=4096,
-        target_device=TargetDevice.GPU,
+        target_device=target,
         quantization="Q4_K_M",
     )
     est = service.estimate_memory(
@@ -354,3 +363,6 @@ def test_confidence_reflects_unknown_kv_cache() -> None:
     )
     # No config => kv_cache is UNKNOWN, so the global confidence must fall to UNKNOWN.
     assert est.assessment.confidence is EstimationConfidence.UNKNOWN
+    assert est.assessment.status is CompatibilityStatus.UNKNOWN
+    assert est.hardware_fit is None
+    assert est.total_bytes is not None  # Preserve the known lower bound.

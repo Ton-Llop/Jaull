@@ -30,6 +30,120 @@ Highest-confidence source first:
 quantized formats add scales and block metadata (typically under 10%), so that path is
 tagged `DERIVED` to make the approximation visible.
 
+When a supported dense transformer config exposes all required dimensions and explicitly
+states whether input embeddings and the output head are tied, `WeightEstimate` also carries a
+`transformer_block_decomposition`. Jaull first estimates the parameter split:
+
+```text
+transformer-block parameters = blocks × (attention parameters + gated-FFN parameters)
+non-block parameters         = token embeddings + separate output head (when untied)
+```
+
+It projects that parameter fraction onto the artifact's total weight bytes. The block aggregate
+is rounded down once and the non-block aggregate receives the exact remainder, so the two always
+sum back to the artifact byte count. The displayed per-block estimate rounds the block aggregate
+up over the transformer-block count.
+
+This is an **estimate, not tensor-level measurement**. GGUF can quantize tensor classes
+differently and carries alignment and format metadata, so parameter fraction and byte fraction
+need not be identical. Unknown tying, incomplete configs, unsupported architectures and MoE
+models use the explicit `uniform_weight_fallback`; a missing block count produces no
+decomposition.
+
+For discrete partial offload, Hardware Fit consumes this decomposition without
+choosing a runtime-specific location for non-block weights. With `B` estimated
+block bytes, `N` non-block bytes and `T` blocks, placing `n` blocks on GPU uses
+`ceil(B*n/T)` block bytes there; host block bytes are the exact remainder.
+This rounds once per candidate, not once per block multiplied by `n`.
+
+Non-block GPU bytes are unknown in `[0, N]`, with the host share the remainder.
+The analyzer evaluates both endpoints using the existing KV, overhead and margin
+splits. GPU requirement is monotone increasing in this share; RAM requirement
+is monotone decreasing. A candidate is accepted only if **GPU maximum fits VRAM
+and RAM maximum fits RAM**. These maxima are different hypothetical placements,
+not one allocation: do not add them or infer duplicated weights.
+
+Existing `gpu_*`/`ram_*` fields describe the GPU-heavy endpoint and conserve all
+bytes. Optional `non_block_placement_bounds` retains block bytes per pool, total
+non-block bytes, GPU minimum, RAM maximum and the RAM-heavy overhead/margin.
+The opposite endpoint is reconstructed by remainders. Diagnostics include the
+same bounds for selected and first rejected candidates. Compatibility ratios
+use both pool maxima. Physical point predictions are unavailable while the
+non-block split is unknown, rather than comparing an endpoint against measured
+process allocation as though it were the predicted placement.
+
+Ignoring nonnegative overhead, margin and rounding gives the valid search bound
+`n <= floor(T*(available_vram - reserve - N)/(B + KV))`, capped at `T-1` for
+partial offload. Search visits candidates downwards and never uses the measured
+runtime layer count. A rejected higher candidate above an accepted one must
+fail the GPU maximum: decreasing GPU blocks cannot rescue insufficient host RAM.
+
+Resident GPU and CPU modes still charge all weights to their respective pool.
+Unified memory retains its single-pool rule. Missing/unsupported architecture
+keeps the existing uniform or byte fallback, without inventing non-block
+precision. Bounds are conditional on estimated parameter-to-byte fractions,
+not bounds on actual tensor allocations. They exclude duplication, staging,
+uneven block sizes and runtime-specific storage. A conservative rejection does
+not prove that every backend would fail. Benchmarks validate this model; they
+do not supply calibration constants. Additive optional fields retain schema v2
+and legacy payloads remain readable.
+
+#### Qwen fixture: before/after non-block bounds
+
+Offline fixture, not a new runtime measurement: 4,683,074,240 weight bytes,
+234,881,024 KV bytes, 1,005,178,336 overhead bytes, 536,870,912 reserve bytes,
+646,000,452 margin bytes, 4,985,380,864 available VRAM bytes and 7,593,828,352
+available RAM bytes. The existing architecture split estimates 4,012,773,975
+block bytes and 670,300,265 non-block bytes over 28 blocks.
+
+| Decision | Previous uniform placement | Non-block bounds |
+|---|---:|---:|
+| Mode | GPU_OFFLOAD | GPU_OFFLOAD |
+| Selected blocks | 18 | 17 |
+| First rejected | 19 | 18 |
+| Search ceiling | 25 | 24 |
+
+All following quantities are **bytes of planning budget**. After columns use
+the GPU-heavy endpoint; RAM maximum is a different endpoint checked separately.
+The previous model had no separate block/non-block terms, so those entries are
+unavailable rather than reconstructed as though it had used a decomposition.
+
+| Term | Before selected 18 | Before rejected 19 | After selected 17 | After rejected 18 |
+|---|---:|---:|---:|---:|
+| Block GPU weights | unavailable | unavailable | 2,436,327,057 | 2,579,640,413 |
+| Non-block GPU weights (endpoint) | unavailable | unavailable | 670,300,265 | 670,300,265 |
+| Block RAM weights | unavailable | unavailable | 1,576,446,918 | 1,433,133,562 |
+| Non-block RAM weights (endpoint) | unavailable | unavailable | 0 | 0 |
+| Total GPU weights | 3,010,547,736 | 3,177,800,388 | 3,106,627,322 | 3,249,940,678 |
+| Total RAM weights | 1,672,526,504 | 1,505,273,852 | 1,576,446,918 | 1,433,133,562 |
+| GPU KV | 150,994,944 | 159,383,552 | 142,606,336 | 150,994,944 |
+| RAM KV | 83,886,080 | 75,497,472 | 92,274,688 | 83,886,080 |
+| GPU overhead | 646,186,076 | 682,085,302 | 664,109,189 | 695,115,476 |
+| RAM overhead | 358,992,260 | 323,093,034 | 341,069,147 | 310,062,860 |
+| GPU margin | 434,459,968 | 455,614,016 | 445,021,377 | 463,292,202 |
+| RAM margin | 211,540,484 | 190,386,436 | 200,979,075 | 182,708,250 |
+| GPU required (maximum after) | 4,779,059,636 | 5,011,754,170 | 4,895,235,136 | 5,096,214,212 |
+| RAM required (minimum after) | 2,326,945,328 | 2,094,250,794 | 2,210,769,828 | 2,009,790,752 |
+| GPU headroom | 206,321,228 | 0 | 90,145,728 | 0 |
+| GPU excess | 0 | 26,373,306 | 0 | 110,833,348 |
+| GPU minimum | unavailable | unavailable | 4,007,202,288 | 4,208,181,363 |
+| RAM maximum | unavailable | unavailable | 3,098,802,676 | 2,897,823,601 |
+| Host-heavy RAM overhead | unavailable | unavailable | 478,071,471 | 447,065,185 |
+| Host-heavy RAM margin | unavailable | unavailable | 281,709,334 | 263,438,509 |
+
+At the same 18 blocks, the new GPU endpoint charges 239,392,942 more weight
+bytes than the old uniform model. Its existing proportional overhead and
+margin therefore also increase. This, not a larger marginal block estimate,
+rejects 18; no constants were adjusted to choose 17.
+
+The estimated marginal weight changes from about 159.50 to 136.67 MiB/block.
+Against the supplied observed endpoint slope of about 132.85 MiB/block, the
+relative differences are about +20.1% and +2.9%. This remains an external,
+single-model check, not a measurement of individual tensors. The apparent
+fixed CUDA term (~448 MiB) is not identified as embeddings or output weights.
+Our non-block GPU interval is 0..639.25 MiB; numerical overlap does not validate
+that tensor interpretation or give HFA authority over runtime launch policy.
+
 ### 2. KV cache
 
 ```text

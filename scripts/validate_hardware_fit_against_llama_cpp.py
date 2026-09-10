@@ -64,7 +64,10 @@ from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
-from jaull.reporting.estimation import hardware_fit_offload_diagnostics_to_dict
+from jaull.reporting.estimation import (
+    hardware_fit_offload_diagnostics_to_dict,
+    transformer_block_weight_decomposition_to_dict,
+)
 from jaull.runtime.locator import RuntimeLocator
 
 MIB = 1024**2
@@ -127,6 +130,11 @@ class Prediction:
             },
             "estimate": {
                 "weights_bytes": estimate.weights.component.bytes,
+                "transformer_block_decomposition": (
+                    transformer_block_weight_decomposition_to_dict(
+                        estimate.weights.transformer_block_decomposition
+                    )
+                ),
                 "kv_cache_bytes": estimate.kv_cache.component.bytes,
                 "kv_cache_layers": estimate.kv_cache.layers,
                 "kv_cache_formula": estimate.kv_cache.formula,
@@ -584,6 +592,7 @@ def render(report: dict[str, Any]) -> str:
         f"  status/conf       {estimate['status']} / {estimate['confidence']}",
     ]
     lines.extend(_render_hfa_decision_boundary(fit))
+    lines.extend(_render_weight_decomposition(estimate))
     lines.extend(["", "OBSERVED"])
     lines.append(
         f"  {'-ngl':>6}  {'started':>7}  {'offloaded':>10}  "
@@ -632,6 +641,26 @@ def render(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_weight_decomposition(estimate: dict[str, Any]) -> list[str]:
+    decomposition = estimate.get("transformer_block_decomposition")
+    if decomposition is None:
+        return []
+    return [
+        "",
+        "WEIGHT DECOMPOSITION (estimated; non-block placement bounded)",
+        f"  method                    {decomposition['method']}",
+        "  total artifact weights    "
+        f"{_mib(decomposition['total_weight_bytes'])}",
+        "  transformer-block weights "
+        f"{_mib(decomposition['estimated_transformer_block_weight_bytes'])}",
+        "  non-block weights         "
+        f"{_mib(decomposition['estimated_non_block_weight_bytes'])}",
+        "  estimated per block       "
+        f"{_mib(decomposition['estimated_bytes_per_transformer_block'])}",
+        "  non-block placement       unknown; discrete block offload checks endpoint budgets",
+    ]
+
+
 def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
     diagnostics = fit.get("offload_diagnostics")
     if diagnostics is None:
@@ -649,6 +678,7 @@ def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
         f"    measured available  {_mib(selected['available_vram_bytes'])}",
         f"    headroom            {_mib(selected['headroom_bytes'])}",
     ]
+    lines.extend(_render_non_block_bounds(selected))
     if rejected is None:
         lines.extend(["  first rejected", "    none"])
         return lines
@@ -662,13 +692,33 @@ def _render_hfa_decision_boundary(fit: dict[str, Any]) -> list[str]:
             f"    excess              {_mib(rejected['excess_bytes'])}",
             "  rejected estimated budget breakdown",
             f"    weight budget       {_mib(rejected['gpu_weight_bytes'])}",
-            f"    KV cache budget     {_mib(rejected['kv_cache_bytes'])}",
+            "    KV cache budget     "
+            f"{_mib(rejected.get('gpu_kv_cache_bytes', rejected['kv_cache_bytes']))}",
             f"    reserve budget      {_mib(rejected['device_reserve_bytes'])}",
             f"    overhead budget     {_mib(rejected['gpu_overhead_bytes'])}",
             f"    safety margin budget {_mib(rejected['gpu_safety_margin_bytes'])}",
         ]
     )
+    lines.extend(_render_non_block_bounds(rejected))
     return lines
+
+
+def _render_non_block_bounds(candidate: dict[str, Any]) -> list[str]:
+    bounds = candidate.get("non_block_placement_bounds")
+    if bounds is None:
+        return []
+    return [
+        "    non-block placement unknown; planning endpoint budgets, not measured allocations",
+        f"    estimated block weights GPU {_mib(bounds['gpu_transformer_block_weight_bytes'])}",
+        f"    estimated block weights RAM {_mib(bounds['ram_transformer_block_weight_bytes'])}",
+        f"    non-block GPU range 0 .. {_mib(bounds['non_block_weight_bytes'])}",
+        "    non-block RAM share is the remainder",
+        f"    estimated GPU minimum {_mib(bounds['gpu_required_min_bytes'])}",
+        f"    estimated RAM maximum {_mib(bounds['ram_required_max_bytes'])}",
+        f"    host-heavy overhead {_mib(bounds['ram_overhead_max_bytes'])}",
+        f"    host-heavy margin {_mib(bounds['ram_safety_margin_max_bytes'])}",
+        "    GPU maximum and RAM minimum are the enclosing candidate fields",
+    ]
 
 
 def _cuda_only(buffers: dict[str, float]) -> float | None:

@@ -17,10 +17,29 @@ from jaull.domain.execution import (
     ExecutionResult,
     InferenceResult,
 )
-from jaull.domain.runtime import RuntimeRecommendation
-from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
+from jaull.domain.runtime import RuntimeFlagSource, RuntimeRecommendation
+from jaull.exceptions import (
+    HuggingFaceUnavailableError,
+    InvalidModelReferenceError,
+    QuantizationNotFoundError,
+)
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.workflow.container import ServiceContainer
+from tests._execution_fixtures import qwen_ctx4096_estimate, qwen_hardware
+
+
+def _flag(runtime: RuntimeRecommendation | None, name: str) -> str | None:
+    if runtime is None:
+        return None
+    return next((f.value for f in runtime.flags if f.name == name), None)
+
+
+def _source(
+    runtime: RuntimeRecommendation | None, name: str
+) -> RuntimeFlagSource | None:
+    if runtime is None:
+        return None
+    return next((f.source for f in runtime.flags if f.name == name), None)
 
 
 def _artifact(**updates: object) -> ModelArtifact:
@@ -66,16 +85,55 @@ class _FakeAdvisor:
         observation: ExecutionObservation | None = None,
         fail_at: str | None = None,
         error: Exception | None = None,
+        inspect_error: Exception | None = None,
     ) -> None:
         self.artifact = artifact or _artifact()
         self.observation = observation or _observation()
         self.fail_at = fail_at
         self.error = error
+        self.inspect_error = inspect_error
         self.operations: list[str] = []
         self.resolved: list[tuple[str, str | None, str | None]] = []
         self.downloaded: list[ModelArtifact] = []
         self.verified: list[tuple[ModelArtifact, bool]] = []
         self.runs: list[tuple[ModelArtifact, str, RuntimeRecommendation | None]] = []
+        self.planned: list[dict[str, Any]] = []
+        self.last_plan: Any = None
+
+    # -- automatic planning (AUTO path) ---------------------------------
+    def scan_hardware(self, on_progress: object | None = None) -> object:
+        del on_progress
+        self.operations.append("scan")
+        return qwen_hardware()
+
+    def inspect_model(self, repo_id: str) -> object:
+        self.operations.append("inspect")
+        if self.inspect_error is not None:
+            raise self.inspect_error
+        return object()
+
+    def estimate_model(
+        self,
+        analysis: object,
+        hardware: object,
+        inference_cfg: object,
+        **kwargs: object,
+    ) -> object:
+        del analysis, hardware, inference_cfg, kwargs
+        self.operations.append("estimate")
+        return qwen_ctx4096_estimate(with_runtime_recommendation=True)
+
+    def plan_launch(self, **kwargs: Any) -> RuntimeRecommendation:
+        from jaull.application.execution import plan_launch
+
+        return plan_launch(**kwargs)
+
+    def plan_execution(self, **kwargs: Any) -> object:
+        from jaull.application.execution import plan_execution
+
+        self.planned.append(kwargs)
+        self.last_plan = plan_execution(**kwargs)
+        return self.last_plan
 
     def resolve_artifact(
         self,
@@ -194,7 +252,7 @@ def test_run_model_skips_download_when_artifact_is_already_local(capsys: Any) ->
 
     exit_code = run_model(
         "owner/repo",
-        RunOptions(quantization=None, prompt="Hello"),
+        RunOptions(quantization=None, prompt="Hello", n_gpu_layers=0),
         advisor=advisor,  # type: ignore[arg-type]
     )
 
@@ -215,7 +273,7 @@ def test_run_model_formats_unavailable_vram_without_zero_bytes(capsys: Any) -> N
 
     exit_code = run_model(
         "owner/repo",
-        RunOptions(quantization=None, prompt="Hello"),
+        RunOptions(quantization=None, prompt="Hello", n_gpu_layers=0),
         advisor=advisor,  # type: ignore[arg-type]
     )
 
@@ -243,7 +301,7 @@ def test_run_model_renders_execution_observation_on_execution_failure(
 
     exit_code = run_model(
         "owner/repo",
-        RunOptions(quantization=None, prompt="Hello"),
+        RunOptions(quantization=None, prompt="Hello", n_gpu_layers=0),
         advisor=advisor,  # type: ignore[arg-type]
     )
 
@@ -292,6 +350,7 @@ def test_run_model_configures_default_advisor_with_llama_cli_options(
             prompt="Hello",
             llama_cli_path="/custom/llama-cli",
             timeout_seconds=7.5,
+            n_gpu_layers=0,
         ),
     )
 
@@ -299,6 +358,70 @@ def test_run_model_configures_default_advisor_with_llama_cli_options(
     assert "generated answer" in capsys.readouterr().out
     assert _AdvisorFactory.calls == [("/custom/llama-cli", 7.5)]
     assert advisor.operations == ["resolve", "verify", "run"]
+
+
+def test_run_without_flags_plans_automatically_and_is_not_cpu_only(capsys: Any) -> None:
+    advisor = _FakeAdvisor(_artifact(is_downloaded=True, is_verified=True))
+
+    exit_code = run_model(
+        "owner/repo",
+        RunOptions(quantization="Q4_K_M", prompt="Hi"),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    assert exit_code == 0
+    assert {"scan", "inspect", "estimate"} <= set(advisor.operations)
+    assert advisor.planned[-1]["estimate"] is not None
+    assert advisor.planned[-1]["overrides"].n_gpu_layers is None
+    _, _, runtime = advisor.runs[0]
+    assert _flag(runtime, "--n-gpu-layers") == "23"  # AUTO, not "0"
+
+
+def test_run_with_zero_is_explicit_cpu_and_skips_estimation(capsys: Any) -> None:
+    advisor = _FakeAdvisor(_artifact(is_downloaded=True, is_verified=True))
+
+    run_model(
+        "owner/repo",
+        RunOptions(quantization=None, prompt="Hi", n_gpu_layers=0),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    _, _, runtime = advisor.runs[0]
+    assert _flag(runtime, "--n-gpu-layers") == "0"
+    assert _source(runtime, "--n-gpu-layers") is RuntimeFlagSource.USER_INPUT
+    assert "estimate" not in advisor.operations
+    assert advisor.planned[-1]["estimate"] is None
+
+
+def test_run_ctx_size_omitted_is_not_marked_user_input(capsys: Any) -> None:
+    advisor = _FakeAdvisor(_artifact(is_downloaded=True, is_verified=True))
+
+    run_model(
+        "owner/repo",
+        RunOptions(quantization="Q4_K_M", prompt="Hi"),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    _, _, runtime = advisor.runs[0]
+    assert _source(runtime, "--ctx-size") is not RuntimeFlagSource.USER_INPUT
+
+
+def test_run_auto_planning_failure_does_not_fall_back_to_cpu(capsys: Any) -> None:
+    advisor = _FakeAdvisor(
+        _artifact(is_downloaded=True, is_verified=True),
+        inspect_error=HuggingFaceUnavailableError("Hub is down"),
+    )
+
+    exit_code = run_model(
+        "owner/repo",
+        RunOptions(quantization=None, prompt="Hi"),
+        advisor=advisor,  # type: ignore[arg-type]
+    )
+
+    assert exit_code == 6
+    output = capsys.readouterr().out
+    assert "--n-gpu-layers" in output
+    assert advisor.runs == []  # nothing was executed CPU-only
 
 
 class _RecordingBackend:
@@ -370,7 +493,7 @@ def test_run_model_maps_pre_execution_errors_to_exit_codes(
 
     exit_code = run_model(
         "owner/repo",
-        RunOptions(quantization=None, prompt="Hello"),
+        RunOptions(quantization=None, prompt="Hello", n_gpu_layers=0),
         advisor=advisor,  # type: ignore[arg-type]
     )
 
@@ -393,7 +516,7 @@ def test_run_model_maps_advisor_execution_errors_to_exit_code_5(
 
     exit_code = run_model(
         "owner/repo",
-        RunOptions(quantization=None, prompt="Hello"),
+        RunOptions(quantization=None, prompt="Hello", n_gpu_layers=0),
         advisor=advisor,  # type: ignore[arg-type]
     )
 

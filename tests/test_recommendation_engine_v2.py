@@ -336,7 +336,7 @@ def test_local_validated_evidence_is_recognized() -> None:
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=hardware()),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
     )[0]
     record = _experiment_record(plan.artifact.to_model_artifact(), plan.runtime)
 
@@ -357,7 +357,7 @@ def test_local_benchmark_requires_compatible_fingerprint_and_machine() -> None:
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=hardware()),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
     )[0]
     matching = _benchmark_record(
         plan.artifact.to_model_artifact(),
@@ -400,7 +400,7 @@ def test_local_evidence_matches_when_only_available_memory_changes() -> None:
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=scanned),
+        context=PlanRankingContext(hardware=scanned, backend_selection=_selection()),
     )[0]
     benchmark = _benchmark_record(
         plan.artifact.to_model_artifact(),
@@ -434,7 +434,7 @@ def test_advisor_plan_context_loads_local_evidence(tmp_path: Path) -> None:
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=hardware()),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
     )[0]
     experiment = _experiment_record(plan.artifact.to_model_artifact(), plan.runtime)
     benchmark = _benchmark_record(
@@ -516,7 +516,7 @@ def test_measured_memory_is_preferred_over_estimate_when_compatible() -> None:
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=hardware()),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
     )[0]
     record = _benchmark_record(
         plan.artifact.to_model_artifact(),
@@ -821,13 +821,13 @@ def test_external_evaluation_provenance_is_retained_without_global_quality_score
     assert "score" not in assessment.model_dump()
 
 
-def test_incompatible_benchmark_methodologies_are_not_merged() -> None:
+def test_unknown_benchmark_methodology_cannot_displace_recognized_evidence() -> None:
     evaluated = _evaluated_gguf()
     req = _requirements()
     plan = generate_execution_plans(
         evaluated,
         req,
-        context=PlanRankingContext(hardware=hardware()),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
     )[0]
     old = _benchmark_record(
         plan.artifact.to_model_artifact(),
@@ -835,14 +835,14 @@ def test_incompatible_benchmark_methodologies_are_not_merged() -> None:
         machine=hardware(),
         tps=10.0,
         methodology="old_method",
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
     )
     new = _benchmark_record(
         plan.artifact.to_model_artifact(),
         plan.runtime,
         machine=hardware(),
         tps=20.0,
-        methodology="new_method",
+        methodology="llama_bench_v1",
         created_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
 
@@ -1148,6 +1148,7 @@ def _benchmark_record(
         backend=ComputeBackend.CPU,
         device="none",
         gpu_layers=BenchmarkGpuLayers.count_layers(0),
+        generation_sizes=(64,),
     )
     observation = BenchmarkObservation(
         success=True,

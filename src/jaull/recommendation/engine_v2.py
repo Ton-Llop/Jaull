@@ -6,7 +6,6 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
     BenchmarkMeasurementKind,
     BenchmarkRecord,
@@ -48,10 +47,10 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.estimator.configuration import select_configuration
-from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 from jaull.execution_plans import build_execution_plan, resolve_model_identity
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
+from jaull.recommendation.local_evidence import matching_benchmark, matching_experiment
 from jaull.recommendation.policies import LicenseCategory, classify_license
 
 EstimatePlanFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
@@ -154,8 +153,8 @@ def assess_plan(
     )
     evidence.extend(_capability_evidence(capability))
     hard = _hard_constraints(evaluated, plan, requirements)
-    local_experiment = _matching_experiment(plan, ctx.experiment_records)
-    local_benchmark = _matching_benchmark(plan, ctx.benchmark_records)
+    local_experiment = matching_experiment(plan, ctx.experiment_records)
+    local_benchmark = matching_benchmark(plan, ctx.benchmark_records)
     if local_experiment is not None:
         evidence.append(
             RecommendationEvidence(
@@ -167,6 +166,7 @@ def assess_plan(
                 observed=True,
                 provenance={
                     "experiment_id": local_experiment.identity.experiment_id,
+                    "artifact_identity": "metadata_match",
                 },
             )
         )
@@ -182,6 +182,8 @@ def assess_plan(
                 provenance={
                     "benchmark_id": local_benchmark.identity.benchmark_id,
                     "methodology": local_benchmark.observation.methodology,
+                    "scope": "recorded_microbenchmark",
+                    "artifact_identity": "metadata_match",
                 },
             )
         )
@@ -850,56 +852,6 @@ def _with_capability_trade_offs(
     if capability.chat_or_base == "base":
         updated.append("capability:base_model")
     return updated
-
-
-def _matching_experiment(
-    plan: ExecutionPlan,
-    records: Sequence[ExperimentRecord],
-) -> ExperimentRecord | None:
-    compatible = [
-        record
-        for record in records
-        if _artifact_matches(plan.artifact.to_model_artifact(), record.artifact)
-        and record.runtime.runtime is plan.runtime.runtime
-        and _hardware_matches(plan.hardware, record.hardware)
-    ]
-    return max(compatible, key=lambda record: record.identity.created_at, default=None)
-
-
-def _matching_benchmark(
-    plan: ExecutionPlan,
-    records: Sequence[BenchmarkRecord],
-) -> BenchmarkRecord | None:
-    compatible = [
-        record
-        for record in records
-        if _artifact_matches(plan.artifact.to_model_artifact(), record.artifact)
-        and record.runtime.runtime is plan.runtime.runtime
-        and _hardware_matches(plan.hardware, record.hardware)
-        and (
-            plan.backend_selection is None
-            or record.requested_backend is plan.backend_selection.selected_backend
-        )
-    ]
-    return max(compatible, key=lambda record: record.identity.created_at, default=None)
-
-
-def _artifact_matches(left: ModelArtifact, right: ModelArtifact) -> bool:
-    return (
-        left.repo_id == right.repo_id
-        and left.filename == right.filename
-        and left.format == right.format
-        and left.quantization == right.quantization
-    )
-
-
-def _hardware_matches(
-    plan_hardware: HardwareProfile | None,
-    record_hardware: HardwareProfile,
-) -> bool:
-    if plan_hardware is None:
-        return True
-    return machine_fingerprint(plan_hardware) == machine_fingerprint(record_hardware)
 
 
 def _measured_memory(

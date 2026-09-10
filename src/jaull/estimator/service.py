@@ -67,6 +67,10 @@ def estimate_memory(
         )
 
     effective_config = _pick_effective_config(analysis.config, enrichment)
+    weight_estimate = weights.add_transformer_block_decomposition(
+        weight_estimate,
+        effective_config,
+    )
 
     kv_estimate = kv_cache.estimate_kv_cache(
         config=effective_config,
@@ -110,6 +114,7 @@ def estimate_memory(
         ),
         total_bytes=total_bytes,
         total_transformer_blocks=kv_estimate.layers,
+        weight_decomposition=weight_estimate.transformer_block_decomposition,
         hardware=hardware,
         device_target=inference_cfg.target_device,
     )

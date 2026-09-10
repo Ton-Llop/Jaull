@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from jaull.domain.inference import WeightPrecision
+from jaull.domain.estimation import CompatibilityStatus, MemoryEstimate
+from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import RecommendationPriority
 from jaull.estimator.configuration import select_configuration
 from jaull.workflow.requirements import build_requirements
@@ -51,6 +53,35 @@ def test_memory_priority_prefers_the_smallest_available_rung() -> None:
     )
     assert choice.configuration is not None
     assert choice.configuration.quantization == "Q4_K_S"
+
+
+def test_unknown_estimate_does_not_stop_the_configuration_ladder() -> None:
+    estimate = size_driven_estimator(vram_budget=24 * GIB)
+    seen: list[str | None] = []
+
+    def estimate_with_incomplete_first_rung(
+        analysis: ModelAnalysis, config: InferenceConfiguration,
+    ) -> MemoryEstimate:
+        seen.append(config.quantization)
+        result: MemoryEstimate = estimate(analysis, config)
+        if len(seen) == 1:
+            result = result.model_copy(update={
+                "assessment": result.assessment.model_copy(
+                    update={"status": CompatibilityStatus.UNKNOWN},
+                ),
+            })
+        return result
+
+    choice = select_configuration(
+        gguf_analysis(),
+        build_requirements(answers(priority=RecommendationPriority.QUALITY), hardware()),
+        estimate_with_incomplete_first_rung,
+    )
+    assert len(seen) == 2
+    assert choice.configuration is not None
+    assert choice.configuration.quantization == seen[1]
+    assert choice.estimate is not None
+    assert choice.estimate.assessment.status is CompatibilityStatus.COMFORTABLE
 
 
 def test_ladder_falls_through_when_the_preferred_rung_is_absent() -> None:

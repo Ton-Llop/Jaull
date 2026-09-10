@@ -18,6 +18,8 @@ import pytest
 
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import (
+    CompatibilityStatus,
+    EstimationConfidence,
     HardwareFitMode,
     HardwareFitPlacementMethod,
     HardwareFitResult,
@@ -221,6 +223,30 @@ def test_a_missing_memory_component_produces_no_fit() -> None:
     )
 
     assert result.fit is None
+
+
+@pytest.mark.parametrize("device", list(TargetDevice))
+@pytest.mark.parametrize("missing", ["weights", "KV cache", "runtime overhead"])
+def test_partial_total_cannot_confirm_compatibility(
+    device: TargetDevice, missing: str,
+) -> None:
+    result = assess_components_with_fit(
+        weights_bytes=None if missing == "weights" else GIB,
+        kv_cache_bytes=None if missing == "KV cache" else GIB,
+        overhead_bytes=None if missing == "runtime overhead" else GIB,
+        device_reserve_bytes=0,
+        safety_margin_bytes=0,
+        total_bytes=2 * GIB,
+        total_transformer_blocks=32,
+        hardware=_scenario("gpu_resident_comfortable").machine.profile(),
+        device_target=device,
+    )
+
+    assert result.fit is None
+    assert result.assessment.status is CompatibilityStatus.UNKNOWN
+    assert result.assessment.confidence is EstimationConfidence.UNKNOWN
+    assert result.assessment.ratio is None
+    assert missing in " ".join(result.assessment.reasons)
 
 
 # ---------------------------------------------------------------------------

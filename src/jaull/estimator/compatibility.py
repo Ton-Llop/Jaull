@@ -11,6 +11,7 @@ from jaull.domain.estimation import (
     HardwareFitMode,
     HardwareFitPlacementMethod,
     HardwareFitResult,
+    TransformerBlockWeightDecomposition,
 )
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import TargetDevice
@@ -200,6 +201,7 @@ def assess_components_with_fit(
     total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> ComponentAssessment:
     """Assess placement, keeping the structured fit alongside the summary.
 
@@ -209,10 +211,27 @@ def assess_components_with_fit(
     they were given. Returning both from one analysis keeps them consistent.
     """
 
-    if device_target is not TargetDevice.AUTO:
-        return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
-
     if weights_bytes is None or kv_cache_bytes is None or overhead_bytes is None:
+        missing = [
+            name
+            for name, value in (
+                ("weights", weights_bytes),
+                ("KV cache", kv_cache_bytes),
+                ("runtime overhead", overhead_bytes),
+            )
+            if value is None
+        ]
+        # A known subtotal is a lower bound, not evidence that the model fits.
+        assessment = assess(None, hardware, device_target).model_copy(
+            update={
+                "reasons": [
+                    "Cannot confirm compatibility: missing " + ", ".join(missing) + "."
+                ]
+            }
+        )
+        return ComponentAssessment(assessment, None)
+
+    if device_target is not TargetDevice.AUTO:
         return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
 
     fit = hardware_fit.analyze_components(
@@ -222,6 +241,7 @@ def assess_components_with_fit(
         device_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
         total_transformer_blocks=total_transformer_blocks,
+        weight_decomposition=weight_decomposition,
         hardware=hardware,
     )
     return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
@@ -238,6 +258,7 @@ def assess_components(
     total_transformer_blocks: int | None,
     hardware: HardwareProfile,
     device_target: TargetDevice,
+    weight_decomposition: TransformerBlockWeightDecomposition | None = None,
 ) -> CompatibilityAssessment:
     """Assess placement using separated memory components when available."""
 
@@ -251,6 +272,7 @@ def assess_components(
         total_transformer_blocks=total_transformer_blocks,
         hardware=hardware,
         device_target=device_target,
+        weight_decomposition=weight_decomposition,
     ).assessment
 
 
@@ -277,9 +299,13 @@ def _assessment_from_fit(
         )
 
     if fit.mode is HardwareFitMode.GPU_OFFLOAD:
+        ram_budget = (
+            fit.non_block_placement_bounds.ram_required_max_bytes
+            if fit.non_block_placement_bounds is not None else fit.ram_required_bytes
+        )
         offload_ratio = _max_known_ratio(
             (fit.gpu_required_bytes, vram),
-            (fit.ram_required_bytes, ram),
+            (ram_budget, ram),
         )
         confidence = (
             EstimationConfidence.MEDIUM

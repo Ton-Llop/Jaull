@@ -17,6 +17,7 @@ from jaull.domain.hardware import (
     MemoryInfo,
 )
 from jaull.estimator.hardware_fit import (
+    _calculate_offload_placement,
     _split_kv_cache_by_transformer_blocks,
     analyze_components,
 )
@@ -80,6 +81,60 @@ def test_gpu_resident_when_full_requirement_fits_vram() -> None:
     assert result.ram_weight_bytes == 0
     assert result.gpu_transformer_blocks == 20
     assert result.offload_diagnostics is None
+
+
+@pytest.mark.parametrize("ram", [300, 200, 199])
+def test_byte_offload_search_moves_more_weights_to_gpu_when_ram_is_tight(
+    ram: int,
+) -> None:
+    result = analyze_components(
+        weights_bytes=1000,
+        kv_cache_bytes=0,
+        overhead_bytes=0,
+        hardware=_hardware(ram=ram, vram=800),
+    )
+    if ram < 200:
+        assert result.mode is HardwareFitMode.TOO_LARGE
+    else:
+        assert result.mode is HardwareFitMode.GPU_OFFLOAD
+        assert result.placement_method is HardwareFitPlacementMethod.ESTIMATED_BYTES
+        assert result.gpu_weight_bytes == result.gpu_required_bytes == 800
+        assert result.ram_weight_bytes == result.ram_required_bytes == 200
+
+
+@pytest.mark.parametrize("kv,overhead,reserve,margin", [(0, 0, 0, 0), (3, 5, 2, 7)])
+def test_byte_search_matches_exhaustive_placement(
+    kv: int, overhead: int, reserve: int, margin: int,
+) -> None:
+    # Reuse the budget arithmetic but independently enumerate every split:
+    # this checks search correctness, not the separately tested memory formula.
+    placements = [
+        _calculate_offload_placement(
+            weights_bytes=20, kv_cache_bytes=kv, overhead_bytes=overhead,
+            device_reserve_bytes=reserve, safety_margin_bytes=margin,
+            total_transformer_blocks=None, gpu_transformer_blocks=None,
+            gpu_weight_bytes=gpu_weights,
+        )
+        for gpu_weights in range(1, 20)
+    ]
+    for vram in range(1, 20 + kv + overhead + reserve + margin):
+        for ram in range(1, 20 + kv + overhead + margin):
+            feasible = [
+                p for p in placements if p is not None
+                and p.gpu_required_bytes <= vram and p.ram_required_bytes <= ram
+            ]
+            result = analyze_components(
+                weights_bytes=20, kv_cache_bytes=kv, overhead_bytes=overhead,
+                device_reserve_bytes=reserve, safety_margin_bytes=margin,
+                hardware=_hardware(ram=ram, vram=vram),
+            )
+            if feasible:
+                assert result.mode is HardwareFitMode.GPU_OFFLOAD, (vram, ram)
+                assert result.gpu_weight_bytes == feasible[-1].gpu_weight_bytes
+                assert result.gpu_required_bytes == feasible[-1].gpu_required_bytes
+                assert result.ram_required_bytes == feasible[-1].ram_required_bytes
+            else:
+                assert result.mode is HardwareFitMode.TOO_LARGE, (vram, ram)
 
 
 def test_gpu_offload_places_some_weights_on_gpu_and_rest_in_ram() -> None:
@@ -326,6 +381,10 @@ def test_qwen_7b_rtx2060_regression_reports_transformer_blocks_not_runtime_layer
     rejected = diagnostics.first_rejected_higher
 
     assert selected.gpu_transformer_blocks == 18
+    # Placement intentionally keeps using the conservative total-weight split.
+    # The architecture-derived WeightEstimate decomposition is diagnostic until
+    # non-block weight placement has a defined policy.
+    assert selected.gpu_weight_bytes == 18 * math.ceil(4_683_074_240 / 28)
     assert selected.gpu_required_bytes == result.gpu_required_bytes
     assert selected.gpu_required_bytes <= selected.available_vram_bytes
     assert selected.excess_bytes == 0

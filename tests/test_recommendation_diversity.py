@@ -28,6 +28,7 @@ from tests.test_recommendation_engine_v2 import (
     _evaluated_gguf,
     _evaluated_transformers,
     _requirements,
+    _selection,
 )
 
 
@@ -393,7 +394,10 @@ def test_local_benchmark_effect_survives_through_assessment() -> None:
     measured = rank_execution_plans(
         [evaluated],
         _requirements(),
-        context=PlanRankingContext(hardware=hardware(), benchmark_records=[benchmark]),
+        context=PlanRankingContext(
+            hardware=hardware(), backend_selection=_selection(),
+            benchmark_records=[benchmark],
+        ),
     )
 
     diversified = diversify_ranked_plans(measured, limit=5)

@@ -455,7 +455,9 @@ def _run_metadata(
         values.append(f"ctx {config.context_length}")
     offload = _flag_value(runtime, "--n-gpu-layers")
     if offload:
-        values.append(f"GPU offload {offload}")
+        # The runtime launch plan -- a different policy from the "hardware fit"
+        # transformer-block count shown on the recommendation card.
+        values.append(f"launch --n-gpu-layers {offload}")
     if estimate is not None and estimate.total_bytes is not None:
         values.append(f"{estimate.total_bytes / 1024**3:.2f} GiB")
     return values
