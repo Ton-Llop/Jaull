@@ -757,6 +757,25 @@ def _export_modal_is_ready(screen: object) -> bool:
     )
 
 
+def _run_screen_is_ready(screen: object) -> bool:
+    """The run screen is pushed *and* composed.
+
+    ``app.screen`` is the new screen from the moment it is pushed, several
+    awaited mounts before ``compose`` has yielded a single widget, so waiting
+    on the type alone can hand the test an empty screen. Linux hides the gap:
+    ``pilot.pause()`` returns once CPU time stops tracking wall clock, and
+    there ``process_time()`` has nanosecond resolution. On Windows it advances
+    in ~15.6 ms steps, so a busy 20 ms slice measures as 0 and the pause gives
+    up while the screen is still mounting. Naming the widgets the test is
+    about to drive is what makes the wait mean "composed", not "pushed".
+    """
+    return (
+        isinstance(screen, RecommendationExecutionScreen)
+        and bool(screen.query("#run-prompt-input"))
+        and bool(screen.query("#run-generate"))
+    )
+
+
 def test_run_metadata_labels_the_launch_plan_distinctly_from_hardware_fit() -> None:
     rec = _recommendation(runtime=_runtime(n_gpu_layers=23))
     values = _run_metadata(rec, None)
@@ -1508,7 +1527,7 @@ def test_execution_paths_selects_plan_and_run_uses_prepared_plan(
             paths.query_one("#paths-run", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+                lambda: _run_screen_is_ready(pilot.app.screen),
             )
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
@@ -2066,7 +2085,7 @@ def test_escape_returns_to_results_screen() -> None:
             pilot.app.screen.query_one("#res-run-0", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+                lambda: _run_screen_is_ready(pilot.app.screen),
             )
             assert isinstance(pilot.app.screen, RecommendationExecutionScreen)
             assert not pilot.app.screen.query("#run-back")
@@ -2113,7 +2132,7 @@ def test_tui_results_execution_export_details_stress_flow(
             pilot.app.screen.query_one("#res-run-0", Button).press()
             await _wait_until(
                 pilot,
-                lambda: isinstance(pilot.app.screen, RecommendationExecutionScreen),
+                lambda: _run_screen_is_ready(pilot.app.screen),
             )
             run_screen = pilot.app.screen
             assert isinstance(run_screen, RecommendationExecutionScreen)
