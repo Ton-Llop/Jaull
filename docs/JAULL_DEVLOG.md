@@ -1,545 +1,109 @@
 # Jaull — DevLog
 
-> Registre simplificat del desenvolupament de Jaull.  
-> Les dates són aproximades, ja que al principi no portava un seguiment diari del projecte.
+> Resum del que he anat fent. Les dates del principi són aproximades perquè
+> encara no portava cap seguiment diari.
 
 ---
 
-## 29/07/2026 — Idea inicial
+## 29/07 — La idea
 
-Començo a definir la idea del projecte.
+Se m'acut una eina que et miri el PC i et digui quins models d'IA local hi pots fer anar de debò. La idea surt del TFG i de la pregunta pràctica de quin hardware necessitaria una empresa per tenir models locals. De moment es diu `local-ai-checker`.
 
-L'objectiu inicial és crear una eina capaç d'analitzar el hardware d'un ordinador i determinar quins models d'IA local s'hi podrien executar.
+## 30/07 — Detecció de hardware
 
-La idea neix arran del TFG i de la necessitat de saber quin hardware seria necessari per executar models locals dins d'una empresa.
+Detecció automàtica de CPU, RAM, disc i GPU. Per les NVIDIA tiro de NVML, que és qui et diu la VRAM total i la lliure.
 
-Primer objectiu:
+## 31/07 — Hugging Face
 
-- detectar CPU, RAM i GPU;
-- buscar models;
-- estimar quanta memòria necessiten;
-- recomanar quins models poden funcionar.
+Connecto amb el Hub per buscar models i llegir-ne la metadata sense descarregar res. Aquí ja es veu que un mateix model «lògic» existeix en un munt de repos i formats diferents, cosa que després donarà bastanta feina.
 
-En aquest moment el projecte encara es diu aproximadament `local-ai-checker`.
+## 01/08 — Estimació de memòria
+
+La part central: calcular si un model cap. Tinc en compte pesos, precisió/quantització, KV cache, mida de context, overhead del runtime i marge de seguretat, i classifico el resultat com a *comfortable*, *compatible*, *tight*, *offloading required* o *insufficient*. La norma que em poso és que cada número ha de dir d'on surt, res de constants màgiques.
+
+## 02/08 — Recomanació
+
+Primer commit de l'estructura i primera versió del ranking: Jaull ja no només diu si un model cap, sinó quins són els millors. Pondero hardware, memòria, ús que li vols donar, idioma, llicència, format i si realment es podrà executar.
+
+## 03/08 — Workflow guiat i canvi de nom
+
+Munto el flux de preguntes (chat general, programació, documents; prioritat entre qualitat, velocitat i memòria; context; concurrència) i et busca els millors matchs. Canvio el nom a **Jaull**. El projecte comença a créixer i faig el primer refactor seriós per separar `workflow`, `discovery`, `recommendation` i `presentation`, amb `AdvisorService` com a façana perquè la CLI i la TUI no hagin de saber què passa per dins.
+
+## 04/08 — TUI
+
+Em poso de debò amb la interfície en Textual. L'objectiu és que l'usuari no hagi de saber què és GGUF, una quantització o la VRAM per obtenir una recomanació. També faig l'`ArtifactService`: resoldre el fitxer concret, descarregar-lo i verificar-lo.
+
+## 05–07/08 — Que no recomani coses que no pots executar
+
+Provant amb hardware real veig que models AWQ sortien com a bona opció encara que després no els poguessis executar amb el runtime que tens. Afegeixo informació d'executabilitat real, formats, quantitzacions, nombre de paràmetres i confiança de l'estimació. La descàrrega passa a ser real, amb verificació de mida i SHA-256.
+
+## 09/08 — Primer intent amb llama.cpp
+
+Intento compilar `llama.cpp` al portàtil i peta: WSL es queda sense memòria i l'OOM killer es carrega el `cc1plus`. Decideixo no insistir i preparar la prova al PC amb NVIDIA. Irònicament és un bon recordatori del problema que Jaull intenta resoldre.
+
+## 10/08 — Primera inferència real
+
+Compilo `llama-cli` amb CUDA al PC bo, descarrego TinyLlama des del mateix Jaull i l'executo. La primera resposta és per emmarcar, perquè el TinyLlama decideix que GGUF és una mena de competició d'MMA, però tècnicament funciona. També descobreixo que `llama-cli` es queda en mode interactiu després de generar i li he d'afegir `--single-turn`.
+
+El mateix dia tanco el primer end-to-end real:
+
+```text
+Hugging Face → ArtifactService → GGUF verificat → AdvisorService
+    → LlamaCppRunner → ExecutionBackend → llama-cli → CUDA → text
+```
+
+Aquest és dels milestones importants: Jaull deixa de només predir i passa a executar. De passada unifico l'execució, perquè la CLI s'estava muntant el seu propi runner pel seu compte en comptes de passar per l'`AdvisorService`.
+
+## 11/08 — La TUI ja fa tot el recorregut
+
+Integro el flux sencer dins la TUI: hardware → necessitats → recomanacions → triar model → descarregar i verificar → escriure prompt → executar → veure la resposta. Afegeixo prompts consecutius amb historial, i em barallo amb uns quants errors de Textual (`DuplicateIds` i el lifecycle dels workers) que bloquejaven els tests.
+
+## 12/08 — Predicció contra realitat
+
+Començo a mesurar què passa de veritat quan s'executa (durada, RAM i VRAM de pic) i a comparar-ho amb el que Jaull havia predit. Aquesta és la meitat del TFG que més m'interessa. També amplio la detecció a Vulkan, no només CUDA, que al final són les «APIs» que connecten llama.cpp amb la teva gràfica.
+
+## 13/08 — Experiments reproduïbles
+
+Munto el pipeline d'experiments: cada validació guarda un registre immutable amb el hardware, l'artefacte, la predicció congelada i el que va passar realment. I unes quantes hores barallant-me amb el CI de Windows per tres xorrades.
+
+## 14–15/08 — Benchmarks
+
+Benchmarks reals des de la TUI amb `llama-bench`, i ara també detecto Transformers, així que puc promptejar, validar i benchmarkejar per les dues vies. Els registres es guarden en JSON; ja m'està bé, res de SQLite de moment.
+
+## 17/08 — Rendiment i Top 5
+
+Cache d'anàlisi de models i discovery concurrent, perquè cada cerca repetia massa feina. Ara la recomanació dona 5 opcions i les diferencia millor entre elles en comptes de treure cinc variants del mateix.
+
+## 20–22/08 — Endreçar la casa
+
+Documento tot perquè el codi es pugui obrir. Arreglo problemes de correctitud del ranking (identitat del model, evidència local) i poso fronteres d'arquitectura explícites amb un test que les vigila llegint els imports. També deslligo el ranking de si tens el runtime instal·lat: que no tinguis `llama-cli` ha de canviar si pots executar-ho ara, no si el model és bona idea per la teva màquina.
+
+## 24–25/08 — HardwareFit Analyzer
+
+La part gran d'aquest tram. En comptes de sumar RAM i VRAM com si fossin la mateixa bossa, decideixo una col·locació: `GPU_RESIDENT`, `GPU_OFFLOAD`, `CPU_RAM` o `TOO_LARGE`. Arreglo la semàntica del sliding window al KV cache (que no és el mateix tenir el camp que tenir-lo actiu) i munto un harness per validar les prediccions contra llama.cpp de veritat, no contra la meva intuïció.
+
+## 27–28/08 — Shortlist conscient del hardware
+
+La shortlist ja filtra tenint en compte el HardwareFit, així que deixa d'omplir el Top 5 amb coses que no caben. I taurons a la TUI 🦈
+
+## 30–31/08 — El HFA era massa prudent
+
+Descobreixo que el HardwareFit és bastant conservador. No ho «arreglo» a base d'ajustar constants fins que quadri: el que faig és que et diagnostiqui **per què** surten 18 blocs i no 19, i quant falta per arribar-hi. També millora on col·loca el KV cache quan hi ha offload.
+
+## 02/09 — Codecov
+
+Cobertura al CI perquè es vegi què està realment provat.
+
+## 03/09 — Un sol camí d'execució
+
+Unifico la planificació d'execució, que estava escampada entre la CLI, la TUI i el motor de recomanació. Ara tot el que s'executa passa per un únic lloc que garanteix que els flags estan complets.
+
+## 09–10/09 — Estimador més estricte
+
+Endureixo la correctitud de l'estimador i el matching de l'evidència local (que un benchmark d'una altra màquina o d'una altra quantització no compti com a prova). Afegeixo límits al placement dels pesos que no són blocs, és a dir els embeddings i el cap de sortida, que mai es mouen igual que les capes.
 
 ---
 
-## 30/07/2026 — Detecció de hardware
+## Ara mateix
 
-Començo a implementar la detecció automàtica del sistema.
-
-Jaull pot obtenir informació com:
-
-- CPU;
-- memòria RAM;
-- GPU NVIDIA;
-- VRAM;
-- sistema operatiu;
-- informació bàsica d'emmagatzematge.
-
-Creo una estructura `HardwareProfile` per tenir tota aquesta informació normalitzada i poder-la utilitzar després en les estimacions.
-
----
-
-## 31/07/2026 — Integració amb Hugging Face
-
-Afegeixo la connexió amb Hugging Face Hub.
-
-L'eina ja pot:
-
-- buscar models;
-- obtenir informació d'un repositori;
-- llegir metadata;
-- detectar formats com GGUF o Safetensors;
-- consultar configuracions dels models.
-
-També començo a separar la lògica de cerca de la lògica d'anàlisi dels models.
-
-El projecte passa a dir-se **Jaull**.
-
----
-
-## 01/08/2026 — Estimació de memòria
-
-Començo una de les parts principals del projecte: calcular si un model pot cabre al hardware disponible.
-
-L'estimador té en compte:
-
-- mida dels pesos;
-- precisió / quantització;
-- RAM;
-- VRAM;
-- KV cache;
-- mida de context;
-- overhead del runtime;
-- marge de seguretat.
-
-A partir d'això, Jaull pot classificar una configuració aproximadament com:
-
-- comfortable;
-- compatible;
-- tight;
-- offloading required;
-- insufficient.
-
-També començo a tenir en compte diversos usuaris simultanis.
-
----
-
-## 02/08/2026 — Sistema de recomanació
-
-Jaull ja no només calcula si un model cap o no.
-
-Començo a construir un sistema de ranking per recomanar els models més adequats.
-
-Es tenen en compte factors com:
-
-- compatibilitat amb el hardware;
-- memòria disponible;
-- ús que vol donar l'usuari al model;
-- idioma;
-- llicència;
-- qualitat de la informació disponible;
-- popularitat;
-- format del model;
-- possibilitat real d'executar-lo.
-
-També creo un workflow guiat on l'usuari indica què necessita:
-
-- chat general;
-- programació;
-- documents;
-- prioritat entre qualitat, velocitat i memòria;
-- context;
-- concurrència.
-
----
-
-## 03/08/2026 — Refactor d'arquitectura
-
-El projecte comença a créixer bastant i faig una reorganització important.
-
-Separo responsabilitats entre diferents blocs:
-
-```text
-hardware
-huggingface
-analyzers
-estimator
-recommendation
-workflow
-runtime
-presentation
-cli
-tui
-```
-
-Creo `AdvisorService` com a façana principal del projecte.
-
-La idea és que la CLI i la TUI no hagin de conèixer tota la implementació interna.
-
-Per exemple:
-
-```python
-advisor.scan_hardware()
-advisor.inspect_model()
-advisor.estimate_model()
-advisor.recommend()
-```
-
-També reforço tests, Ruff i mypy.
-
----
-
-## 04/08/2026 — TUI i workflow guiat
-
-Començo a treballar més seriosament en la interfície TUI amb Textual.
-
-El flux principal passa a ser aproximadament:
-
-```text
-Jaull
-  ↓
-Hardware
-  ↓
-Necessitats de l'usuari
-  ↓
-Cerca de models
-  ↓
-Anàlisi
-  ↓
-Recomanacions
-```
-
-L'objectiu és que l'usuari no necessiti conèixer Hugging Face, GGUF, quantitzacions o VRAM per poder obtenir una recomanació.
-
----
-
-## 05/08/2026 — Millores del ranking
-
-Faig diverses proves amb hardware real i detecto problemes en algunes recomanacions.
-
-Per exemple, models AWQ podien aparèixer com a bones opcions encara que després no fossin fàcilment executables amb el runtime disponible.
-
-Afegeixo més informació sobre:
-
-- executabilitat real;
-- formats disponibles;
-- quantitzacions;
-- nombre de paràmetres;
-- compatibilitat amb CPU/GPU;
-- confiança de les estimacions.
-
-L'objectiu és evitar que Jaull recomani una configuració que teòricament encaixa però que després no es pot executar.
-
----
-
-## 06/08/2026 — Gestió d'artefactes
-
-Creo `ArtifactService`.
-
-Fins ara Jaull podia recomanar models, però no els descarregava.
-
-Ara el flux pot ser:
-
-```text
-Model recommendation
-      ↓
-Resolve artifact
-      ↓
-Download GGUF
-      ↓
-Verify
-```
-
-Creo `ModelArtifact`, que guarda informació com:
-
-- repositori;
-- revision;
-- filename;
-- format;
-- quantització;
-- mida;
-- ruta local;
-- SHA-256;
-- estat de verificació.
-
-Els models es guarden localment a:
-
-```text
-~/.local/share/jaull/models/
-```
-
----
-
-## 07/08/2026 — Descàrrega real des de Hugging Face
-
-Provo `ArtifactService` contra Hugging Face real.
-
-Faig servir:
-
-```text
-TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF
-Q4_K_M
-```
-
-Jaull resol correctament:
-
-- revision;
-- filename;
-- quantització;
-- mida.
-
-Després descarrega aproximadament 669 MB, calcula SHA-256 i verifica l'artefacte.
-
-Primer flux real complet de:
-
-```text
-Hugging Face
-→ resolve
-→ download
-→ local storage
-→ verify
-```
-
----
-
-## 08/08/2026 — Backend d'execució
-
-Començo a preparar Jaull perquè no només recomani models, sinó que també els pugui executar.
-
-Creo una abstracció d'execució:
-
-```text
-ExecutionBackend
-```
-
-i una primera implementació:
-
-```text
-HostExecutionBackend
-```
-
-que executa processos locals mitjançant `subprocess`.
-
-També creo:
-
-```text
-LlamaCppRunner
-```
-
-que construeix els comandos necessaris per executar un GGUF amb `llama-cli`.
-
-Primer faig proves amb un executable fals per comprovar el pipeline.
-
-El resultat funciona:
-
-```text
-ModelArtifact
-→ LlamaCppRunner
-→ HostExecutionBackend
-→ executable
-→ stdout
-```
-
----
-
-## 09/08/2026 — Primera prova amb llama.cpp
-
-Intento compilar `llama.cpp` al portàtil.
-
-La compilació falla perquè WSL es queda sense memòria i l'OOM killer mata `cc1plus`.
-
-Decideixo no continuar forçant aquest ordinador i preparar la prova real en un PC amb GPU NVIDIA.
-
-Aquest problema també ajuda a entendre millor les limitacions que Jaull haurà de detectar i explicar.
-
----
-
-## 10/08/2026 — llama.cpp + CUDA
-
-Faig el setup de `llama.cpp` al PC amb NVIDIA.
-
-Compilo:
-
-```text
-llama-cli
-```
-
-amb suport CUDA.
-
-El build acaba correctament:
-
-```text
-[100%] Built target llama-cli
-```
-
-També documento el setup de:
-
-- CUDA;
-- CMake;
-- compilació;
-- PATH;
-- execució de `llama-cli`.
-
----
-
-## 10/08/2026 — Primera inferència real
-
-Descarrego TinyLlama des del mateix Jaull i l'executo amb `llama-cli`.
-
-Flux:
-
-```text
-TinyLlama GGUF
-→ llama.cpp
-→ CUDA
-→ inferència
-→ text
-```
-
-La primera resposta és bastant divertida perquè TinyLlama decideix que GGUF significa alguna mena de competició de MMA, però tècnicament la inferència funciona correctament.
-
-També detecto que `llama-cli` queda en mode interactiu després de generar.
-
-Afegeixo:
-
-```text
---single-turn
-```
-
-al `LlamaCppRunner`.
-
-Ara el procés genera una resposta i finalitza correctament.
-
----
-
-## 10/08/2026 — Primer end-to-end real de Jaull
-
-Executo:
-
-```text
-jaull run
-```
-
-utilitzant:
-
-- model real;
-- GGUF real;
-- ArtifactService;
-- SHA verification;
-- LlamaCppRunner;
-- HostExecutionBackend;
-- llama.cpp;
-- CUDA.
-
-Flux complet validat:
-
-```text
-Hugging Face
-      ↓
-ArtifactService
-      ↓
-GGUF
-      ↓
-AdvisorService
-      ↓
-LlamaCppRunner
-      ↓
-ExecutionBackend
-      ↓
-llama-cli
-      ↓
-CUDA
-      ↓
-Generated text
-```
-
-Aquest és un dels milestones més importants del projecte: Jaull deixa de limitar-se a predir si un model hauria de funcionar i passa a executar-lo realment.
-
----
-
-## 10/08/2026 — Unificació de l'execució
-
-Detecto que la CLI estava creant directament:
-
-```text
-LlamaCppRunner
-HostExecutionBackend
-```
-
-tot i que `AdvisorService` ja tenia `run_artifact()`.
-
-Refactoritzo perquè només existeixi una via:
-
-```text
-CLI
- ↓
-AdvisorService
- ↓
-LlamaCppRunner
- ↓
-ExecutionBackend
- ↓
-llama-cli
-```
-
-Això evita duplicar lògica i manté `AdvisorService` com la façana principal de Jaull.
-
----
-
-## 11/08/2026 — Integració i millora de la TUI
-
-Integro tot el flux de Jaull dins de la TUI, permetent fer:
-
-```text
-Hardware
-→ Necessitats
-→ Recomanacions
-→ Seleccionar model
-→ Descarregar/verificar GGUF
-→ Escriure prompt
-→ Executar amb llama.cpp
-→ Veure resposta
-
-També milloro la pantalla d'execució amb diversos prompts consecutius i historial visual.
-
-Soluciono diversos errors de Textual relacionats amb DuplicateIds i amb el lifecycle dels workers, que provocaven bloquejos durant els tests.
-
-# Estat actual
-
-Actualment Jaull ja pot:
-
-- detectar hardware;
-- consultar Hugging Face;
-- analitzar models;
-- llegir metadata GGUF;
-- estimar RAM i VRAM;
-- tenir en compte KV cache i context;
-- filtrar models incompatibles;
-- rankejar models;
-- recomanar configuracions;
-- generar reports;
-- descarregar GGUF;
-- verificar artefactes;
-- executar `llama.cpp`;
-- utilitzar CUDA;
-- generar inferències reals;
-- executar models des de CLI;
-- executar models des de TUI;
-- reutilitzar models descarregats;
-- executar diversos prompts des de la TUI.
-
-Arquitectura principal:
-
-```text
-                Jaull
-
-Hardware ─┐
-HF ───────┤
-Estimator ├──→ Recommendation
-Runtime ──┘          │
-                     ↓
-               AdvisorService
-                /         \
-               ↓           ↓
-          ArtifactService  LlamaCppRunner
-               ↓                ↓
-             GGUF        ExecutionBackend
-                                ↓
-                            llama.cpp
-                                ↓
-                              CUDA
-```
-
----
-
-# Següents passos
-
-Ara mateix la prioritat és acabar de polir la TUI/UX.
-
-Després, el següent gran bloc del projecte serà començar a comparar les prediccions de Jaull amb execucions reals.
-
-Per exemple:
-
-```text
-JAULL PREDIU              EXECUCIÓ REAL
-
-RAM estimada       ↔      RAM utilitzada
-VRAM estimada      ↔      VRAM utilitzada
-model compatible   ↔      arrenca o no
-GPU offload        ↔      offload real
-                   +
-                   tokens/s
-                   latència
-```
-
-Això permetrà passar de:
-
-> "Jaull creu que aquest model funcionarà"
-
-a:
-
-> "Jaull ho ha executat, ho ha mesurat i pot calcular l'error de la seva pròpia estimació."
-
-Aquesta serà una de les parts principals a estudiar dins del TFG.
+Estic muntant el **manifest de casos experimentals**: lligar un experiment amb els seus benchmarks i els logs originals com una sola cosa, sense duplicar cap mesura. La idea és poder comparar la 2060 amb la 4060 sense barrejar evidència de runs diferents i sabent en tot moment què falta de cada cas.
