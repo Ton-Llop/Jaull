@@ -1,0 +1,1829 @@
+0.00.045.263 I cmn  common_param: common_params_print_info: build 10357 (689e227db) with GNU 13.3.0 for Linux x86_64
+0.00.045.284 I cmn  common_param: common_params_print_info: verbosity = 2147483647 (adjust with the `-lv N` CLI arg)
+0.00.045.284 I cmn  common_param: device_info:
+0.00.289.383 I cmn  common_param:   - CUDA0   : NVIDIA GeForce RTX 2060 (6143 MiB, 5095 MiB free)
+0.00.289.416 I cmn  common_param:   - CPU     : AMD Ryzen 5 3600 6-Core Processor (7894 MiB, 7894 MiB free)
+0.00.289.506 I cmn  common_param: system_info: n_threads = 6 (n_threads_batch = 6) / 12 | CUDA : ARCHS = 750 | USE_GRAPHS = 1 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.289.678 I srv          init: using 11 threads for HTTP server
+0.00.289.731 D srv          init: serve nocache for _app/version.json
+0.00.290.006 D srv          init: serve nocache for build.json
+0.00.290.040 D srv          init: serve nocache for manifest.webmanifest
+0.00.290.080 D srv          init: serve nocache for sw.js
+0.00.290.277 W srv  llama_server: -----------------
+0.00.290.298 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set
+0.00.290.298 W srv  llama_server: this can be a security risk (cross-origin attacks)
+0.00.290.298 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655
+0.00.290.299 W srv  llama_server: -----------------
+0.00.290.335 I srv         start: binding port with default address family
+0.00.291.721 I srv    load_model: loading model '/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf'
+0.00.291.741 I srv    load_model: local path '/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf'
+0.00.346.939 I llama_model_loader: loaded meta data with 38 key-value pairs and 339 tensors from /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf (version GGUF V3 (latest))
+0.00.347.016 I llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+0.00.347.030 I llama_model_loader: - kv   0:                       general.architecture str              = qwen2
+0.00.347.031 I llama_model_loader: - kv   1:                               general.type str              = model
+0.00.347.032 I llama_model_loader: - kv   2:                               general.name str              = Qwen2.5 7B Instruct
+0.00.347.033 I llama_model_loader: - kv   3:                           general.finetune str              = Instruct
+0.00.347.034 I llama_model_loader: - kv   4:                           general.basename str              = Qwen2.5
+0.00.347.035 I llama_model_loader: - kv   5:                         general.size_label str              = 7B
+0.00.347.036 I llama_model_loader: - kv   6:                            general.license str              = apache-2.0
+0.00.347.038 I llama_model_loader: - kv   7:                       general.license.link str              = https://huggingface.co/Qwen/Qwen2.5-7...
+0.00.347.042 I llama_model_loader: - kv   8:                   general.base_model.count u32              = 1
+0.00.347.043 I llama_model_loader: - kv   9:                  general.base_model.0.name str              = Qwen2.5 7B
+0.00.347.044 I llama_model_loader: - kv  10:          general.base_model.0.organization str              = Qwen
+0.00.347.045 I llama_model_loader: - kv  11:              general.base_model.0.repo_url str              = https://huggingface.co/Qwen/Qwen2.5-7B
+0.00.347.071 I llama_model_loader: - kv  12:                               general.tags arr[str,2]       = ["chat", "text-generation"]
+0.00.347.073 I llama_model_loader: - kv  13:                          general.languages arr[str,1]       = ["en"]
+0.00.347.074 I llama_model_loader: - kv  14:                          qwen2.block_count u32              = 28
+0.00.347.075 I llama_model_loader: - kv  15:                       qwen2.context_length u32              = 32768
+0.00.347.076 I llama_model_loader: - kv  16:                     qwen2.embedding_length u32              = 3584
+0.00.347.077 I llama_model_loader: - kv  17:                  qwen2.feed_forward_length u32              = 18944
+0.00.347.078 I llama_model_loader: - kv  18:                 qwen2.attention.head_count u32              = 28
+0.00.347.078 I llama_model_loader: - kv  19:              qwen2.attention.head_count_kv u32              = 4
+0.00.347.085 I llama_model_loader: - kv  20:                       qwen2.rope.freq_base f32              = 1000000.000000
+0.00.347.086 I llama_model_loader: - kv  21:     qwen2.attention.layer_norm_rms_epsilon f32              = 0.000001
+0.00.347.087 I llama_model_loader: - kv  22:                          general.file_type u32              = 15
+0.00.347.088 I llama_model_loader: - kv  23:                       tokenizer.ggml.model str              = gpt2
+0.00.347.088 I llama_model_loader: - kv  24:                         tokenizer.ggml.pre str              = qwen2
+0.00.369.934 I llama_model_loader: - kv  25:                      tokenizer.ggml.tokens arr[str,152064]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+0.00.374.947 I llama_model_loader: - kv  26:                  tokenizer.ggml.token_type arr[i32,152064]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+0.00.395.796 I llama_model_loader: - kv  27:                      tokenizer.ggml.merges arr[str,151387]  = ["Ġ Ġ", "ĠĠ ĠĠ", "i n", "Ġ t",...
+0.00.395.836 I llama_model_loader: - kv  28:                tokenizer.ggml.eos_token_id u32              = 151645
+0.00.395.837 I llama_model_loader: - kv  29:            tokenizer.ggml.padding_token_id u32              = 151643
+0.00.395.837 I llama_model_loader: - kv  30:                tokenizer.ggml.bos_token_id u32              = 151643
+0.00.395.838 I llama_model_loader: - kv  31:               tokenizer.ggml.add_bos_token bool             = false
+0.00.395.842 I llama_model_loader: - kv  32:                    tokenizer.chat_template str              = {%- if tools %}\n    {{- '<|im_start|>...
+0.00.395.843 I llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+0.00.395.845 I llama_model_loader: - kv  34:                      quantize.imatrix.file str              = /models_out/Qwen2.5-7B-Instruct-GGUF/...
+0.00.395.846 I llama_model_loader: - kv  35:                   quantize.imatrix.dataset str              = /training_dir/calibration_datav3.txt
+0.00.395.847 I llama_model_loader: - kv  36:             quantize.imatrix.entries_count i32              = 196
+0.00.395.847 I llama_model_loader: - kv  37:              quantize.imatrix.chunks_count i32              = 128
+0.00.395.855 I llama_model_loader: - type  f32:  141 tensors
+0.00.395.857 I llama_model_loader: - type q4_K:  169 tensors
+0.00.395.857 I llama_model_loader: - type q6_K:   29 tensors
+0.00.395.861 I print_info: file format = GGUF V3 (latest)
+0.00.395.863 I print_info: file type   = Q4_K - Medium
+0.00.395.867 I print_info: file size   = 4.36 GiB (4.91 BPW) 
+0.00.396.196 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 2060) (0000:08:00.0) - 5095 MiB free
+0.00.510.101 D init_tokenizer: initializing tokenizer for type 2
+0.00.537.435 I load: 0 unused tokens
+0.00.537.485 D load: control token: 151660 '<|fim_middle|>' is not marked as EOG
+0.00.537.486 D load: control token: 151659 '<|fim_prefix|>' is not marked as EOG
+0.00.537.486 D load: control token: 151653 '<|vision_end|>' is not marked as EOG
+0.00.537.486 D load: control token: 151648 '<|box_start|>' is not marked as EOG
+0.00.537.487 D load: control token: 151646 '<|object_ref_start|>' is not marked as EOG
+0.00.537.589 D load: control token: 151649 '<|box_end|>' is not marked as EOG
+0.00.538.334 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.00.538.855 D load: control token: 151655 '<|image_pad|>' is not marked as EOG
+0.00.539.033 D load: control token: 151651 '<|quad_end|>' is not marked as EOG
+0.00.541.461 D load: control token: 151647 '<|object_ref_end|>' is not marked as EOG
+0.00.546.248 D load: control token: 151652 '<|vision_start|>' is not marked as EOG
+0.00.551.282 D load: control token: 151654 '<|vision_pad|>' is not marked as EOG
+0.00.556.178 D load: control token: 151656 '<|video_pad|>' is not marked as EOG
+0.00.556.961 D load: control token: 151644 '<|im_start|>' is not marked as EOG
+0.00.558.532 D load: control token: 151661 '<|fim_suffix|>' is not marked as EOG
+0.00.559.788 D load: control token: 151650 '<|quad_start|>' is not marked as EOG
+0.00.570.761 I load: printing all EOG tokens:
+0.00.570.796 I load:   - 128247 ('</s>')
+0.00.570.798 I load:   - 151643 ('<|endoftext|>')
+0.00.570.798 I load:   - 151645 ('<|im_end|>')
+0.00.570.798 I load:   - 151662 ('<|fim_pad|>')
+0.00.570.799 I load:   - 151663 ('<|repo_name|>')
+0.00.570.799 I load:   - 151664 ('<|file_sep|>')
+0.00.571.166 I load: special tokens cache size = 23
+0.00.625.624 I load: token to piece cache size = 0.9310 MB
+0.00.625.677 I print_info: arch                  = qwen2
+0.00.625.678 I print_info: vocab_only            = 0
+0.00.625.679 I print_info: no_alloc              = 0
+0.00.625.679 I print_info: n_ctx_train           = 32768
+0.00.625.681 I print_info: n_embd_inp            = 3584
+0.00.625.681 I print_info: n_embd                = 3584
+0.00.625.683 I print_info: n_embd_out            = 3584
+0.00.625.683 I print_info: n_layer               = 28
+0.00.625.683 I print_info: n_layer_all           = 28
+0.00.625.698 I print_info: n_head                = 28
+0.00.625.700 I print_info: n_head_kv             = 4
+0.00.625.700 I print_info: n_rot                 = 128
+0.00.625.700 I print_info: n_swa                 = 0
+0.00.625.702 I print_info: is_swa_any            = 0
+0.00.625.702 I print_info: n_embd_head_k         = 128
+0.00.625.702 I print_info: n_embd_head_v         = 128
+0.00.625.704 I print_info: n_gqa                 = 7
+0.00.625.710 I print_info: n_embd_k_gqa          = 512
+0.00.625.714 I print_info: n_embd_v_gqa          = 512
+0.00.625.715 I print_info: f_norm_eps            = 0.0e+00
+0.00.625.716 I print_info: f_norm_rms_eps        = 1.0e-06
+0.00.625.716 I print_info: f_clamp_kqv           = 0.0e+00
+0.00.625.717 I print_info: f_max_alibi_bias      = 0.0e+00
+0.00.625.717 I print_info: f_logit_scale         = 0.0e+00
+0.00.625.717 I print_info: f_attn_scale          = 0.0e+00
+0.00.625.718 I print_info: f_attn_value_scale    = 0.0000
+0.00.625.720 I print_info: n_ff                  = 18944
+0.00.625.720 I print_info: n_expert              = 0
+0.00.625.720 I print_info: n_expert_used         = 0
+0.00.625.721 I print_info: n_expert_groups       = 0
+0.00.625.721 I print_info: n_group_used          = 0
+0.00.625.721 I print_info: causal attn           = 1
+0.00.625.721 I print_info: pooling type          = -1
+0.00.625.722 I print_info: rope type             = 2
+0.00.625.722 I print_info: rope scaling          = linear
+0.00.625.723 I print_info: freq_base_train       = 1000000.0
+0.00.625.723 I print_info: freq_scale_train      = 1
+0.00.625.724 I print_info: n_ctx_orig_yarn       = 32768
+0.00.625.724 I print_info: rope_yarn_log_mul     = 0.0000
+0.00.625.724 I print_info: rope_finetuned        = unknown
+0.00.625.725 I print_info: model type            = 7B
+0.00.625.725 I print_info: model params          = 7.62 B
+0.00.625.726 I print_info: general.name          = Qwen2.5 7B Instruct
+0.00.625.730 I print_info: vocab type            = BPE
+0.00.625.731 I print_info: n_vocab               = 152064
+0.00.625.732 I print_info: n_merges              = 151387
+0.00.625.732 I print_info: BOS token             = 151643 '<|endoftext|>'
+0.00.625.732 I print_info: EOS token             = 151645 '<|im_end|>'
+0.00.625.733 I print_info: EOT token             = 151645 '<|im_end|>'
+0.00.625.733 I print_info: PAD token             = 151643 '<|endoftext|>'
+0.00.625.733 I print_info: LF token              = 198 'Ċ'
+0.00.625.734 I print_info: FIM PRE token         = 151659 '<|fim_prefix|>'
+0.00.625.734 I print_info: FIM SUF token         = 151661 '<|fim_suffix|>'
+0.00.625.734 I print_info: FIM MID token         = 151660 '<|fim_middle|>'
+0.00.625.734 I print_info: FIM PAD token         = 151662 '<|fim_pad|>'
+0.00.625.735 I print_info: FIM REP token         = 151663 '<|repo_name|>'
+0.00.625.735 I print_info: FIM SEP token         = 151664 '<|file_sep|>'
+0.00.625.735 I print_info: EOG token             = 128247 '</s>'
+0.00.625.736 I print_info: EOG token             = 151643 '<|endoftext|>'
+0.00.625.736 I print_info: EOG token             = 151645 '<|im_end|>'
+0.00.625.736 I print_info: EOG token             = 151662 '<|fim_pad|>'
+0.00.625.736 I print_info: EOG token             = 151663 '<|repo_name|>'
+0.00.625.737 I print_info: EOG token             = 151664 '<|file_sep|>'
+0.00.625.737 I print_info: max token length      = 256
+0.00.625.740 I load_tensors: loading model tensors, this can take a while... (load_mode = mmap)
+0.00.625.978 D load_tensors: layer   0 assigned to device CPU, is_swa = 0
+0.00.626.002 D load_tensors: layer   1 assigned to device CPU, is_swa = 0
+0.00.626.003 D load_tensors: layer   2 assigned to device CPU, is_swa = 0
+0.00.626.003 D load_tensors: layer   3 assigned to device CPU, is_swa = 0
+0.00.626.004 D load_tensors: layer   4 assigned to device CPU, is_swa = 0
+0.00.626.004 D load_tensors: layer   5 assigned to device CPU, is_swa = 0
+0.00.626.004 D load_tensors: layer   6 assigned to device CPU, is_swa = 0
+0.00.626.005 D load_tensors: layer   7 assigned to device CPU, is_swa = 0
+0.00.626.005 D load_tensors: layer   8 assigned to device CPU, is_swa = 0
+0.00.626.005 D load_tensors: layer   9 assigned to device CPU, is_swa = 0
+0.00.626.006 D load_tensors: layer  10 assigned to device CPU, is_swa = 0
+0.00.626.006 D load_tensors: layer  11 assigned to device CPU, is_swa = 0
+0.00.626.007 D load_tensors: layer  12 assigned to device CPU, is_swa = 0
+0.00.626.007 D load_tensors: layer  13 assigned to device CPU, is_swa = 0
+0.00.626.007 D load_tensors: layer  14 assigned to device CPU, is_swa = 0
+0.00.626.008 D load_tensors: layer  15 assigned to device CPU, is_swa = 0
+0.00.626.008 D load_tensors: layer  16 assigned to device CPU, is_swa = 0
+0.00.626.008 D load_tensors: layer  17 assigned to device CPU, is_swa = 0
+0.00.626.008 D load_tensors: layer  18 assigned to device CPU, is_swa = 0
+0.00.626.009 D load_tensors: layer  19 assigned to device CPU, is_swa = 0
+0.00.626.009 D load_tensors: layer  20 assigned to device CPU, is_swa = 0
+0.00.626.009 D load_tensors: layer  21 assigned to device CPU, is_swa = 0
+0.00.626.010 D load_tensors: layer  22 assigned to device CPU, is_swa = 0
+0.00.626.010 D load_tensors: layer  23 assigned to device CPU, is_swa = 0
+0.00.626.010 D load_tensors: layer  24 assigned to device CPU, is_swa = 0
+0.00.626.011 D load_tensors: layer  25 assigned to device CPU, is_swa = 0
+0.00.626.011 D load_tensors: layer  26 assigned to device CPU, is_swa = 0
+0.00.626.011 D load_tensors: layer  27 assigned to device CPU, is_swa = 0
+0.00.626.012 D load_tensors: layer  28 assigned to device CPU, is_swa = 0
+0.00.626.110 D create_tensor: loading tensor token_embd.weight
+0.00.626.172 D create_tensor: loading tensor output_norm.weight
+0.00.626.216 D create_tensor: loading tensor output.weight
+0.00.626.225 D create_tensor: loading tensor output.bias
+0.00.626.235 D create_tensor: loading tensor blk.0.attn_norm.weight
+0.00.626.242 D create_tensor: loading tensor blk.0.attn_qkv.weight
+0.00.626.246 D create_tensor: loading tensor blk.0.attn_q.weight
+0.00.626.250 D create_tensor: loading tensor blk.0.attn_k.weight
+0.00.626.255 D create_tensor: loading tensor blk.0.attn_v.weight
+0.00.626.259 D create_tensor: loading tensor blk.0.attn_q.bias
+0.00.626.265 D create_tensor: loading tensor blk.0.attn_k.bias
+0.00.626.273 D create_tensor: loading tensor blk.0.attn_v.bias
+0.00.626.277 D create_tensor: loading tensor blk.0.attn_output.weight
+0.00.626.282 D create_tensor: loading tensor blk.0.ffn_norm.weight
+0.00.626.287 D create_tensor: loading tensor blk.0.ffn_gate.weight
+0.00.626.292 D create_tensor: loading tensor blk.0.ffn_down.weight
+0.00.626.297 D create_tensor: loading tensor blk.0.ffn_up.weight
+0.00.626.300 D create_tensor: loading tensor blk.1.attn_norm.weight
+0.00.626.305 D create_tensor: loading tensor blk.1.attn_qkv.weight
+0.00.626.308 D create_tensor: loading tensor blk.1.attn_q.weight
+0.00.626.315 D create_tensor: loading tensor blk.1.attn_k.weight
+0.00.626.322 D create_tensor: loading tensor blk.1.attn_v.weight
+0.00.626.331 D create_tensor: loading tensor blk.1.attn_q.bias
+0.00.626.364 D create_tensor: loading tensor blk.1.attn_k.bias
+0.00.626.369 D create_tensor: loading tensor blk.1.attn_v.bias
+0.00.626.374 D create_tensor: loading tensor blk.1.attn_output.weight
+0.00.626.377 D create_tensor: loading tensor blk.1.ffn_norm.weight
+0.00.626.380 D create_tensor: loading tensor blk.1.ffn_gate.weight
+0.00.626.384 D create_tensor: loading tensor blk.1.ffn_down.weight
+0.00.626.387 D create_tensor: loading tensor blk.1.ffn_up.weight
+0.00.626.391 D create_tensor: loading tensor blk.2.attn_norm.weight
+0.00.626.394 D create_tensor: loading tensor blk.2.attn_qkv.weight
+0.00.626.396 D create_tensor: loading tensor blk.2.attn_q.weight
+0.00.626.400 D create_tensor: loading tensor blk.2.attn_k.weight
+0.00.626.407 D create_tensor: loading tensor blk.2.attn_v.weight
+0.00.626.411 D create_tensor: loading tensor blk.2.attn_q.bias
+0.00.626.414 D create_tensor: loading tensor blk.2.attn_k.bias
+0.00.626.418 D create_tensor: loading tensor blk.2.attn_v.bias
+0.00.626.422 D create_tensor: loading tensor blk.2.attn_output.weight
+0.00.626.426 D create_tensor: loading tensor blk.2.ffn_norm.weight
+0.00.626.430 D create_tensor: loading tensor blk.2.ffn_gate.weight
+0.00.626.433 D create_tensor: loading tensor blk.2.ffn_down.weight
+0.00.626.436 D create_tensor: loading tensor blk.2.ffn_up.weight
+0.00.626.440 D create_tensor: loading tensor blk.3.attn_norm.weight
+0.00.626.443 D create_tensor: loading tensor blk.3.attn_qkv.weight
+0.00.626.446 D create_tensor: loading tensor blk.3.attn_q.weight
+0.00.626.449 D create_tensor: loading tensor blk.3.attn_k.weight
+0.00.626.486 D create_tensor: loading tensor blk.3.attn_v.weight
+0.00.626.515 D create_tensor: loading tensor blk.3.attn_q.bias
+0.00.626.518 D create_tensor: loading tensor blk.3.attn_k.bias
+0.00.626.521 D create_tensor: loading tensor blk.3.attn_v.bias
+0.00.626.524 D create_tensor: loading tensor blk.3.attn_output.weight
+0.00.626.528 D create_tensor: loading tensor blk.3.ffn_norm.weight
+0.00.626.531 D create_tensor: loading tensor blk.3.ffn_gate.weight
+0.00.626.535 D create_tensor: loading tensor blk.3.ffn_down.weight
+0.00.626.538 D create_tensor: loading tensor blk.3.ffn_up.weight
+0.00.626.543 D create_tensor: loading tensor blk.4.attn_norm.weight
+0.00.626.547 D create_tensor: loading tensor blk.4.attn_qkv.weight
+0.00.626.549 D create_tensor: loading tensor blk.4.attn_q.weight
+0.00.626.558 D create_tensor: loading tensor blk.4.attn_k.weight
+0.00.626.563 D create_tensor: loading tensor blk.4.attn_v.weight
+0.00.626.567 D create_tensor: loading tensor blk.4.attn_q.bias
+0.00.626.571 D create_tensor: loading tensor blk.4.attn_k.bias
+0.00.626.574 D create_tensor: loading tensor blk.4.attn_v.bias
+0.00.626.577 D create_tensor: loading tensor blk.4.attn_output.weight
+0.00.626.657 D create_tensor: loading tensor blk.4.ffn_norm.weight
+0.00.626.685 D create_tensor: loading tensor blk.4.ffn_gate.weight
+0.00.626.689 D create_tensor: loading tensor blk.4.ffn_down.weight
+0.00.626.692 D create_tensor: loading tensor blk.4.ffn_up.weight
+0.00.626.695 D create_tensor: loading tensor blk.5.attn_norm.weight
+0.00.626.702 D create_tensor: loading tensor blk.5.attn_qkv.weight
+0.00.626.705 D create_tensor: loading tensor blk.5.attn_q.weight
+0.00.626.820 D create_tensor: loading tensor blk.5.attn_k.weight
+0.00.626.848 D create_tensor: loading tensor blk.5.attn_v.weight
+0.00.626.852 D create_tensor: loading tensor blk.5.attn_q.bias
+0.00.626.855 D create_tensor: loading tensor blk.5.attn_k.bias
+0.00.626.858 D create_tensor: loading tensor blk.5.attn_v.bias
+0.00.626.861 D create_tensor: loading tensor blk.5.attn_output.weight
+0.00.626.864 D create_tensor: loading tensor blk.5.ffn_norm.weight
+0.00.626.868 D create_tensor: loading tensor blk.5.ffn_gate.weight
+0.00.626.871 D create_tensor: loading tensor blk.5.ffn_down.weight
+0.00.626.874 D create_tensor: loading tensor blk.5.ffn_up.weight
+0.00.626.881 D create_tensor: loading tensor blk.6.attn_norm.weight
+0.00.626.885 D create_tensor: loading tensor blk.6.attn_qkv.weight
+0.00.626.948 D create_tensor: loading tensor blk.6.attn_q.weight
+0.00.626.976 D create_tensor: loading tensor blk.6.attn_k.weight
+0.00.626.979 D create_tensor: loading tensor blk.6.attn_v.weight
+0.00.626.983 D create_tensor: loading tensor blk.6.attn_q.bias
+0.00.626.986 D create_tensor: loading tensor blk.6.attn_k.bias
+0.00.626.989 D create_tensor: loading tensor blk.6.attn_v.bias
+0.00.626.992 D create_tensor: loading tensor blk.6.attn_output.weight
+0.00.626.995 D create_tensor: loading tensor blk.6.ffn_norm.weight
+0.00.626.998 D create_tensor: loading tensor blk.6.ffn_gate.weight
+0.00.627.002 D create_tensor: loading tensor blk.6.ffn_down.weight
+0.00.627.009 D create_tensor: loading tensor blk.6.ffn_up.weight
+0.00.627.013 D create_tensor: loading tensor blk.7.attn_norm.weight
+0.00.627.123 D create_tensor: loading tensor blk.7.attn_qkv.weight
+0.00.627.272 D create_tensor: loading tensor blk.7.attn_q.weight
+0.00.627.281 D create_tensor: loading tensor blk.7.attn_k.weight
+0.00.627.287 D create_tensor: loading tensor blk.7.attn_v.weight
+0.00.627.291 D create_tensor: loading tensor blk.7.attn_q.bias
+0.00.627.296 D create_tensor: loading tensor blk.7.attn_k.bias
+0.00.627.301 D create_tensor: loading tensor blk.7.attn_v.bias
+0.00.627.306 D create_tensor: loading tensor blk.7.attn_output.weight
+0.00.627.311 D create_tensor: loading tensor blk.7.ffn_norm.weight
+0.00.627.316 D create_tensor: loading tensor blk.7.ffn_gate.weight
+0.00.627.326 D create_tensor: loading tensor blk.7.ffn_down.weight
+0.00.627.336 D create_tensor: loading tensor blk.7.ffn_up.weight
+0.00.627.341 D create_tensor: loading tensor blk.8.attn_norm.weight
+0.00.627.345 D create_tensor: loading tensor blk.8.attn_qkv.weight
+0.00.627.349 D create_tensor: loading tensor blk.8.attn_q.weight
+0.00.627.355 D create_tensor: loading tensor blk.8.attn_k.weight
+0.00.627.359 D create_tensor: loading tensor blk.8.attn_v.weight
+0.00.627.364 D create_tensor: loading tensor blk.8.attn_q.bias
+0.00.627.378 D create_tensor: loading tensor blk.8.attn_k.bias
+0.00.627.383 D create_tensor: loading tensor blk.8.attn_v.bias
+0.00.627.388 D create_tensor: loading tensor blk.8.attn_output.weight
+0.00.627.393 D create_tensor: loading tensor blk.8.ffn_norm.weight
+0.00.627.570 D create_tensor: loading tensor blk.8.ffn_gate.weight
+0.00.627.597 D create_tensor: loading tensor blk.8.ffn_down.weight
+0.00.627.601 D create_tensor: loading tensor blk.8.ffn_up.weight
+0.00.627.605 D create_tensor: loading tensor blk.9.attn_norm.weight
+0.00.627.608 D create_tensor: loading tensor blk.9.attn_qkv.weight
+0.00.627.611 D create_tensor: loading tensor blk.9.attn_q.weight
+0.00.627.615 D create_tensor: loading tensor blk.9.attn_k.weight
+0.00.627.618 D create_tensor: loading tensor blk.9.attn_v.weight
+0.00.627.622 D create_tensor: loading tensor blk.9.attn_q.bias
+0.00.627.626 D create_tensor: loading tensor blk.9.attn_k.bias
+0.00.627.629 D create_tensor: loading tensor blk.9.attn_v.bias
+0.00.627.633 D create_tensor: loading tensor blk.9.attn_output.weight
+0.00.627.642 D create_tensor: loading tensor blk.9.ffn_norm.weight
+0.00.627.647 D create_tensor: loading tensor blk.9.ffn_gate.weight
+0.00.627.651 D create_tensor: loading tensor blk.9.ffn_down.weight
+0.00.627.656 D create_tensor: loading tensor blk.9.ffn_up.weight
+0.00.627.662 D create_tensor: loading tensor blk.10.attn_norm.weight
+0.00.627.666 D create_tensor: loading tensor blk.10.attn_qkv.weight
+0.00.627.669 D create_tensor: loading tensor blk.10.attn_q.weight
+0.00.627.674 D create_tensor: loading tensor blk.10.attn_k.weight
+0.00.627.679 D create_tensor: loading tensor blk.10.attn_v.weight
+0.00.627.683 D create_tensor: loading tensor blk.10.attn_q.bias
+0.00.627.686 D create_tensor: loading tensor blk.10.attn_k.bias
+0.00.627.690 D create_tensor: loading tensor blk.10.attn_v.bias
+0.00.627.694 D create_tensor: loading tensor blk.10.attn_output.weight
+0.00.627.700 D create_tensor: loading tensor blk.10.ffn_norm.weight
+0.00.627.710 D create_tensor: loading tensor blk.10.ffn_gate.weight
+0.00.627.728 D create_tensor: loading tensor blk.10.ffn_down.weight
+0.00.627.756 D create_tensor: loading tensor blk.10.ffn_up.weight
+0.00.627.759 D create_tensor: loading tensor blk.11.attn_norm.weight
+0.00.627.763 D create_tensor: loading tensor blk.11.attn_qkv.weight
+0.00.627.765 D create_tensor: loading tensor blk.11.attn_q.weight
+0.00.627.769 D create_tensor: loading tensor blk.11.attn_k.weight
+0.00.627.772 D create_tensor: loading tensor blk.11.attn_v.weight
+0.00.627.775 D create_tensor: loading tensor blk.11.attn_q.bias
+0.00.627.778 D create_tensor: loading tensor blk.11.attn_k.bias
+0.00.627.782 D create_tensor: loading tensor blk.11.attn_v.bias
+0.00.627.789 D create_tensor: loading tensor blk.11.attn_output.weight
+0.00.627.792 D create_tensor: loading tensor blk.11.ffn_norm.weight
+0.00.627.795 D create_tensor: loading tensor blk.11.ffn_gate.weight
+0.00.627.799 D create_tensor: loading tensor blk.11.ffn_down.weight
+0.00.627.802 D create_tensor: loading tensor blk.11.ffn_up.weight
+0.00.627.805 D create_tensor: loading tensor blk.12.attn_norm.weight
+0.00.627.808 D create_tensor: loading tensor blk.12.attn_qkv.weight
+0.00.627.811 D create_tensor: loading tensor blk.12.attn_q.weight
+0.00.627.814 D create_tensor: loading tensor blk.12.attn_k.weight
+0.00.627.817 D create_tensor: loading tensor blk.12.attn_v.weight
+0.00.627.820 D create_tensor: loading tensor blk.12.attn_q.bias
+0.00.627.823 D create_tensor: loading tensor blk.12.attn_k.bias
+0.00.627.832 D create_tensor: loading tensor blk.12.attn_v.bias
+0.00.627.858 D create_tensor: loading tensor blk.12.attn_output.weight
+0.00.627.862 D create_tensor: loading tensor blk.12.ffn_norm.weight
+0.00.627.865 D create_tensor: loading tensor blk.12.ffn_gate.weight
+0.00.627.869 D create_tensor: loading tensor blk.12.ffn_down.weight
+0.00.627.874 D create_tensor: loading tensor blk.12.ffn_up.weight
+0.00.627.878 D create_tensor: loading tensor blk.13.attn_norm.weight
+0.00.627.883 D create_tensor: loading tensor blk.13.attn_qkv.weight
+0.00.627.887 D create_tensor: loading tensor blk.13.attn_q.weight
+0.00.627.891 D create_tensor: loading tensor blk.13.attn_k.weight
+0.00.627.895 D create_tensor: loading tensor blk.13.attn_v.weight
+0.00.627.899 D create_tensor: loading tensor blk.13.attn_q.bias
+0.00.627.906 D create_tensor: loading tensor blk.13.attn_k.bias
+0.00.627.910 D create_tensor: loading tensor blk.13.attn_v.bias
+0.00.627.913 D create_tensor: loading tensor blk.13.attn_output.weight
+0.00.627.916 D create_tensor: loading tensor blk.13.ffn_norm.weight
+0.00.627.920 D create_tensor: loading tensor blk.13.ffn_gate.weight
+0.00.627.923 D create_tensor: loading tensor blk.13.ffn_down.weight
+0.00.627.927 D create_tensor: loading tensor blk.13.ffn_up.weight
+0.00.627.930 D create_tensor: loading tensor blk.14.attn_norm.weight
+0.00.627.934 D create_tensor: loading tensor blk.14.attn_qkv.weight
+0.00.627.936 D create_tensor: loading tensor blk.14.attn_q.weight
+0.00.627.940 D create_tensor: loading tensor blk.14.attn_k.weight
+0.00.627.943 D create_tensor: loading tensor blk.14.attn_v.weight
+0.00.627.948 D create_tensor: loading tensor blk.14.attn_q.bias
+0.00.627.955 D create_tensor: loading tensor blk.14.attn_k.bias
+0.00.628.005 D create_tensor: loading tensor blk.14.attn_v.bias
+0.00.628.032 D create_tensor: loading tensor blk.14.attn_output.weight
+0.00.628.036 D create_tensor: loading tensor blk.14.ffn_norm.weight
+0.00.628.039 D create_tensor: loading tensor blk.14.ffn_gate.weight
+0.00.628.042 D create_tensor: loading tensor blk.14.ffn_down.weight
+0.00.628.047 D create_tensor: loading tensor blk.14.ffn_up.weight
+0.00.628.050 D create_tensor: loading tensor blk.15.attn_norm.weight
+0.00.628.054 D create_tensor: loading tensor blk.15.attn_qkv.weight
+0.00.628.056 D create_tensor: loading tensor blk.15.attn_q.weight
+0.00.628.059 D create_tensor: loading tensor blk.15.attn_k.weight
+0.00.628.066 D create_tensor: loading tensor blk.15.attn_v.weight
+0.00.628.069 D create_tensor: loading tensor blk.15.attn_q.bias
+0.00.628.073 D create_tensor: loading tensor blk.15.attn_k.bias
+0.00.628.076 D create_tensor: loading tensor blk.15.attn_v.bias
+0.00.628.079 D create_tensor: loading tensor blk.15.attn_output.weight
+0.00.628.082 D create_tensor: loading tensor blk.15.ffn_norm.weight
+0.00.628.085 D create_tensor: loading tensor blk.15.ffn_gate.weight
+0.00.628.089 D create_tensor: loading tensor blk.15.ffn_down.weight
+0.00.628.092 D create_tensor: loading tensor blk.15.ffn_up.weight
+0.00.628.095 D create_tensor: loading tensor blk.16.attn_norm.weight
+0.00.628.098 D create_tensor: loading tensor blk.16.attn_qkv.weight
+0.00.628.101 D create_tensor: loading tensor blk.16.attn_q.weight
+0.00.628.106 D create_tensor: loading tensor blk.16.attn_k.weight
+0.00.628.109 D create_tensor: loading tensor blk.16.attn_v.weight
+0.00.628.112 D create_tensor: loading tensor blk.16.attn_q.bias
+0.00.628.115 D create_tensor: loading tensor blk.16.attn_k.bias
+0.00.628.118 D create_tensor: loading tensor blk.16.attn_v.bias
+0.00.628.121 D create_tensor: loading tensor blk.16.attn_output.weight
+0.00.628.125 D create_tensor: loading tensor blk.16.ffn_norm.weight
+0.00.628.128 D create_tensor: loading tensor blk.16.ffn_gate.weight
+0.00.628.131 D create_tensor: loading tensor blk.16.ffn_down.weight
+0.00.628.134 D create_tensor: loading tensor blk.16.ffn_up.weight
+0.00.628.137 D create_tensor: loading tensor blk.17.attn_norm.weight
+0.00.628.141 D create_tensor: loading tensor blk.17.attn_qkv.weight
+0.00.628.143 D create_tensor: loading tensor blk.17.attn_q.weight
+0.00.628.148 D create_tensor: loading tensor blk.17.attn_k.weight
+0.00.628.151 D create_tensor: loading tensor blk.17.attn_v.weight
+0.00.628.154 D create_tensor: loading tensor blk.17.attn_q.bias
+0.00.628.157 D create_tensor: loading tensor blk.17.attn_k.bias
+0.00.628.161 D create_tensor: loading tensor blk.17.attn_v.bias
+0.00.628.188 D create_tensor: loading tensor blk.17.attn_output.weight
+0.00.628.192 D create_tensor: loading tensor blk.17.ffn_norm.weight
+0.00.628.195 D create_tensor: loading tensor blk.17.ffn_gate.weight
+0.00.628.198 D create_tensor: loading tensor blk.17.ffn_down.weight
+0.00.628.201 D create_tensor: loading tensor blk.17.ffn_up.weight
+0.00.628.205 D create_tensor: loading tensor blk.18.attn_norm.weight
+0.00.628.244 D create_tensor: loading tensor blk.18.attn_qkv.weight
+0.00.628.265 D create_tensor: loading tensor blk.18.attn_q.weight
+0.00.628.272 D create_tensor: loading tensor blk.18.attn_k.weight
+0.00.628.275 D create_tensor: loading tensor blk.18.attn_v.weight
+0.00.628.278 D create_tensor: loading tensor blk.18.attn_q.bias
+0.00.628.282 D create_tensor: loading tensor blk.18.attn_k.bias
+0.00.628.285 D create_tensor: loading tensor blk.18.attn_v.bias
+0.00.628.288 D create_tensor: loading tensor blk.18.attn_output.weight
+0.00.628.291 D create_tensor: loading tensor blk.18.ffn_norm.weight
+0.00.628.294 D create_tensor: loading tensor blk.18.ffn_gate.weight
+0.00.628.297 D create_tensor: loading tensor blk.18.ffn_down.weight
+0.00.628.300 D create_tensor: loading tensor blk.18.ffn_up.weight
+0.00.628.308 D create_tensor: loading tensor blk.19.attn_norm.weight
+0.00.628.334 D create_tensor: loading tensor blk.19.attn_qkv.weight
+0.00.628.337 D create_tensor: loading tensor blk.19.attn_q.weight
+0.00.628.341 D create_tensor: loading tensor blk.19.attn_k.weight
+0.00.628.344 D create_tensor: loading tensor blk.19.attn_v.weight
+0.00.628.347 D create_tensor: loading tensor blk.19.attn_q.bias
+0.00.628.351 D create_tensor: loading tensor blk.19.attn_k.bias
+0.00.628.354 D create_tensor: loading tensor blk.19.attn_v.bias
+0.00.628.357 D create_tensor: loading tensor blk.19.attn_output.weight
+0.00.628.360 D create_tensor: loading tensor blk.19.ffn_norm.weight
+0.00.628.364 D create_tensor: loading tensor blk.19.ffn_gate.weight
+0.00.628.367 D create_tensor: loading tensor blk.19.ffn_down.weight
+0.00.628.375 D create_tensor: loading tensor blk.19.ffn_up.weight
+0.00.628.380 D create_tensor: loading tensor blk.20.attn_norm.weight
+0.00.628.385 D create_tensor: loading tensor blk.20.attn_qkv.weight
+0.00.628.387 D create_tensor: loading tensor blk.20.attn_q.weight
+0.00.628.390 D create_tensor: loading tensor blk.20.attn_k.weight
+0.00.628.394 D create_tensor: loading tensor blk.20.attn_v.weight
+0.00.628.399 D create_tensor: loading tensor blk.20.attn_q.bias
+0.00.628.403 D create_tensor: loading tensor blk.20.attn_k.bias
+0.00.628.406 D create_tensor: loading tensor blk.20.attn_v.bias
+0.00.628.409 D create_tensor: loading tensor blk.20.attn_output.weight
+0.00.628.412 D create_tensor: loading tensor blk.20.ffn_norm.weight
+0.00.628.415 D create_tensor: loading tensor blk.20.ffn_gate.weight
+0.00.628.420 D create_tensor: loading tensor blk.20.ffn_down.weight
+0.00.628.424 D create_tensor: loading tensor blk.20.ffn_up.weight
+0.00.628.428 D create_tensor: loading tensor blk.21.attn_norm.weight
+0.00.628.454 D create_tensor: loading tensor blk.21.attn_qkv.weight
+0.00.628.456 D create_tensor: loading tensor blk.21.attn_q.weight
+0.00.628.460 D create_tensor: loading tensor blk.21.attn_k.weight
+0.00.628.463 D create_tensor: loading tensor blk.21.attn_v.weight
+0.00.628.467 D create_tensor: loading tensor blk.21.attn_q.bias
+0.00.628.470 D create_tensor: loading tensor blk.21.attn_k.bias
+0.00.628.473 D create_tensor: loading tensor blk.21.attn_v.bias
+0.00.628.477 D create_tensor: loading tensor blk.21.attn_output.weight
+0.00.628.480 D create_tensor: loading tensor blk.21.ffn_norm.weight
+0.00.628.487 D create_tensor: loading tensor blk.21.ffn_gate.weight
+0.00.628.513 D create_tensor: loading tensor blk.21.ffn_down.weight
+0.00.628.517 D create_tensor: loading tensor blk.21.ffn_up.weight
+0.00.628.520 D create_tensor: loading tensor blk.22.attn_norm.weight
+0.00.628.523 D create_tensor: loading tensor blk.22.attn_qkv.weight
+0.00.628.526 D create_tensor: loading tensor blk.22.attn_q.weight
+0.00.628.529 D create_tensor: loading tensor blk.22.attn_k.weight
+0.00.628.533 D create_tensor: loading tensor blk.22.attn_v.weight
+0.00.628.536 D create_tensor: loading tensor blk.22.attn_q.bias
+0.00.628.539 D create_tensor: loading tensor blk.22.attn_k.bias
+0.00.628.542 D create_tensor: loading tensor blk.22.attn_v.bias
+0.00.628.546 D create_tensor: loading tensor blk.22.attn_output.weight
+0.00.628.553 D create_tensor: loading tensor blk.22.ffn_norm.weight
+0.00.628.578 D create_tensor: loading tensor blk.22.ffn_gate.weight
+0.00.628.582 D create_tensor: loading tensor blk.22.ffn_down.weight
+0.00.628.585 D create_tensor: loading tensor blk.22.ffn_up.weight
+0.00.628.589 D create_tensor: loading tensor blk.23.attn_norm.weight
+0.00.628.592 D create_tensor: loading tensor blk.23.attn_qkv.weight
+0.00.628.594 D create_tensor: loading tensor blk.23.attn_q.weight
+0.00.628.598 D create_tensor: loading tensor blk.23.attn_k.weight
+0.00.628.601 D create_tensor: loading tensor blk.23.attn_v.weight
+0.00.628.604 D create_tensor: loading tensor blk.23.attn_q.bias
+0.00.628.607 D create_tensor: loading tensor blk.23.attn_k.bias
+0.00.628.611 D create_tensor: loading tensor blk.23.attn_v.bias
+0.00.628.618 D create_tensor: loading tensor blk.23.attn_output.weight
+0.00.628.624 D create_tensor: loading tensor blk.23.ffn_norm.weight
+0.00.628.627 D create_tensor: loading tensor blk.23.ffn_gate.weight
+0.00.628.645 D create_tensor: loading tensor blk.23.ffn_down.weight
+0.00.628.670 D create_tensor: loading tensor blk.23.ffn_up.weight
+0.00.628.674 D create_tensor: loading tensor blk.24.attn_norm.weight
+0.00.628.678 D create_tensor: loading tensor blk.24.attn_qkv.weight
+0.00.628.680 D create_tensor: loading tensor blk.24.attn_q.weight
+0.00.628.684 D create_tensor: loading tensor blk.24.attn_k.weight
+0.00.628.688 D create_tensor: loading tensor blk.24.attn_v.weight
+0.00.628.692 D create_tensor: loading tensor blk.24.attn_q.bias
+0.00.628.695 D create_tensor: loading tensor blk.24.attn_k.bias
+0.00.628.699 D create_tensor: loading tensor blk.24.attn_v.bias
+0.00.628.706 D create_tensor: loading tensor blk.24.attn_output.weight
+0.00.628.731 D create_tensor: loading tensor blk.24.ffn_norm.weight
+0.00.628.735 D create_tensor: loading tensor blk.24.ffn_gate.weight
+0.00.628.738 D create_tensor: loading tensor blk.24.ffn_down.weight
+0.00.628.742 D create_tensor: loading tensor blk.24.ffn_up.weight
+0.00.628.745 D create_tensor: loading tensor blk.25.attn_norm.weight
+0.00.628.749 D create_tensor: loading tensor blk.25.attn_qkv.weight
+0.00.628.751 D create_tensor: loading tensor blk.25.attn_q.weight
+0.00.628.755 D create_tensor: loading tensor blk.25.attn_k.weight
+0.00.628.758 D create_tensor: loading tensor blk.25.attn_v.weight
+0.00.628.761 D create_tensor: loading tensor blk.25.attn_q.bias
+0.00.628.765 D create_tensor: loading tensor blk.25.attn_k.bias
+0.00.628.772 D create_tensor: loading tensor blk.25.attn_v.bias
+0.00.628.775 D create_tensor: loading tensor blk.25.attn_output.weight
+0.00.628.779 D create_tensor: loading tensor blk.25.ffn_norm.weight
+0.00.628.782 D create_tensor: loading tensor blk.25.ffn_gate.weight
+0.00.628.785 D create_tensor: loading tensor blk.25.ffn_down.weight
+0.00.628.813 D create_tensor: loading tensor blk.25.ffn_up.weight
+0.00.628.817 D create_tensor: loading tensor blk.26.attn_norm.weight
+0.00.628.821 D create_tensor: loading tensor blk.26.attn_qkv.weight
+0.00.628.823 D create_tensor: loading tensor blk.26.attn_q.weight
+0.00.628.827 D create_tensor: loading tensor blk.26.attn_k.weight
+0.00.628.830 D create_tensor: loading tensor blk.26.attn_v.weight
+0.00.628.834 D create_tensor: loading tensor blk.26.attn_q.bias
+0.00.628.841 D create_tensor: loading tensor blk.26.attn_k.bias
+0.00.628.848 D create_tensor: loading tensor blk.26.attn_v.bias
+0.00.628.851 D create_tensor: loading tensor blk.26.attn_output.weight
+0.00.628.855 D create_tensor: loading tensor blk.26.ffn_norm.weight
+0.00.628.858 D create_tensor: loading tensor blk.26.ffn_gate.weight
+0.00.628.862 D create_tensor: loading tensor blk.26.ffn_down.weight
+0.00.628.865 D create_tensor: loading tensor blk.26.ffn_up.weight
+0.00.628.870 D create_tensor: loading tensor blk.27.attn_norm.weight
+0.00.628.874 D create_tensor: loading tensor blk.27.attn_qkv.weight
+0.00.628.877 D create_tensor: loading tensor blk.27.attn_q.weight
+0.00.628.880 D create_tensor: loading tensor blk.27.attn_k.weight
+0.00.628.884 D create_tensor: loading tensor blk.27.attn_v.weight
+0.00.628.889 D create_tensor: loading tensor blk.27.attn_q.bias
+0.00.628.913 D create_tensor: loading tensor blk.27.attn_k.bias
+0.00.628.917 D create_tensor: loading tensor blk.27.attn_v.bias
+0.00.628.921 D create_tensor: loading tensor blk.27.attn_output.weight
+0.00.628.926 D create_tensor: loading tensor blk.27.ffn_norm.weight
+0.00.628.930 D create_tensor: loading tensor blk.27.ffn_gate.weight
+0.00.628.934 D create_tensor: loading tensor blk.27.ffn_down.weight
+0.00.628.938 D create_tensor: loading tensor blk.27.ffn_up.weight
+0.00.628.941 D create_tensor: loading tensor blk.0.attn_q.scale
+0.00.628.944 D create_tensor: loading tensor blk.0.attn_k.scale
+0.00.628.946 D create_tensor: loading tensor blk.0.attn_v.scale
+0.00.628.948 D create_tensor: loading tensor blk.0.attn_output.scale
+0.00.628.950 D create_tensor: loading tensor blk.0.ffn_gate.scale
+0.00.628.951 D create_tensor: loading tensor blk.0.ffn_down.scale
+0.00.628.954 D create_tensor: loading tensor blk.0.ffn_up.scale
+0.00.628.956 D create_tensor: loading tensor blk.0.attn_q.input_scale
+0.00.628.957 D create_tensor: loading tensor blk.0.attn_k.input_scale
+0.00.628.960 D create_tensor: loading tensor blk.0.attn_v.input_scale
+0.00.628.962 D create_tensor: loading tensor blk.0.attn_output.input_scale
+0.00.628.964 D create_tensor: loading tensor blk.0.ffn_gate.input_scale
+0.00.628.966 D create_tensor: loading tensor blk.0.ffn_down.input_scale
+0.00.628.968 D create_tensor: loading tensor blk.0.ffn_up.input_scale
+0.00.628.970 D create_tensor: loading tensor blk.1.attn_q.scale
+0.00.628.972 D create_tensor: loading tensor blk.1.attn_k.scale
+0.00.628.973 D create_tensor: loading tensor blk.1.attn_v.scale
+0.00.628.976 D create_tensor: loading tensor blk.1.attn_output.scale
+0.00.628.978 D create_tensor: loading tensor blk.1.ffn_gate.scale
+0.00.628.979 D create_tensor: loading tensor blk.1.ffn_down.scale
+0.00.628.981 D create_tensor: loading tensor blk.1.ffn_up.scale
+0.00.628.984 D create_tensor: loading tensor blk.1.attn_q.input_scale
+0.00.628.986 D create_tensor: loading tensor blk.1.attn_k.input_scale
+0.00.628.988 D create_tensor: loading tensor blk.1.attn_v.input_scale
+0.00.628.990 D create_tensor: loading tensor blk.1.attn_output.input_scale
+0.00.628.991 D create_tensor: loading tensor blk.1.ffn_gate.input_scale
+0.00.628.993 D create_tensor: loading tensor blk.1.ffn_down.input_scale
+0.00.628.995 D create_tensor: loading tensor blk.1.ffn_up.input_scale
+0.00.628.997 D create_tensor: loading tensor blk.2.attn_q.scale
+0.00.628.999 D create_tensor: loading tensor blk.2.attn_k.scale
+0.00.629.001 D create_tensor: loading tensor blk.2.attn_v.scale
+0.00.629.003 D create_tensor: loading tensor blk.2.attn_output.scale
+0.00.629.005 D create_tensor: loading tensor blk.2.ffn_gate.scale
+0.00.629.007 D create_tensor: loading tensor blk.2.ffn_down.scale
+0.00.629.009 D create_tensor: loading tensor blk.2.ffn_up.scale
+0.00.629.011 D create_tensor: loading tensor blk.2.attn_q.input_scale
+0.00.629.013 D create_tensor: loading tensor blk.2.attn_k.input_scale
+0.00.629.015 D create_tensor: loading tensor blk.2.attn_v.input_scale
+0.00.629.017 D create_tensor: loading tensor blk.2.attn_output.input_scale
+0.00.629.019 D create_tensor: loading tensor blk.2.ffn_gate.input_scale
+0.00.629.021 D create_tensor: loading tensor blk.2.ffn_down.input_scale
+0.00.629.023 D create_tensor: loading tensor blk.2.ffn_up.input_scale
+0.00.629.025 D create_tensor: loading tensor blk.3.attn_q.scale
+0.00.629.027 D create_tensor: loading tensor blk.3.attn_k.scale
+0.00.629.029 D create_tensor: loading tensor blk.3.attn_v.scale
+0.00.629.031 D create_tensor: loading tensor blk.3.attn_output.scale
+0.00.629.033 D create_tensor: loading tensor blk.3.ffn_gate.scale
+0.00.629.035 D create_tensor: loading tensor blk.3.ffn_down.scale
+0.00.629.037 D create_tensor: loading tensor blk.3.ffn_up.scale
+0.00.629.039 D create_tensor: loading tensor blk.3.attn_q.input_scale
+0.00.629.041 D create_tensor: loading tensor blk.3.attn_k.input_scale
+0.00.629.043 D create_tensor: loading tensor blk.3.attn_v.input_scale
+0.00.629.045 D create_tensor: loading tensor blk.3.attn_output.input_scale
+0.00.629.047 D create_tensor: loading tensor blk.3.ffn_gate.input_scale
+0.00.629.049 D create_tensor: loading tensor blk.3.ffn_down.input_scale
+0.00.629.051 D create_tensor: loading tensor blk.3.ffn_up.input_scale
+0.00.629.053 D create_tensor: loading tensor blk.4.attn_q.scale
+0.00.629.055 D create_tensor: loading tensor blk.4.attn_k.scale
+0.00.629.057 D create_tensor: loading tensor blk.4.attn_v.scale
+0.00.629.059 D create_tensor: loading tensor blk.4.attn_output.scale
+0.00.629.061 D create_tensor: loading tensor blk.4.ffn_gate.scale
+0.00.629.063 D create_tensor: loading tensor blk.4.ffn_down.scale
+0.00.629.065 D create_tensor: loading tensor blk.4.ffn_up.scale
+0.00.629.066 D create_tensor: loading tensor blk.4.attn_q.input_scale
+0.00.629.068 D create_tensor: loading tensor blk.4.attn_k.input_scale
+0.00.629.070 D create_tensor: loading tensor blk.4.attn_v.input_scale
+0.00.629.072 D create_tensor: loading tensor blk.4.attn_output.input_scale
+0.00.629.074 D create_tensor: loading tensor blk.4.ffn_gate.input_scale
+0.00.629.076 D create_tensor: loading tensor blk.4.ffn_down.input_scale
+0.00.629.078 D create_tensor: loading tensor blk.4.ffn_up.input_scale
+0.00.629.080 D create_tensor: loading tensor blk.5.attn_q.scale
+0.00.629.082 D create_tensor: loading tensor blk.5.attn_k.scale
+0.00.629.084 D create_tensor: loading tensor blk.5.attn_v.scale
+0.00.629.086 D create_tensor: loading tensor blk.5.attn_output.scale
+0.00.629.088 D create_tensor: loading tensor blk.5.ffn_gate.scale
+0.00.629.090 D create_tensor: loading tensor blk.5.ffn_down.scale
+0.00.629.092 D create_tensor: loading tensor blk.5.ffn_up.scale
+0.00.629.094 D create_tensor: loading tensor blk.5.attn_q.input_scale
+0.00.629.096 D create_tensor: loading tensor blk.5.attn_k.input_scale
+0.00.629.098 D create_tensor: loading tensor blk.5.attn_v.input_scale
+0.00.629.100 D create_tensor: loading tensor blk.5.attn_output.input_scale
+0.00.629.102 D create_tensor: loading tensor blk.5.ffn_gate.input_scale
+0.00.629.104 D create_tensor: loading tensor blk.5.ffn_down.input_scale
+0.00.629.106 D create_tensor: loading tensor blk.5.ffn_up.input_scale
+0.00.629.108 D create_tensor: loading tensor blk.6.attn_q.scale
+0.00.629.110 D create_tensor: loading tensor blk.6.attn_k.scale
+0.00.629.112 D create_tensor: loading tensor blk.6.attn_v.scale
+0.00.629.115 D create_tensor: loading tensor blk.6.attn_output.scale
+0.00.629.117 D create_tensor: loading tensor blk.6.ffn_gate.scale
+0.00.629.119 D create_tensor: loading tensor blk.6.ffn_down.scale
+0.00.629.122 D create_tensor: loading tensor blk.6.ffn_up.scale
+0.00.629.124 D create_tensor: loading tensor blk.6.attn_q.input_scale
+0.00.629.126 D create_tensor: loading tensor blk.6.attn_k.input_scale
+0.00.629.128 D create_tensor: loading tensor blk.6.attn_v.input_scale
+0.00.629.131 D create_tensor: loading tensor blk.6.attn_output.input_scale
+0.00.629.133 D create_tensor: loading tensor blk.6.ffn_gate.input_scale
+0.00.629.135 D create_tensor: loading tensor blk.6.ffn_down.input_scale
+0.00.629.138 D create_tensor: loading tensor blk.6.ffn_up.input_scale
+0.00.629.140 D create_tensor: loading tensor blk.7.attn_q.scale
+0.00.629.142 D create_tensor: loading tensor blk.7.attn_k.scale
+0.00.629.145 D create_tensor: loading tensor blk.7.attn_v.scale
+0.00.629.147 D create_tensor: loading tensor blk.7.attn_output.scale
+0.00.629.150 D create_tensor: loading tensor blk.7.ffn_gate.scale
+0.00.629.152 D create_tensor: loading tensor blk.7.ffn_down.scale
+0.00.629.155 D create_tensor: loading tensor blk.7.ffn_up.scale
+0.00.629.157 D create_tensor: loading tensor blk.7.attn_q.input_scale
+0.00.629.159 D create_tensor: loading tensor blk.7.attn_k.input_scale
+0.00.629.162 D create_tensor: loading tensor blk.7.attn_v.input_scale
+0.00.629.164 D create_tensor: loading tensor blk.7.attn_output.input_scale
+0.00.629.167 D create_tensor: loading tensor blk.7.ffn_gate.input_scale
+0.00.629.169 D create_tensor: loading tensor blk.7.ffn_down.input_scale
+0.00.629.172 D create_tensor: loading tensor blk.7.ffn_up.input_scale
+0.00.629.174 D create_tensor: loading tensor blk.8.attn_q.scale
+0.00.629.176 D create_tensor: loading tensor blk.8.attn_k.scale
+0.00.629.178 D create_tensor: loading tensor blk.8.attn_v.scale
+0.00.629.181 D create_tensor: loading tensor blk.8.attn_output.scale
+0.00.629.183 D create_tensor: loading tensor blk.8.ffn_gate.scale
+0.00.629.185 D create_tensor: loading tensor blk.8.ffn_down.scale
+0.00.629.188 D create_tensor: loading tensor blk.8.ffn_up.scale
+0.00.629.190 D create_tensor: loading tensor blk.8.attn_q.input_scale
+0.00.629.193 D create_tensor: loading tensor blk.8.attn_k.input_scale
+0.00.629.195 D create_tensor: loading tensor blk.8.attn_v.input_scale
+0.00.629.197 D create_tensor: loading tensor blk.8.attn_output.input_scale
+0.00.629.200 D create_tensor: loading tensor blk.8.ffn_gate.input_scale
+0.00.629.202 D create_tensor: loading tensor blk.8.ffn_down.input_scale
+0.00.629.204 D create_tensor: loading tensor blk.8.ffn_up.input_scale
+0.00.629.207 D create_tensor: loading tensor blk.9.attn_q.scale
+0.00.629.209 D create_tensor: loading tensor blk.9.attn_k.scale
+0.00.629.212 D create_tensor: loading tensor blk.9.attn_v.scale
+0.00.629.214 D create_tensor: loading tensor blk.9.attn_output.scale
+0.00.629.216 D create_tensor: loading tensor blk.9.ffn_gate.scale
+0.00.629.219 D create_tensor: loading tensor blk.9.ffn_down.scale
+0.00.629.221 D create_tensor: loading tensor blk.9.ffn_up.scale
+0.00.629.224 D create_tensor: loading tensor blk.9.attn_q.input_scale
+0.00.629.226 D create_tensor: loading tensor blk.9.attn_k.input_scale
+0.00.629.229 D create_tensor: loading tensor blk.9.attn_v.input_scale
+0.00.629.231 D create_tensor: loading tensor blk.9.attn_output.input_scale
+0.00.629.234 D create_tensor: loading tensor blk.9.ffn_gate.input_scale
+0.00.629.236 D create_tensor: loading tensor blk.9.ffn_down.input_scale
+0.00.629.238 D create_tensor: loading tensor blk.9.ffn_up.input_scale
+0.00.629.241 D create_tensor: loading tensor blk.10.attn_q.scale
+0.00.629.243 D create_tensor: loading tensor blk.10.attn_k.scale
+0.00.629.246 D create_tensor: loading tensor blk.10.attn_v.scale
+0.00.629.248 D create_tensor: loading tensor blk.10.attn_output.scale
+0.00.629.250 D create_tensor: loading tensor blk.10.ffn_gate.scale
+0.00.629.253 D create_tensor: loading tensor blk.10.ffn_down.scale
+0.00.629.255 D create_tensor: loading tensor blk.10.ffn_up.scale
+0.00.629.257 D create_tensor: loading tensor blk.10.attn_q.input_scale
+0.00.629.259 D create_tensor: loading tensor blk.10.attn_k.input_scale
+0.00.629.262 D create_tensor: loading tensor blk.10.attn_v.input_scale
+0.00.629.264 D create_tensor: loading tensor blk.10.attn_output.input_scale
+0.00.629.267 D create_tensor: loading tensor blk.10.ffn_gate.input_scale
+0.00.629.269 D create_tensor: loading tensor blk.10.ffn_down.input_scale
+0.00.629.271 D create_tensor: loading tensor blk.10.ffn_up.input_scale
+0.00.629.274 D create_tensor: loading tensor blk.11.attn_q.scale
+0.00.629.276 D create_tensor: loading tensor blk.11.attn_k.scale
+0.00.629.278 D create_tensor: loading tensor blk.11.attn_v.scale
+0.00.629.281 D create_tensor: loading tensor blk.11.attn_output.scale
+0.00.629.283 D create_tensor: loading tensor blk.11.ffn_gate.scale
+0.00.629.285 D create_tensor: loading tensor blk.11.ffn_down.scale
+0.00.629.287 D create_tensor: loading tensor blk.11.ffn_up.scale
+0.00.629.289 D create_tensor: loading tensor blk.11.attn_q.input_scale
+0.00.629.291 D create_tensor: loading tensor blk.11.attn_k.input_scale
+0.00.629.294 D create_tensor: loading tensor blk.11.attn_v.input_scale
+0.00.629.297 D create_tensor: loading tensor blk.11.attn_output.input_scale
+0.00.629.299 D create_tensor: loading tensor blk.11.ffn_gate.input_scale
+0.00.629.301 D create_tensor: loading tensor blk.11.ffn_down.input_scale
+0.00.629.303 D create_tensor: loading tensor blk.11.ffn_up.input_scale
+0.00.629.306 D create_tensor: loading tensor blk.12.attn_q.scale
+0.00.629.308 D create_tensor: loading tensor blk.12.attn_k.scale
+0.00.629.311 D create_tensor: loading tensor blk.12.attn_v.scale
+0.00.629.314 D create_tensor: loading tensor blk.12.attn_output.scale
+0.00.629.316 D create_tensor: loading tensor blk.12.ffn_gate.scale
+0.00.629.318 D create_tensor: loading tensor blk.12.ffn_down.scale
+0.00.629.320 D create_tensor: loading tensor blk.12.ffn_up.scale
+0.00.629.323 D create_tensor: loading tensor blk.12.attn_q.input_scale
+0.00.629.325 D create_tensor: loading tensor blk.12.attn_k.input_scale
+0.00.629.327 D create_tensor: loading tensor blk.12.attn_v.input_scale
+0.00.629.329 D create_tensor: loading tensor blk.12.attn_output.input_scale
+0.00.629.332 D create_tensor: loading tensor blk.12.ffn_gate.input_scale
+0.00.629.334 D create_tensor: loading tensor blk.12.ffn_down.input_scale
+0.00.629.336 D create_tensor: loading tensor blk.12.ffn_up.input_scale
+0.00.629.338 D create_tensor: loading tensor blk.13.attn_q.scale
+0.00.629.340 D create_tensor: loading tensor blk.13.attn_k.scale
+0.00.629.342 D create_tensor: loading tensor blk.13.attn_v.scale
+0.00.629.345 D create_tensor: loading tensor blk.13.attn_output.scale
+0.00.629.347 D create_tensor: loading tensor blk.13.ffn_gate.scale
+0.00.629.349 D create_tensor: loading tensor blk.13.ffn_down.scale
+0.00.629.351 D create_tensor: loading tensor blk.13.ffn_up.scale
+0.00.629.354 D create_tensor: loading tensor blk.13.attn_q.input_scale
+0.00.629.356 D create_tensor: loading tensor blk.13.attn_k.input_scale
+0.00.629.358 D create_tensor: loading tensor blk.13.attn_v.input_scale
+0.00.629.360 D create_tensor: loading tensor blk.13.attn_output.input_scale
+0.00.629.362 D create_tensor: loading tensor blk.13.ffn_gate.input_scale
+0.00.629.365 D create_tensor: loading tensor blk.13.ffn_down.input_scale
+0.00.629.367 D create_tensor: loading tensor blk.13.ffn_up.input_scale
+0.00.629.369 D create_tensor: loading tensor blk.14.attn_q.scale
+0.00.629.371 D create_tensor: loading tensor blk.14.attn_k.scale
+0.00.629.373 D create_tensor: loading tensor blk.14.attn_v.scale
+0.00.629.375 D create_tensor: loading tensor blk.14.attn_output.scale
+0.00.629.378 D create_tensor: loading tensor blk.14.ffn_gate.scale
+0.00.629.380 D create_tensor: loading tensor blk.14.ffn_down.scale
+0.00.629.382 D create_tensor: loading tensor blk.14.ffn_up.scale
+0.00.629.384 D create_tensor: loading tensor blk.14.attn_q.input_scale
+0.00.629.387 D create_tensor: loading tensor blk.14.attn_k.input_scale
+0.00.629.389 D create_tensor: loading tensor blk.14.attn_v.input_scale
+0.00.629.391 D create_tensor: loading tensor blk.14.attn_output.input_scale
+0.00.629.393 D create_tensor: loading tensor blk.14.ffn_gate.input_scale
+0.00.629.395 D create_tensor: loading tensor blk.14.ffn_down.input_scale
+0.00.629.397 D create_tensor: loading tensor blk.14.ffn_up.input_scale
+0.00.629.400 D create_tensor: loading tensor blk.15.attn_q.scale
+0.00.629.402 D create_tensor: loading tensor blk.15.attn_k.scale
+0.00.629.404 D create_tensor: loading tensor blk.15.attn_v.scale
+0.00.629.406 D create_tensor: loading tensor blk.15.attn_output.scale
+0.00.629.408 D create_tensor: loading tensor blk.15.ffn_gate.scale
+0.00.629.411 D create_tensor: loading tensor blk.15.ffn_down.scale
+0.00.629.413 D create_tensor: loading tensor blk.15.ffn_up.scale
+0.00.629.415 D create_tensor: loading tensor blk.15.attn_q.input_scale
+0.00.629.417 D create_tensor: loading tensor blk.15.attn_k.input_scale
+0.00.629.419 D create_tensor: loading tensor blk.15.attn_v.input_scale
+0.00.629.422 D create_tensor: loading tensor blk.15.attn_output.input_scale
+0.00.629.424 D create_tensor: loading tensor blk.15.ffn_gate.input_scale
+0.00.629.426 D create_tensor: loading tensor blk.15.ffn_down.input_scale
+0.00.629.428 D create_tensor: loading tensor blk.15.ffn_up.input_scale
+0.00.629.430 D create_tensor: loading tensor blk.16.attn_q.scale
+0.00.629.432 D create_tensor: loading tensor blk.16.attn_k.scale
+0.00.629.434 D create_tensor: loading tensor blk.16.attn_v.scale
+0.00.629.437 D create_tensor: loading tensor blk.16.attn_output.scale
+0.00.629.439 D create_tensor: loading tensor blk.16.ffn_gate.scale
+0.00.629.441 D create_tensor: loading tensor blk.16.ffn_down.scale
+0.00.629.443 D create_tensor: loading tensor blk.16.ffn_up.scale
+0.00.629.445 D create_tensor: loading tensor blk.16.attn_q.input_scale
+0.00.629.447 D create_tensor: loading tensor blk.16.attn_k.input_scale
+0.00.629.449 D create_tensor: loading tensor blk.16.attn_v.input_scale
+0.00.629.451 D create_tensor: loading tensor blk.16.attn_output.input_scale
+0.00.629.453 D create_tensor: loading tensor blk.16.ffn_gate.input_scale
+0.00.629.455 D create_tensor: loading tensor blk.16.ffn_down.input_scale
+0.00.629.458 D create_tensor: loading tensor blk.16.ffn_up.input_scale
+0.00.629.460 D create_tensor: loading tensor blk.17.attn_q.scale
+0.00.629.462 D create_tensor: loading tensor blk.17.attn_k.scale
+0.00.629.464 D create_tensor: loading tensor blk.17.attn_v.scale
+0.00.629.466 D create_tensor: loading tensor blk.17.attn_output.scale
+0.00.629.468 D create_tensor: loading tensor blk.17.ffn_gate.scale
+0.00.629.470 D create_tensor: loading tensor blk.17.ffn_down.scale
+0.00.629.472 D create_tensor: loading tensor blk.17.ffn_up.scale
+0.00.629.474 D create_tensor: loading tensor blk.17.attn_q.input_scale
+0.00.629.476 D create_tensor: loading tensor blk.17.attn_k.input_scale
+0.00.629.479 D create_tensor: loading tensor blk.17.attn_v.input_scale
+0.00.629.481 D create_tensor: loading tensor blk.17.attn_output.input_scale
+0.00.629.483 D create_tensor: loading tensor blk.17.ffn_gate.input_scale
+0.00.629.485 D create_tensor: loading tensor blk.17.ffn_down.input_scale
+0.00.629.487 D create_tensor: loading tensor blk.17.ffn_up.input_scale
+0.00.629.489 D create_tensor: loading tensor blk.18.attn_q.scale
+0.00.629.491 D create_tensor: loading tensor blk.18.attn_k.scale
+0.00.629.493 D create_tensor: loading tensor blk.18.attn_v.scale
+0.00.629.495 D create_tensor: loading tensor blk.18.attn_output.scale
+0.00.629.497 D create_tensor: loading tensor blk.18.ffn_gate.scale
+0.00.629.499 D create_tensor: loading tensor blk.18.ffn_down.scale
+0.00.629.501 D create_tensor: loading tensor blk.18.ffn_up.scale
+0.00.629.503 D create_tensor: loading tensor blk.18.attn_q.input_scale
+0.00.629.506 D create_tensor: loading tensor blk.18.attn_k.input_scale
+0.00.629.508 D create_tensor: loading tensor blk.18.attn_v.input_scale
+0.00.629.510 D create_tensor: loading tensor blk.18.attn_output.input_scale
+0.00.629.512 D create_tensor: loading tensor blk.18.ffn_gate.input_scale
+0.00.629.514 D create_tensor: loading tensor blk.18.ffn_down.input_scale
+0.00.629.516 D create_tensor: loading tensor blk.18.ffn_up.input_scale
+0.00.629.519 D create_tensor: loading tensor blk.19.attn_q.scale
+0.00.629.521 D create_tensor: loading tensor blk.19.attn_k.scale
+0.00.629.523 D create_tensor: loading tensor blk.19.attn_v.scale
+0.00.629.526 D create_tensor: loading tensor blk.19.attn_output.scale
+0.00.629.528 D create_tensor: loading tensor blk.19.ffn_gate.scale
+0.00.629.530 D create_tensor: loading tensor blk.19.ffn_down.scale
+0.00.629.533 D create_tensor: loading tensor blk.19.ffn_up.scale
+0.00.629.535 D create_tensor: loading tensor blk.19.attn_q.input_scale
+0.00.629.537 D create_tensor: loading tensor blk.19.attn_k.input_scale
+0.00.629.539 D create_tensor: loading tensor blk.19.attn_v.input_scale
+0.00.629.542 D create_tensor: loading tensor blk.19.attn_output.input_scale
+0.00.629.544 D create_tensor: loading tensor blk.19.ffn_gate.input_scale
+0.00.629.564 D create_tensor: loading tensor blk.19.ffn_down.input_scale
+0.00.629.567 D create_tensor: loading tensor blk.19.ffn_up.input_scale
+0.00.629.570 D create_tensor: loading tensor blk.20.attn_q.scale
+0.00.629.572 D create_tensor: loading tensor blk.20.attn_k.scale
+0.00.629.574 D create_tensor: loading tensor blk.20.attn_v.scale
+0.00.629.577 D create_tensor: loading tensor blk.20.attn_output.scale
+0.00.629.579 D create_tensor: loading tensor blk.20.ffn_gate.scale
+0.00.629.581 D create_tensor: loading tensor blk.20.ffn_down.scale
+0.00.629.584 D create_tensor: loading tensor blk.20.ffn_up.scale
+0.00.629.586 D create_tensor: loading tensor blk.20.attn_q.input_scale
+0.00.629.589 D create_tensor: loading tensor blk.20.attn_k.input_scale
+0.00.629.591 D create_tensor: loading tensor blk.20.attn_v.input_scale
+0.00.629.593 D create_tensor: loading tensor blk.20.attn_output.input_scale
+0.00.629.595 D create_tensor: loading tensor blk.20.ffn_gate.input_scale
+0.00.629.598 D create_tensor: loading tensor blk.20.ffn_down.input_scale
+0.00.629.600 D create_tensor: loading tensor blk.20.ffn_up.input_scale
+0.00.629.602 D create_tensor: loading tensor blk.21.attn_q.scale
+0.00.629.604 D create_tensor: loading tensor blk.21.attn_k.scale
+0.00.629.607 D create_tensor: loading tensor blk.21.attn_v.scale
+0.00.629.609 D create_tensor: loading tensor blk.21.attn_output.scale
+0.00.629.611 D create_tensor: loading tensor blk.21.ffn_gate.scale
+0.00.629.613 D create_tensor: loading tensor blk.21.ffn_down.scale
+0.00.629.615 D create_tensor: loading tensor blk.21.ffn_up.scale
+0.00.629.618 D create_tensor: loading tensor blk.21.attn_q.input_scale
+0.00.629.620 D create_tensor: loading tensor blk.21.attn_k.input_scale
+0.00.629.622 D create_tensor: loading tensor blk.21.attn_v.input_scale
+0.00.629.624 D create_tensor: loading tensor blk.21.attn_output.input_scale
+0.00.629.627 D create_tensor: loading tensor blk.21.ffn_gate.input_scale
+0.00.629.629 D create_tensor: loading tensor blk.21.ffn_down.input_scale
+0.00.629.631 D create_tensor: loading tensor blk.21.ffn_up.input_scale
+0.00.629.633 D create_tensor: loading tensor blk.22.attn_q.scale
+0.00.629.635 D create_tensor: loading tensor blk.22.attn_k.scale
+0.00.629.637 D create_tensor: loading tensor blk.22.attn_v.scale
+0.00.629.640 D create_tensor: loading tensor blk.22.attn_output.scale
+0.00.629.642 D create_tensor: loading tensor blk.22.ffn_gate.scale
+0.00.629.645 D create_tensor: loading tensor blk.22.ffn_down.scale
+0.00.629.647 D create_tensor: loading tensor blk.22.ffn_up.scale
+0.00.629.649 D create_tensor: loading tensor blk.22.attn_q.input_scale
+0.00.629.652 D create_tensor: loading tensor blk.22.attn_k.input_scale
+0.00.629.654 D create_tensor: loading tensor blk.22.attn_v.input_scale
+0.00.629.656 D create_tensor: loading tensor blk.22.attn_output.input_scale
+0.00.629.659 D create_tensor: loading tensor blk.22.ffn_gate.input_scale
+0.00.629.661 D create_tensor: loading tensor blk.22.ffn_down.input_scale
+0.00.629.664 D create_tensor: loading tensor blk.22.ffn_up.input_scale
+0.00.629.666 D create_tensor: loading tensor blk.23.attn_q.scale
+0.00.629.668 D create_tensor: loading tensor blk.23.attn_k.scale
+0.00.629.670 D create_tensor: loading tensor blk.23.attn_v.scale
+0.00.629.673 D create_tensor: loading tensor blk.23.attn_output.scale
+0.00.629.675 D create_tensor: loading tensor blk.23.ffn_gate.scale
+0.00.629.677 D create_tensor: loading tensor blk.23.ffn_down.scale
+0.00.629.680 D create_tensor: loading tensor blk.23.ffn_up.scale
+0.00.629.682 D create_tensor: loading tensor blk.23.attn_q.input_scale
+0.00.629.685 D create_tensor: loading tensor blk.23.attn_k.input_scale
+0.00.629.687 D create_tensor: loading tensor blk.23.attn_v.input_scale
+0.00.629.689 D create_tensor: loading tensor blk.23.attn_output.input_scale
+0.00.629.692 D create_tensor: loading tensor blk.23.ffn_gate.input_scale
+0.00.629.694 D create_tensor: loading tensor blk.23.ffn_down.input_scale
+0.00.629.696 D create_tensor: loading tensor blk.23.ffn_up.input_scale
+0.00.629.699 D create_tensor: loading tensor blk.24.attn_q.scale
+0.00.629.701 D create_tensor: loading tensor blk.24.attn_k.scale
+0.00.629.704 D create_tensor: loading tensor blk.24.attn_v.scale
+0.00.629.706 D create_tensor: loading tensor blk.24.attn_output.scale
+0.00.629.708 D create_tensor: loading tensor blk.24.ffn_gate.scale
+0.00.629.711 D create_tensor: loading tensor blk.24.ffn_down.scale
+0.00.629.713 D create_tensor: loading tensor blk.24.ffn_up.scale
+0.00.629.715 D create_tensor: loading tensor blk.24.attn_q.input_scale
+0.00.629.718 D create_tensor: loading tensor blk.24.attn_k.input_scale
+0.00.629.720 D create_tensor: loading tensor blk.24.attn_v.input_scale
+0.00.629.723 D create_tensor: loading tensor blk.24.attn_output.input_scale
+0.00.629.725 D create_tensor: loading tensor blk.24.ffn_gate.input_scale
+0.00.629.727 D create_tensor: loading tensor blk.24.ffn_down.input_scale
+0.00.629.730 D create_tensor: loading tensor blk.24.ffn_up.input_scale
+0.00.629.732 D create_tensor: loading tensor blk.25.attn_q.scale
+0.00.629.734 D create_tensor: loading tensor blk.25.attn_k.scale
+0.00.629.736 D create_tensor: loading tensor blk.25.attn_v.scale
+0.00.629.739 D create_tensor: loading tensor blk.25.attn_output.scale
+0.00.629.741 D create_tensor: loading tensor blk.25.ffn_gate.scale
+0.00.629.744 D create_tensor: loading tensor blk.25.ffn_down.scale
+0.00.629.746 D create_tensor: loading tensor blk.25.ffn_up.scale
+0.00.629.748 D create_tensor: loading tensor blk.25.attn_q.input_scale
+0.00.629.751 D create_tensor: loading tensor blk.25.attn_k.input_scale
+0.00.629.753 D create_tensor: loading tensor blk.25.attn_v.input_scale
+0.00.629.755 D create_tensor: loading tensor blk.25.attn_output.input_scale
+0.00.629.758 D create_tensor: loading tensor blk.25.ffn_gate.input_scale
+0.00.629.760 D create_tensor: loading tensor blk.25.ffn_down.input_scale
+0.00.629.763 D create_tensor: loading tensor blk.25.ffn_up.input_scale
+0.00.629.765 D create_tensor: loading tensor blk.26.attn_q.scale
+0.00.629.767 D create_tensor: loading tensor blk.26.attn_k.scale
+0.00.629.770 D create_tensor: loading tensor blk.26.attn_v.scale
+0.00.629.772 D create_tensor: loading tensor blk.26.attn_output.scale
+0.00.629.774 D create_tensor: loading tensor blk.26.ffn_gate.scale
+0.00.629.777 D create_tensor: loading tensor blk.26.ffn_down.scale
+0.00.629.779 D create_tensor: loading tensor blk.26.ffn_up.scale
+0.00.629.782 D create_tensor: loading tensor blk.26.attn_q.input_scale
+0.00.629.784 D create_tensor: loading tensor blk.26.attn_k.input_scale
+0.00.629.786 D create_tensor: loading tensor blk.26.attn_v.input_scale
+0.00.629.789 D create_tensor: loading tensor blk.26.attn_output.input_scale
+0.00.629.791 D create_tensor: loading tensor blk.26.ffn_gate.input_scale
+0.00.629.793 D create_tensor: loading tensor blk.26.ffn_down.input_scale
+0.00.629.796 D create_tensor: loading tensor blk.26.ffn_up.input_scale
+0.00.629.798 D create_tensor: loading tensor blk.27.attn_q.scale
+0.00.629.801 D create_tensor: loading tensor blk.27.attn_k.scale
+0.00.629.803 D create_tensor: loading tensor blk.27.attn_v.scale
+0.00.629.806 D create_tensor: loading tensor blk.27.attn_output.scale
+0.00.629.809 D create_tensor: loading tensor blk.27.ffn_gate.scale
+0.00.629.811 D create_tensor: loading tensor blk.27.ffn_down.scale
+0.00.629.814 D create_tensor: loading tensor blk.27.ffn_up.scale
+0.00.629.817 D create_tensor: loading tensor blk.27.attn_q.input_scale
+0.00.629.819 D create_tensor: loading tensor blk.27.attn_k.input_scale
+0.00.629.822 D create_tensor: loading tensor blk.27.attn_v.input_scale
+0.00.629.825 D create_tensor: loading tensor blk.27.attn_output.input_scale
+0.00.629.827 D create_tensor: loading tensor blk.27.ffn_gate.input_scale
+0.00.629.830 D create_tensor: loading tensor blk.27.ffn_down.input_scale
+0.00.629.833 D create_tensor: loading tensor blk.27.ffn_up.input_scale
+0.00.629.839 D done_getting_tensors: tensor 'token_embd.weight' (q4_K) (and 338 others) cannot be used with preferred buffer type CUDA_Host, using CPU instead
+0.07.602.728 I load_tensors: offloading 0 repeating layers to GPU
+0.07.602.761 I load_tensors: offloaded 0/29 layers to GPU
+0.07.602.964 I load_tensors:   CPU_Mapped model buffer size =  4460.45 MiB
+0.07.649.601 I cmn  common_init_: added </s> logit bias = -inf
+0.07.649.841 I cmn  common_init_: added <|endoftext|> logit bias = -inf
+0.07.649.863 I cmn  common_init_: added <|im_end|> logit bias = -inf
+0.07.649.864 I cmn  common_init_: added <|fim_pad|> logit bias = -inf
+0.07.649.865 I cmn  common_init_: added <|repo_name|> logit bias = -inf
+0.07.649.866 I cmn  common_init_: added <|file_sep|> logit bias = -inf
+0.07.650.186 I llama_context: constructing llama_context
+0.07.650.203 I llama_context: n_seq_max             = 1
+0.07.650.204 I llama_context: n_ctx                 = 4096
+0.07.650.204 I llama_context: n_ctx_seq             = 4096
+0.07.650.204 I llama_context: n_batch               = 2048
+0.07.650.205 I llama_context: n_ubatch              = 512
+0.07.650.205 I llama_context: causal_attn           = 1
+0.07.650.206 I llama_context: flash_attn            = auto
+0.07.650.207 I llama_context: kv_unified            = false
+0.07.650.210 I llama_context: freq_base             = 1000000.0
+0.07.650.210 I llama_context: freq_scale            = 1
+0.07.650.210 I llama_context: n_rs_seq              = 0
+0.07.650.210 I llama_context: n_outputs_max         = 1
+0.07.650.211 I llama_context: n_outputs_max_per_seq = 1
+0.07.650.211 I llama_context: n_ctx_seq (4096) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.07.650.448 D set_abort_callback: call
+0.07.650.525 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.07.650.593 D llama_kv_cache: layer   0: dev = CPU
+0.07.650.632 D llama_kv_cache: layer   1: dev = CPU
+0.07.650.652 D llama_kv_cache: layer   2: dev = CPU
+0.07.650.688 D llama_kv_cache: layer   3: dev = CPU
+0.07.650.708 D llama_kv_cache: layer   4: dev = CPU
+0.07.650.728 D llama_kv_cache: layer   5: dev = CPU
+0.07.650.748 D llama_kv_cache: layer   6: dev = CPU
+0.07.650.750 D llama_kv_cache: layer   7: dev = CPU
+0.07.650.751 D llama_kv_cache: layer   8: dev = CPU
+0.07.650.752 D llama_kv_cache: layer   9: dev = CPU
+0.07.650.753 D llama_kv_cache: layer  10: dev = CPU
+0.07.650.754 D llama_kv_cache: layer  11: dev = CPU
+0.07.650.754 D llama_kv_cache: layer  12: dev = CPU
+0.07.650.756 D llama_kv_cache: layer  13: dev = CPU
+0.07.650.757 D llama_kv_cache: layer  14: dev = CPU
+0.07.650.758 D llama_kv_cache: layer  15: dev = CPU
+0.07.650.759 D llama_kv_cache: layer  16: dev = CPU
+0.07.650.760 D llama_kv_cache: layer  17: dev = CPU
+0.07.650.761 D llama_kv_cache: layer  18: dev = CPU
+0.07.650.762 D llama_kv_cache: layer  19: dev = CPU
+0.07.650.763 D llama_kv_cache: layer  20: dev = CPU
+0.07.650.763 D llama_kv_cache: layer  21: dev = CPU
+0.07.650.765 D llama_kv_cache: layer  22: dev = CPU
+0.07.650.765 D llama_kv_cache: layer  23: dev = CPU
+0.07.650.766 D llama_kv_cache: layer  24: dev = CPU
+0.07.650.767 D llama_kv_cache: layer  25: dev = CPU
+0.07.650.768 D llama_kv_cache: layer  26: dev = CPU
+0.07.650.768 D llama_kv_cache: layer  27: dev = CPU
+0.07.650.831 I llama_kv_cache:        CPU KV buffer size =   224.00 MiB
+0.08.103.854 I llama_kv_cache: size =  224.00 MiB (  4096 cells,  28 layers,  1/1 seqs), K (f16):  112.00 MiB, V (f16):  112.00 MiB
+0.08.103.886 I llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 128
+0.08.103.887 I llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 128
+0.08.103.891 D llama_context: enumerating backends
+0.08.103.927 D llama_context: backend_ptrs.size() = 2
+0.08.103.930 I sched_reserve: reserving ...
+0.08.103.935 D sched_reserve: max_nodes = 2712
+0.08.124.183 D sched_reserve: reserving full memory module
+0.08.124.226 D sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+0.08.124.237 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.125.107 I resolve_fused_ops: Flash Attention enabled
+0.08.125.130 I resolve_fused_ops: resolving fused Gated Delta Net support:
+0.08.125.130 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.125.427 I resolve_fused_ops: fused Gated Delta Net (autoregressive) enabled
+0.08.125.449 D graph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16
+0.08.125.720 I resolve_fused_ops: fused Gated Delta Net (chunked) enabled
+0.08.125.740 I resolve_fused_ops: resolving fused Lightning Indexer support:
+0.08.125.741 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.126.011 I resolve_fused_ops: Lightning Indexer enabled
+0.08.126.032 I resolve_fused_ops: resolving fused DeepSeek V4 HC support:
+0.08.126.032 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.126.302 I resolve_fused_ops: fused DeepSeek V4 HC pre enabled
+0.08.126.321 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.126.591 I resolve_fused_ops: fused DeepSeek V4 HC comb enabled
+0.08.126.612 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.126.880 I resolve_fused_ops: fused DeepSeek V4 HC post enabled
+0.08.126.899 D graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =    1
+0.08.196.966 D graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+0.08.197.868 D graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =    1
+0.08.198.678 I sched_reserve:      CUDA0 compute buffer size =   183.44 MiB
+0.08.198.702 I sched_reserve:  CUDA_Host compute buffer size =    18.01 MiB
+0.08.198.703 I sched_reserve: graph nodes  = 958
+0.08.198.703 I sched_reserve: graph splits = 391 (with bs=512), 1 (with bs=1)
+0.08.198.706 I sched_reserve: reserve took 94.77 ms, sched copies = 1
+0.08.200.159 D set_adapters_lora: adapters = (nil)
+0.08.200.183 D adapters_lora_are_same: adapters = (nil)
+0.08.200.185 I cmn  common_init_: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+0.13.506.323 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 4096, kv_unified = 'false'
+0.13.506.507 I spec common_specu: no implementations specified for speculative decoding
+0.13.506.546 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+0.13.506.632 D slot        reset: id  0 | task -1 | 
+0.13.506.900 I srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+0.13.506.918 I srv    load_model: use `--cache-ram 0` to disable the prompt cache
+0.13.506.951 I srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+0.13.506.969 I srv    load_model: context checkpoints enabled, max = 32, min spacing = 8192
+0.13.508.021 I srv          init: idle slots will be saved to prompt cache upon starting a new task
+0.13.508.041 D srv          init: __TEST_TAG_CACHE_IDLE_SLOTS_ENABLED__
+0.13.514.844 D common_chat_templates_apply_jinja: using differential autoparser
+0.13.514.951 D [1m[38;5;126m=== Starting differential analysis ===
+[0m0.13.514.971 D [1m[38;5;214mPhase 1: Reasoning analysis
+[0m0.13.516.331 D [1m[38;5;214mPhase 2: Content analysis
+[0m0.13.517.883 D [1m[38;5;214mPhase 3: Tool call analysis
+[0m0.13.520.038 D 
+--- Reasoning & Content Structure ---
+0.13.520.056 D user_msg_start: <|im_start|>user
+0.13.520.074 D assistant_msg_start: <|im_start|>assistant
+0.13.520.128 D reasoning_mode: NONE
+0.13.520.145 D reasoning_start: ''
+0.13.520.146 D reasoning_end: ''
+0.13.520.147 D content_mode: PLAIN
+0.13.520.147 D content_start: ''
+0.13.520.147 D content_end: ''
+0.13.520.147 D 
+--- Tool Call Structure ---
+0.13.520.148 D tool_mode: JSON_NATIVE
+0.13.520.148 D supports_tools: true
+0.13.520.148 D supports_parallel_calls: true
+0.13.520.148 D tool_section_start: ''
+0.13.520.148 D tool_section_end: ''
+0.13.520.148 D per_call_start: '<tool_call>
+'
+0.13.520.149 D per_call_end: '</tool_call>'
+0.13.520.166 D func_name_prefix: ''
+0.13.520.183 D func_name_suffix: ''
+0.13.520.183 D func_args_separator: ''
+0.13.520.184 D func_close: ''
+0.13.520.184 D call_id_prefix: ''
+0.13.520.184 D call_id_suffix: ''
+0.13.520.185 D call_id_pos: 'NONE'
+0.13.520.185 D args_start: ''
+0.13.520.185 D args_end: ''
+0.13.520.185 D arg_name_prefix: ''
+0.13.520.185 D arg_name_suffix: ''
+0.13.520.186 D arg_value_prefix: ''
+0.13.520.186 D arg_value_suffix: ''
+0.13.520.186 D name_field: 'name'
+0.13.520.186 D args_field: 'arguments'
+0.13.520.203 D id_field: ''
+0.13.520.220 D gen_id_field: ''
+0.13.520.221 D parameter_order: 'name, arguments'
+0.13.520.221 D [1m[38;5;126m=== Differential analysis complete ===
+[0m0.13.521.935 D common_chat_templates_apply_jinja: generated parser:
+Sequence(Literal(<|im_start|>assistant
+), Epsilon, Tag(content, Until()), End)
+
+parser generation prompt: <|im_start|>assistant
+
+0.13.522.016 I srv          init: init: chat template, example_format: '<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+'
+0.13.522.140 D common_chat_templates_apply_jinja: using differential autoparser
+0.13.522.158 D [1m[38;5;126m=== Starting differential analysis ===
+[0m0.13.522.158 D [1m[38;5;214mPhase 1: Reasoning analysis
+[0m0.13.522.841 D [1m[38;5;214mPhase 2: Content analysis
+[0m0.13.523.683 D [1m[38;5;214mPhase 3: Tool call analysis
+[0m0.13.524.860 D 
+--- Reasoning & Content Structure ---
+0.13.524.880 D user_msg_start: <|im_start|>user
+0.13.524.880 D assistant_msg_start: <|im_start|>assistant
+0.13.524.881 D reasoning_mode: NONE
+0.13.524.902 D reasoning_start: ''
+0.13.524.922 D reasoning_end: ''
+0.13.524.923 D content_mode: PLAIN
+0.13.524.923 D content_start: ''
+0.13.524.923 D content_end: ''
+0.13.524.923 D 
+--- Tool Call Structure ---
+0.13.524.924 D tool_mode: JSON_NATIVE
+0.13.524.924 D supports_tools: true
+0.13.524.924 D supports_parallel_calls: true
+0.13.524.924 D tool_section_start: ''
+0.13.524.924 D tool_section_end: ''
+0.13.524.924 D per_call_start: '<tool_call>
+'
+0.13.524.924 D per_call_end: '</tool_call>'
+0.13.524.924 D func_name_prefix: ''
+0.13.524.925 D func_name_suffix: ''
+0.13.524.942 D func_args_separator: ''
+0.13.524.962 D func_close: ''
+0.13.524.962 D call_id_prefix: ''
+0.13.524.962 D call_id_suffix: ''
+0.13.524.963 D call_id_pos: 'NONE'
+0.13.524.963 D args_start: ''
+0.13.524.964 D args_end: ''
+0.13.524.964 D arg_name_prefix: ''
+0.13.524.964 D arg_name_suffix: ''
+0.13.524.964 D arg_value_prefix: ''
+0.13.524.964 D arg_value_suffix: ''
+0.13.524.964 D name_field: 'name'
+0.13.524.964 D args_field: 'arguments'
+0.13.524.964 D id_field: ''
+0.13.524.997 D gen_id_field: ''
+0.13.525.033 D parameter_order: 'name, arguments'
+0.13.525.052 D [1m[38;5;126m=== Differential analysis complete ===
+[0m0.13.525.294 D common_chat_templates_apply_jinja: generated parser:
+Sequence(Literal(<|im_start|>assistant
+), Epsilon, Tag(content, Until()), End)
+
+parser generation prompt: <|im_start|>assistant
+
+0.13.525.320 I srv          init: init: chat template, thinking = 0
+0.13.525.700 I srv  llama_server: model loaded
+0.13.525.720 I srv  llama_server: listening on http://127.0.0.1:57943
+0.13.525.804 D que    start_loop: processing new tasks
+0.13.525.841 D que    start_loop: update slots
+0.13.525.892 I srv  update_slots: all slots are idle
+0.13.525.909 D que    start_loop: waiting for new tasks
+0.13.708.147 D srv          stop: all tasks already finished, no need to cancel
+0.13.709.063 D srv          stop: all tasks already finished, no need to cancel
+0.13.710.898 D srv          stop: all tasks already finished, no need to cancel
+0.13.715.929 D common_chat_templates_apply_jinja: using differential autoparser
+0.13.715.951 D [1m[38;5;126m=== Starting differential analysis ===
+[0m0.13.715.971 D [1m[38;5;214mPhase 1: Reasoning analysis
+[0m0.13.717.552 D [1m[38;5;214mPhase 2: Content analysis
+[0m0.13.718.330 D [1m[38;5;214mPhase 3: Tool call analysis
+[0m0.13.719.795 D 
+--- Reasoning & Content Structure ---
+0.13.719.817 D user_msg_start: <|im_start|>user
+0.13.719.817 D assistant_msg_start: <|im_start|>assistant
+0.13.719.819 D reasoning_mode: NONE
+0.13.719.819 D reasoning_start: ''
+0.13.719.819 D reasoning_end: ''
+0.13.719.819 D content_mode: PLAIN
+0.13.719.820 D content_start: ''
+0.13.719.820 D content_end: ''
+0.13.719.820 D 
+--- Tool Call Structure ---
+0.13.719.820 D tool_mode: JSON_NATIVE
+0.13.719.820 D supports_tools: true
+0.13.719.840 D supports_parallel_calls: true
+0.13.719.860 D tool_section_start: ''
+0.13.719.860 D tool_section_end: ''
+0.13.719.860 D per_call_start: '<tool_call>
+'
+0.13.719.860 D per_call_end: '</tool_call>'
+0.13.719.860 D func_name_prefix: ''
+0.13.719.860 D func_name_suffix: ''
+0.13.719.860 D func_args_separator: ''
+0.13.719.861 D func_close: ''
+0.13.719.861 D call_id_prefix: ''
+0.13.719.861 D call_id_suffix: ''
+0.13.719.862 D call_id_pos: 'NONE'
+0.13.719.862 D args_start: ''
+0.13.719.862 D args_end: ''
+0.13.719.862 D arg_name_prefix: ''
+0.13.719.880 D arg_name_suffix: ''
+0.13.719.900 D arg_value_prefix: ''
+0.13.719.901 D arg_value_suffix: ''
+0.13.719.901 D name_field: 'name'
+0.13.719.901 D args_field: 'arguments'
+0.13.719.901 D id_field: ''
+0.13.719.901 D gen_id_field: ''
+0.13.719.902 D parameter_order: 'name, arguments'
+0.13.719.902 D [1m[38;5;126m=== Differential analysis complete ===
+[0m0.13.720.138 D common_chat_templates_apply_jinja: generated parser:
+Sequence(Literal(<|im_start|>assistant
+), Epsilon, Tag(content, Until()), End)
+
+parser generation prompt: <|im_start|>assistant
+
+0.13.720.255 I srv  server_strea: conv_id= (empty=1)
+0.13.735.407 I srv    operator(): chat format: peg-native
+0.13.735.606 D srv  eval_llama_c: reasoning budget: tokens=-1, generation_prompt='<|im_start|>assistant
+', start=0 toks, end=0 seqs, forced=0 toks
+0.13.735.858 D res  add_waiting_: add task 0 to waiting list. current waiting = 0 (before add)
+0.13.735.882 D que          post: new task, id = 0/1, front = 0
+0.13.736.036 D que    start_loop: processing new tasks
+0.13.736.063 D que    start_loop: processing task, id = 0
+0.13.736.105 I slot get_availabl: id  0 | task -1 |  - skipping, slot is empty
+0.13.736.126 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+0.13.736.127 I srv  get_availabl: updating prompt cache
+0.13.736.187 I srv          load:  - looking for better prompt, base f_keep = -1.000, f_sim = 0.000
+0.13.736.213 I srv        update:  - cache state: 0 prompts, 0.000 MiB (limits: 8192.000 MiB, 4096 tokens, 8589934592 est)
+0.13.736.214 I srv  get_availabl: prompt cache update took 0.09 ms
+0.13.736.312 D slot launch_slot_: id  0 | task -1 | launching slot : {"id":0,"n_ctx":4096,"speculative":false,"is_processing":false}
+0.13.736.384 D common_sampler_init: prefill token: 151644 = <|im_start|>
+0.13.736.477 D common_sampler_init: prefill token: 77091 = assistant
+0.13.736.550 D common_sampler_init: prefill token: 198 = 
+
+0.13.736.705 I slot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+0.13.736.771 I slot launch_slot_: id  0 | task -1 | sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+	dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = 64
+	top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typical_p = 1.000, top_n_sigma = -1.000, temp = 0.800
+	mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000, adaptive_target = -1.000, adaptive_decay = 0.900
+0.13.736.790 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.13.736.808 D que    start_loop: update slots
+0.13.736.810 D srv  update_slots: posting NEXT_RESPONSE
+0.13.736.814 D que          post: new task, id = 1, front = 0
+0.13.736.971 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 39
+0.13.737.013 D res          send: sending result for task id = 0
+0.13.737.018 D res          send: task id = 0 pushed to result queue
+0.13.737.060 I slot   operator(): id  0 | task 0 | cached n_tokens = 0, memory_seq_rm [0, end)
+0.13.737.141 I slot init_sampler: id  0 | task 0 | init sampler, took 0.03 ms, tokens: text = 39, total = 39
+0.13.737.179 D slot   operator(): id  0 | task 0 | main/do_checkpoint = no, pos_min = -1, pos_max = -1
+0.13.737.210 D srv          stop: all tasks already finished, no need to cancel
+0.13.737.279 D set_adapters_lora: adapters = (nil)
+0.13.737.309 D adapters_lora_are_same: adapters = (nil)
+0.13.737.317 D set_embeddings: value = 0
+0.13.737.320 D srv        decode: n_batch (effective) = 2048, off = 0
+0.14.871.999 D res          send: sending result for task id = 0
+0.14.872.048 D res          send: task id = 0 pushed to result queue
+0.14.872.073 D slot process_toke: id  0 | task 0 | n_decoded = 1, n_remaining = 31, next token:    32 'A'
+0.14.872.101 D que    start_loop: waiting for new tasks
+0.14.872.107 D que    start_loop: processing new tasks
+0.14.872.112 D que    start_loop: processing task, id = 1
+0.14.872.118 D que    start_loop: update slots
+0.14.872.119 D srv  update_slots: posting NEXT_RESPONSE
+0.14.872.121 D que          post: new task, id = 2, front = 0
+0.14.872.165 D slot handle_last_: id  0 | task 0 | slot decode token, id=32, n_ctx = 4096, n_tokens = 39, truncated = 0
+0.14.872.194 D set_adapters_lora: adapters = (nil)
+0.14.872.195 D adapters_lora_are_same: adapters = (nil)
+0.14.872.196 D set_embeddings: value = 0
+0.14.872.197 D srv        decode: n_batch (effective) = 2048, off = 0
+0.14.873.092 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1788085932,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"A"}}],"created":1788085932,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":1,"predicted_ms":0.001,"predicted_per_token_ms":0.001,"predicted_per_second":1000000.0}}
+
+
+0.15.067.036 D res          send: sending result for task id = 0
+0.15.067.091 D res          send: task id = 0 pushed to result queue
+0.15.067.127 D slot process_toke: id  0 | task 0 | n_decoded = 2, n_remaining = 30, next token:  2205 ' local'
+0.15.067.131 D que    start_loop: waiting for new tasks
+0.15.067.133 D que    start_loop: processing new tasks
+0.15.067.137 D que    start_loop: processing task, id = 2
+0.15.067.139 D que    start_loop: update slots
+0.15.067.140 D srv  update_slots: posting NEXT_RESPONSE
+0.15.067.142 D que          post: new task, id = 3, front = 0
+0.15.067.148 D slot handle_last_: id  0 | task 0 | slot decode token, id=2205, n_ctx = 4096, n_tokens = 40, truncated = 0
+0.15.067.183 D set_adapters_lora: adapters = (nil)
+0.15.067.184 D adapters_lora_are_same: adapters = (nil)
+0.15.067.185 D set_embeddings: value = 0
+0.15.067.186 D srv        decode: n_batch (effective) = 2048, off = 0
+0.15.067.357 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" local"}}],"created":1788085932,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":2,"predicted_ms":194.821,"predicted_per_token_ms":97.4105,"predicted_per_second":10.265833765353838}}
+
+
+0.15.250.893 D res          send: sending result for task id = 0
+0.15.250.954 D res          send: task id = 0 pushed to result queue
+0.15.250.981 D slot process_toke: id  0 | task 0 | n_decoded = 3, n_remaining = 29, next token:  4128 ' language'
+0.15.250.984 D que    start_loop: waiting for new tasks
+0.15.250.986 D que    start_loop: processing new tasks
+0.15.250.990 D que    start_loop: processing task, id = 3
+0.15.250.992 D que    start_loop: update slots
+0.15.250.993 D srv  update_slots: posting NEXT_RESPONSE
+0.15.250.995 D que          post: new task, id = 4, front = 0
+0.15.251.005 D slot handle_last_: id  0 | task 0 | slot decode token, id=4128, n_ctx = 4096, n_tokens = 41, truncated = 0
+0.15.251.010 D set_adapters_lora: adapters = (nil)
+0.15.251.011 D adapters_lora_are_same: adapters = (nil)
+0.15.251.011 D set_embeddings: value = 0
+0.15.251.012 D srv        decode: n_batch (effective) = 2048, off = 0
+0.15.251.219 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" language"}}],"created":1788085932,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":3,"predicted_ms":378.868,"predicted_per_token_ms":126.28933333333333,"predicted_per_second":7.9183251158714905}}
+
+
+0.15.440.003 D res          send: sending result for task id = 0
+0.15.440.049 D res          send: task id = 0 pushed to result queue
+0.15.440.072 D slot process_toke: id  0 | task 0 | n_decoded = 4, n_remaining = 28, next token:  1614 ' model'
+0.15.440.074 D que    start_loop: waiting for new tasks
+0.15.440.076 D que    start_loop: processing new tasks
+0.15.440.080 D que    start_loop: processing task, id = 4
+0.15.440.081 D que    start_loop: update slots
+0.15.440.082 D srv  update_slots: posting NEXT_RESPONSE
+0.15.440.084 D que          post: new task, id = 5, front = 0
+0.15.440.089 D slot handle_last_: id  0 | task 0 | slot decode token, id=1614, n_ctx = 4096, n_tokens = 42, truncated = 0
+0.15.440.095 D set_adapters_lora: adapters = (nil)
+0.15.440.095 D adapters_lora_are_same: adapters = (nil)
+0.15.440.096 D set_embeddings: value = 0
+0.15.440.096 D srv        decode: n_batch (effective) = 2048, off = 0
+0.15.440.277 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" model"}}],"created":1788085933,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":4,"predicted_ms":567.917,"predicted_per_token_ms":141.97925,"predicted_per_second":7.043282733216297}}
+
+
+0.15.698.072 D res          send: sending result for task id = 0
+0.15.698.129 D res          send: task id = 0 pushed to result queue
+0.15.698.157 D slot process_toke: id  0 | task 0 | n_decoded = 5, n_remaining = 27, next token:   374 ' is'
+0.15.698.160 D que    start_loop: waiting for new tasks
+0.15.698.161 D que    start_loop: processing new tasks
+0.15.698.165 D que    start_loop: processing task, id = 5
+0.15.698.167 D que    start_loop: update slots
+0.15.698.167 D srv  update_slots: posting NEXT_RESPONSE
+0.15.698.169 D que          post: new task, id = 6, front = 0
+0.15.698.175 D slot handle_last_: id  0 | task 0 | slot decode token, id=374, n_ctx = 4096, n_tokens = 43, truncated = 0
+0.15.698.180 D set_adapters_lora: adapters = (nil)
+0.15.698.180 D adapters_lora_are_same: adapters = (nil)
+0.15.698.181 D set_embeddings: value = 0
+0.15.698.182 D srv        decode: n_batch (effective) = 2048, off = 0
+0.15.698.470 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" is"}}],"created":1788085933,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":5,"predicted_ms":826.048,"predicted_per_token_ms":165.2096,"predicted_per_second":6.0529170217711314}}
+
+
+0.15.909.221 D res          send: sending result for task id = 0
+0.15.909.259 D res          send: task id = 0 pushed to result queue
+0.15.909.311 D slot process_toke: id  0 | task 0 | n_decoded = 6, n_remaining = 26, next token:   264 ' a'
+0.15.909.336 D que    start_loop: waiting for new tasks
+0.15.909.338 D que    start_loop: processing new tasks
+0.15.909.342 D que    start_loop: processing task, id = 6
+0.15.909.379 D que    start_loop: update slots
+0.15.909.401 D srv  update_slots: posting NEXT_RESPONSE
+0.15.909.403 D que          post: new task, id = 7, front = 0
+0.15.909.409 D slot handle_last_: id  0 | task 0 | slot decode token, id=264, n_ctx = 4096, n_tokens = 44, truncated = 0
+0.15.909.416 D set_adapters_lora: adapters = (nil)
+0.15.909.416 D adapters_lora_are_same: adapters = (nil)
+0.15.909.417 D set_embeddings: value = 0
+0.15.909.418 D srv        decode: n_batch (effective) = 2048, off = 0
+0.15.909.521 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" a"}}],"created":1788085933,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":6,"predicted_ms":1037.215,"predicted_per_token_ms":172.86916666666664,"predicted_per_second":5.78472158617066}}
+
+
+0.16.132.770 D res          send: sending result for task id = 0
+0.16.132.805 D res          send: task id = 0 pushed to result queue
+0.16.132.853 D slot process_toke: id  0 | task 0 | n_decoded = 7, n_remaining = 25, next token:  5662 ' machine'
+0.16.132.878 D que    start_loop: waiting for new tasks
+0.16.132.880 D que    start_loop: processing new tasks
+0.16.132.885 D que    start_loop: processing task, id = 7
+0.16.132.888 D que    start_loop: update slots
+0.16.132.890 D srv  update_slots: posting NEXT_RESPONSE
+0.16.132.892 D que          post: new task, id = 8, front = 0
+0.16.132.900 D slot handle_last_: id  0 | task 0 | slot decode token, id=5662, n_ctx = 4096, n_tokens = 45, truncated = 0
+0.16.132.907 D set_adapters_lora: adapters = (nil)
+0.16.132.907 D adapters_lora_are_same: adapters = (nil)
+0.16.132.908 D set_embeddings: value = 0
+0.16.132.909 D srv        decode: n_batch (effective) = 2048, off = 0
+0.16.133.112 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" machine"}}],"created":1788085933,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":7,"predicted_ms":1260.667,"predicted_per_token_ms":180.0952857142857,"predicted_per_second":5.5526161944431}}
+
+
+0.16.355.739 D res          send: sending result for task id = 0
+0.16.355.768 D res          send: task id = 0 pushed to result queue
+0.16.355.820 D slot process_toke: id  0 | task 0 | n_decoded = 8, n_remaining = 24, next token:  6832 ' learning'
+0.16.355.824 D que    start_loop: waiting for new tasks
+0.16.355.825 D que    start_loop: processing new tasks
+0.16.355.831 D que    start_loop: processing task, id = 8
+0.16.355.833 D que    start_loop: update slots
+0.16.355.834 D srv  update_slots: posting NEXT_RESPONSE
+0.16.355.837 D que          post: new task, id = 9, front = 0
+0.16.355.842 D slot handle_last_: id  0 | task 0 | slot decode token, id=6832, n_ctx = 4096, n_tokens = 46, truncated = 0
+0.16.355.849 D set_adapters_lora: adapters = (nil)
+0.16.355.849 D adapters_lora_are_same: adapters = (nil)
+0.16.355.850 D set_embeddings: value = 0
+0.16.355.851 D srv        decode: n_batch (effective) = 2048, off = 0
+0.16.356.071 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" learning"}}],"created":1788085933,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":8,"predicted_ms":1483.686,"predicted_per_token_ms":185.46075,"predicted_per_second":5.391976469414688}}
+
+
+0.16.574.757 D res          send: sending result for task id = 0
+0.16.574.792 D res          send: task id = 0 pushed to result queue
+0.16.574.873 D slot process_toke: id  0 | task 0 | n_decoded = 9, n_remaining = 23, next token:  1614 ' model'
+0.16.574.899 D que    start_loop: waiting for new tasks
+0.16.574.901 D que    start_loop: processing new tasks
+0.16.574.906 D que    start_loop: processing task, id = 9
+0.16.574.931 D que    start_loop: update slots
+0.16.574.932 D srv  update_slots: posting NEXT_RESPONSE
+0.16.574.935 D que          post: new task, id = 10, front = 0
+0.16.574.941 D slot handle_last_: id  0 | task 0 | slot decode token, id=1614, n_ctx = 4096, n_tokens = 47, truncated = 0
+0.16.574.948 D set_adapters_lora: adapters = (nil)
+0.16.574.949 D adapters_lora_are_same: adapters = (nil)
+0.16.574.950 D set_embeddings: value = 0
+0.16.574.951 D srv        decode: n_batch (effective) = 2048, off = 0
+0.16.575.094 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" model"}}],"created":1788085934,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":9,"predicted_ms":1702.799,"predicted_per_token_ms":189.1998888888889,"predicted_per_second":5.285415366111914}}
+
+
+0.16.788.018 D res          send: sending result for task id = 0
+0.16.788.046 D res          send: task id = 0 pushed to result queue
+0.16.788.092 D slot process_toke: id  0 | task 0 | n_decoded = 10, n_remaining = 22, next token: 11689 ' specifically'
+0.16.788.112 D que    start_loop: waiting for new tasks
+0.16.788.114 D que    start_loop: processing new tasks
+0.16.788.118 D que    start_loop: processing task, id = 10
+0.16.788.119 D que    start_loop: update slots
+0.16.788.120 D srv  update_slots: posting NEXT_RESPONSE
+0.16.788.123 D que          post: new task, id = 11, front = 0
+0.16.788.128 D slot handle_last_: id  0 | task 0 | slot decode token, id=11689, n_ctx = 4096, n_tokens = 48, truncated = 0
+0.16.788.133 D set_adapters_lora: adapters = (nil)
+0.16.788.133 D adapters_lora_are_same: adapters = (nil)
+0.16.788.134 D set_embeddings: value = 0
+0.16.788.135 D srv        decode: n_batch (effective) = 2048, off = 0
+0.16.788.307 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" specifically"}}],"created":1788085934,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":10,"predicted_ms":1915.919,"predicted_per_token_ms":191.5919,"predicted_per_second":5.219427334871672}}
+
+
+0.16.972.224 D res          send: sending result for task id = 0
+0.16.972.259 D res          send: task id = 0 pushed to result queue
+0.16.972.307 D slot process_toke: id  0 | task 0 | n_decoded = 11, n_remaining = 21, next token:  6188 ' designed'
+0.16.972.331 D que    start_loop: waiting for new tasks
+0.16.972.333 D que    start_loop: processing new tasks
+0.16.972.336 D que    start_loop: processing task, id = 11
+0.16.972.338 D que    start_loop: update slots
+0.16.972.339 D srv  update_slots: posting NEXT_RESPONSE
+0.16.972.341 D que          post: new task, id = 12, front = 0
+0.16.972.347 D slot handle_last_: id  0 | task 0 | slot decode token, id=6188, n_ctx = 4096, n_tokens = 49, truncated = 0
+0.16.972.353 D set_adapters_lora: adapters = (nil)
+0.16.972.354 D adapters_lora_are_same: adapters = (nil)
+0.16.972.354 D set_embeddings: value = 0
+0.16.972.355 D srv        decode: n_batch (effective) = 2048, off = 0
+0.16.972.534 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" designed"}}],"created":1788085934,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":11,"predicted_ms":2100.199,"predicted_per_token_ms":190.92718181818182,"predicted_per_second":5.23759891324584}}
+
+
+0.17.162.167 D res          send: sending result for task id = 0
+0.17.162.281 D res          send: task id = 0 pushed to result queue
+0.17.162.351 D slot process_toke: id  0 | task 0 | n_decoded = 12, n_remaining = 20, next token:   311 ' to'
+0.17.162.355 D que    start_loop: waiting for new tasks
+0.17.162.357 D que    start_loop: processing new tasks
+0.17.162.362 D que    start_loop: processing task, id = 12
+0.17.162.364 D que    start_loop: update slots
+0.17.162.365 D srv  update_slots: posting NEXT_RESPONSE
+0.17.162.370 D que          post: new task, id = 13, front = 0
+0.17.162.376 D slot handle_last_: id  0 | task 0 | slot decode token, id=311, n_ctx = 4096, n_tokens = 50, truncated = 0
+0.17.162.383 D set_adapters_lora: adapters = (nil)
+0.17.162.384 D adapters_lora_are_same: adapters = (nil)
+0.17.162.385 D set_embeddings: value = 0
+0.17.162.386 D srv        decode: n_batch (effective) = 2048, off = 0
+0.17.162.562 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" to"}}],"created":1788085934,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":12,"predicted_ms":2290.215,"predicted_per_token_ms":190.85125000000002,"predicted_per_second":5.239682737210261}}
+
+
+0.17.350.719 D res          send: sending result for task id = 0
+0.17.350.756 D res          send: task id = 0 pushed to result queue
+0.17.350.804 D slot process_toke: id  0 | task 0 | n_decoded = 13, n_remaining = 19, next token:  3535 ' understand'
+0.17.350.826 D que    start_loop: waiting for new tasks
+0.17.350.827 D que    start_loop: processing new tasks
+0.17.350.831 D que    start_loop: processing task, id = 13
+0.17.350.834 D que    start_loop: update slots
+0.17.350.835 D srv  update_slots: posting NEXT_RESPONSE
+0.17.350.837 D que          post: new task, id = 14, front = 0
+0.17.350.843 D slot handle_last_: id  0 | task 0 | slot decode token, id=3535, n_ctx = 4096, n_tokens = 51, truncated = 0
+0.17.350.849 D set_adapters_lora: adapters = (nil)
+0.17.350.849 D adapters_lora_are_same: adapters = (nil)
+0.17.350.850 D set_embeddings: value = 0
+0.17.350.850 D srv        decode: n_batch (effective) = 2048, off = 0
+0.17.351.000 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" understand"}}],"created":1788085934,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":13,"predicted_ms":2478.682,"predicted_per_token_ms":190.66784615384614,"predicted_per_second":5.244722800262398}}
+
+
+0.17.548.416 D res          send: sending result for task id = 0
+0.17.548.697 D res          send: task id = 0 pushed to result queue
+0.17.548.757 D slot process_toke: id  0 | task 0 | n_decoded = 14, n_remaining = 18, next token:   323 ' and'
+0.17.548.779 D que    start_loop: waiting for new tasks
+0.17.548.781 D que    start_loop: processing new tasks
+0.17.548.787 D que    start_loop: processing task, id = 14
+0.17.548.790 D que    start_loop: update slots
+0.17.548.791 D srv  update_slots: posting NEXT_RESPONSE
+0.17.548.794 D que          post: new task, id = 15, front = 0
+0.17.548.800 D slot handle_last_: id  0 | task 0 | slot decode token, id=323, n_ctx = 4096, n_tokens = 52, truncated = 0
+0.17.548.806 D set_adapters_lora: adapters = (nil)
+0.17.548.807 D adapters_lora_are_same: adapters = (nil)
+0.17.548.807 D set_embeddings: value = 0
+0.17.548.808 D srv        decode: n_batch (effective) = 2048, off = 0
+0.17.549.212 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" and"}}],"created":1788085935,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":14,"predicted_ms":2676.459,"predicted_per_token_ms":191.17564285714283,"predicted_per_second":5.230791878373628}}
+
+
+0.17.749.493 D res          send: sending result for task id = 0
+0.17.749.525 D res          send: task id = 0 pushed to result queue
+0.17.749.579 D slot process_toke: id  0 | task 0 | n_decoded = 15, n_remaining = 17, next token:  6923 ' generate'
+0.17.749.584 D que    start_loop: waiting for new tasks
+0.17.749.586 D que    start_loop: processing new tasks
+0.17.749.590 D que    start_loop: processing task, id = 15
+0.17.749.593 D que    start_loop: update slots
+0.17.749.594 D srv  update_slots: posting NEXT_RESPONSE
+0.17.749.598 D que          post: new task, id = 16, front = 0
+0.17.749.605 D slot handle_last_: id  0 | task 0 | slot decode token, id=6923, n_ctx = 4096, n_tokens = 53, truncated = 0
+0.17.749.611 D set_adapters_lora: adapters = (nil)
+0.17.749.612 D adapters_lora_are_same: adapters = (nil)
+0.17.749.613 D set_embeddings: value = 0
+0.17.749.614 D srv        decode: n_batch (effective) = 2048, off = 0
+0.17.749.791 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" generate"}}],"created":1788085935,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":15,"predicted_ms":2877.49,"predicted_per_token_ms":191.83266666666665,"predicted_per_second":5.212876500005213}}
+
+
+0.17.939.864 D res          send: sending result for task id = 0
+0.17.939.894 D res          send: task id = 0 pushed to result queue
+0.17.939.943 D slot process_toke: id  0 | task 0 | n_decoded = 16, n_remaining = 16, next token:  1467 ' text'
+0.17.939.967 D que    start_loop: waiting for new tasks
+0.17.939.968 D que    start_loop: processing new tasks
+0.17.939.973 D que    start_loop: processing task, id = 16
+0.17.939.974 D que    start_loop: update slots
+0.17.939.975 D srv  update_slots: posting NEXT_RESPONSE
+0.17.939.978 D que          post: new task, id = 17, front = 0
+0.17.939.984 D slot handle_last_: id  0 | task 0 | slot decode token, id=1467, n_ctx = 4096, n_tokens = 54, truncated = 0
+0.17.939.989 D set_adapters_lora: adapters = (nil)
+0.17.939.989 D adapters_lora_are_same: adapters = (nil)
+0.17.939.990 D set_embeddings: value = 0
+0.17.939.991 D srv        decode: n_batch (effective) = 2048, off = 0
+0.17.940.175 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" text"}}],"created":1788085935,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":16,"predicted_ms":3067.842,"predicted_per_token_ms":191.740125,"predicted_per_second":5.215392448502889}}
+
+
+0.18.122.627 D res          send: sending result for task id = 0
+0.18.122.661 D res          send: task id = 0 pushed to result queue
+0.18.122.732 D slot process_toke: id  0 | task 0 | n_decoded = 17, n_remaining = 15, next token:   304 ' in'
+0.18.122.756 D que    start_loop: waiting for new tasks
+0.18.122.757 D que    start_loop: processing new tasks
+0.18.122.761 D que    start_loop: processing task, id = 17
+0.18.122.763 D que    start_loop: update slots
+0.18.122.764 D srv  update_slots: posting NEXT_RESPONSE
+0.18.122.767 D que          post: new task, id = 18, front = 0
+0.18.122.772 D slot handle_last_: id  0 | task 0 | slot decode token, id=304, n_ctx = 4096, n_tokens = 55, truncated = 0
+0.18.122.777 D set_adapters_lora: adapters = (nil)
+0.18.122.797 D adapters_lora_are_same: adapters = (nil)
+0.18.122.818 D set_embeddings: value = 0
+0.18.122.819 D srv        decode: n_batch (effective) = 2048, off = 0
+0.18.122.916 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" in"}}],"created":1788085935,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":17,"predicted_ms":3250.671,"predicted_per_token_ms":191.21594117647058,"predicted_per_second":5.229689501029172}}
+
+
+0.18.313.132 D res          send: sending result for task id = 0
+0.18.313.175 D res          send: task id = 0 pushed to result queue
+0.18.313.263 D slot process_toke: id  0 | task 0 | n_decoded = 18, n_remaining = 14, next token:   264 ' a'
+0.18.313.369 D que    start_loop: waiting for new tasks
+0.18.313.395 D que    start_loop: processing new tasks
+0.18.313.399 D que    start_loop: processing task, id = 18
+0.18.313.401 D que    start_loop: update slots
+0.18.313.402 D srv  update_slots: posting NEXT_RESPONSE
+0.18.313.404 D que          post: new task, id = 19, front = 0
+0.18.313.411 D slot handle_last_: id  0 | task 0 | slot decode token, id=264, n_ctx = 4096, n_tokens = 56, truncated = 0
+0.18.313.417 D set_adapters_lora: adapters = (nil)
+0.18.313.417 D adapters_lora_are_same: adapters = (nil)
+0.18.313.418 D set_embeddings: value = 0
+0.18.313.419 D srv        decode: n_batch (effective) = 2048, off = 0
+0.18.313.534 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" a"}}],"created":1788085935,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":18,"predicted_ms":3441.17,"predicted_per_token_ms":191.1761111111111,"predicted_per_second":5.230779066422176}}
+
+
+0.18.495.843 D res          send: sending result for task id = 0
+0.18.495.864 D res          send: task id = 0 pushed to result queue
+0.18.495.905 D slot process_toke: id  0 | task 0 | n_decoded = 19, n_remaining = 13, next token:  3953 ' particular'
+0.18.495.928 D que    start_loop: waiting for new tasks
+0.18.495.930 D que    start_loop: processing new tasks
+0.18.495.933 D que    start_loop: processing task, id = 19
+0.18.495.934 D que    start_loop: update slots
+0.18.495.935 D srv  update_slots: posting NEXT_RESPONSE
+0.18.495.937 D que          post: new task, id = 20, front = 0
+0.18.495.942 D slot handle_last_: id  0 | task 0 | slot decode token, id=3953, n_ctx = 4096, n_tokens = 57, truncated = 0
+0.18.495.947 D set_adapters_lora: adapters = (nil)
+0.18.495.947 D adapters_lora_are_same: adapters = (nil)
+0.18.495.948 D set_embeddings: value = 0
+0.18.495.949 D srv        decode: n_batch (effective) = 2048, off = 0
+0.18.496.346 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" particular"}}],"created":1788085936,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":19,"predicted_ms":3623.829,"predicted_per_token_ms":190.72784210526316,"predicted_per_second":5.243073003720649}}
+
+
+0.18.676.545 D res          send: sending result for task id = 0
+0.18.676.716 D res          send: task id = 0 pushed to result queue
+0.18.676.771 D slot process_toke: id  0 | task 0 | n_decoded = 20, n_remaining = 12, next token:  4128 ' language'
+0.18.676.777 D que    start_loop: waiting for new tasks
+0.18.676.779 D que    start_loop: processing new tasks
+0.18.676.784 D que    start_loop: processing task, id = 20
+0.18.676.786 D que    start_loop: update slots
+0.18.676.787 D srv  update_slots: posting NEXT_RESPONSE
+0.18.676.791 D que          post: new task, id = 21, front = 0
+0.18.676.801 D slot handle_last_: id  0 | task 0 | slot decode token, id=4128, n_ctx = 4096, n_tokens = 58, truncated = 0
+0.18.676.810 D set_adapters_lora: adapters = (nil)
+0.18.676.810 D adapters_lora_are_same: adapters = (nil)
+0.18.676.811 D set_embeddings: value = 0
+0.18.676.812 D srv        decode: n_batch (effective) = 2048, off = 0
+0.18.676.975 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" language"}}],"created":1788085936,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":20,"predicted_ms":3804.591,"predicted_per_token_ms":190.22955,"predicted_per_second":5.256806842049514}}
+
+
+0.18.879.619 D res          send: sending result for task id = 0
+0.18.879.648 D res          send: task id = 0 pushed to result queue
+0.18.879.672 D slot process_toke: id  0 | task 0 | n_decoded = 21, n_remaining = 11, next token:    13 '.'
+0.18.879.675 D que    start_loop: waiting for new tasks
+0.18.879.677 D que    start_loop: processing new tasks
+0.18.879.680 D que    start_loop: processing task, id = 21
+0.18.879.682 D que    start_loop: update slots
+0.18.879.683 D srv  update_slots: posting NEXT_RESPONSE
+0.18.879.685 D que          post: new task, id = 22, front = 0
+0.18.879.690 D slot handle_last_: id  0 | task 0 | slot decode token, id=13, n_ctx = 4096, n_tokens = 59, truncated = 0
+0.18.879.695 D set_adapters_lora: adapters = (nil)
+0.18.879.695 D adapters_lora_are_same: adapters = (nil)
+0.18.879.696 D set_embeddings: value = 0
+0.18.879.696 D srv        decode: n_batch (effective) = 2048, off = 0
+0.18.879.878 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"."}}],"created":1788085936,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":21,"predicted_ms":4007.666,"predicted_per_token_ms":190.8412380952381,"predicted_per_second":5.239957621218934}}
+
+
+0.19.076.185 D res          send: sending result for task id = 0
+0.19.076.213 D res          send: task id = 0 pushed to result queue
+0.19.076.236 D slot process_toke: id  0 | task 0 | n_decoded = 22, n_remaining = 10, next token:  4220 ' These'
+0.19.076.239 D que    start_loop: waiting for new tasks
+0.19.076.241 D que    start_loop: processing new tasks
+0.19.076.245 D que    start_loop: processing task, id = 22
+0.19.076.247 D que    start_loop: update slots
+0.19.076.247 D srv  update_slots: posting NEXT_RESPONSE
+0.19.076.250 D que          post: new task, id = 23, front = 0
+0.19.076.255 D slot handle_last_: id  0 | task 0 | slot decode token, id=4220, n_ctx = 4096, n_tokens = 60, truncated = 0
+0.19.076.261 D set_adapters_lora: adapters = (nil)
+0.19.076.261 D adapters_lora_are_same: adapters = (nil)
+0.19.076.262 D set_embeddings: value = 0
+0.19.076.262 D srv        decode: n_batch (effective) = 2048, off = 0
+0.19.076.462 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" These"}}],"created":1788085936,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":22,"predicted_ms":4204.09,"predicted_per_token_ms":191.095,"predicted_per_second":5.232999293545095}}
+
+
+0.19.271.017 D res          send: sending result for task id = 0
+0.19.271.064 D res          send: task id = 0 pushed to result queue
+0.19.271.399 D slot process_toke: id  0 | task 0 | n_decoded = 23, n_remaining = 9, next token:  4119 ' models'
+0.19.272.714 D que    start_loop: waiting for new tasks
+0.19.272.715 D que    start_loop: processing new tasks
+0.19.272.723 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" models"}}],"created":1788085936,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":23,"predicted_ms":4399.066,"predicted_per_token_ms":191.26373913043477,"predicted_per_second":5.22838257030015}}
+
+
+0.19.272.826 D que    start_loop: processing task, id = 23
+0.19.272.835 D que    start_loop: update slots
+0.19.272.837 D srv  update_slots: posting NEXT_RESPONSE
+0.19.272.850 D que          post: new task, id = 24, front = 0
+0.19.272.863 D slot handle_last_: id  0 | task 0 | slot decode token, id=4119, n_ctx = 4096, n_tokens = 61, truncated = 0
+0.19.272.873 D set_adapters_lora: adapters = (nil)
+0.19.272.873 D adapters_lora_are_same: adapters = (nil)
+0.19.272.875 D set_embeddings: value = 0
+0.19.272.876 D srv        decode: n_batch (effective) = 2048, off = 0
+0.19.472.025 D res          send: sending result for task id = 0
+0.19.472.054 D res          send: task id = 0 pushed to result queue
+0.19.472.081 D slot process_toke: id  0 | task 0 | n_decoded = 24, n_remaining = 8, next token:   525 ' are'
+0.19.472.085 D que    start_loop: waiting for new tasks
+0.19.472.087 D que    start_loop: processing new tasks
+0.19.472.091 D que    start_loop: processing task, id = 24
+0.19.472.093 D que    start_loop: update slots
+0.19.472.093 D srv  update_slots: posting NEXT_RESPONSE
+0.19.472.096 D que          post: new task, id = 25, front = 0
+0.19.472.102 D slot handle_last_: id  0 | task 0 | slot decode token, id=525, n_ctx = 4096, n_tokens = 62, truncated = 0
+0.19.472.110 D set_adapters_lora: adapters = (nil)
+0.19.472.110 D adapters_lora_are_same: adapters = (nil)
+0.19.472.111 D set_embeddings: value = 0
+0.19.472.111 D srv        decode: n_batch (effective) = 2048, off = 0
+0.19.472.354 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" are"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":24,"predicted_ms":4599.815,"predicted_per_token_ms":191.65895833333332,"predicted_per_second":5.217601142654651}}
+
+
+0.19.666.631 D res          send: sending result for task id = 0
+0.19.666.681 D res          send: task id = 0 pushed to result queue
+0.19.666.712 D slot process_toke: id  0 | task 0 | n_decoded = 25, n_remaining = 7, next token: 16176 ' trained'
+0.19.666.715 D que    start_loop: waiting for new tasks
+0.19.666.717 D que    start_loop: processing new tasks
+0.19.666.721 D que    start_loop: processing task, id = 25
+0.19.666.723 D que    start_loop: update slots
+0.19.666.724 D srv  update_slots: posting NEXT_RESPONSE
+0.19.666.727 D que          post: new task, id = 26, front = 0
+0.19.666.733 D slot handle_last_: id  0 | task 0 | slot decode token, id=16176, n_ctx = 4096, n_tokens = 63, truncated = 0
+0.19.666.739 D set_adapters_lora: adapters = (nil)
+0.19.666.739 D adapters_lora_are_same: adapters = (nil)
+0.19.666.740 D set_embeddings: value = 0
+0.19.666.740 D srv        decode: n_batch (effective) = 2048, off = 0
+0.19.666.996 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" trained"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":25,"predicted_ms":4794.499,"predicted_per_token_ms":191.77996,"predicted_per_second":5.214309148880832}}
+
+
+0.19.863.546 D res          send: sending result for task id = 0
+0.19.863.578 D res          send: task id = 0 pushed to result queue
+0.19.863.605 D slot process_toke: id  0 | task 0 | n_decoded = 26, n_remaining = 6, next token:   389 ' on'
+0.19.863.609 D que    start_loop: waiting for new tasks
+0.19.863.611 D que    start_loop: processing new tasks
+0.19.863.615 D que    start_loop: processing task, id = 26
+0.19.863.617 D que    start_loop: update slots
+0.19.863.618 D srv  update_slots: posting NEXT_RESPONSE
+0.19.863.621 D que          post: new task, id = 27, front = 0
+0.19.863.628 D slot handle_last_: id  0 | task 0 | slot decode token, id=389, n_ctx = 4096, n_tokens = 64, truncated = 0
+0.19.863.636 D set_adapters_lora: adapters = (nil)
+0.19.863.636 D adapters_lora_are_same: adapters = (nil)
+0.19.863.637 D set_embeddings: value = 0
+0.19.863.637 D srv        decode: n_batch (effective) = 2048, off = 0
+0.19.863.847 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" on"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":26,"predicted_ms":4991.587,"predicted_per_token_ms":191.9841153846154,"predicted_per_second":5.208764266755242}}
+
+
+0.20.043.992 D res          send: sending result for task id = 0
+0.20.044.021 D res          send: task id = 0 pushed to result queue
+0.20.044.825 D slot process_toke: id  0 | task 0 | n_decoded = 27, n_remaining = 5, next token:  1467 ' text'
+0.20.044.847 D que    start_loop: waiting for new tasks
+0.20.044.849 D que    start_loop: processing new tasks
+0.20.044.853 D que    start_loop: processing task, id = 27
+0.20.044.855 D que    start_loop: update slots
+0.20.044.856 D srv  update_slots: posting NEXT_RESPONSE
+0.20.044.858 D que          post: new task, id = 28, front = 0
+0.20.044.864 D slot handle_last_: id  0 | task 0 | slot decode token, id=1467, n_ctx = 4096, n_tokens = 65, truncated = 0
+0.20.044.872 D set_adapters_lora: adapters = (nil)
+0.20.044.872 D adapters_lora_are_same: adapters = (nil)
+0.20.044.873 D set_embeddings: value = 0
+0.20.044.874 D srv        decode: n_batch (effective) = 2048, off = 0
+0.20.045.031 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" text"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":27,"predicted_ms":5171.534,"predicted_per_token_ms":191.5382962962963,"predicted_per_second":5.220888038249386}}
+
+
+0.20.238.668 D res          send: sending result for task id = 0
+0.20.238.705 D res          send: task id = 0 pushed to result queue
+0.20.238.733 D slot process_toke: id  0 | task 0 | n_decoded = 28, n_remaining = 4, next token:   821 ' data'
+0.20.238.736 D que    start_loop: waiting for new tasks
+0.20.238.738 D que    start_loop: processing new tasks
+0.20.238.742 D que    start_loop: processing task, id = 28
+0.20.238.744 D que    start_loop: update slots
+0.20.238.745 D srv  update_slots: posting NEXT_RESPONSE
+0.20.238.748 D que          post: new task, id = 29, front = 0
+0.20.238.753 D slot handle_last_: id  0 | task 0 | slot decode token, id=821, n_ctx = 4096, n_tokens = 66, truncated = 0
+0.20.238.761 D set_adapters_lora: adapters = (nil)
+0.20.238.763 D adapters_lora_are_same: adapters = (nil)
+0.20.238.763 D set_embeddings: value = 0
+0.20.238.766 D srv        decode: n_batch (effective) = 2048, off = 0
+0.20.239.015 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" data"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":28,"predicted_ms":5366.643,"predicted_per_token_ms":191.66582142857143,"predicted_per_second":5.217414312820883}}
+
+
+0.20.426.279 D res          send: sending result for task id = 0
+0.20.426.446 D res          send: task id = 0 pushed to result queue
+0.20.426.497 D slot process_toke: id  0 | task 0 | n_decoded = 29, n_remaining = 3, next token:   304 ' in'
+0.20.426.501 D que    start_loop: waiting for new tasks
+0.20.426.503 D que    start_loop: processing new tasks
+0.20.426.507 D que    start_loop: processing task, id = 29
+0.20.426.509 D que    start_loop: update slots
+0.20.426.510 D srv  update_slots: posting NEXT_RESPONSE
+0.20.426.512 D que          post: new task, id = 30, front = 0
+0.20.426.519 D slot handle_last_: id  0 | task 0 | slot decode token, id=304, n_ctx = 4096, n_tokens = 67, truncated = 0
+0.20.426.526 D set_adapters_lora: adapters = (nil)
+0.20.426.526 D adapters_lora_are_same: adapters = (nil)
+0.20.426.527 D set_embeddings: value = 0
+0.20.426.527 D srv        decode: n_batch (effective) = 2048, off = 0
+0.20.426.783 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" in"}}],"created":1788085937,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":29,"predicted_ms":5554.326,"predicted_per_token_ms":191.5284827586207,"predicted_per_second":5.221155546145472}}
+
+
+0.20.604.365 D res          send: sending result for task id = 0
+0.20.604.412 D res          send: task id = 0 pushed to result queue
+0.20.604.442 D slot process_toke: id  0 | task 0 | n_decoded = 30, n_remaining = 2, next token:   264 ' a'
+0.20.604.445 D que    start_loop: waiting for new tasks
+0.20.604.448 D que    start_loop: processing new tasks
+0.20.604.452 D que    start_loop: processing task, id = 30
+0.20.604.453 D que    start_loop: update slots
+0.20.604.454 D srv  update_slots: posting NEXT_RESPONSE
+0.20.604.456 D que          post: new task, id = 31, front = 0
+0.20.604.461 D slot handle_last_: id  0 | task 0 | slot decode token, id=264, n_ctx = 4096, n_tokens = 68, truncated = 0
+0.20.604.468 D set_adapters_lora: adapters = (nil)
+0.20.604.468 D adapters_lora_are_same: adapters = (nil)
+0.20.604.469 D set_embeddings: value = 0
+0.20.604.469 D srv        decode: n_batch (effective) = 2048, off = 0
+0.20.604.691 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" a"}}],"created":1788085938,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":30,"predicted_ms":5732.409,"predicted_per_token_ms":191.0803,"predicted_per_second":5.233401873453203}}
+
+
+0.20.791.309 D res          send: sending result for task id = 0
+0.20.791.350 D res          send: task id = 0 pushed to result queue
+0.20.791.377 D slot process_toke: id  0 | task 0 | n_decoded = 31, n_remaining = 1, next token:  3151 ' specific'
+0.20.791.381 D que    start_loop: waiting for new tasks
+0.20.791.383 D que    start_loop: processing new tasks
+0.20.791.388 D que    start_loop: processing task, id = 31
+0.20.791.390 D que    start_loop: update slots
+0.20.791.391 D srv  update_slots: posting NEXT_RESPONSE
+0.20.791.393 D que          post: new task, id = 32, front = 0
+0.20.791.401 D slot handle_last_: id  0 | task 0 | slot decode token, id=3151, n_ctx = 4096, n_tokens = 69, truncated = 0
+0.20.791.410 D set_adapters_lora: adapters = (nil)
+0.20.791.410 D adapters_lora_are_same: adapters = (nil)
+0.20.791.411 D set_embeddings: value = 0
+0.20.791.412 D srv        decode: n_batch (effective) = 2048, off = 0
+0.20.791.618 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" specific"}}],"created":1788085938,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":31,"predicted_ms":5919.227,"predicted_per_token_ms":190.9428064516129,"predicted_per_second":5.237170326463236}}
+
+
+0.20.980.149 D res          send: sending result for task id = 0
+0.20.980.185 D res          send: task id = 0 pushed to result queue
+0.20.980.207 D slot process_toke: id  0 | task 0 | stopped by limit, n_decoded = 32, n_predict = 32
+0.20.980.208 D slot process_toke: id  0 | task 0 | n_decoded = 32, n_remaining = 0, next token:  4128 ' language'
+0.20.980.219 I slot print_timing: id  0 | task 0 | prompt eval time =    1134.98 ms /    39 tokens (   29.10 ms per token,    34.36 tokens per second)
+0.20.980.221 I slot print_timing: id  0 | task 0 |        eval time =    6108.19 ms /    32 tokens (  190.88 ms per token,     5.24 tokens per second)
+0.20.980.221 I slot print_timing: id  0 | task 0 |       total time =    7243.17 ms /    71 tokens
+0.20.980.227 I slot print_timing: id  0 | task 0 |    graphs reused =         31
+0.20.980.392 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" language"}}],"created":1788085938,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":32,"predicted_ms":6108.194,"predicted_per_token_ms":190.8810625,"predicted_per_second":5.238864384464541}}
+
+
+0.20.981.081 D res          send: sending result for task id = 0
+0.20.981.100 D res          send: task id = 0 pushed to result queue
+0.20.981.136 I slot      release: id  0 | task 0 | stop processing: n_tokens = 70, truncated = 0
+0.20.981.157 D slot        reset: id  0 | task 0 | 
+0.20.981.160 D Parsed message: {"role":"assistant","content":"A local language model is a machine learning model specifically designed to understand and generate text in a particular language. These models are trained on text data in a specific language"}
+0.20.981.223 D que    start_loop: waiting for new tasks
+0.20.981.245 D que    start_loop: processing new tasks
+0.20.981.248 D que    start_loop: processing task, id = 32
+0.20.981.250 D que    start_loop: update slots
+0.20.981.250 I srv  update_slots: all slots are idle
+0.20.981.251 D que    start_loop: waiting for new tasks
+0.20.981.590 D srv    operator(): http: streamed chunk: data: {"choices":[{"finish_reason":"length","index":0,"delta":{}}],"created":1788085938,"id":"chatcmpl-wQTCUrQOtQvCtwIlXhN6nDxWvr1qcdaK","model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","system_fingerprint":"b10357-689e227db","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":32,"predicted_ms":6108.194,"predicted_per_token_ms":190.8810625,"predicted_per_second":5.238864384464541},"__verbose":{"index":0,"content":"","tokens":[],"id_slot":0,"stop":true,"model":"/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf","tokens_predicted":32,"tokens_evaluated":39,"generation_settings":{"seed":4294967295,"temperature":0.800000011920929,"dynatemp_range":0.0,"dynatemp_exponent":1.0,"top_k":40,"top_p":0.949999988079071,"min_p":0.05000000074505806,"top_n_sigma":-1.0,"xtc_probability":0.0,"xtc_threshold":0.10000000149011612,"typical_p":1.0,"repeat_last_n":64,"repeat_penalty":1.0,"presence_penalty":0.0,"frequency_penalty":0.0,"dry_multiplier":0.0,"dry_base":1.75,"dry_allowed_length":2,"dry_penalty_last_n":64,"dry_sequence_breakers":["\n",":","\"","*"],"mirostat":0,"mirostat_tau":5.0,"mirostat_eta":0.10000000149011612,"adaptive_target":-1.0,"adaptive_decay":0.8999999761581421,"stop":[],"max_tokens":32,"n_predict":32,"n_keep":0,"n_discard":0,"ignore_eos":false,"stream":true,"logit_bias":[],"n_probs":0,"min_keep":0,"grammar":"","grammar_lazy":false,"grammar_triggers":[],"preserved_tokens":[151657,151658],"chat_format":"peg-native","reasoning_format":"deepseek","reasoning_in_content":false,"generation_prompt":"<|im_start|>assistant\n","samplers":["penalties","dry","top_n_sigma","top_k","typ_p","top_p","min_p","xtc","temperature"],"speculative.types":"none","timings_per_token":true,"post_sampling_probs":false,"backend_sampling":false,"lora":[]},"prompt":"<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nExplain briefly what a local language model is.<|im_end|>\n<|im_start|>assistant\n","has_new_line":false,"truncated":false,"stop_type":"limit","stopping_word":"","tokens_cached":70,"timings":{"cache_n":0,"prompt_n":39,"prompt_ms":1134.979,"prompt_per_token_ms":29.10202564102564,"prompt_per_second":34.36186925044428,"predicted_n":32,"predicted_ms":6108.194,"predicted_per_token_ms":190.8810625,"predicted_per_second":5.238864384464541}}}
+
+
+0.20.981.613 D srv    operator(): all results received, terminating stream
+0.20.981.626 D srv    operator(): http: streamed chunk: data: [DONE]
+
+
+0.20.981.645 D srv    operator(): http: stream ended
+0.20.981.721 D res  remove_waiti: remove task 0 from waiting list. current waiting = 1 (before remove)
+0.20.981.724 D srv          stop: all tasks already finished, no need to cancel
+0.20.982.131 D que    start_loop: processing new tasks
+0.20.982.157 D que    start_loop: terminate
+0.20.982.159 I srv    operator(): operator(): cleaning up before exit...
+0.20.985.488 I common_memory_breakdown_print: | memory breakdown [MiB] | total   free    self   model   context   compute    unaccounted |
+0.20.985.523 I common_memory_breakdown_print: |   - CUDA0 (RTX 2060)   |  6143 = 4901 + ( 183 =     0 +       0 +     183) +        1059 |
+0.20.985.523 I common_memory_breakdown_print: |   - Host               |                 4702 =  4460 +     224 +      18                |
+0.20.987.648 D ~llama_context:      CUDA0 compute buffer size is 183.4375 MiB, matches expectation of 183.4375 MiB
+0.20.987.674 D ~llama_context:  CUDA_Host compute buffer size is  18.0117 MiB, matches expectation of  18.0117 MiB
