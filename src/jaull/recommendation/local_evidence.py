@@ -8,7 +8,7 @@ cryptographic verification when the plan has no digest.
 
 from collections.abc import Sequence
 
-from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.artifacts import ModelArtifact, artifact_identity_matches
 from jaull.domain.benchmarks import BenchmarkMeasurementKind, BenchmarkRecord
 from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.experiments import ExperimentRecord
@@ -104,20 +104,7 @@ def _common_matches(
         and plan.backend_selection is not None
         and machine_fingerprint(plan.hardware) == machine_fingerprint(hardware)
         and plan.runtime.runtime is runtime.runtime
-        and _artifact_matches(plan.artifact.to_model_artifact(), artifact)
-    )
-
-
-def _artifact_matches(left: ModelArtifact, right: ModelArtifact) -> bool:
-    if (
-        left.repo_id, left.revision, left.filename, left.format, left.quantization,
-    ) != (
-        right.repo_id, right.revision, right.filename, right.format, right.quantization,
-    ):
-        return False
-    return all(
-        a is None or b is None or a == b
-        for a, b in ((left.size_bytes, right.size_bytes), (left.sha256, right.sha256))
+        and artifact_identity_matches(plan.artifact.to_model_artifact(), artifact)
     )
 
 

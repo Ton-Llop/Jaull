@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import ExecutionRequest, InferenceResult
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.execution.ports import ExecutionBackendProtocol
@@ -60,7 +61,7 @@ class LlamaCppRunner:
         n_gpu_layers = _int_flag(
             runtime, "--n-gpu-layers", default=_DEFAULT_GPU_LAYERS
         )
-        command = (
+        command: tuple[str, ...] = (
             self._llama_cli,
             "--model",
             str(model_path),
@@ -77,15 +78,23 @@ class LlamaCppRunner:
             "--prompt",
             prompt,
         )
+        if _bool_flag(runtime, "--verbose"):
+            command += ("--verbose",)
 
         result = self.backend.execute(
             ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)
         )
+        observed_backend = _observed_backend("\n".join((result.stdout, result.stderr)))
         return InferenceResult(
             text=_clean_inference_text(result.stdout, prompt=prompt),
             runtime=RuntimeName.LLAMA_CPP.value,
             model_path=model_path,
             observation=result.observation,
+            command=command,
+            observed_backend=observed_backend,
+            observed_backend_source=(
+                "llama.cpp runtime output" if observed_backend is not None else None
+            ),
         )
 
 
@@ -140,6 +149,21 @@ def _int_flag(
         ) from exc
 
 
+def _bool_flag(runtime: RuntimeRecommendation | None, name: str) -> bool:
+    if runtime is None:
+        return False
+    raw = next((flag.value for flag in runtime.flags if flag.name == name), None)
+    if raw is None:
+        return False
+    if raw.casefold() in {"1", "true", "on", "yes"}:
+        return True
+    if raw.casefold() in {"0", "false", "off", "no"}:
+        return False
+    raise LlamaCppRunnerError(
+        f"Runtime flag {name} must be a boolean, got {raw!r}."
+    )
+
+
 def _clean_inference_text(raw: str, *, prompt: str | None = None) -> str:
     """Return model text without terminal decoration or control characters."""
     text = _ANSI_RE.sub("", raw)
@@ -167,6 +191,21 @@ def _drop_llama_cli_epilogue(text: str) -> str:
     if lines and lines[-1].strip() == "Exiting...":
         lines.pop()
     return "\n".join(lines)
+
+
+def _observed_backend(runtime_output: str) -> ComputeBackend | None:
+    """Return a backend only when llama.cpp emitted an explicit marker."""
+
+    lowered = runtime_output.casefold()
+    if "ggml_cuda" in lowered:
+        return ComputeBackend.CUDA
+    if "ggml_vulkan" in lowered:
+        return ComputeBackend.VULKAN
+    if "ggml_hip" in lowered:
+        return ComputeBackend.HIP
+    if "load_backend: loaded cpu backend" in lowered:
+        return ComputeBackend.CPU
+    return None
 
 
 __all__ = [

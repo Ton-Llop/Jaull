@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from jaull.domain.benchmarks import (
+    BenchmarkObservation,
     LlamaBenchBinaryStatus,
     LlamaBenchCapability,
 )
@@ -22,6 +24,7 @@ from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _LLAMA_BENCH = "llama-bench"
 _VERSION_SOURCE = "llama-bench --version"
+_BUILD_LINE = re.compile(r"^build:\s*(.+?)\s*$", re.MULTILINE)
 
 
 def inspect_llama_bench(
@@ -121,6 +124,33 @@ def resolve_llama_bench_binary(
     )
 
 
+def enrich_capability_from_benchmark_output(
+    capability: LlamaBenchCapability,
+    observation: BenchmarkObservation,
+) -> LlamaBenchCapability:
+    """Preserve a build emitted by successful llama-bench output.
+
+    Some llama-bench builds reject ``--version`` yet append a stable
+    ``build: <hash> (<number>)`` line to every successful benchmark. That is
+    stronger provenance than a failed version probe and needs no second command.
+    """
+
+    if capability.version_text is not None:
+        return capability
+    matches = _BUILD_LINE.findall(
+        "\n".join((observation.raw_stdout, observation.raw_stderr))
+    )
+    if not matches:
+        return capability
+    build = matches[-1]
+    return capability.model_copy(
+        update={
+            "version_text": f"build: {build}",
+            "probe_source": "llama-bench benchmark output",
+        }
+    )
+
+
 def _probe_failure_message(message: str, *, stdout: str, stderr: str) -> str:
     parts = [message]
     stderr_line = _last_useful_line(stderr)
@@ -140,4 +170,8 @@ def _last_useful_line(text: str) -> str | None:
     return None
 
 
-__all__ = ["inspect_llama_bench", "resolve_llama_bench_binary"]
+__all__ = [
+    "enrich_capability_from_benchmark_output",
+    "inspect_llama_bench",
+    "resolve_llama_bench_binary",
+]

@@ -155,7 +155,6 @@ benchmarks/results/
 reports/
 *.html.out
 *.gif
-validation/**/*.log
 
 # CODECOV
 

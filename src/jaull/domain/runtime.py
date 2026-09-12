@@ -294,6 +294,28 @@ RuntimeCapability = LlamaCppRuntimeCapability | PyTorchRuntimeCapability
 RuntimeBackendCapability = LlamaCppBackendCapability | PyTorchBackendCapability
 
 
+def runtime_capability_version(capability: RuntimeCapability | None) -> str | None:
+    """The build string a probe reported, or ``None`` when it reported none.
+
+    Free text, not a version number: llama.cpp answers with something like
+    ``version: 10357 (689e227db)``, PyTorch with two package versions. It is
+    comparable for equality between two records of the same runtime family and
+    nothing more — never parse it, and never treat a difference as an error,
+    because a probe is allowed to fail and still leave the runtime usable.
+    """
+
+    if isinstance(capability, LlamaCppRuntimeCapability):
+        return capability.version_text
+    if isinstance(capability, PyTorchRuntimeCapability):
+        parts = [
+            version
+            for version in (capability.torch_version, capability.transformers_version)
+            if version is not None
+        ]
+        return " / ".join(parts) if parts else None
+    return None
+
+
 class ExecutionReadinessStatus(StrEnum):
     READY = "ready"
     NOT_READY = "not_ready"

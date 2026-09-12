@@ -10,6 +10,7 @@ from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import InferenceResult
 from jaull.domain.experiments import (
     ExperimentBackendTrace,
+    ExperimentEnvironment,
     ExperimentRequest,
     ExperimentRunResult,
 )
@@ -35,6 +36,7 @@ from jaull.experiments.errors import (
     ExperimentStoreError,
 )
 from jaull.experiments.storage import ExperimentStore
+from jaull.observability.provenance import capture_git_commit
 from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
@@ -92,6 +94,7 @@ class ExperimentRunner:
                 runtime_capability=runtime_capability,
             )
 
+        inference: InferenceResult | None = None
         try:
             inference = artifact_runner.run(
                 artifact=request.artifact,
@@ -110,8 +113,13 @@ class ExperimentRunner:
             workload=request.workload,
             backend_trace=ExperimentBackendTrace(
                 requested_backend=request.requested_backend,
-                observed_backend=None,
-                observed_source=None,
+                observed_backend=(
+                    inference.observed_backend if inference is not None else None
+                ),
+                observed_source=(
+                    inference.observed_backend_source if inference is not None else None
+                ),
+                executed_command=inference.command if inference is not None else (),
             ),
             runtime=request.runtime,
             prediction=request.prediction,
@@ -119,6 +127,7 @@ class ExperimentRunner:
             runtime_capability=runtime_capability,
             execution_readiness=readiness,
             observation=observation,
+            environment=ExperimentEnvironment.capture(git_commit=capture_git_commit()),
             notes=request.notes,
         )
         persisted_path = None

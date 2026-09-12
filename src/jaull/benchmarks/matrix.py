@@ -16,6 +16,7 @@ from jaull.benchmarks.errors import (
 from jaull.benchmarks.storage import BenchmarkStore
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
+    BenchmarkEnvironment,
     BenchmarkGpuLayers,
     BenchmarkRecord,
     BenchmarkRequest,
@@ -33,7 +34,11 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
-from jaull.runtime.llama_bench_capability import inspect_llama_bench
+from jaull.observability.provenance import capture_git_commit
+from jaull.runtime.llama_bench_capability import (
+    enrich_capability_from_benchmark_output,
+    inspect_llama_bench,
+)
 from jaull.runtime.llama_bench_runner import LlamaBenchRunner
 
 
@@ -45,6 +50,7 @@ class BenchmarkMatrixRequest(BaseModel):
     runtime: RuntimeRecommendation
     backend_selection: RuntimeBackendSelection
     runtime_capability: LlamaCppRuntimeCapability
+    context_length: int | None = Field(default=None, gt=0)
     prefill_sizes: tuple[int, ...] = (128, 512, 2048)
     generation_sizes: tuple[int, ...] = (128,)
     repetitions: int = Field(default=5, ge=1)
@@ -128,7 +134,10 @@ class BenchmarkMatrixRunner:
                 hardware=request.hardware,
                 request=benchmark_request,
                 observation=observation,
-                llama_bench_capability=capability,
+                llama_bench_capability=enrich_capability_from_benchmark_output(
+                    capability, observation
+                ),
+                environment=BenchmarkEnvironment.capture(git_commit=capture_git_commit()),
             )
             records.append(record)
             persisted_path = None
@@ -255,6 +264,7 @@ def _request(
         backend=backend,
         device=device,
         gpu_layers=gpu_layers,
+        context_length=matrix.context_length,
         prefill_sizes=matrix.prefill_sizes,
         generation_sizes=matrix.generation_sizes,
         repetitions=matrix.repetitions,

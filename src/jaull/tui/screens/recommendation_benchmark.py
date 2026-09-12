@@ -258,6 +258,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             backend=backend,
             device=device,
             gpu_layers=_benchmark_gpu_layers(backend, plan.runtime),
+            context_length=_plan_context_length(plan),
             prefill_sizes=(128, 512),
             generation_sizes=(64,),
             repetitions=3,
@@ -306,6 +307,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             runtime=runtime,
             backend_selection=selection,
             runtime_capability=runtime_capability,
+            context_length=_runtime_context_length(runtime),
             include_cpu=selection.selected_backend is ComputeBackend.CPU,
             include_selected_backend=True,
             selected_gpu_layers=(
@@ -337,6 +339,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             backend=backend,
             device="none" if backend is ComputeBackend.CPU else None,
             gpu_layers=BenchmarkGpuLayers.count_layers(0),
+            context_length=_runtime_context_length(runtime),
             prefill_sizes=(128, 512),
             generation_sizes=(64,),
             repetitions=3,
@@ -754,6 +757,14 @@ def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[st
         ("Backend", record.requested_backend.value),
         ("Device", record.requested_device or "none"),
         ("GPU layers", record.gpu_layers.label),
+        (
+            "Scenario context",
+            (
+                f"{record.request.context_length} tokens (not runner-enforced)"
+                if record.request.context_length is not None
+                else "not recorded"
+            ),
+        ),
         ("Repetitions", str(record.request.repetitions)),
         ("Methodology", record.observation.methodology or "unknown"),
         ("Model load", _seconds(record.observation.model_load_seconds)),
@@ -798,6 +809,23 @@ def _request_label(backend: str, device: str | None) -> str:
     if backend == "cpu":
         return "CPU"
     return f"{backend.title()} {device or 'unknown'}"
+
+
+def _plan_context_length(plan: ExecutionPlan) -> int | None:
+    if plan.memory_prediction is None:
+        return _runtime_context_length(plan.runtime)
+    return plan.memory_prediction.inference_configuration.context_length
+
+
+def _runtime_context_length(runtime: RuntimeRecommendation) -> int | None:
+    raw = next((flag.value for flag in runtime.flags if flag.name == "--ctx-size"), None)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
 
 
 def _metric_label(kind: BenchmarkMeasurementKind, tokens: int) -> str:

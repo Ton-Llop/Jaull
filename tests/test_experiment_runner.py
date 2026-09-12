@@ -93,6 +93,38 @@ def test_successful_cpu_experiment_produces_and_persists_record(
     assert runner.store.load(result.record.identity.experiment_id) == result.record
 
 
+def test_experiment_record_captures_command_observed_backend_and_git_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = ("/opt/llama-cli", "--model", "model.gguf", "--n-gpu-layers", "24")
+    runner = _experiment_runner(
+        tmp_path,
+        devices="Available devices:\nVulkan0: AMD Radeon(TM) Graphics\n",
+        artifact_runner=_FakeArtifactRunner(
+            command=command,
+            observed_backend=ComputeBackend.VULKAN,
+            observed_backend_source="llama.cpp runtime output",
+        ),
+    )
+    monkeypatch.setattr("jaull.experiments.runner.capture_git_commit", lambda: "abc123")
+
+    result = runner.run(
+        _request(
+            tmp_path,
+            backend=ComputeBackend.VULKAN,
+            hardware=_hardware_with_vulkan(),
+            prediction_device=TargetDevice.GPU,
+            persist=False,
+        )
+    )
+
+    assert result.record.environment.git_commit == "abc123"
+    assert result.record.backend_trace.executed_command == command
+    assert result.record.backend_trace.observed_backend is ComputeBackend.VULKAN
+    assert result.record.backend_trace.observed_source == "llama.cpp runtime output"
+
+
 def test_successful_accelerator_experiment_produces_record(tmp_path: Path) -> None:
     runner = _experiment_runner(
         tmp_path,
@@ -392,8 +424,14 @@ class _FakeArtifactRunner:
         self,
         *,
         error_observation: ExecutionObservation | None = None,
+        command: tuple[str, ...] = (),
+        observed_backend: ComputeBackend | None = None,
+        observed_backend_source: str | None = None,
     ) -> None:
         self.error_observation = error_observation
+        self.command = command
+        self.observed_backend = observed_backend
+        self.observed_backend_source = observed_backend_source
         self.calls: list[tuple[ModelArtifact, str, RuntimeRecommendation | None]] = []
 
     def run(
@@ -418,6 +456,9 @@ class _FakeArtifactRunner:
             runtime=runtime.runtime.value if runtime is not None else RuntimeName.LLAMA_CPP.value,
             model_path=artifact.local_path or Path("/tmp/model.gguf"),
             observation=_observation(),
+            command=self.command,
+            observed_backend=self.observed_backend,
+            observed_backend_source=self.observed_backend_source,
         )
 
 
