@@ -471,6 +471,12 @@ class CaseValidationService:
             if not path.is_file():
                 problems.append(f"{reference.path} is missing")
                 continue
+            if (
+                reference.size_bytes is not None
+                and path.stat().st_size != reference.size_bytes
+            ):
+                problems.append(f"{reference.path} does not match its recorded size")
+                continue
             if reference.sha256 is None:
                 continue
             actual = _file_digest(path)
