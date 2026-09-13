@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-09-12T09:27:27.808534Z",
+  "jaull_version": "0.1.0",
+  "git_commit": "ba15201058f09ccf59763614525098626255edce",
+  "case_file": {
+    "path": "case.json",
+    "sha256": "b58739c50d9388408bcadb3e87eac26e202f0328ac64690cf4b8abf12605299d",
+    "size_bytes": 1455
+  },
+  "experiment_file": {
+    "path": "records/experiment.json",
+    "sha256": "8cd5fb0292be8d43d15c2ec9b6c7ed1823558aff62868b8e1417488c3c3fea9d",
+    "size_bytes": 37042
+  },
+  "benchmark_files": [
+    {
+      "path": "records/benchmarks/bench-3434424d-675f-46db-bdbb-7ba21b11c39b.json",
+      "sha256": "f34075ec590dd22bb190356b0cf69d52bf6477c001be98dc2060f3d8cb86ce69",
+      "size_bytes": 10824,
+      "benchmark_id": "bench-3434424d-675f-46db-bdbb-7ba21b11c39b"
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "evidence/validation/b001-r4-qwen2.5-7b-q4km-rtx2060-ctx4096/device-memory.json",
+      "sha256": "f148aee832bd441ceb43dc0eb983cc7364434d9f63de696f189fd30ab9c6b31e",
+      "size_bytes": 17509,
+      "reference": {
+        "path": "validation/b001-r4-qwen2.5-7b-q4km-rtx2060-ctx4096/device-memory.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    }
+  ]
+}

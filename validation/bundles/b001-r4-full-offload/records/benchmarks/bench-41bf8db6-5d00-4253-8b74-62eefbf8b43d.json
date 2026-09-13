@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "benchmark_id": "bench-41bf8db6-5d00-4253-8b74-62eefbf8b43d",
+    "created_at": "2026-09-12T08:57:05.738356Z"
+  },
+  "environment": {
+    "jaull_version": "0.1.0",
+    "python_version": "3.12.3",
+    "python_implementation": "CPython",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "git_commit": "4b5482770c023d5793ca9fd190b516d9f1deb8fc"
+  },
+  "hardware": {
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
+    "os_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026",
+    "arch": "x86_64",
+    "cpu": {
+      "model": "AMD Ryzen 5 3600 6-Core Processor",
+      "physical_cores": 6,
+      "logical_cores": 12
+    },
+    "memory": {
+      "total_bytes": 8278126592,
+      "available_bytes": 5929271296
+    },
+    "storage": [
+      {
+        "mountpoint": "/",
+        "total_bytes": 1081101176832,
+        "available_bytes": 983483105280
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vram_total_bytes": 6442450944,
+        "vram_available_bytes": 5197422592,
+        "driver_version": "616.92",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": null,
+        "pci_bus_id": "00000000:08:00.0",
+        "uuid": "GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5",
+        "dedicated_memory_bytes": 6442450944,
+        "available_memory_bytes": 5197422592,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "616.92",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "Vulkan backend not checked by NVML.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "vulkaninfo is not installed; skipping Vulkan detection."
+    ]
+  },
+  "artifact": {
+    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "revision": "main",
+    "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "format": "gguf",
+    "quantization": "Q4_K_M",
+    "size_bytes": 4683074240,
+    "local_path": "/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+    "is_downloaded": true,
+    "is_verified": true
+  },
+  "runtime": {
+    "runtime": "llama.cpp",
+    "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 24 --batch-size 1",
+    "python_snippet": null,
+    "flags": [
+      {
+        "name": "--model",
+        "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+        "source": "user_input",
+        "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+      },
+      {
+        "name": "--ctx-size",
+        "value": "4096",
+        "source": "estimate",
+        "explanation": "Context length used for the memory estimate."
+      },
+      {
+        "name": "--n-gpu-layers",
+        "value": "-1",
+        "source": "hardware",
+        "explanation": "Number of transformer layers to place on GPU. -1 means all."
+      },
+      {
+        "name": "--batch-size",
+        "value": "1",
+        "source": "estimate",
+        "explanation": "Prompt batch size (llama.cpp calls this -b)."
+      },
+      {
+        "name": "--verbose",
+        "value": "true",
+        "source": "user_input",
+        "explanation": "B001-R4 captures runtime backend provenance."
+      }
+    ],
+    "reasons": [
+      "Offloading required: 24 of 28 layers (0.16 GiB/layer) fit in VRAM."
+    ],
+    "warnings": [],
+    "confidence": "medium",
+    "alternatives": []
+  },
+  "requested_backend": "cuda",
+  "requested_device": "CUDA0",
+  "gpu_layers": {
+    "count": null,
+    "full_offload": true
+  },
+  "request": {
+    "artifact": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "main",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "format": "gguf",
+      "quantization": "Q4_K_M",
+      "size_bytes": 4683074240,
+      "local_path": "/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+      "is_downloaded": true,
+      "is_verified": true
+    },
+    "runtime": {
+      "runtime": "llama.cpp",
+      "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 24 --batch-size 1",
+      "python_snippet": null,
+      "flags": [
+        {
+          "name": "--model",
+          "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+          "source": "user_input",
+          "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+        },
+        {
+          "name": "--ctx-size",
+          "value": "4096",
+          "source": "estimate",
+          "explanation": "Context length used for the memory estimate."
+        },
+        {
+          "name": "--n-gpu-layers",
+          "value": "-1",
+          "source": "hardware",
+          "explanation": "Number of transformer layers to place on GPU. -1 means all."
+        },
+        {
+          "name": "--batch-size",
+          "value": "1",
+          "source": "estimate",
+          "explanation": "Prompt batch size (llama.cpp calls this -b)."
+        },
+        {
+          "name": "--verbose",
+          "value": "true",
+          "source": "user_input",
+          "explanation": "B001-R4 captures runtime backend provenance."
+        }
+      ],
+      "reasons": [
+        "Offloading required: 24 of 28 layers (0.16 GiB/layer) fit in VRAM."
+      ],
+      "warnings": [],
+      "confidence": "medium",
+      "alternatives": []
+    },
+    "backend": "cuda",
+    "device": "CUDA0",
+    "gpu_layers": {
+      "count": null,
+      "full_offload": true
+    },
+    "context_length": 4096,
+    "prefill_sizes": [
+      128,
+      512
+    ],
+    "generation_sizes": [
+      64
+    ],
+    "repetitions": 5,
+    "timeout_seconds": 900.0,
+    "notes": [
+      "B001-R4 Qwen2.5-7B Q4_K_M RTX 2060 ctx4096 full-offload",
+      "Context is declared provenance; llama-bench does not enforce ctx-size."
+    ]
+  },
+  "observation": {
+    "success": true,
+    "measurements": [
+      {
+        "kind": "prefill",
+        "tokens": 128,
+        "mean_tokens_per_second": 1465.41,
+        "stddev_tokens_per_second": 78.1,
+        "mean_duration_seconds": null,
+        "stddev_duration_seconds": null,
+        "repetitions": 5,
+        "source_label": "pp128",
+        "raw_backend": "CUDA",
+        "raw_device": "CUDA0",
+        "raw_ngl": "-1"
+      },
+      {
+        "kind": "prefill",
+        "tokens": 512,
+        "mean_tokens_per_second": 1368.91,
+        "stddev_tokens_per_second": 14.38,
+        "mean_duration_seconds": null,
+        "stddev_duration_seconds": null,
+        "repetitions": 5,
+        "source_label": "pp512",
+        "raw_backend": "CUDA",
+        "raw_device": "CUDA0",
+        "raw_ngl": "-1"
+      },
+      {
+        "kind": "generation",
+        "tokens": 64,
+        "mean_tokens_per_second": 59.36,
+        "stddev_tokens_per_second": 4.6,
+        "mean_duration_seconds": null,
+        "stddev_duration_seconds": null,
+        "repetitions": 5,
+        "source_label": "tg64",
+        "raw_backend": "CUDA",
+        "raw_device": "CUDA0",
+        "raw_ngl": "-1"
+      }
+    ],
+    "repetitions": 5,
+    "duration_seconds": 9.788655633979943,
+    "methodology": "llama_bench_v1",
+    "model_load_seconds": null,
+    "warmup_seconds": null,
+    "time_to_first_token_seconds": null,
+    "time_to_first_token_stddev_seconds": null,
+    "generation_latency_seconds": null,
+    "generation_latency_stddev_seconds": null,
+    "peak_ram_bytes": 4948447232,
+    "peak_vram_bytes": null,
+    "command": [
+      "/home/ton/tools/llama.cpp/build-cuda/bin/llama-bench",
+      "-m",
+      "/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "-dev",
+      "CUDA0",
+      "-ngl",
+      "-1",
+      "-p",
+      "128,512",
+      "-n",
+      "64",
+      "-r",
+      "5"
+    ],
+    "exit_code": 0,
+    "failure_reason": null,
+    "message": null,
+    "raw_stdout": "| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |\n| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |\n| qwen2 7B Q4_K - Medium         |   4.36 GiB |     7.62 B | CUDA       |  -1 | CUDA0        |           pp128 |      1465.41 ± 78.10 |\n| qwen2 7B Q4_K - Medium         |   4.36 GiB |     7.62 B | CUDA       |  -1 | CUDA0        |           pp512 |      1368.91 ± 14.38 |\n| qwen2 7B Q4_K - Medium         |   4.36 GiB |     7.62 B | CUDA       |  -1 | CUDA0        |            tg64 |         59.36 ± 4.60 |\n\nbuild: 689e227db (10357)\n",
+    "raw_stderr": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 6143 MiB):\n  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 6143 MiB\n"
+  },
+  "llama_bench_capability": {
+    "binary_path": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-bench",
+    "binary_status": "available",
+    "version_text": "build: 689e227db (10357)",
+    "probe_source": "llama-bench benchmark output",
+    "message": "Command failed with exit code 1: '/home/ton/tools/llama.cpp/build-cuda/bin/llama-bench'.\nstderr: error: invalid parameter for argument: --version\nstdout: 'first-last' or 'first-last+step' or 'first-last*mult'."
+  },
+  "runtime_capability": null,
+  "notes": [
+    "B001-R4 Qwen2.5-7B Q4_K_M RTX 2060 ctx4096 full-offload",
+    "Context is declared provenance; llama-bench does not enforce ctx-size."
+  ]
+}
