@@ -35,5 +35,9 @@ jaull experiments case export <case-id> <destination>
 jaull experiments case bundle validate <destination> --json
 ```
 
+The bundle index verifies the exported bytes. When a case reference already
+declares an evidence checksum or size, export verifies that historical claim
+before copying; the bundle does not replace it with a newly calculated identity.
+
 The next physical baseline should run from a clean commit and execute three
 alternating launch-policy/full-offload pairs before comparing another GPU.

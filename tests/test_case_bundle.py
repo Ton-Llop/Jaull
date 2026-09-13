@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -120,6 +122,108 @@ def test_export_refuses_missing_evidence_without_publishing_destination(
 
     assert not target.exists()
     assert not list(tmp_path.glob(".bundle.*"))
+
+
+def test_export_refuses_evidence_with_a_different_recorded_checksum(
+    tmp_path: Path,
+) -> None:
+    experiment = experiment_record()
+    source = tmp_path / "source" / "output.log"
+    source.parent.mkdir()
+    original = b"original"
+    source.write_bytes(b"changed!")
+    case = _case(
+        experiment,
+        (),
+        (
+            EvidenceFileReference(
+                path="output.log",
+                sha256=hashlib.sha256(original).hexdigest(),
+                size_bytes=len(original),
+            ),
+        ),
+    )
+    target = tmp_path / "bundle"
+
+    with pytest.raises(CaseBundleError, match="checksum differs from case reference"):
+        _service(experiment, ()).export(
+            case,
+            destination=target,
+            evidence_root=source.parent,
+        )
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(".bundle.*"))
+
+
+def test_export_refuses_evidence_with_a_different_recorded_size(tmp_path: Path) -> None:
+    experiment = experiment_record()
+    source = tmp_path / "source" / "output.log"
+    source.parent.mkdir()
+    source.write_bytes(b"short")
+    case = _case(
+        experiment,
+        (),
+        (EvidenceFileReference(path="output.log", size_bytes=len(b"original")),),
+    )
+    target = tmp_path / "bundle"
+
+    with pytest.raises(CaseBundleError, match="size differs from case reference"):
+        _service(experiment, ()).export(
+            case,
+            destination=target,
+            evidence_root=source.parent,
+        )
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(".bundle.*"))
+
+
+def test_bundle_validation_keeps_the_case_evidence_identity(tmp_path: Path) -> None:
+    experiment = experiment_record()
+    source = tmp_path / "source" / "output.log"
+    source.parent.mkdir()
+    raw = b"original"
+    source.write_bytes(raw)
+    case = _case(
+        experiment,
+        (),
+        (
+            EvidenceFileReference(
+                path="output.log",
+                sha256=hashlib.sha256(raw).hexdigest(),
+                size_bytes=len(raw),
+            ),
+        ),
+    )
+    target = tmp_path / "bundle"
+    service = _service(experiment, ())
+    service.export(case, destination=target, evidence_root=source.parent)
+
+    # A malformed historical identity is distinct from bundle transport
+    # integrity. Keep the copied bytes valid, but make the frozen reference
+    # wrong and update its two enclosing bundle index entries accordingly.
+    case_path = target / "case.json"
+    case_payload = json.loads(case_path.read_text(encoding="utf-8"))
+    case_payload["evidence_files"][0]["sha256"] = "0" * 64
+    case_path.write_text(json.dumps(case_payload, indent=2) + "\n", encoding="utf-8")
+
+    bundle_path = target / "bundle.json"
+    bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    bundle_payload["case_file"]["sha256"] = hashlib.sha256(
+        case_path.read_bytes()
+    ).hexdigest()
+    bundle_payload["case_file"]["size_bytes"] = case_path.stat().st_size
+    bundle_payload["evidence_files"][0]["reference"]["sha256"] = "0" * 64
+    bundle_path.write_text(
+        json.dumps(bundle_payload, indent=2) + "\n", encoding="utf-8"
+    )
+
+    result = service.validate(target)
+
+    evidence_check = next(check for check in result.checks if check.name == "evidence_files")
+    assert evidence_check.status is CaseConsistencyStatus.PARTIAL
+    assert "does not match its recorded digest" in evidence_check.detail
 
 
 def test_bundle_validation_rejects_tampered_raw_evidence(tmp_path: Path) -> None:

@@ -208,11 +208,11 @@ class CaseBundleService:
             update={
                 "evidence_files": tuple(
                     reference.model_copy(
-                        update={
-                            "path": evidence.path,
-                            "sha256": evidence.sha256,
-                            "size_bytes": evidence.size_bytes,
-                        }
+                        # The bundle manifest verifies its own copied bytes.
+                        # Preserve the case reference's independent historical
+                        # identity claim when the regular case validator checks
+                        # that copy.
+                        update={"path": evidence.path}
                     )
                     for reference, evidence in zip(
                         loaded.case.evidence_files,
@@ -273,6 +273,23 @@ class CaseBundleService:
                 ) from exc
             if not source.is_file():
                 raise CaseBundleError(f"Evidence file not found: {source}.")
+            actual_size = source.stat().st_size
+            if (
+                reference.size_bytes is not None
+                and actual_size != reference.size_bytes
+            ):
+                raise CaseBundleError(
+                    "Evidence file size differs from case reference: "
+                    f"{reference.path}."
+                )
+            if (
+                reference.sha256 is not None
+                and _sha256_file(source) != reference.sha256
+            ):
+                raise CaseBundleError(
+                    "Evidence file checksum differs from case reference: "
+                    f"{reference.path}."
+                )
             sources.append((reference, source))
         return tuple(sources)
 
