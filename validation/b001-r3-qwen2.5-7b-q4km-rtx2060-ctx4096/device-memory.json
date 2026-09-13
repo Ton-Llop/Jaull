@@ -1,0 +1,760 @@
+{
+  "protocol": "B001-R3",
+  "hardware": {
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
+    "os_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026",
+    "arch": "x86_64",
+    "cpu": {
+      "model": "AMD Ryzen 5 3600 6-Core Processor",
+      "physical_cores": 6,
+      "logical_cores": 12
+    },
+    "memory": {
+      "total_bytes": 8278126592,
+      "available_bytes": 5934473216
+    },
+    "storage": [
+      {
+        "mountpoint": "/",
+        "total_bytes": 1081101176832,
+        "available_bytes": 983481659392
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vram_total_bytes": 6442450944,
+        "vram_available_bytes": 5188837376,
+        "driver_version": "616.92",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": null,
+        "pci_bus_id": "00000000:08:00.0",
+        "uuid": "GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5",
+        "dedicated_memory_bytes": 6442450944,
+        "available_memory_bytes": 5188837376,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "616.92",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "Vulkan backend not checked by NVML.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "vulkaninfo is not installed; skipping Vulkan detection."
+    ]
+  },
+  "artifact_sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+  "context_length": 4096,
+  "repetitions": 5,
+  "note": "The monitor reports device-wide nvidia-smi memory. It is evidence for the experiment, not a PredictionComparison per-process VRAM value.",
+  "experiment_launch_policy": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1045430272,
+    "peak_bytes": 5198839808,
+    "peak_delta_from_baseline_bytes": 4153409536,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1045430272
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1128267776
+      },
+      {
+        "elapsed_seconds": 0.456,
+        "used_bytes": 1054867456
+      },
+      {
+        "elapsed_seconds": 0.695,
+        "used_bytes": 1045430272
+      },
+      {
+        "elapsed_seconds": 0.931,
+        "used_bytes": 1132462080
+      },
+      {
+        "elapsed_seconds": 1.172,
+        "used_bytes": 1134559232
+      },
+      {
+        "elapsed_seconds": 1.412,
+        "used_bytes": 1134559232
+      },
+      {
+        "elapsed_seconds": 1.647,
+        "used_bytes": 4796186624
+      },
+      {
+        "elapsed_seconds": 1.891,
+        "used_bytes": 4796186624
+      },
+      {
+        "elapsed_seconds": 2.133,
+        "used_bytes": 4796186624
+      },
+      {
+        "elapsed_seconds": 2.38,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 2.632,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 2.895,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 3.216,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 3.475,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 3.719,
+        "used_bytes": 5198839808
+      },
+      {
+        "elapsed_seconds": 3.994,
+        "used_bytes": 1150287872
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 4.159
+  },
+  "experiment_full_offload": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1048576000,
+    "peak_bytes": 5340397568,
+    "peak_delta_from_baseline_bytes": 4291821568,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1048576000
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1135607808
+      },
+      {
+        "elapsed_seconds": 0.486,
+        "used_bytes": 1058013184
+      },
+      {
+        "elapsed_seconds": 0.723,
+        "used_bytes": 1049624576
+      },
+      {
+        "elapsed_seconds": 0.966,
+        "used_bytes": 1069547520
+      },
+      {
+        "elapsed_seconds": 1.202,
+        "used_bytes": 1136656384
+      },
+      {
+        "elapsed_seconds": 1.458,
+        "used_bytes": 1136656384
+      },
+      {
+        "elapsed_seconds": 1.701,
+        "used_bytes": 1135607808
+      },
+      {
+        "elapsed_seconds": 1.946,
+        "used_bytes": 1140850688
+      },
+      {
+        "elapsed_seconds": 2.192,
+        "used_bytes": 1140850688
+      },
+      {
+        "elapsed_seconds": 2.427,
+        "used_bytes": 1140850688
+      },
+      {
+        "elapsed_seconds": 2.664,
+        "used_bytes": 1140850688
+      },
+      {
+        "elapsed_seconds": 2.903,
+        "used_bytes": 4934598656
+      },
+      {
+        "elapsed_seconds": 3.152,
+        "used_bytes": 4934598656
+      },
+      {
+        "elapsed_seconds": 3.41,
+        "used_bytes": 4934598656
+      },
+      {
+        "elapsed_seconds": 3.662,
+        "used_bytes": 4934598656
+      },
+      {
+        "elapsed_seconds": 3.902,
+        "used_bytes": 4929355776
+      },
+      {
+        "elapsed_seconds": 4.143,
+        "used_bytes": 5334106112
+      },
+      {
+        "elapsed_seconds": 4.391,
+        "used_bytes": 5340397568
+      },
+      {
+        "elapsed_seconds": 4.657,
+        "used_bytes": 5340397568
+      },
+      {
+        "elapsed_seconds": 4.926,
+        "used_bytes": 5340397568
+      },
+      {
+        "elapsed_seconds": 5.244,
+        "used_bytes": 5340397568
+      },
+      {
+        "elapsed_seconds": 5.54,
+        "used_bytes": 1722810368
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 5.704
+  },
+  "benchmark_launch_policy": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1048576000,
+    "peak_bytes": 5174722560,
+    "peak_delta_from_baseline_bytes": 4126146560,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1048576000
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1056964608
+      },
+      {
+        "elapsed_seconds": 0.438,
+        "used_bytes": 1135607808
+      },
+      {
+        "elapsed_seconds": 0.678,
+        "used_bytes": 4797235200
+      },
+      {
+        "elapsed_seconds": 0.935,
+        "used_bytes": 4797235200
+      },
+      {
+        "elapsed_seconds": 1.191,
+        "used_bytes": 4904189952
+      },
+      {
+        "elapsed_seconds": 1.447,
+        "used_bytes": 4916772864
+      },
+      {
+        "elapsed_seconds": 1.688,
+        "used_bytes": 4916772864
+      },
+      {
+        "elapsed_seconds": 1.937,
+        "used_bytes": 4916772864
+      },
+      {
+        "elapsed_seconds": 2.177,
+        "used_bytes": 4916772864
+      },
+      {
+        "elapsed_seconds": 2.411,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 2.647,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 2.887,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 3.123,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 3.365,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 3.599,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 3.841,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 4.162,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 4.418,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 4.656,
+        "used_bytes": 5174722560
+      },
+      {
+        "elapsed_seconds": 4.89,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 5.143,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 5.396,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 5.655,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 5.915,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 6.169,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 6.434,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 6.701,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 6.964,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 7.222,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 7.473,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 7.73,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 7.977,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 8.225,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 8.475,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 8.727,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 8.975,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 9.224,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 9.477,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 9.729,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 9.989,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 10.245,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 10.501,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 10.756,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 11.008,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 11.275,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 11.527,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 11.78,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 12.038,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 12.307,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 12.58,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 12.844,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 13.099,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 13.35,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 13.606,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 13.867,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 14.121,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 14.373,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 14.636,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 14.903,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 15.167,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 15.424,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 15.681,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 15.938,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 16.202,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 16.459,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 16.714,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 16.975,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 17.235,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 17.508,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 17.771,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 18.023,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 18.28,
+        "used_bytes": 4906287104
+      },
+      {
+        "elapsed_seconds": 18.533,
+        "used_bytes": 1049624576
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 18.809
+  },
+  "benchmark_full_offload": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1048576000,
+    "peak_bytes": 5812256768,
+    "peak_delta_from_baseline_bytes": 4763680768,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1048576000
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1058013184
+      },
+      {
+        "elapsed_seconds": 0.441,
+        "used_bytes": 1135607808
+      },
+      {
+        "elapsed_seconds": 0.692,
+        "used_bytes": 5508169728
+      },
+      {
+        "elapsed_seconds": 0.945,
+        "used_bytes": 5508169728
+      },
+      {
+        "elapsed_seconds": 1.207,
+        "used_bytes": 5508169728
+      },
+      {
+        "elapsed_seconds": 1.455,
+        "used_bytes": 5615124480
+      },
+      {
+        "elapsed_seconds": 1.692,
+        "used_bytes": 5621415936
+      },
+      {
+        "elapsed_seconds": 2.007,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 2.245,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 2.484,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 2.734,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 2.974,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 3.215,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 3.454,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 3.692,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 3.931,
+        "used_bytes": 5812256768
+      },
+      {
+        "elapsed_seconds": 4.166,
+        "used_bytes": 5811208192
+      },
+      {
+        "elapsed_seconds": 4.4,
+        "used_bytes": 5507121152
+      },
+      {
+        "elapsed_seconds": 4.635,
+        "used_bytes": 5507121152
+      },
+      {
+        "elapsed_seconds": 4.872,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 5.111,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 5.347,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 5.58,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 5.818,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 6.051,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 6.285,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 6.524,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 6.763,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 6.998,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 7.234,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 7.467,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 7.703,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 7.936,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 8.169,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 8.406,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 8.642,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 8.882,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 9.117,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 9.352,
+        "used_bytes": 5563744256
+      },
+      {
+        "elapsed_seconds": 9.586,
+        "used_bytes": 1032847360
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 9.739
+  }
+}

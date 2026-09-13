@@ -1872,6 +1872,18 @@ async def _wait_until(
         await pilot.pause()
         await asyncio.sleep(0.01)
 
+    # The loop returns the moment the predicate holds, without pausing again, so
+    # a predicate that only names the screen type hands the test a screen whose
+    # widgets are still mounting. ``pause()`` waits on the screen's message pump
+    # first, and that pump only starts once ``_pre_process`` has dispatched
+    # Compose and Mount -- unlike the idle heuristic it does not depend on clock
+    # resolution, so it holds on Windows too, where ``process_time()`` advances
+    # in ~15.6 ms steps and lets ``wait_for_idle`` give up mid-mount. Without
+    # this a test can leave ``run_test`` while a screen is half-built, and the
+    # screen's own ``on_mount`` then raises ``NoMatches`` out of ``__aexit__``.
+    await pilot.pause()
+
+
 def test_execution_screen_reuses_local_artifact_without_downloading(
     monkeypatch: Any,
 ) -> None:

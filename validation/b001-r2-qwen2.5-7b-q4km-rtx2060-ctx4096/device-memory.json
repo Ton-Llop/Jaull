@@ -1,0 +1,1292 @@
+{
+  "protocol": "B001-R2",
+  "hardware": {
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
+    "os_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026",
+    "arch": "x86_64",
+    "cpu": {
+      "model": "AMD Ryzen 5 3600 6-Core Processor",
+      "physical_cores": 6,
+      "logical_cores": 12
+    },
+    "memory": {
+      "total_bytes": 8278126592,
+      "available_bytes": 5938085888
+    },
+    "storage": [
+      {
+        "mountpoint": "/",
+        "total_bytes": 1081101176832,
+        "available_bytes": 983486582784
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vram_total_bytes": 6442450944,
+        "vram_available_bytes": 4969410560,
+        "driver_version": "616.92",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": null,
+        "pci_bus_id": "00000000:08:00.0",
+        "uuid": "GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5",
+        "dedicated_memory_bytes": 6442450944,
+        "available_memory_bytes": 4969410560,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "616.92",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "Vulkan backend not checked by NVML.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "vulkaninfo is not installed; skipping Vulkan detection."
+    ]
+  },
+  "artifact_sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+  "context_length": 4096,
+  "repetitions": 5,
+  "note": "The monitor reports device-wide nvidia-smi memory. It is evidence for the experiment, not a PredictionComparison per-process VRAM value.",
+  "experiment_launch_policy": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1264582656,
+    "peak_bytes": 5236588544,
+    "peak_delta_from_baseline_bytes": 3972005888,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1264582656
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 0.464,
+        "used_bytes": 1272971264
+      },
+      {
+        "elapsed_seconds": 0.706,
+        "used_bytes": 1264582656
+      },
+      {
+        "elapsed_seconds": 0.949,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 1.197,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 1.445,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 1.693,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 1.939,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 2.185,
+        "used_bytes": 1351614464
+      },
+      {
+        "elapsed_seconds": 2.422,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 2.659,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 2.903,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 3.153,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 3.4,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 3.636,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 3.875,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 4.112,
+        "used_bytes": 1353711616
+      },
+      {
+        "elapsed_seconds": 4.35,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 4.585,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 4.82,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 5.059,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 5.295,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 5.532,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 5.77,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 6.005,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 6.242,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 6.479,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 6.715,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 6.95,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 7.189,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 7.428,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 7.67,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 7.911,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 8.149,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 8.388,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 8.629,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 8.867,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 9.104,
+        "used_bytes": 1346371584
+      },
+      {
+        "elapsed_seconds": 9.34,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 9.581,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 9.819,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 10.059,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 10.296,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 10.534,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 10.776,
+        "used_bytes": 1333788672
+      },
+      {
+        "elapsed_seconds": 11.038,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 11.288,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 11.59,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 11.93,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 12.216,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 12.484,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 12.761,
+        "used_bytes": 1388314624
+      },
+      {
+        "elapsed_seconds": 13.021,
+        "used_bytes": 1334837248
+      },
+      {
+        "elapsed_seconds": 13.264,
+        "used_bytes": 1334837248
+      },
+      {
+        "elapsed_seconds": 13.547,
+        "used_bytes": 1334837248
+      },
+      {
+        "elapsed_seconds": 13.807,
+        "used_bytes": 1334837248
+      },
+      {
+        "elapsed_seconds": 14.05,
+        "used_bytes": 1334837248
+      },
+      {
+        "elapsed_seconds": 14.296,
+        "used_bytes": 3079667712
+      },
+      {
+        "elapsed_seconds": 14.594,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 14.844,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 15.089,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 15.372,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 15.628,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 15.868,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 16.109,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 16.367,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 16.608,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 16.849,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 17.093,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 17.339,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 17.581,
+        "used_bytes": 4860149760
+      },
+      {
+        "elapsed_seconds": 17.825,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 18.067,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 18.309,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 18.565,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 18.809,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 19.051,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 19.291,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 19.531,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 19.772,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 20.017,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 20.272,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 20.526,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 20.774,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 21.014,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 21.27,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 21.505,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 21.776,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 22.011,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 22.249,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 22.484,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 22.721,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 22.958,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 23.205,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 23.446,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 23.69,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 23.925,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 24.162,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 24.402,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 24.638,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 24.879,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 25.116,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 25.353,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 25.589,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 25.827,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 26.065,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 26.301,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 26.54,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 26.781,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 27.021,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 27.26,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 27.5,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 27.754,
+        "used_bytes": 4847566848
+      },
+      {
+        "elapsed_seconds": 27.996,
+        "used_bytes": 5225054208
+      },
+      {
+        "elapsed_seconds": 28.237,
+        "used_bytes": 5225054208
+      },
+      {
+        "elapsed_seconds": 28.494,
+        "used_bytes": 5225054208
+      },
+      {
+        "elapsed_seconds": 28.746,
+        "used_bytes": 5225054208
+      },
+      {
+        "elapsed_seconds": 29.003,
+        "used_bytes": 5225054208
+      },
+      {
+        "elapsed_seconds": 29.257,
+        "used_bytes": 5235539968
+      },
+      {
+        "elapsed_seconds": 29.546,
+        "used_bytes": 5232394240
+      },
+      {
+        "elapsed_seconds": 29.862,
+        "used_bytes": 5232394240
+      },
+      {
+        "elapsed_seconds": 30.163,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 30.422,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 30.746,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 31.044,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 31.3,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 31.602,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 31.861,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 32.124,
+        "used_bytes": 5236588544
+      },
+      {
+        "elapsed_seconds": 32.485,
+        "used_bytes": 1344274432
+      },
+      {
+        "elapsed_seconds": 32.755,
+        "used_bytes": 1344274432
+      },
+      {
+        "elapsed_seconds": 32.996,
+        "used_bytes": 1245708288
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 33.085
+  },
+  "experiment_full_offload": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1245708288,
+    "peak_bytes": 5536481280,
+    "peak_delta_from_baseline_bytes": 4290772992,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1245708288
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1245708288
+      },
+      {
+        "elapsed_seconds": 0.482,
+        "used_bytes": 1254096896
+      },
+      {
+        "elapsed_seconds": 0.73,
+        "used_bytes": 1323302912
+      },
+      {
+        "elapsed_seconds": 0.976,
+        "used_bytes": 1254096896
+      },
+      {
+        "elapsed_seconds": 1.214,
+        "used_bytes": 1245708288
+      },
+      {
+        "elapsed_seconds": 1.465,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 1.71,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 1.945,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 2.181,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 2.415,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 2.66,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 2.901,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 3.142,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 3.38,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 3.619,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 3.862,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 4.102,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 4.355,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 4.612,
+        "used_bytes": 5125439488
+      },
+      {
+        "elapsed_seconds": 4.876,
+        "used_bytes": 5530189824
+      },
+      {
+        "elapsed_seconds": 5.129,
+        "used_bytes": 5536481280
+      },
+      {
+        "elapsed_seconds": 5.367,
+        "used_bytes": 5536481280
+      },
+      {
+        "elapsed_seconds": 5.687,
+        "used_bytes": 5536481280
+      },
+      {
+        "elapsed_seconds": 5.981,
+        "used_bytes": 5536481280
+      },
+      {
+        "elapsed_seconds": 6.262,
+        "used_bytes": 5536481280
+      },
+      {
+        "elapsed_seconds": 6.542,
+        "used_bytes": 1346371584
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 6.642
+  },
+  "benchmark_launch_policy": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1245708288,
+    "peak_bytes": 5217714176,
+    "peak_delta_from_baseline_bytes": 3972005888,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1245708288
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1244659712
+      },
+      {
+        "elapsed_seconds": 0.44,
+        "used_bytes": 1331691520
+      },
+      {
+        "elapsed_seconds": 0.686,
+        "used_bytes": 3143630848
+      },
+      {
+        "elapsed_seconds": 0.95,
+        "used_bytes": 4844421120
+      },
+      {
+        "elapsed_seconds": 1.203,
+        "used_bytes": 4842323968
+      },
+      {
+        "elapsed_seconds": 1.463,
+        "used_bytes": 4949278720
+      },
+      {
+        "elapsed_seconds": 1.702,
+        "used_bytes": 4949278720
+      },
+      {
+        "elapsed_seconds": 1.939,
+        "used_bytes": 4955570176
+      },
+      {
+        "elapsed_seconds": 2.191,
+        "used_bytes": 4961861632
+      },
+      {
+        "elapsed_seconds": 2.446,
+        "used_bytes": 4961861632
+      },
+      {
+        "elapsed_seconds": 2.692,
+        "used_bytes": 4961861632
+      },
+      {
+        "elapsed_seconds": 2.932,
+        "used_bytes": 4961861632
+      },
+      {
+        "elapsed_seconds": 3.17,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 3.421,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 3.661,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 3.927,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 4.189,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 4.441,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 4.683,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 4.926,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 5.161,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 5.411,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 5.649,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 5.896,
+        "used_bytes": 5217714176
+      },
+      {
+        "elapsed_seconds": 6.134,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 6.403,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 6.678,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 6.937,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 7.209,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 7.465,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 7.739,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 8.0,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 8.263,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 8.528,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 8.796,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 9.052,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 9.312,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 9.575,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 9.832,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 10.089,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 10.345,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 10.605,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 10.859,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 11.111,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 11.373,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 11.634,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 11.89,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 12.142,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 12.394,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 12.642,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 12.899,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 13.155,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 13.404,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 13.667,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 13.934,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 14.193,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 14.445,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 14.697,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 14.951,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 15.204,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 15.456,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 15.707,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 15.958,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 16.211,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 16.465,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 16.715,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 16.982,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 17.248,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 17.502,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 17.775,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 18.035,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 18.29,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 18.564,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 18.812,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 19.066,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 19.316,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 19.571,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 19.823,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 20.088,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 20.349,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 20.595,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 20.858,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 21.111,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 21.366,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 21.618,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 21.869,
+        "used_bytes": 4951375872
+      },
+      {
+        "elapsed_seconds": 22.139,
+        "used_bytes": 1350565888
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 22.365
+  },
+  "benchmark_full_offload": {
+    "measurement": "nvidia_smi_device_memory_total",
+    "unit": "bytes",
+    "baseline_bytes": 1242562560,
+    "peak_bytes": 5853151232,
+    "peak_delta_from_baseline_bytes": 4610588672,
+    "sample_interval_seconds": 0.2,
+    "samples": [
+      {
+        "elapsed_seconds": 0.0,
+        "used_bytes": 1242562560
+      },
+      {
+        "elapsed_seconds": 0.2,
+        "used_bytes": 1251999744
+      },
+      {
+        "elapsed_seconds": 0.442,
+        "used_bytes": 1329594368
+      },
+      {
+        "elapsed_seconds": 0.678,
+        "used_bytes": 5673844736
+      },
+      {
+        "elapsed_seconds": 0.924,
+        "used_bytes": 5673844736
+      },
+      {
+        "elapsed_seconds": 1.174,
+        "used_bytes": 5673844736
+      },
+      {
+        "elapsed_seconds": 1.43,
+        "used_bytes": 5723127808
+      },
+      {
+        "elapsed_seconds": 1.67,
+        "used_bytes": 5723127808
+      },
+      {
+        "elapsed_seconds": 1.91,
+        "used_bytes": 5848956928
+      },
+      {
+        "elapsed_seconds": 2.195,
+        "used_bytes": 5848956928
+      },
+      {
+        "elapsed_seconds": 2.432,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 2.672,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 2.916,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 3.149,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 3.392,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 3.624,
+        "used_bytes": 5853151232
+      },
+      {
+        "elapsed_seconds": 3.858,
+        "used_bytes": 5549064192
+      },
+      {
+        "elapsed_seconds": 4.099,
+        "used_bytes": 5549064192
+      },
+      {
+        "elapsed_seconds": 4.342,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 4.578,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 4.812,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 5.05,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 5.286,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 5.521,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 5.761,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 5.996,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 6.233,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 6.467,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 6.703,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 6.938,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 7.174,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 7.408,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 7.646,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 7.889,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 8.124,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 8.363,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 8.599,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 8.838,
+        "used_bytes": 5567938560
+      },
+      {
+        "elapsed_seconds": 9.076,
+        "used_bytes": 1138753536
+      },
+      {
+        "elapsed_seconds": 9.322,
+        "used_bytes": 1037041664
+      }
+    ],
+    "limitation": "Device-wide usage includes unrelated GPU consumers and is not equivalent to per-process CUDA allocation.",
+    "duration_seconds": 9.358
+  }
+}

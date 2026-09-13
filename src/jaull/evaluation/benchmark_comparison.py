@@ -11,7 +11,7 @@ from jaull.domain.benchmarks import (
 )
 from jaull.domain.execution_plans import ModelIdentity
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.runtime import LlamaCppRuntimeCapability, PyTorchRuntimeCapability, RuntimeName
+from jaull.domain.runtime import RuntimeName, runtime_capability_version
 from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 
 _PREFERRED_METHODOLOGY_BY_RUNTIME = {
@@ -278,17 +278,11 @@ def _configuration_key(
     return tuple(values)
 
 def _runtime_version(record: BenchmarkRecord) -> str | None:
+    # llama-bench is the binary that produced these numbers, so its own probe
+    # wins over the capability of whatever runtime the plan named.
     if record.llama_bench_capability is not None:
         return record.llama_bench_capability.version_text
-    capability = record.runtime_capability
-    if isinstance(capability, LlamaCppRuntimeCapability):
-        return capability.version_text
-    if isinstance(capability, PyTorchRuntimeCapability):
-        parts = [capability.torch_version] if capability.torch_version is not None else []
-        if capability.transformers_version is not None:
-            parts.append(capability.transformers_version)
-        return " / ".join(parts) if parts else None
-    return None
+    return runtime_capability_version(record.runtime_capability)
 
 
 def _measurement_map(

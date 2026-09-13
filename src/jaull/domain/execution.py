@@ -11,6 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from jaull.domain.hardware import ComputeBackend
+
 
 class ExecutionFailureReason(StrEnum):
     """Stable, objective reasons observed at the process boundary."""
@@ -74,6 +76,9 @@ class InferenceResult(BaseModel):
     runtime: str
     model_path: Path
     observation: ExecutionObservation
+    command: tuple[str, ...] = Field(default_factory=tuple)
+    observed_backend: ComputeBackend | None = None
+    observed_backend_source: str | None = None
 
     @property
     def exit_code(self) -> int | None:

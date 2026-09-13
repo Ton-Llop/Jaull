@@ -6,6 +6,17 @@ from pathlib import Path
 
 import typer
 
+from jaull.cli.cases import (
+    CaseOptions,
+    CreateCaseOptions,
+    ExportCaseOptions,
+    run_create_case,
+    run_export_case,
+    run_list_cases,
+    run_show_case,
+    run_validate_case,
+    run_validate_case_bundle,
+)
 from jaull.cli.doctor import run_doctor
 from jaull.cli.estimate import EstimateOptions, run_estimate
 from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
@@ -32,6 +43,16 @@ experiments_app = typer.Typer(
     help="Inspect stored experiment records.",
 )
 app.add_typer(experiments_app, name="experiments")
+case_app = typer.Typer(
+    add_completion=False,
+    help="Group experiment and benchmark evidence into one experimental case.",
+)
+experiments_app.add_typer(case_app, name="case")
+case_bundle_app = typer.Typer(
+    add_completion=False,
+    help="Inspect a portable experimental case bundle offline.",
+)
+case_app.add_typer(case_bundle_app, name="bundle")
 
 
 def _is_interactive_terminal() -> bool:
@@ -255,6 +276,132 @@ def reevaluate_experiment_command(
             ReevaluateOptions(as_json=as_json),
         )
     )
+
+
+@case_app.command(
+    "create",
+    help="Group one experiment, its benchmarks and its raw evidence as one case.",
+)
+def create_case_command(
+    experiment: str = typer.Option(..., "--experiment", metavar="EXPERIMENT_ID"),
+    benchmark: list[str] = typer.Option(
+        [],
+        "--benchmark",
+        metavar="BENCHMARK_ID",
+        help="Repeat to attach several benchmark records.",
+    ),
+    evidence: list[str] = typer.Option(
+        [],
+        "--evidence",
+        metavar="PATH:ROLE",
+        help=(
+            "Raw evidence file, relative to the current directory. "
+            "Roles: prediction, report, runtime_log, timing, other."
+        ),
+    ),
+    label: str | None = typer.Option(None, "--label", help="Human name for the case."),
+    note: list[str] = typer.Option([], "--note", help="Repeat to add several notes."),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(
+        code=run_create_case(
+            CreateCaseOptions(
+                experiment_id=experiment,
+                benchmark_ids=tuple(benchmark),
+                evidence=tuple(evidence),
+                label=label,
+                note=tuple(note),
+                as_json=as_json,
+            )
+        )
+    )
+
+
+@case_app.command("show", help="Show a stored case and its current consistency.")
+def show_case_command(
+    case_id: str = typer.Argument(..., metavar="CASE_ID"),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(code=run_show_case(case_id, CaseOptions(as_json=as_json)))
+
+
+@case_app.command(
+    "validate",
+    help="Check that the records and files a case names agree with each other.",
+)
+def validate_case_command(
+    case_id: str = typer.Argument(..., metavar="CASE_ID"),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(code=run_validate_case(case_id, CaseOptions(as_json=as_json)))
+
+
+@case_app.command("export", help="Export a case, its records and evidence as a portable directory.")
+def export_case_command(
+    case_id: str = typer.Argument(..., metavar="CASE_ID"),
+    destination: Path = typer.Argument(..., metavar="DESTINATION"),
+    evidence_root: Path = typer.Option(
+        Path(),
+        "--evidence-root",
+        metavar="PATH",
+        help="Root used to resolve evidence paths stored in the case.",
+    ),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(
+        code=run_export_case(
+            case_id,
+            ExportCaseOptions(
+                destination=destination,
+                evidence_root=evidence_root,
+                as_json=as_json,
+            ),
+        )
+    )
+
+
+@case_bundle_app.command(
+    "validate",
+    help="Validate a portable case bundle without local experiment stores.",
+)
+def validate_case_bundle_command(
+    root: Path = typer.Argument(..., metavar="BUNDLE_DIRECTORY"),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(
+        code=run_validate_case_bundle(root, CaseOptions(as_json=as_json))
+    )
+
+
+@case_app.command("list", help="List stored case ids.")
+def list_cases_command(
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit stable JSON to stdout instead of a Rich report.",
+    ),
+) -> None:
+    raise typer.Exit(code=run_list_cases(CaseOptions(as_json=as_json)))
 
 
 if __name__ == "__main__":

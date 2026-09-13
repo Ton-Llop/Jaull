@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "case_id": "case-b65dc3b3-fdff-4f56-bcc1-61004d482be8",
+    "created_at": "2026-09-12T08:58:00.311427Z",
+    "label": "B001-R4 Qwen2.5-7B Q4_K_M RTX 2060 ctx4096 launch-policy",
+    "machine_fingerprint": [
+      "Linux 6.18.33.2-microsoft-standard-WSL2",
+      "#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026",
+      "x86_64",
+      "AMD Ryzen 5 3600 6-Core Processor",
+      "6",
+      "12",
+      "8278126592",
+      "NVIDIA GeForce RTX 2060:6442450944",
+      "NVIDIA GeForce RTX 2060:nvidia:dedicated:0x10de::00000000:08:00.0:GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5:6442450944:False"
+    ],
+    "artifact": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "main",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "format": "gguf",
+      "quantization": "Q4_K_M"
+    },
+    "runtime": "llama.cpp"
+  },
+  "experiment_record_id": "exp-1f26bdb8-d4a0-401a-b9de-bec9bd350901",
+  "benchmark_record_ids": [
+    "bench-3434424d-675f-46db-bdbb-7ba21b11c39b"
+  ],
+  "evidence_files": [
+    {
+      "path": "validation/b001-r4-qwen2.5-7b-q4km-rtx2060-ctx4096/device-memory.json",
+      "role": "other",
+      "sha256": null,
+      "size_bytes": null,
+      "description": null
+    }
+  ],
+  "notes": [
+    "Frozen hardware profile, 512 MiB reserve and 10 percent safety margin.",
+    "Benchmark declares ctx4096 as scenario provenance; llama-bench does not enforce it."
+  ]
+}

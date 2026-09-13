@@ -126,7 +126,12 @@ class BenchmarkObservation(BaseModel):
 
 
 class BenchmarkRequest(BaseModel):
-    """One concrete llama-bench configuration."""
+    """One concrete benchmark configuration.
+
+    ``context_length`` records the workload scenario associated with this
+    benchmark. llama-bench currently has no direct context-size argument, so
+    it is provenance rather than a runner-enforced setting for that runtime.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -135,6 +140,7 @@ class BenchmarkRequest(BaseModel):
     backend: ComputeBackend
     device: str | None = None
     gpu_layers: BenchmarkGpuLayers = Field(default_factory=BenchmarkGpuLayers)
+    context_length: int | None = Field(default=None, gt=0)
     prefill_sizes: tuple[int, ...] = DEFAULT_PREFILL_SIZES
     generation_sizes: tuple[int, ...] = DEFAULT_GENERATION_SIZES
     repetitions: int = Field(default=DEFAULT_BENCHMARK_REPETITIONS, ge=1)

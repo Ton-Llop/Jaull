@@ -162,6 +162,7 @@ class ExperimentBackendTrace(BaseModel):
     requested_backend: RequestedComputeBackend = RequestedComputeBackend.AUTO
     observed_backend: ComputeBackend | None = None
     observed_source: str | None = None
+    executed_command: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class ExperimentReplayability(BaseModel):

@@ -7,6 +7,7 @@ import pytest
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import ExecutionObservation, ExecutionRequest, ExecutionResult
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     RuntimeFlag,
     RuntimeFlagSource,
@@ -129,6 +130,25 @@ def test_runner_builds_command_with_exact_local_path(tmp_path: Path) -> None:
         "Explain GGUF: caf\u00e9",
     )
     assert "placeholder-name.gguf" not in command
+    assert result.command == command
+
+
+def test_runner_records_cuda_only_when_llama_cpp_reports_it(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend(
+        ExecutionResult(
+            stdout="generated",
+            stderr="ggml_cuda_init: found 1 CUDA devices",
+            observation=_observation(),
+        )
+    )
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    result = runner.run(artifact=_artifact(model_path), prompt="Hello")
+
+    assert result.observed_backend is ComputeBackend.CUDA
+    assert result.observed_backend_source == "llama.cpp runtime output"
 
 
 def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:
@@ -142,6 +162,30 @@ def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:
     command = backend.requests[0].command
     assert command[command.index("--ctx-size") + 1] == "4096"
     assert command[command.index("--n-gpu-layers") + 1] == "0"
+
+
+def test_runner_enables_verbose_output_only_when_requested(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend()
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+    runtime = _runtime().model_copy(
+        update={
+            "flags": [
+                *_runtime().flags,
+                RuntimeFlag(
+                    name="--verbose",
+                    value="true",
+                    source=RuntimeFlagSource.USER_INPUT,
+                    explanation="test",
+                ),
+            ]
+        }
+    )
+
+    runner.run(artifact=_artifact(model_path), prompt="Hello", runtime=runtime)
+
+    assert "--verbose" in backend.requests[0].command
 
 
 def test_runner_sanitizes_terminal_sequences_from_response(tmp_path: Path) -> None:

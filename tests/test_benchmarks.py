@@ -43,7 +43,10 @@ from jaull.domain.runtime import (
 )
 from jaull.evaluation.benchmarks import aggregate_benchmark_records
 from jaull.execution.errors import ExecutionFailedError
-from jaull.runtime.llama_bench_capability import inspect_llama_bench
+from jaull.runtime.llama_bench_capability import (
+    enrich_capability_from_benchmark_output,
+    inspect_llama_bench,
+)
 from jaull.runtime.llama_bench_parser import parse_llama_bench_output
 from jaull.runtime.llama_bench_runner import (
     LlamaBenchRunner,
@@ -184,6 +187,42 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
         "--simple-io",
     }
     assert forbidden_llama_cli_flags.isdisjoint(cuda)
+
+
+def test_declared_context_is_persisted_but_not_passed_to_llama_bench(
+    tmp_path: Path,
+) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    request = BenchmarkRequest(
+        artifact=_artifact(model),
+        runtime=_runtime(ngl=-1),
+        backend=ComputeBackend.CUDA,
+        device="CUDA0",
+        gpu_layers=BenchmarkGpuLayers.full(),
+        context_length=4096,
+    )
+
+    command = build_llama_bench_command("llama-bench", request)
+
+    assert request.context_length == 4096
+    assert "--ctx-size" not in command
+    assert "-c" not in command
+
+
+def test_successful_benchmark_output_enriches_failed_version_probe() -> None:
+    capability = LlamaBenchCapability(
+        binary_path="/usr/bin/llama-bench",
+        binary_status=LlamaBenchBinaryStatus.AVAILABLE,
+        probe_source="llama-bench --version",
+        message="unknown argument: --version",
+    )
+    observation = _observation(CPU_OUTPUT + "\nbuild: 689e227db (10357)\n")
+
+    enriched = enrich_capability_from_benchmark_output(capability, observation)
+
+    assert enriched.version_text == "build: 689e227db (10357)"
+    assert enriched.probe_source == "llama-bench benchmark output"
 
 
 def test_runner_parses_successful_process(tmp_path: Path) -> None:

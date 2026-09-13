@@ -10,7 +10,7 @@ front-end modules free of ``HfClient()``/``detect_hardware`` construction.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,11 +31,17 @@ from jaull.bootstrap.container import (
 from jaull.diagnostics.service import collect_diagnostics as _default_diagnostics
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
+    BenchmarkEnvironment,
     BenchmarkRecord,
     BenchmarkRequest,
     BenchmarkRunResult,
 )
 from jaull.domain.candidates import ModelCandidate
+from jaull.domain.cases import (
+    CaseValidationResult,
+    EvidenceFileReference,
+    ExperimentalCaseManifest,
+)
 from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.execution import ExecutionObservation, InferenceResult
 from jaull.domain.execution_plans import (
@@ -90,6 +96,7 @@ if TYPE_CHECKING:
         BenchmarkMatrixRunner,
     )
     from jaull.benchmarks.storage import BenchmarkStore
+    from jaull.cases.storage import CaseStore
     from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
     from jaull.execution.ports import ExecutionBackendProtocol
@@ -127,6 +134,7 @@ class AdvisorService:
     transformers_benchmark_runner: TransformersBenchmarkRunner | None = field(default=None)
     benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
     benchmark_store: BenchmarkStore | None = field(default=None)
+    case_store: CaseStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
     python_executable: str | Path | None = field(default=None)
@@ -541,7 +549,11 @@ class AdvisorService:
                 persist=persist,
             )
 
-        from jaull.runtime.llama_bench_capability import inspect_llama_bench
+        from jaull.observability.provenance import capture_git_commit
+        from jaull.runtime.llama_bench_capability import (
+            enrich_capability_from_benchmark_output,
+            inspect_llama_bench,
+        )
 
         installation = self._resolved_llama_cpp_installation()
         observation = self._llama_bench_runner().run(request)
@@ -550,11 +562,13 @@ class AdvisorService:
             llama_bench_path=installation.llama_bench,
             timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
         )
+        capability = enrich_capability_from_benchmark_output(capability, observation)
         record = BenchmarkRecord.create(
             hardware=hardware,
             request=request,
             observation=observation,
             llama_bench_capability=capability,
+            environment=BenchmarkEnvironment.capture(git_commit=capture_git_commit()),
         )
         persisted_path = self._benchmark_store().save(record) if persist else None
         return BenchmarkRunResult(record=record, persisted_path=persisted_path)
@@ -568,6 +582,7 @@ class AdvisorService:
     ) -> BenchmarkRunResult:
         from jaull.benchmarks.errors import BenchmarkUnavailableError
         from jaull.domain.runtime import PyTorchRuntimeStatus
+        from jaull.observability.provenance import capture_git_commit
 
         capability = self.inspect_pytorch_runtime()
         if capability.runtime_status is not PyTorchRuntimeStatus.AVAILABLE:
@@ -581,6 +596,7 @@ class AdvisorService:
             request=request,
             observation=observation,
             runtime_capability=capability,
+            environment=BenchmarkEnvironment.capture(git_commit=capture_git_commit()),
         )
         persisted_path = self._benchmark_store().save(record) if persist else None
         return BenchmarkRunResult(record=record, persisted_path=persisted_path)
@@ -599,6 +615,84 @@ class AdvisorService:
 
     def list_benchmark_ids(self) -> list[str]:
         return self._benchmark_store().list_ids()
+
+    def save_case_manifest(self, manifest: ExperimentalCaseManifest) -> Path:
+        return self._case_store().save(manifest)
+
+    def load_case_manifest(self, case_id: str) -> ExperimentalCaseManifest:
+        return self._case_store().load(case_id)
+
+    def list_case_ids(self) -> list[str]:
+        return self._case_store().list_ids()
+
+    def build_case_manifest(
+        self,
+        *,
+        experiment_id: str,
+        benchmark_ids: Sequence[str] = (),
+        evidence_files: Sequence[EvidenceFileReference] = (),
+        label: str | None = None,
+        notes: Sequence[str] = (),
+    ) -> ExperimentalCaseManifest:
+        """Derive a manifest from the experiment that anchors the case.
+
+        Loading the experiment here is what makes the identity trustworthy: the
+        fingerprint, artifact and runtime are read off the record rather than
+        retyped by whoever ran the command. A missing experiment raises, because
+        there is no case to describe without it.
+        """
+        from jaull.cases.validation import identity_for_experiment
+
+        record = self.load_experiment_record(experiment_id)
+        return ExperimentalCaseManifest(
+            identity=identity_for_experiment(record, label=label),
+            experiment_record_id=experiment_id,
+            benchmark_record_ids=tuple(benchmark_ids),
+            evidence_files=tuple(evidence_files),
+            notes=tuple(notes),
+        )
+
+    def validate_case(
+        self,
+        case_id: str,
+        *,
+        evidence_root: Path | None = None,
+    ) -> CaseValidationResult:
+        from jaull.cases.validation import CaseValidationService
+
+        manifest = self.load_case_manifest(case_id)
+        service = CaseValidationService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+            evidence_root=evidence_root or Path(),
+        )
+        return service.validate(manifest)
+
+    def export_case_bundle(
+        self,
+        case_id: str,
+        *,
+        destination: Path,
+        evidence_root: Path,
+    ) -> Path:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).export(
+            self.load_case_manifest(case_id),
+            destination=destination,
+            evidence_root=evidence_root,
+        )
+
+    def validate_case_bundle(self, root: Path) -> CaseValidationResult:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).validate(root)
 
     def benchmark_records_for_model(
         self,
@@ -1046,6 +1140,15 @@ class AdvisorService:
         object.__setattr__(self, "benchmark_store", fresh)
         return fresh
 
+    def _case_store(self) -> CaseStore:
+        if self.case_store is not None:
+            return self.case_store
+        from jaull.cases.storage import CaseStore
+
+        fresh = CaseStore()
+        object.__setattr__(self, "case_store", fresh)
+        return fresh
+
     def _benchmark_matrix_runner(self) -> BenchmarkMatrixRunner:
         if self.benchmark_matrix_runner is not None:
             return self.benchmark_matrix_runner
@@ -1201,6 +1304,7 @@ class AdvisorService:
         transformers_benchmark_runner: TransformersBenchmarkRunner | None = None,
         benchmark_matrix_runner: BenchmarkMatrixRunner | None = None,
         benchmark_store: BenchmarkStore | None = None,
+        case_store: CaseStore | None = None,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
         python_executable: str | Path | None = None,
@@ -1236,6 +1340,7 @@ class AdvisorService:
             transformers_benchmark_runner=transformers_benchmark_runner,
             benchmark_matrix_runner=benchmark_matrix_runner,
             benchmark_store=benchmark_store,
+            case_store=case_store,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
             python_executable=python_executable,
