@@ -37,6 +37,13 @@ class CaseOptions:
     as_json: bool = False
 
 
+@dataclass(frozen=True)
+class ExportCaseOptions:
+    destination: Path
+    evidence_root: Path = Path()
+    as_json: bool = False
+
+
 def run_create_case(
     options: CreateCaseOptions,
     advisor: AdvisorService | None = None,
@@ -162,6 +169,50 @@ def run_list_cases(
     return 0
 
 
+def run_export_case(
+    case_id: str,
+    options: ExportCaseOptions,
+    advisor: AdvisorService | None = None,
+) -> int:
+    console = make_console()
+    resolved = advisor or AdvisorService.default()
+    try:
+        path = resolved.export_case_bundle(
+            case_id,
+            destination=options.destination,
+            evidence_root=options.evidence_root,
+        )
+    except (CaseStoreError, ValueError) as exc:
+        _print_error(console, exc, options.as_json)
+        return 3
+
+    if options.as_json:
+        _write_json({"schema_version": 1, "case_id": case_id, "bundle_path": str(path)})
+    else:
+        console.print(f"Exported case bundle: {path}")
+    return 0
+
+
+def run_validate_case_bundle(
+    root: Path,
+    options: CaseOptions,
+    advisor: AdvisorService | None = None,
+) -> int:
+    console = make_console()
+    resolved = advisor or AdvisorService.default()
+    try:
+        result = resolved.validate_case_bundle(root)
+    except (CaseStoreError, ValueError) as exc:
+        _print_error(console, exc, options.as_json)
+        return 3
+
+    if options.as_json:
+        _write_json(result.model_dump(mode="json"))
+    else:
+        _render_validation(result, console)
+    return 0
+
+
 def _validate(
     advisor: AdvisorService,
     manifest: ExperimentalCaseManifest,
@@ -251,8 +302,11 @@ def _print_error(console: Console, exc: Exception, as_json: bool) -> None:
 __all__ = [
     "CaseOptions",
     "CreateCaseOptions",
+    "ExportCaseOptions",
     "run_create_case",
+    "run_export_case",
     "run_list_cases",
     "run_show_case",
     "run_validate_case",
+    "run_validate_case_bundle",
 ]

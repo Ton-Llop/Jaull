@@ -79,6 +79,32 @@ class _FakeAdvisor:
         )
         return service.validate(self._store.load(case_id))
 
+    def export_case_bundle(
+        self,
+        case_id: str,
+        *,
+        destination: Path,
+        evidence_root: Path,
+    ) -> Path:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).export(
+            self._store.load(case_id),
+            destination=destination,
+            evidence_root=evidence_root,
+        )
+
+    def validate_case_bundle(self, root: Path) -> Any:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).validate(root)
+
 
 def _install(monkeypatch: Any, advisor: _FakeAdvisor) -> None:
     monkeypatch.setattr(
@@ -226,6 +252,54 @@ def test_show_and_validate_read_back_a_saved_case(
     assert json.loads(shown.stdout)["case"]["identity"]["case_id"] == case_id
     assert json.loads(validated.stdout)["case_id"] == case_id
     assert json.loads(listed.stdout)["case_ids"] == [case_id]
+
+
+def test_export_and_offline_bundle_validation_do_not_depend_on_case_store(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    experiment = experiment_record()
+    benchmark = benchmark_record(context_length=4096)
+    advisor = _FakeAdvisor(tmp_path, experiment, [benchmark])
+    _install(monkeypatch, advisor)
+    manifest = advisor.build_case_manifest(
+        experiment_id=experiment.identity.experiment_id,
+        benchmark_ids=[benchmark.identity.benchmark_id],
+    )
+    advisor.save_case_manifest(manifest)
+    destination = tmp_path / "portable"
+    runner = CliRunner()
+
+    exported = runner.invoke(
+        app,
+        [
+            "experiments",
+            "case",
+            "export",
+            manifest.identity.case_id,
+            str(destination),
+            "--json",
+        ],
+        catch_exceptions=False,
+    )
+    validated = runner.invoke(
+        app,
+        [
+            "experiments",
+            "case",
+            "bundle",
+            "validate",
+            str(destination),
+            "--json",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert exported.exit_code == 0
+    assert json.loads(exported.stdout)["bundle_path"] == str(destination)
+    assert validated.exit_code == 0
+    payload = json.loads(validated.stdout)
+    assert payload["case_id"] == manifest.identity.case_id
+    assert payload["checks"][0]["name"] == "bundle_integrity"
 
 
 def test_validating_an_absent_case_exits_three(tmp_path: Path, monkeypatch: Any) -> None:

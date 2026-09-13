@@ -668,6 +668,32 @@ class AdvisorService:
         )
         return service.validate(manifest)
 
+    def export_case_bundle(
+        self,
+        case_id: str,
+        *,
+        destination: Path,
+        evidence_root: Path,
+    ) -> Path:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).export(
+            self.load_case_manifest(case_id),
+            destination=destination,
+            evidence_root=evidence_root,
+        )
+
+    def validate_case_bundle(self, root: Path) -> CaseValidationResult:
+        from jaull.cases.bundle import CaseBundleService
+
+        return CaseBundleService(
+            load_experiment=self.load_experiment_record,
+            load_benchmark=self.load_benchmark_record,
+        ).validate(root)
+
     def benchmark_records_for_model(
         self,
         model_identity: ModelIdentity,

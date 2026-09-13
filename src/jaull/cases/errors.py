@@ -23,7 +23,12 @@ class InvalidCaseIdError(CaseStoreError):
     """The case id cannot be mapped safely to a local path."""
 
 
+class CaseBundleError(CaseStoreError):
+    """A portable case bundle could not be created, read or verified."""
+
+
 __all__ = [
+    "CaseBundleError",
     "CaseManifestNotFoundError",
     "CaseStoreError",
     "InvalidCaseIdError",

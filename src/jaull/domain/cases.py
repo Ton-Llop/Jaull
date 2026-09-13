@@ -31,6 +31,7 @@ from jaull.domain.artifacts import ArtifactIdentity
 from jaull.domain.runtime import RuntimeName
 
 CASE_MANIFEST_SCHEMA_VERSION = 1
+CASE_BUNDLE_SCHEMA_VERSION = 1
 
 # The same shape the experiment and benchmark stores accept, because a case id
 # becomes a filename under the same rules.
@@ -153,6 +154,87 @@ class EvidenceFileReference(BaseModel):
         return value
 
 
+class CaseBundleFile(BaseModel):
+    """One immutable file copied into a portable case bundle."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    sha256: str
+    size_bytes: int = Field(ge=0)
+
+    @field_validator("path")
+    @classmethod
+    def _path_is_safe(cls, value: str) -> str:
+        return EvidenceFileReference._path_is_relative(value)
+
+
+class CaseBundleBenchmarkFile(CaseBundleFile):
+    """A benchmark snapshot and the id it serves inside the bundle."""
+
+    benchmark_id: str
+
+    @field_validator("benchmark_id")
+    @classmethod
+    def _id_is_safe(cls, value: str) -> str:
+        if not _SAFE_ID_RE.match(value):
+            raise ValueError(f"benchmark_id is not a safe identifier: {value!r}")
+        return value
+
+
+class CaseBundleEvidenceFile(CaseBundleFile):
+    """A copied evidence file and the original case reference it fulfils."""
+
+    reference: EvidenceFileReference
+
+
+class ExperimentalCaseBundleManifest(BaseModel):
+    """Index for a portable, offline snapshot of one experimental case.
+
+    The records themselves remain separate JSON files so reviewers can inspect
+    their canonical shapes directly. This index says which exact bytes belong
+    to the bundle and makes corruption detectable before a case is evaluated.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: int = CASE_BUNDLE_SCHEMA_VERSION
+    exported_at: datetime
+    jaull_version: str
+    git_commit: str | None = None
+    case_file: CaseBundleFile
+    experiment_file: CaseBundleFile
+    benchmark_files: tuple[CaseBundleBenchmarkFile, ...] = ()
+    evidence_files: tuple[CaseBundleEvidenceFile, ...] = ()
+
+    @field_validator("exported_at")
+    @classmethod
+    def _exported_at_is_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("exported_at must be timezone-aware")
+        return value
+
+    @model_validator(mode="after")
+    def _supported_schema_version(self) -> Self:
+        if self.schema_version != CASE_BUNDLE_SCHEMA_VERSION:
+            raise ValueError(
+                "Unsupported ExperimentalCaseBundleManifest schema_version: "
+                f"{self.schema_version}"
+            )
+        paths = [
+            self.case_file.path,
+            self.experiment_file.path,
+            *(item.path for item in self.benchmark_files),
+            *(item.path for item in self.evidence_files),
+        ]
+        if len(set(paths)) != len(paths):
+            raise ValueError("bundle files must use unique paths")
+        ids = [item.benchmark_id for item in self.benchmark_files]
+        if len(set(ids)) != len(ids):
+            raise ValueError("bundle benchmark files must use unique ids")
+        return self
+
+
 class ExperimentalCaseManifest(BaseModel):
     """The case itself: identity, the records it groups, and its raw evidence."""
 
@@ -239,12 +321,17 @@ class CaseValidationResult(BaseModel):
 
 
 __all__ = [
+    "CASE_BUNDLE_SCHEMA_VERSION",
     "CASE_MANIFEST_SCHEMA_VERSION",
+    "CaseBundleBenchmarkFile",
+    "CaseBundleEvidenceFile",
+    "CaseBundleFile",
     "CaseCheck",
     "CaseConsistencyStatus",
     "CaseValidationResult",
     "EvidenceFileReference",
     "EvidenceFileRole",
+    "ExperimentalCaseBundleManifest",
     "ExperimentalCaseIdentity",
     "ExperimentalCaseManifest",
 ]
