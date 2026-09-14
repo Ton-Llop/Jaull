@@ -17,7 +17,7 @@ from jaull.recommendation.models import ModelRecommendation
 from jaull.reporting.estimation import estimate_to_json_dict
 from jaull.workflow.state import RecommendationWorkflowState
 
-REPORT_SCHEMA_VERSION = 1
+REPORT_SCHEMA_VERSION = 2
 
 
 def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
@@ -32,6 +32,7 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             "candidate_count": len(state.candidates),
             "evaluated_count": len(state.evaluated_candidates),
         },
+        "workflow_telemetry": _telemetry_to_dict(state),
         "evaluated_candidates": [
             _evaluated_to_dict(item) for item in state.evaluated_candidates
         ],
@@ -241,6 +242,27 @@ def _requirements_to_dict(
         "commercial_use_required": req.commercial_use_required,
         "pipeline_tag": req.pipeline_tag,
         "preferred_formats": list(req.preferred_formats),
+    }
+
+
+def _telemetry_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
+    """Technical run timing, separate from recommendation semantics."""
+    telemetry = state.telemetry
+    return {
+        "wall_seconds": telemetry.get("duration.total"),
+        "phase_seconds": {
+            key.removeprefix("duration."): value
+            for key, value in telemetry.items()
+            if key.startswith("duration.") and key != "duration.total"
+        },
+        "counters": {
+            key.removeprefix("count."): value
+            for key, value in telemetry.items()
+            if key.startswith("count.")
+        },
+        "candidate_latency": [
+            item.model_dump(mode="json") for item in state.candidate_latency
+        ],
     }
 
 

@@ -11,6 +11,7 @@ snapshot in ``tests/snapshots/`` — never to relax this test.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -36,7 +37,12 @@ def _canonical_state():
 
 
 def _redact_timestamp_json(text: str) -> str:
-    return re.sub(r'"timestamp": "[^"]+"', '"timestamp": "<redacted>"', text)
+    payload = json.loads(text)
+    payload["timestamp"] = "<redacted>"
+    # Timings are intentionally non-deterministic. Their shape is asserted in
+    # the dedicated test below; semantic report snapshots stay stable.
+    payload.pop("workflow_telemetry", None)
+    return json.dumps(payload, indent=2, sort_keys=False) + "\n"
 
 
 def _redact_timestamp_markdown(text: str) -> str:
@@ -59,3 +65,15 @@ def test_report_markdown_is_byte_identical_to_snapshot() -> None:
     actual = _redact_timestamp_markdown(report_to_markdown(state))
     expected = (SNAPSHOT_DIR / "report.md").read_text(encoding="utf-8")
     assert actual == expected
+
+
+def test_report_json_exposes_technical_latency_separately() -> None:
+    from jaull.recommendation.report import report_to_dict
+
+    payload = report_to_dict(_canonical_state())
+    telemetry = payload["workflow_telemetry"]
+    assert payload["schema_version"] == 2
+    assert telemetry["wall_seconds"] is not None
+    assert isinstance(telemetry["phase_seconds"], dict)
+    assert isinstance(telemetry["counters"], dict)
+    assert telemetry["candidate_latency"]

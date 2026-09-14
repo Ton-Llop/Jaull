@@ -12,7 +12,7 @@ from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.model import ModelAnalysis
 from jaull.huggingface.client import HfClientProtocol
-from jaull.ports.cache import ModelAnalysisCacheProtocol
+from jaull.ports.cache import GgufHeaderCacheProtocol, ModelAnalysisCacheProtocol
 from jaull.recommendation.capability import (
     CapabilityAnalyzer,
     MetadataCapabilityAnalyzer,
@@ -37,10 +37,12 @@ class ServiceContainer:
     )
     range_client_factory: Callable[[], object] | None = field(default=None)
     model_analysis_cache: ModelAnalysisCacheProtocol | None = field(default=None)
+    gguf_header_cache: GgufHeaderCacheProtocol | None = field(default=None)
 
     @classmethod
     def default(cls) -> ServiceContainer:
         """Build the production container."""
+        from jaull.adapters.cache.gguf_header_cache import GgufHeaderCache
         from jaull.adapters.cache.model_analysis_cache import ModelAnalysisCache
         from jaull.discovery.search_client import HfSearchClient
         from jaull.estimator.service import estimate_memory
@@ -60,6 +62,7 @@ class ServiceContainer:
             capability_analyzer=MetadataCapabilityAnalyzer(),
             range_client_factory=HttpxRangeClient,
             model_analysis_cache=ModelAnalysisCache(),
+            gguf_header_cache=GgufHeaderCache(),
         )
 
 

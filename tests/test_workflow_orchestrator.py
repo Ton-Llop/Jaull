@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+import time
+from contextlib import suppress
 from pathlib import Path
 
 from jaull.domain.candidates import SearchQuery
@@ -334,6 +336,143 @@ def test_persistent_cache_avoids_second_run_inspection(tmp_path: Path) -> None:
     assert cold.telemetry["count.persistent_cache_misses"] == 1
     assert warm.telemetry["count.persistent_cache_hits"] == 1
     assert warm.telemetry.get("count.deep_inspections", 0) == 0
+
+
+def test_candidate_latency_distinguishes_cold_and_warm_inspection(tmp_path: Path) -> None:
+    repo_id = "org/Coder-7B"
+    search = _search_with(repo_id)
+
+    def inspect_model(repo_id: str, client: object = None) -> object:
+        del client
+        time.sleep(0.01)
+        return transformers_analysis(repo_id=repo_id)
+
+    base = _container(search)
+    first = ServiceContainer(
+        hf_client=base.hf_client,
+        search_client=search,
+        detect_hardware=base.detect_hardware,
+        inspect_model=inspect_model,  # type: ignore[arg-type]
+        estimate_memory=base.estimate_memory,
+        model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+    )
+    cold = orchestrator.run_workflow(answers(), hardware(), first)
+    warm = orchestrator.run_workflow(
+        answers(),
+        hardware(),
+        ServiceContainer(
+            hf_client=base.hf_client,
+            search_client=search,
+            detect_hardware=base.detect_hardware,
+            inspect_model=inspect_model,  # type: ignore[arg-type]
+            estimate_memory=base.estimate_memory,
+            model_analysis_cache=ModelAnalysisCache(root=tmp_path),
+        ),
+    )
+
+    assert len(cold.candidate_latency) == len(warm.candidate_latency) == 1
+    cold_timing, warm_timing = cold.candidate_latency[0], warm.candidate_latency[0]
+    assert cold_timing.repo_id == warm_timing.repo_id == repo_id
+    assert cold_timing.persistent_cache_hit is False
+    assert cold_timing.deep_inspection_seconds >= 0.01
+    assert cold_timing.estimation_attempts >= 1
+    assert warm_timing.persistent_cache_hit is True
+    assert warm_timing.deep_inspection_seconds == 0.0
+    assert warm_timing.estimation_attempts >= 1
+    assert cold.telemetry["duration.total"] > 0
+    assert warm.telemetry["duration.total"] > 0
+
+
+def test_dtype_ladder_reuses_safetensors_summary_within_one_run() -> None:
+    repo_id = "org/Slow-Metadata-7B"
+
+    class CountingClient(FakeHfClient):
+        def __init__(self) -> None:
+            self.summary_calls = 0
+
+        def safetensors_summary(self, repo_id: str) -> object:
+            del repo_id
+            self.summary_calls += 1
+            return None
+
+    client = CountingClient()
+    estimator = size_driven_estimator(vram_budget=4 * GIB)
+
+    def estimate_memory(**kwargs: object) -> object:
+        analysis = kwargs["analysis"]
+        hf_client = kwargs["client"]
+        assert isinstance(analysis, type(transformers_analysis()))
+        hf_client.safetensors_summary(analysis.repo.repo_id)  # type: ignore[union-attr]
+        return estimator(analysis, kwargs["inference_cfg"])  # type: ignore[arg-type]
+
+    base = _container(_search_with(repo_id))
+    state = orchestrator.run_workflow(
+        answers(),
+        hardware(),
+        ServiceContainer(
+            hf_client=client,
+            search_client=base.search_client,
+            detect_hardware=base.detect_hardware,
+            inspect_model=lambda repo_id, client=None: transformers_analysis(repo_id=repo_id),
+            estimate_memory=estimate_memory,  # type: ignore[arg-type]
+        ),
+    )
+
+    assert client.summary_calls == 1
+    assert state.candidate_latency[0].estimation_attempts == 3
+    assert state.telemetry["count.run_safetensors_summary_cache_misses"] == 1
+    assert state.telemetry["count.run_safetensors_summary_cache_hits"] == 2
+
+
+def test_dtype_ladder_reuses_base_metadata_and_negative_config_lookup() -> None:
+    repo_id = "org/Repeated-Base-Metadata-7B"
+
+    class CountingClient(FakeHfClient):
+        def __init__(self) -> None:
+            self.model_info_calls = 0
+            self.download_calls = 0
+
+        def model_info(self, repo_id: str) -> object:
+            del repo_id
+            self.model_info_calls += 1
+            return object()
+
+        def download_small_file(self, repo_id: str, filename: str) -> object:
+            del repo_id, filename
+            self.download_calls += 1
+            raise ModelNotFoundError("base repository does not exist")
+
+    client = CountingClient()
+    estimator = size_driven_estimator(vram_budget=4 * GIB)
+
+    def estimate_memory(**kwargs: object) -> object:
+        metadata_client = kwargs["client"]
+        metadata_client.model_info("base/model")  # type: ignore[union-attr]
+        with suppress(ModelNotFoundError):
+            metadata_client.download_small_file("base/model", "config.json")  # type: ignore[union-attr]
+        return estimator(kwargs["analysis"], kwargs["inference_cfg"])  # type: ignore[arg-type]
+
+    base = _container(_search_with(repo_id))
+    state = orchestrator.run_workflow(
+        answers(),
+        hardware(),
+        ServiceContainer(
+            hf_client=client,
+            search_client=base.search_client,
+            detect_hardware=base.detect_hardware,
+            inspect_model=lambda repo_id, client=None: transformers_analysis(repo_id=repo_id),
+            estimate_memory=estimate_memory,  # type: ignore[arg-type]
+        ),
+    )
+
+    assert client.model_info_calls == 1
+    assert client.download_calls == 1
+    assert state.candidate_latency[0].estimation_attempts == 3
+    assert state.telemetry["count.run_model_info_cache_misses"] == 1
+    assert state.telemetry["count.run_model_info_cache_hits"] == 2
+    assert state.telemetry["count.run_small_file_cache_misses"] == 1
+    assert state.telemetry["count.run_small_file_cache_hits"] == 2
+    assert state.telemetry["count.run_small_file_negative_cache_hits"] == 2
 
 
 def test_changed_repository_revision_invalidates_only_that_repo(

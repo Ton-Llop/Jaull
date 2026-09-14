@@ -7,7 +7,9 @@ from pydantic import ValidationError
 from rich.console import Console
 
 from jaull.domain.comparison import (
+    ComparisonSemantics,
     CompatibilityOutcome,
+    MemoryObservationSource,
     MetricComparison,
     MetricComparisonAvailability,
 )
@@ -31,6 +33,10 @@ from jaull.domain.execution import (
     ExecutionFailureReason,
     ExecutionMeasurementMetadata,
     ExecutionObservation,
+    RuntimeBuffer,
+    RuntimeBufferCategory,
+    RuntimeBufferLocation,
+    RuntimeReportedAllocation,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.model import ModelRepositoryInfo
@@ -865,3 +871,179 @@ def test_the_ram_refusal_does_not_blame_a_breakdown_that_exists() -> None:
     assert fit.ram_weight_bytes > 0, "the breakdown the old reason denied"
     assert "host/device breakdown" not in reason
     assert "RSS" in reason
+
+
+# ----------------------------------------------------------------------
+# The runtime-reported observation source
+# ----------------------------------------------------------------------
+
+
+def _allocation(
+    *,
+    model: int | None = 600,
+    kv: int | None = 300,
+    compute: int | None = 40,
+) -> RuntimeReportedAllocation:
+    """A runtime report in the same round numbers as ``_fit``."""
+    buffers = []
+    for category, value in (
+        (RuntimeBufferCategory.MODEL, model),
+        (RuntimeBufferCategory.KV, kv),
+        (RuntimeBufferCategory.COMPUTE, compute),
+    ):
+        if value is None:
+            continue
+        buffers.append(
+            RuntimeBuffer(
+                category=category,
+                location=RuntimeBufferLocation.DEVICE,
+                bytes=value,
+                raw_label=f"CUDA0 {category.value}",
+            )
+        )
+    # Host-pinned buffers must never reach the device total.
+    buffers.append(
+        RuntimeBuffer(
+            category=RuntimeBufferCategory.COMPUTE,
+            location=RuntimeBufferLocation.HOST,
+            bytes=99_999,
+            raw_label="CUDA_Host compute",
+        )
+    )
+    return RuntimeReportedAllocation(
+        runtime="llama.cpp",
+        device="CUDA0",
+        runtime_build="689e227db",
+        buffers=tuple(buffers),
+    )
+
+
+def _observation_with_allocation(
+    allocation: RuntimeReportedAllocation,
+    *,
+    vram: int | None = None,
+) -> ExecutionObservation:
+    return _observation(ram=700, vram=vram).model_copy(
+        update={"runtime_allocation": allocation}
+    )
+
+
+def test_the_runtime_report_is_used_when_the_driver_has_no_figure() -> None:
+    """NVML cannot attribute per process under WDDM; the runtime still can."""
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram.source is MemoryObservationSource.RUNTIME_REPORTED_ALLOCATION
+    assert comparison.vram.driver_confirmed is False
+    assert comparison.vram.runtime == "llama.cpp"
+    # 600 + 300 + 40, with the pinned host buffer excluded.
+    assert comparison.vram.measured_bytes == 940
+
+
+def test_the_driver_figure_wins_when_both_exist() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation(), vram=1234),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.measured_bytes == 1234
+    assert comparison.vram.source is MemoryObservationSource.NVML_PROCESS_ALLOCATION
+    assert comparison.vram.driver_confirmed is True
+
+
+def test_the_error_convention_is_measured_minus_predicted() -> None:
+    """Negative means Jaull overestimated. Predicted physical is 1000."""
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram.predicted_bytes == 1000
+    assert comparison.vram.error_bytes == 940 - 1000
+    assert comparison.vram.error_percent == pytest.approx(-6.0)
+
+
+def test_components_separate_a_direct_pair_from_a_proxy_one() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    by_name = {c.component: c for c in comparison.vram_components}
+    assert by_name["gpu_weight_bytes"].semantics is ComparisonSemantics.DIRECT
+    assert by_name["gpu_kv_cache_bytes"].semantics is ComparisonSemantics.DIRECT
+    overhead = by_name["gpu_overhead_bytes"]
+    assert overhead.semantics is ComparisonSemantics.PROXY
+    assert "CUDA context" in (overhead.semantics_reason or "")
+    # The breakdown is what shows which term carries the error.
+    assert by_name["gpu_weight_bytes"].metric.error_bytes == 0
+    assert overhead.metric.error_bytes == 40 - 100
+
+
+def test_the_overhead_proxy_reason_warns_against_calibrating_on_it() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    overhead = next(
+        c for c in comparison.vram_components if c.component == "gpu_overhead_bytes"
+    )
+    assert "calibrate" in (overhead.semantics_reason or "")
+
+
+def test_an_unverified_placement_disables_the_components_too() -> None:
+    """The historical runs compared 17 predicted blocks against 16 + output.
+
+    A component comparison over a placement that cannot be verified attributes
+    the difference to the memory model when it belongs to the placement.
+    """
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit(mode=HardwareFitMode.GPU_OFFLOAD)),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=None),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert comparison.vram_components
+    for component in comparison.vram_components:
+        assert component.semantics is ComparisonSemantics.UNAVAILABLE
+        assert component.metric.availability is (
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+        )
+
+
+def test_a_category_the_runtime_did_not_report_stays_unavailable() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation_with_allocation(_allocation(kv=None)),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    kv = next(
+        c for c in comparison.vram_components if c.component == "gpu_kv_cache_bytes"
+    )
+    assert kv.metric.availability is (
+        MetricComparisonAvailability.MEASUREMENT_UNAVAILABLE
+    )
+
+
+def test_without_a_runtime_report_there_is_no_breakdown() -> None:
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_fit()),
+        observation=_observation(ram=700, vram=900),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+
+    assert comparison.vram_components == ()
+    assert comparison.vram.source is MemoryObservationSource.NVML_PROCESS_ALLOCATION

@@ -34,6 +34,9 @@ def test_execution_observation_success_serializes_measurement_metadata() -> None
             "vram_measurement": "nvml_process_memory",
             "sample_interval_seconds": 0.05,
         },
+        # A runtime's own memory report, when one was parsed. ``peak_vram_bytes``
+        # above stays the driver's view; this is a separate observation source.
+        "runtime_allocation": None,
     }
 
 

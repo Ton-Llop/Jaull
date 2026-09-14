@@ -15,6 +15,25 @@ from jaull.recommendation.models import ModelRecommendation
 from jaull.workflow.models import WorkflowProgress, WorkflowStep
 
 
+class CandidateLatency(BaseModel):
+    """Technical timing for one shortlist candidate in a single workflow run.
+
+    This is observability data, not a recommendation input or persisted model
+    measurement. It deliberately distinguishes wall time from the concurrent
+    aggregate counters held in ``telemetry``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    repo_id: str
+    total_seconds: float
+    persistent_cache_lookup_seconds: float = 0.0
+    deep_inspection_seconds: float = 0.0
+    estimation_seconds: float = 0.0
+    persistent_cache_hit: bool | None = None
+    estimation_attempts: int = 0
+
+
 class RecommendationWorkflowState(BaseModel):
     """Everything known about one guided run."""
 
@@ -35,6 +54,7 @@ class RecommendationWorkflowState(BaseModel):
     # Set when the run ended with nothing to recommend but no hard failure.
     no_results_reason: list[str] = Field(default_factory=list)
     telemetry: dict[str, float | int] = Field(default_factory=dict)
+    candidate_latency: list[CandidateLatency] = Field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -64,4 +84,4 @@ class RecommendationWorkflowState(BaseModel):
         )
 
 
-__all__ = ["RecommendationWorkflowState"]
+__all__ = ["CandidateLatency", "RecommendationWorkflowState"]

@@ -29,6 +29,7 @@ from jaull.exceptions import (
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata import base_model_resolver, config_merger, range_reader
 from jaull.metadata.range_reader import HttpRangeClient
+from jaull.ports.cache import GgufHeaderCacheProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def enrich(
     client: HfClientProtocol,
     *,
     range_client: HttpRangeClient | None = None,
+    header_cache: GgufHeaderCacheProtocol | None = None,
     hf_token: str | None = None,
 ) -> EnrichmentResult:
     """Resolve the base model and combine its config with the GGUF header.
@@ -70,13 +72,18 @@ def enrich(
         warnings.append(f"Could not re-read model info while enriching: {exc}")
 
     gguf_header: GgufHeaderMetadata | None = None
-    if variant is not None and range_client is not None:
-        gguf_header = _read_variant_header(
-            variant=variant,
-            repo_id=analysis.repo.repo_id,
-            range_client=range_client,
-            warnings=warnings,
-        )
+    if variant is not None:
+        if header_cache is not None:
+            gguf_header = header_cache.get(analysis, variant)
+        if gguf_header is None and range_client is not None:
+            gguf_header = _read_variant_header(
+                variant=variant,
+                repo_id=analysis.repo.repo_id,
+                range_client=range_client,
+                warnings=warnings,
+            )
+            if gguf_header is not None and header_cache is not None:
+                header_cache.put(analysis, variant, gguf_header)
 
     base_resolution = base_model_resolver.resolve_base_model(
         model_info=model_info,
