@@ -102,8 +102,28 @@ Unifico la planificació d'execució, que estava escampada entre la CLI, la TUI 
 
 Endureixo la correctitud de l'estimador i el matching de l'evidència local (que un benchmark d'una altra màquina o d'una altra quantització no compti com a prova). Afegeixo límits al placement dels pesos que no són blocs, és a dir els embeddings i el cap de sortida, que mai es mouen igual que les capes.
 
+## 10–11/09 — Manifest de casos experimentals
+
+Lligo un experiment amb els seus benchmarks i els logs originals com una sola cosa, sense duplicar cap mesura, i el manifest diu si el cas és `valid`, `partial` o `inconsistent` amb el motiu concret. De passada tanco tres forats que arrossegava: ara es guarden el commit de git, el comando executat i el backend observat.
+
+## 13/09 — Bundles i primer baseline
+
+Els casos s'exporten a bundles portables, i faig el primer baseline de debò amb Qwen2.5-7B a la 2060. Surt incòmode i per això val la pena: la política automàtica dona 21,5 tok/s i demanar-ho tot a mà en dona 59,4, per estalviar 133 MiB.
+
+## 13/09 — La política regalava rendiment
+
+La fórmula tenia tres biaixos cap al mateix costat: dividia tots els pesos entre els blocs, restava el KV sencer, i no podia arribar mai a «totes». Corregit i tornat a mesurar, de 20,6 a 44,9 tok/s.
+
+## 13/09 — Per què no puc comparar la VRAM
+
+Ho donava per pendent i resulta que no és cosa meva: amb la GPU en mode WDDM, que és tota GeForce amb pantalla, NVML no atribueix memòria per procés — comprovat des de Windows i des de WSL2. I el motiu que el codi donava per la RAM era fals: l'obstacle és el `mmap`, que fa que el RSS no es mogui encara que canviï la col·locació.
+
+## 14/09 — Llegir el GGUF en comptes d'endevinar-lo
+
+Estimava els bytes dels embeddings i del cap de sortida projectant el config, que no prova res sobre l'artefacte real; ara llegeixo el tensor table. La comprovació que més m'agrada: els descriptors reprodueixen els buffers que llama.cpp va registrar fa un mes amb 0,01 MiB d'error.
+
 ---
 
 ## Ara mateix
 
-Estic muntant el **manifest de casos experimentals**: lligar un experiment amb els seus benchmarks i els logs originals com una sola cosa, sense duplicar cap mesura. La idea és poder comparar la 2060 amb la 4060 sense barrejar evidència de runs diferents i sabent en tot moment què falta de cada cas.
+La política ja és correcta i el que queda és una constant: falten 27 MB per pujar una unitat més, amb 768 MiB retinguts per prudència. Per tocar-ho necessito mesures de més d'una màquina, i el baseline 2060 contra 4060 haurà d'anar de rendiment i col·locació, perquè cap de les dues em donarà VRAM per procés.

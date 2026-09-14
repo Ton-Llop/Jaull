@@ -1,0 +1,17 @@
+{
+  "stdout": "\n\nLoading model... \n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10357-689e227db\nmodel      : /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf\nftype      : Q4_K - Medium\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n\n> In one short sentence, explain what a local language model is.\nA local language model is a machine learning model designed to process and generate text in a specific language, optimized for local language features and contexts.\n\n[ Prompt: 142.8 t/s | Generation: 24.7 t/s ]\n\n\nExiting...\n",
+  "stderr": "",
+  "observation": {
+    "success": true,
+    "duration_seconds": 18.074094055002206,
+    "peak_ram_bytes": 4940369920,
+    "peak_vram_bytes": null,
+    "exit_code": 0,
+    "failure_reason": null,
+    "measurement": {
+      "ram_measurement": "process_rss",
+      "vram_measurement": "nvml_process_memory",
+      "sample_interval_seconds": 0.05
+    }
+  }
+}
