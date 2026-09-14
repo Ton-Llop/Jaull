@@ -39,13 +39,20 @@ class ParameterCount(BaseModel):
 
 
 class ConfigParameterDecomposition(BaseModel):
-    """Parameter split inferred from a supported dense transformer config."""
+    """Parameter split inferred from a supported dense transformer config.
+
+    Embedding and output-head parameters are separate architectural components.
+    Their presence here does not imply equal artifact byte fractions or any
+    runtime placement rule.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     total_parameters: int
     transformer_block_parameters: int
     non_block_parameters: int
+    embedding_parameters: int = 0
+    output_head_parameters: int = 0
     total_transformer_blocks: int
 
 
@@ -177,6 +184,8 @@ def _parameter_components(
         total_parameters=total_parameters,
         transformer_block_parameters=transformer_block_parameters,
         non_block_parameters=non_block_parameters,
+        embedding_parameters=embedding_parameters,
+        output_head_parameters=output_head_parameters,
         total_transformer_blocks=layers,
     )
 

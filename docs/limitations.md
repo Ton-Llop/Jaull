@@ -106,7 +106,18 @@ README roadmap says so.
 - Transformers execution exists only through the TUI, via an isolated Python worker.
 - Runtime recommendations shown by `estimate` and by guided mode are **generated, not
   executed**, and assume a standard runtime install.
-- The llama.cpp layer split assumes uniform layer sizes — a documented approximation.
+- Preliminary llama.cpp layer selection still uses an aggregate block approximation.
+  Prepared local launches can use actual GGUF tensor descriptor sizes, but only for the
+  verified `689e227db` build, dense `qwen2` with separate input/output tensors and one
+  confirmed discrete CUDA GPU. Unknown builds, layouts and tensor types fall back with
+  a reason. This does not yet generalize to tied output weights, MoE, multi-GPU or other
+  backends. See [local launch refinement](estimation.md#optional-local-gguf-launch-refinement).
+- Tensor descriptors give stored bytes, not physical CUDA allocations. The local reader
+  neither reads payloads nor rehashes the artifact; it relies on artifact preparation's
+  verification, checks file bounds and detects size/mtime changes during inspection.
+  A same-size replacement after verification is not ruled out by this reader alone.
+  Runtime allocation, repacking, buffers and concurrent VRAM use can still cause a launch
+  failure. The existing reserve/headroom remain heuristics, not an OOM guarantee.
 - The vLLM shortlist is intentionally narrow. The real support matrix is broader; consult
   vLLM's documentation if your architecture is not listed.
 - Peak RAM is sampled every 50 ms, so very short spikes may be underestimated.
@@ -129,9 +140,29 @@ README roadmap says so.
   heuristic. It models allocations that really happen (allocator, compute and activation
   buffers), so its error is a calibration result rather than a methodological mismatch —
   but expect it to dominate the reported error until it is calibrated.
-- RAM comparison is only available for CPU-only or non-offloaded configurations, because
-  Jaull does not yet have a runtime-specific mapping from transformer-block placement to
-  observed host/device allocations under offload.
+- **Process-attributed VRAM cannot be measured on a consumer GPU in WDDM mode**, which is
+  every GeForce driving a display on Windows — and the same card seen from WSL2. NVML lists
+  the running processes but reports `usedGpuMemory` as unavailable for all of them, so
+  `ExecutionObservation.peak_vram_bytes` is `None` and the VRAM comparison has no measured
+  side to compare against. Measured on this project's RTX 2060 (driver 616.92): from
+  Windows, NVML returned 31 processes with `usedGpuMemory = None` for every one and
+  `nvidia-smi --query-compute-apps` printed `[N/A]` in the memory column; from WSL2 the
+  same query returned an empty list while a CUDA process held ~1.9 GiB. `nvidia-smi -q`
+  reports `Driver Model: WDDM`. This is a platform limit, not a missing feature: it does
+  not improve by switching between WSL and native Windows, and it will not improve on
+  another consumer GPU operating under the same WDDM constraints. A datacenter GPU on Linux
+  without a display attached does report per-process memory. Device-wide memory readings
+  remain available, but they include every other consumer on the card and are not comparable
+  with a planning budget.
+- RAM comparison is only available for CPU-only or non-offloaded configurations. Under
+  offload the obstacle is not a missing host/device split — `HardwareFitResult` carries
+  `ram_weight_bytes`, `ram_kv_cache_bytes` and `ram_overhead_bytes` — but the measurement:
+  llama.cpp maps the whole model file, and the pages it reads to upload weights to the
+  device stay resident, so peak RSS tracks the artifact rather than the placement. The
+  B001-R4 baseline measured 4723 MiB of peak RSS with 24 of 29 units offloaded and 4724 MiB
+  with all of them, against a predicted host share of 1742 MiB and a 4466 MiB artifact. RSS
+  did not move when the placement did, so comparing the two would report a ~171% error that
+  describes the page cache, not the memory model.
 - Benchmark comparison deliberately produces no single winner score, and warns instead of
   ranking when records come from different machines or methodologies.
 

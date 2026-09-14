@@ -418,8 +418,9 @@ class _FakeAdvisor:
         *,
         hardware: object | None = None,
         on_progress: object | None = None,
+        for_benchmark: bool = False,
     ) -> PreparedExecutionPlan:
-        del hardware
+        del hardware, for_benchmark
         self.operations.append("prepare_plan")
         self.prepared_plans.append(plan)
         if callable(on_progress):

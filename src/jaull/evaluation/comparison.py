@@ -20,8 +20,10 @@ from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 
 _RAM_GPU_UNAVAILABLE_REASON = (
-    "MemoryEstimate does not preserve a host/device breakdown for the selected "
-    "GPU-offloaded runtime, so process RSS is not comparable."
+    "Peak process RSS does not measure host memory demand under GPU offload: "
+    "llama.cpp maps the whole model file, and the pages it reads to upload "
+    "weights to the device stay resident, so RSS reflects the artifact size "
+    "rather than the host share of the placement."
 )
 _VRAM_NO_FIT_REASON = (
     "MemoryEstimate carries no structured hardware fit, so there is no "
@@ -212,6 +214,21 @@ def _predicted_ram(
     estimate: MemoryEstimate,
     runtime: RuntimeRecommendation | None,
 ) -> tuple[int | None, MetricComparisonAvailability | None, str | None]:
+    """The host figure comparable with peak RSS, when there is one.
+
+    On CPU-only runs there is: the prediction is every weight byte plus the KV
+    cache and the overhead, and RSS covers exactly that, mapped model included.
+
+    Under offload there is not, and a host/device split would not rescue it.
+    ``HardwareFitResult`` does carry ``ram_weight_bytes`` and friends, so the
+    breakdown exists — but RSS does not follow it. The B001-R4 baseline measured
+    the same 4723 MiB peak RSS with 24 of 29 units offloaded and with all of
+    them, against a predicted host share of 1742 MiB; the total artifact is
+    4466 MiB. RSS tracked the mapped file, not the placement, and did not move
+    when the placement did. Comparing the two would report a 171% error that
+    says nothing about the memory model.
+    """
+
     if _uses_gpu_memory(estimate, runtime):
         return (
             None,

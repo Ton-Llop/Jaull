@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from jaull.application.execution import (
@@ -140,11 +142,11 @@ def test_no_estimate_bare_recommendation_is_unknown_confidence() -> None:
 
 # ---------------------------------------------------------------------------
 # Routing: the TUI's prepare_execution_plan must obtain its runtime from the
-# planner, evaluate the policy once, and feed the same resolved runtime into
-# both the artifact preparation and the final ExecutionPlan.
+# planner after artifact preparation, then pass that same runtime into the plan.
 # ---------------------------------------------------------------------------
+@pytest.mark.parametrize("local_tensors", [False, True])
 def test_prepare_execution_plan_routes_through_the_planner(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_tensors: bool,
 ) -> None:
     from jaull.advisor.service import AdvisorService
     from jaull.domain.artifacts import ModelArtifact
@@ -211,6 +213,18 @@ def test_prepare_execution_plan_routes_through_the_planner(
         is_downloaded=True,
         is_verified=True,
     )
+    if local_tensors:
+        from tests._tensor_fixtures import cuda_selection, verified_capability
+        from tests.test_llama_cpp_tensor_policy import local_case
+
+        estimate, context = local_case(tmp_path)
+        assert context.index is not None
+        ready_artifact = context.index.artifact
+        selection = cuda_selection()
+        capability = verified_capability()
+        bare_plan = bare_plan.model_copy(update={"artifact": variant.model_copy(update={
+            "repo_id": ready_artifact.repo_id, "filename": ready_artifact.filename,
+        })})
 
     services = ServiceContainer(
         hf_client=object(),  # type: ignore[arg-type]
@@ -225,6 +239,7 @@ def test_prepare_execution_plan_routes_through_the_planner(
     original_plan_launch = AdvisorService.plan_launch
 
     def spy_plan_launch(self: AdvisorService, **kwargs: object) -> RuntimeRecommendation:
+        assert kwargs["local_artifact"] is ready_artifact
         rec = original_plan_launch(self, **kwargs)  # type: ignore[arg-type]
         launched.append(rec)
         return rec
@@ -245,14 +260,30 @@ def test_prepare_execution_plan_routes_through_the_planner(
         lambda self, plan, runtime, report: ready_artifact,
     )
 
+    original_prediction = estimate.model_dump_json()
     prepared = advisor.prepare_execution_plan(bare_plan, hardware=qwen_hardware())
 
     assert len(launched) == 1, "prepare_execution_plan must call plan_launch exactly once"
     assert prepared.plan.runtime == launched[0]
     assert (
         next(f.value for f in prepared.plan.runtime.flags if f.name == "--n-gpu-layers")
-        == "23"
+        == ("4" if local_tensors else "23")
     )
+    assert estimate.model_dump_json() == original_prediction
+    prediction = prepared.plan.memory_prediction
+    assert prediction is not None
+    assert prediction.runtime_recommendation == prepared.plan.runtime
+    assert prediction.model_dump(exclude={"runtime_recommendation"}) == estimate.model_dump(
+        exclude={"runtime_recommendation"}
+    )
+    # Validation must be able to persist the *executed* launch after refinement.
+    from tests.test_experiment_record import _record
+
+    record = _record(
+        runtime=prepared.plan.runtime, prediction=prediction,
+        hardware=qwen_hardware(), selection=selection, capability=capability,
+    )
+    assert record.runtime == prepared.plan.runtime
 
 
 def test_cli_run_hands_the_planner_built_runtime_to_the_runner() -> None:

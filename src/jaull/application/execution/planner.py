@@ -11,12 +11,12 @@ One authority, used by both front-ends:
   ``launch`` so a caller that needs the runtime *before* the plan (to prepare an
   artifact) does not evaluate the policy twice.
 
-Backend dispatch is **not** re-implemented here. The automatic base comes from
+The automatic base comes from
 ``estimate.runtime_recommendation`` (already computed by the estimator) or, when
 absent, from ``runtime.service.recommend`` -- which owns the
 GGUF/Transformers/vLLM branch and calls the per-backend launch policies. This
-module only *layers user overrides* on top, as ``USER_INPUT`` flags, and only for
-values the user actually set.
+module optionally refines a local GGUF launch after artifact preparation and
+runtime verification, then applies user overrides as ``USER_INPUT`` flags.
 
 Scope note: partial / bare ``RuntimeRecommendation``s built elsewhere for
 recommendation ranking and display (``engine_v2._runtime_for_artifact``,
@@ -49,6 +49,8 @@ from jaull.domain.runtime import (
 )
 from jaull.execution_plans.service import build_execution_plan
 from jaull.runtime import service as runtime_service
+from jaull.runtime.llama_cpp import build as build_llama_cpp_launch
+from jaull.runtime.llama_cpp_tensor_policy import LlamaCppTensorContext
 from jaull.runtime.policies import LLAMA_CPP_DEFAULT_CONTEXT_SIZE
 
 _LLAMA_CPP_REQUIRED_FLAGS = ("--ctx-size", "--n-gpu-layers")
@@ -76,8 +78,21 @@ def plan_launch(
     estimate: MemoryEstimate | None,
     hardware: HardwareProfile | None,
     overrides: ExecutionOverrides | None = None,
+    tensor_context: LlamaCppTensorContext | None = None,
 ) -> RuntimeRecommendation:
     base = _automatic_launch(runtime, estimate, hardware)
+    explicit_layers = overrides is not None and overrides.n_gpu_layers is not None
+    if (runtime is RuntimeName.LLAMA_CPP and tensor_context is not None
+            and estimate is not None and hardware is not None and not explicit_layers):
+        context_matches = (
+            overrides is None or overrides.context_size is None
+            or overrides.context_size == estimate.inference_configuration.context_length
+        )
+        if context_matches:
+            base = build_llama_cpp_launch(estimate, hardware, tensor_context=tensor_context)
+        else:
+            base = base.model_copy(update={"warnings": [*base.warnings,
+                "Local tensor refinement skipped: context override differs from KV estimate."]})
     resolved = _apply_overrides(base, overrides or ExecutionOverrides())
     _require_runnable(runtime, resolved)
     return resolved
@@ -95,6 +110,7 @@ def plan_execution(
     backend_selection: RuntimeBackendSelection | None = None,
     runtime_capability: RuntimeCapability | None = None,
     execution_readiness: ExecutionReadiness | None = None,
+    tensor_context: LlamaCppTensorContext | None = None,
 ) -> ExecutionPlan:
     if launch is None:
         launch = plan_launch(
@@ -102,9 +118,14 @@ def plan_execution(
             estimate=estimate,
             hardware=hardware,
             overrides=overrides,
+            tensor_context=tensor_context,
         )
     else:
         _require_runnable(runtime, launch)
+    if estimate is not None and estimate.runtime_recommendation != launch:
+        # Attach the prepared launch to a new prediction snapshot. Numeric
+        # estimates remain unchanged; never mutate the recommendation input.
+        estimate = estimate.model_copy(update={"runtime_recommendation": launch})
     return build_execution_plan(
         model_identity=model_identity,
         artifact=artifact,

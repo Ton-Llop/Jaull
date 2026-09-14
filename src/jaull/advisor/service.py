@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from jaull.application.execution import (
     ExecutionOverrides,
+    ExecutionPlanningError,
     plan_execution,
     plan_launch,
 )
@@ -35,6 +36,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRecord,
     BenchmarkRequest,
     BenchmarkRunResult,
+    LlamaBenchCapability,
 )
 from jaull.domain.candidates import ModelCandidate
 from jaull.domain.cases import (
@@ -826,13 +828,31 @@ class AdvisorService:
         estimate: MemoryEstimate | None,
         hardware: HardwareProfile | None,
         overrides: ExecutionOverrides | None = None,
+        local_artifact: ModelArtifact | None = None,
+        backend_selection: RuntimeBackendSelection | None = None,
+        runtime_capability: RuntimeCapability | None = None,
+        benchmark_capability: LlamaBenchCapability | None = None,
     ) -> RuntimeRecommendation:
-        """Delegate to the execution planner. No logic here."""
+        """Gather optional local evidence, then delegate the final launch decision."""
+        from jaull.runtime.llama_cpp_tensor_policy import inspect_tensor_context
+
+        tensor_context = None
+        explicit_layers = overrides is not None and overrides.n_gpu_layers is not None
+        if (runtime is RuntimeName.LLAMA_CPP and local_artifact is not None
+                and hardware is not None and estimate is not None and not explicit_layers):
+            selection = backend_selection or self.select_runtime_backend(hardware)
+            capability = runtime_capability or self.inspect_llama_cpp_runtime(selection=selection)
+            if isinstance(capability, LlamaCppRuntimeCapability):
+                tensor_context = inspect_tensor_context(
+                    local_artifact, hardware, selection, capability,
+                    benchmark_capability=benchmark_capability,
+                )
         return plan_launch(
             runtime=runtime,
             estimate=estimate,
             hardware=hardware,
             overrides=overrides,
+            tensor_context=tensor_context,
         )
 
     def plan_execution(
@@ -848,8 +868,15 @@ class AdvisorService:
         backend_selection: RuntimeBackendSelection | None = None,
         runtime_capability: RuntimeCapability | None = None,
         execution_readiness: ExecutionReadiness | None = None,
+        local_artifact: ModelArtifact | None = None,
     ) -> ExecutionPlan:
         """The one place CLI and TUI build a run-ready plan. Delegates; no logic here."""
+        if launch is None and local_artifact is not None:
+            launch = self.plan_launch(
+                runtime=runtime, estimate=estimate, hardware=hardware, overrides=overrides,
+                local_artifact=local_artifact, backend_selection=backend_selection,
+                runtime_capability=runtime_capability,
+            )
         return plan_execution(
             model_identity=model_identity,
             artifact=artifact,
@@ -869,6 +896,7 @@ class AdvisorService:
         *,
         hardware: HardwareProfile | None = None,
         on_progress: Callable[[str], None] | None = None,
+        for_benchmark: bool = False,
     ) -> PreparedExecutionPlan:
         def report(message: str) -> None:
             if on_progress is not None:
@@ -889,20 +917,13 @@ class AdvisorService:
             resolve_base_model=True,
             recommend_runtime=True,
         )
-        # The launch policy is evaluated exactly once, here. The same resolved
-        # RuntimeRecommendation is used to prepare the artifact and, via
-        # ``launch=``, to build the final plan -- no second evaluation, no
-        # post-hoc mutation of a plan that was already built.
-        resolved_runtime = self.plan_launch(
-            runtime=plan.runtime_family,
-            estimate=estimate,
-            hardware=hw,
-        )
-        artifact = self._prepare_plan_artifact(plan, resolved_runtime, report)
+        # Artifact preparation needs only the runtime family. Resolve the final
+        # launch after the local file and runtime capability are available.
+        artifact = self._prepare_plan_artifact(plan, plan.runtime, report)
         report("Selecting compute backend")
         selection = self.select_runtime_backend(hw)
         report("Checking runtime readiness")
-        if resolved_runtime.runtime is RuntimeName.TRANSFORMERS:
+        if plan.runtime_family is RuntimeName.TRANSFORMERS:
             pytorch_capability = self.inspect_pytorch_runtime()
             readiness = self.evaluate_pytorch_execution_readiness(
                 selection=selection,
@@ -916,6 +937,23 @@ class AdvisorService:
                 selection=selection,
                 runtime_capability=llama_capability,
             )
+        benchmark_capability = None
+        if for_benchmark and plan.runtime_family is RuntimeName.LLAMA_CPP:
+            from jaull.runtime.llama_bench_capability import inspect_llama_bench
+
+            benchmark_capability = inspect_llama_bench(
+                backend=self._host_execution_backend(),
+                llama_bench_path=self._resolved_llama_cpp_installation().llama_bench,
+                timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
+                allow_empty_workload_probe=True,
+            )
+        resolved_runtime = self.plan_launch(
+            runtime=plan.runtime_family, estimate=estimate, hardware=hw,
+            local_artifact=artifact, backend_selection=selection,
+            runtime_capability=runtime_capability,
+            overrides=_execution_overrides_for_plan(plan),
+            benchmark_capability=benchmark_capability,
+        )
         variant = plan.artifact.model_copy(
             update={
                 "revision": artifact.revision,
@@ -1383,6 +1421,20 @@ def _runtime_for_variant(variant: ArtifactVariant) -> RuntimeRecommendation:
     )
 
 
+def _execution_overrides_for_plan(plan: ExecutionPlan) -> ExecutionOverrides:
+    values: dict[str, int] = {}
+    for flag in plan.runtime.flags:
+        if (flag.source is RuntimeFlagSource.USER_INPUT
+                and flag.name in {"--ctx-size", "--n-gpu-layers"}):
+            try:
+                values[flag.name] = int(flag.value)
+            except ValueError as exc:
+                raise ExecutionPlanningError(f"Invalid explicit {flag.name}: {flag.value}") from exc
+    return ExecutionOverrides(
+        context_size=values.get("--ctx-size"), n_gpu_layers=values.get("--n-gpu-layers"),
+    )
+
+
 def _config_for_plan(plan: ExecutionPlan) -> InferenceConfiguration:
     base = (
         plan.memory_prediction.inference_configuration
@@ -1394,6 +1446,9 @@ def _config_for_plan(plan: ExecutionPlan) -> InferenceConfiguration:
         update={
             "quantization": plan.artifact.quantization,
             "precision": precision,
+            "context_length": (
+                _execution_overrides_for_plan(plan).context_size or base.context_length
+            ),
         }
     )
 

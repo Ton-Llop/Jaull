@@ -151,7 +151,7 @@ def test_gpu_offload_ram_comparison_is_methodologically_unavailable() -> None:
     assert comparison.ram.predicted_bytes is None
     assert comparison.ram.measured_bytes == 700
     assert comparison.ram.error_bytes is None
-    assert "host/device breakdown" in comparison.ram.unavailable_reason
+    assert "maps the whole model file" in comparison.ram.unavailable_reason
 
 
 def test_n_gpu_layers_zero_is_not_offload_for_ram_comparison() -> None:
@@ -841,4 +841,27 @@ def test_wiring_vram_did_not_change_the_ram_verdict() -> None:
     assert comparison.ram.availability is (
         MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
     )
-    assert "host/device breakdown" in (comparison.ram.unavailable_reason or "")
+    assert "maps the whole model file" in (comparison.ram.unavailable_reason or "")
+
+
+def test_the_ram_refusal_does_not_blame_a_breakdown_that_exists() -> None:
+    """The reason has to stay true as the model grows.
+
+    It used to say the estimate preserved no host/device breakdown. It does:
+    ``HardwareFitResult`` carries ``ram_weight_bytes`` and friends. The real
+    obstacle is that peak RSS does not follow the placement -- B001-R4 measured
+    the same RSS with 24 of 29 units offloaded and with all of them -- so the
+    refusal has to name that, not a field that is now present.
+    """
+
+    fit = _fit(ram_weight=400)
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation(ram=900),
+        runtime=_runtime(n_gpu_layers=-1),
+    )
+    reason = comparison.ram.unavailable_reason or ""
+
+    assert fit.ram_weight_bytes > 0, "the breakdown the old reason denied"
+    assert "host/device breakdown" not in reason
+    assert "RSS" in reason

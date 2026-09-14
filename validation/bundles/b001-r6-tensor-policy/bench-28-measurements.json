@@ -1,0 +1,28 @@
+[
+  {
+    "kind": "prefill",
+    "tokens": 512,
+    "mean_tokens_per_second": 1472.07,
+    "stddev_tokens_per_second": 68.58,
+    "mean_duration_seconds": null,
+    "stddev_duration_seconds": null,
+    "repetitions": 3,
+    "source_label": "pp512",
+    "raw_backend": "CUDA",
+    "raw_device": "CUDA0",
+    "raw_ngl": "28"
+  },
+  {
+    "kind": "generation",
+    "tokens": 128,
+    "mean_tokens_per_second": 45.22,
+    "stddev_tokens_per_second": 0.62,
+    "mean_duration_seconds": null,
+    "stddev_duration_seconds": null,
+    "repetitions": 3,
+    "source_label": "tg128",
+    "raw_backend": "CUDA",
+    "raw_device": "CUDA0",
+    "raw_ngl": "28"
+  }
+]

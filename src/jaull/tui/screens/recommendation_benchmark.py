@@ -245,6 +245,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             execution_plan,
             hardware=hardware,
             on_progress=self._post_step,
+            for_benchmark=True,
         )
         plan = prepared.plan
         if plan.hardware is None or plan.backend_selection is None:

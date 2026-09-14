@@ -322,6 +322,44 @@ def test_store_roundtrip_and_safety(tmp_path: Path) -> None:
         store.path_for("../bad")
 
 
+@pytest.mark.parametrize("output", ["build: 689e227db (10357)", "no build information"])
+def test_optional_build_probe_has_no_workload_or_model(tmp_path: Path, output: str) -> None:
+    class ProbeBackend(_FakeExecutionBackend):
+        def execute(self, request: ExecutionRequest) -> ExecutionResult:
+            if request.command[-1] == "--version":
+                return _FailingExecutionBackend(
+                    stdout="",
+                    stderr="unknown argument: --version",
+                    exit_code=1,
+                ).execute(request)
+            assert request.command[1] == "-m"
+            assert not Path(request.command[2]).exists()
+            assert request.command[3:] == ("-p", "0", "-n", "0", "-pg", "0,0", "-o", "md")
+            return super().execute(request)
+
+    backend = ProbeBackend(stdout=output)
+    capability = inspect_llama_bench(
+        backend=backend,
+        llama_bench_path=_executable(tmp_path),
+        allow_empty_workload_probe=True,
+    )
+    assert len(backend.requests) == 1
+    assert capability.binary_status is LlamaBenchBinaryStatus.AVAILABLE
+    assert capability.version_text == (output if output.startswith("build:") else None)
+
+
+def test_failed_empty_build_probe_preserves_unknown_version(tmp_path: Path) -> None:
+    backend = _FailingExecutionBackend(stdout="", stderr="unsupported", exit_code=1)
+    capability = inspect_llama_bench(
+        backend=backend,
+        llama_bench_path=_executable(tmp_path),
+        allow_empty_workload_probe=True,
+    )
+    assert len(backend.requests) == 2
+    assert capability.version_text is None
+    assert capability.binary_status is LlamaBenchBinaryStatus.AVAILABLE
+
+
 def test_matrix_runs_cpu_and_selected_backend_with_partial_failure(
     tmp_path: Path,
 ) -> None:
