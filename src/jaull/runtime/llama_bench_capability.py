@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from jaull.domain.benchmarks import (
     BenchmarkObservation,
@@ -32,6 +33,7 @@ def inspect_llama_bench(
     backend: ExecutionBackendProtocol,
     llama_bench_path: str | Path | None = None,
     timeout_seconds: float = 10.0,
+    allow_empty_workload_probe: bool = False,
 ) -> LlamaBenchCapability:
     resolved = resolve_llama_bench_binary(llama_bench_path)
     if resolved.binary_status is not LlamaBenchBinaryStatus.UNKNOWN:
@@ -58,12 +60,15 @@ def inspect_llama_bench(
         # blocking a real benchmark.
         stdout = exc.result.stdout if exc.result is not None else ""
         stderr = exc.result.stderr if exc.result is not None else ""
-        return LlamaBenchCapability(
+        capability = LlamaBenchCapability(
             binary_path=resolved.binary_path,
             binary_status=LlamaBenchBinaryStatus.AVAILABLE,
             probe_source=_VERSION_SOURCE,
             message=_probe_failure_message(str(exc), stdout=stdout, stderr=stderr),
         )
+        if allow_empty_workload_probe and isinstance(exc, ExecutionFailedError):
+            return _probe_empty_workload_build(capability, backend, timeout_seconds)
+        return capability
     except ExecutionError as exc:
         status = (
             LlamaBenchBinaryStatus.NOT_EXECUTABLE
@@ -78,9 +83,7 @@ def inspect_llama_bench(
             message=str(exc),
         )
 
-    version = "\n".join(
-        part for part in (result.stdout.strip(), result.stderr.strip()) if part
-    )
+    version = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
     return LlamaBenchCapability(
         binary_path=resolved.binary_path,
         binary_status=LlamaBenchBinaryStatus.AVAILABLE,
@@ -98,8 +101,7 @@ def resolve_llama_bench_binary(
     if installation.llama_bench is None:
         return LlamaBenchCapability(
             binary_status=LlamaBenchBinaryStatus.MISSING,
-            message=installation.discovery.message
-            or "llama-bench executable was not found.",
+            message=installation.discovery.message or "llama-bench executable was not found.",
         )
     candidate = Path(installation.llama_bench)
     if installation.status in {
@@ -124,6 +126,53 @@ def resolve_llama_bench_binary(
     )
 
 
+def _probe_empty_workload_build(
+    capability: LlamaBenchCapability,
+    backend: ExecutionBackendProtocol,
+    timeout_seconds: float,
+) -> LlamaBenchCapability:
+    """Request only the build footer, with no prompt/generation/combined tasks.
+
+    A nonexistent local model protects against accidental loading if an older
+    binary does not honor the empty workload. No Hub arguments are supplied.
+    Backends may be initialized, but no model or context is needed for this probe.
+    """
+    assert capability.binary_path is not None
+    try:
+        with TemporaryDirectory(prefix="jaull-bench-version-") as directory:
+            result = backend.execute(
+                ExecutionRequest(
+                    command=(
+                        capability.binary_path,
+                        "-m",
+                        str(Path(directory) / "absent.gguf"),
+                        "-p",
+                        "0",
+                        "-n",
+                        "0",
+                        "-pg",
+                        "0,0",
+                        "-o",
+                        "md",
+                    ),
+                    timeout_seconds=timeout_seconds,
+                )
+            )
+    except (ExecutionError, OSError):
+        return capability
+    if result.exit_code != 0:
+        return capability
+    matches = _BUILD_LINE.findall("\n".join((result.stdout, result.stderr)))
+    if not matches:
+        return capability
+    return capability.model_copy(
+        update={
+            "version_text": f"build: {matches[-1]}",
+            "probe_source": "llama-bench empty workload build footer",
+        }
+    )
+
+
 def enrich_capability_from_benchmark_output(
     capability: LlamaBenchCapability,
     observation: BenchmarkObservation,
@@ -137,9 +186,7 @@ def enrich_capability_from_benchmark_output(
 
     if capability.version_text is not None:
         return capability
-    matches = _BUILD_LINE.findall(
-        "\n".join((observation.raw_stdout, observation.raw_stderr))
-    )
+    matches = _BUILD_LINE.findall("\n".join((observation.raw_stdout, observation.raw_stderr)))
     if not matches:
         return capability
     build = matches[-1]

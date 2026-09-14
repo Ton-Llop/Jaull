@@ -132,7 +132,10 @@ class _FakeAdvisor:
         from jaull.application.execution import plan_execution
 
         self.planned.append(kwargs)
-        self.last_plan = plan_execution(**kwargs)
+        # The facade handles local inspection; this lightweight fake tests CLI
+        # argument transport. Real facade integration is tested separately.
+        planner_kwargs = {key: value for key, value in kwargs.items() if key != "local_artifact"}
+        self.last_plan = plan_execution(**planner_kwargs)
         return self.last_plan
 
     def resolve_artifact(

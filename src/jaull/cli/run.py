@@ -169,6 +169,7 @@ def _plan_for_run(
         estimate=estimate,
         hardware=hardware,
         overrides=ExecutionOverrides(context_size=options.context_size),
+        local_artifact=artifact,
     )
 
 

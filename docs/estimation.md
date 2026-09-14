@@ -50,6 +50,10 @@ need not be identical. Unknown tying, incomplete configs, unsupported architectu
 models use the explicit `uniform_weight_fallback`; a missing block count produces no
 decomposition.
 
+When available, the non-block aggregate is also projected into embedding and output-head
+components. Those optional values are useful architectural diagnostics only: they do not prove
+the byte split of a GGUF artifact and do not prescribe backend placement.
+
 For discrete partial offload, Hardware Fit consumes this decomposition without
 choosing a runtime-specific location for non-block weights. With `B` estimated
 block bytes, `N` non-block bytes and `T` blocks, placing `n` blocks on GPU uses
@@ -347,10 +351,11 @@ After computing the estimate, Jaull suggests a runtime and a starter command:
 
 Every recommendation carries per-flag provenance:
 
-- `--n-gpu-layers` for llama.cpp is computed as
-  `min(block_count, (available_vram − device_reserve − 256 MiB − kv_cache) / (weights / block_count))`.
-  When `block_count` is unknown it falls back to a documented conservative default (20
-  layers) with a warning. The split assumes uniform layer sizes.
+- The preliminary llama.cpp offload recommendation uses an aggregate weight budget:
+  estimated block bytes plus a fixed, conservative non-block GPU bound. KV scales with
+  the proposed offload. Reserve and the existing 256 MiB runtime headroom remain intact.
+  Without decomposition it uses the uniform weight approximation; without a block count
+  it falls back to the documented conservative default (20 units) with a warning.
 - `device_map` for Transformers is `"cuda"` when the model fits VRAM, `"auto"` for
   offloading (with an `accelerate` warning) and `"cpu"` otherwise.
 - vLLM is only suggested when the architecture is on the shortlist (`llama`, `qwen2`,
@@ -362,3 +367,53 @@ Every recommendation carries per-flag provenance:
 The commands shown by `estimate` and by the guided flow are **generated, not executed**.
 To have Jaull actually run something, use `jaull run` or the execution paths in the TUI —
 see [evidence.md](evidence.md).
+
+### Optional local GGUF launch refinement
+
+Once an artifact is prepared, `AdvisorService` obtains a local tensor index and a verified
+runtime capability before `ExecutionPlanner` resolves the final launch. The reader reuses
+the GGUF metadata parser, reads only metadata and tensor descriptors (bounded to 8 MiB),
+and validates types, row sizes, offsets, overlap and file bounds. It does not read weight
+payloads, contact the Hub, change artifact identity or recompute a hash. Stored sizes use
+GGML quantization block layouts, not a parameter-count fraction.
+
+The first placement rule is deliberately narrow: **llama.cpp build `689e227db`, dense
+`qwen2`, a separate output tensor, and one confirmed discrete CUDA device**. For that
+verified implementation, positive `u` runtime units place the output tensors and the last
+`min(u - 1, T)` repeating blocks on GPU; the input tensor stays on host. This is a backend
+rule, never a conversion from `HardwareFitResult.gpu_transformer_blocks`.
+
+For each suffix of `n` repeating blocks, the launch budget is:
+
+```text
+GPU budget = sum(aligned stored tensor bytes in the suffix)
+           + aligned output.weight + aligned output_norm.weight
+           + ceil(total_KV_bytes * n / T)
+           + existing device reserve + existing runtime headroom
+```
+
+The largest suffix satisfying the recorded VRAM budget is selected, including zero
+repeating blocks (output only); if even the output budget fails, request zero runtime
+units. Individual blocks may have different stored sizes. KV, reserve and headroom
+policies are unchanged. Stored tensor bytes are **not measured CUDA allocations**;
+allocator, repacking and compute-buffer differences remain covered only heuristically.
+
+Missing/unsupported descriptors, tied or missing output weights, an unclassified tensor,
+inconsistent estimate inputs, another build/architecture/backend or multiple devices keep
+the aggregate launch fallback and attach a reason. User-supplied `--n-gpu-layers` takes
+precedence and skips inspection. A different context override cannot reuse a stale KV
+estimate for refinement. Benchmark preparation verifies the `llama-bench` build too;
+builds without `--version` can expose their build footer via a zero-task, nonexistent-model
+probe. Failure to establish the build never enables tensor placement.
+
+This refinement changes the **prepared runtime flags**, not `MemoryEstimate`, HFA,
+ranking, shortlist, or PredictionComparison. No persisted schema changes are needed.
+The generated estimate command may therefore differ from the prepared local command;
+the latter records the tensor budget and runtime build in its launch reasons.
+
+`scripts/validate_local_tensor_launch.py --record <experiment.json> --output <new-dir>`
+can inspect a frozen record offline. Add `--execute --llama-cli <path> --llama-bench <path>`
+to freeze the current launch VRAM budget and commands before executing a context-4096
+smoke (or the context recorded in the input) and pp512/tg128 controls. It writes a new
+evidence directory; the source experiment is not overwritten. The microbenchmarks do
+not validate throughput at context 4096 or process-attributed peak VRAM.

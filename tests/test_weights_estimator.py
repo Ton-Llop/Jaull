@@ -188,6 +188,8 @@ def test_qwen_weight_decomposition_uses_config_parameter_fraction() -> None:
     assert decomposition.total_weight_bytes == total_bytes
     assert decomposition.estimated_transformer_block_weight_bytes == 4_012_773_975
     assert decomposition.estimated_non_block_weight_bytes == 670_300_265
+    assert decomposition.estimated_embedding_weight_bytes == 335_150_132
+    assert decomposition.estimated_output_head_weight_bytes == 335_150_133
     assert decomposition.estimated_bytes_per_transformer_block == 143_313_357
     assert decomposition.total_transformer_blocks == 28
     assert (
@@ -218,6 +220,8 @@ def test_tied_embeddings_remove_the_separate_output_head_from_fraction() -> None
         tied.estimated_transformer_block_weight_bytes
         > untied.estimated_transformer_block_weight_bytes
     )
+    assert tied.estimated_embedding_weight_bytes == tied.estimated_non_block_weight_bytes
+    assert tied.estimated_output_head_weight_bytes == 0
 
 
 @pytest.mark.parametrize(
@@ -246,6 +250,8 @@ def test_incomplete_or_unsupported_config_uses_uniform_fallback(
     )
     assert decomposition.estimated_transformer_block_weight_bytes == 101
     assert decomposition.estimated_non_block_weight_bytes == 0
+    assert decomposition.estimated_embedding_weight_bytes is None
+    assert decomposition.estimated_output_head_weight_bytes is None
     assert decomposition.estimated_bytes_per_transformer_block == 4
 
 

@@ -167,6 +167,8 @@ def add_transformer_block_decomposition(
         return estimate
 
     parameter_decomposition = estimate_config_parameter_decomposition(config)
+    embedding_weight_bytes: int | None = None
+    output_head_weight_bytes: int | None = None
     if parameter_decomposition is None:
         block_weight_bytes = total_weight_bytes
         non_block_weight_bytes = 0
@@ -184,6 +186,18 @@ def add_transformer_block_decomposition(
         method = (
             TransformerBlockWeightDecompositionMethod.CONFIG_PARAMETER_DECOMPOSITION
         )
+        # Same trick one level down: project the embedding share and give the
+        # remainder to the output head, so the two halves still sum exactly.
+        if parameter_decomposition.non_block_parameters > 0:
+            embedding_weight_bytes = (
+                non_block_weight_bytes
+                * parameter_decomposition.embedding_parameters
+                // parameter_decomposition.non_block_parameters
+            )
+            output_head_weight_bytes = non_block_weight_bytes - embedding_weight_bytes
+        else:
+            embedding_weight_bytes = 0
+            output_head_weight_bytes = 0
 
     bytes_per_transformer_block = (
         block_weight_bytes + total_transformer_blocks - 1
@@ -192,6 +206,8 @@ def add_transformer_block_decomposition(
         total_weight_bytes=total_weight_bytes,
         estimated_transformer_block_weight_bytes=block_weight_bytes,
         estimated_non_block_weight_bytes=non_block_weight_bytes,
+        estimated_embedding_weight_bytes=embedding_weight_bytes,
+        estimated_output_head_weight_bytes=output_head_weight_bytes,
         estimated_bytes_per_transformer_block=bytes_per_transformer_block,
         total_transformer_blocks=total_transformer_blocks,
         method=method,

@@ -137,6 +137,13 @@ class TransformerBlockWeightDecomposition(BaseModel):
     This describes weight estimation only. It does not say whether non-block
     weights live in GPU or host memory. Hardware Fit can use the split while
     bounding that unknown placement separately.
+
+    The non-block aggregate may also be split into estimated token-embedding
+    and output-head bytes when the config identifies both. These remain
+    architectural estimates, not tensor-level measurements or runtime placement
+    instructions. The two fields are ``None`` for artifacts whose split is
+    unknown and for records written before they existed; a consumer that finds
+    them missing has the aggregate and nothing finer.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -144,6 +151,8 @@ class TransformerBlockWeightDecomposition(BaseModel):
     total_weight_bytes: int = Field(ge=0)
     estimated_transformer_block_weight_bytes: int = Field(ge=0)
     estimated_non_block_weight_bytes: int = Field(ge=0)
+    estimated_embedding_weight_bytes: int | None = Field(default=None, ge=0)
+    estimated_output_head_weight_bytes: int | None = Field(default=None, ge=0)
     estimated_bytes_per_transformer_block: int = Field(ge=0)
     total_transformer_blocks: int = Field(gt=0)
     method: TransformerBlockWeightDecompositionMethod
@@ -159,6 +168,23 @@ class TransformerBlockWeightDecomposition(BaseModel):
                 "Transformer-block and non-block weight bytes must sum exactly "
                 "to total_weight_bytes."
             )
+        parts = (
+            self.estimated_embedding_weight_bytes,
+            self.estimated_output_head_weight_bytes,
+        )
+        if any(part is not None for part in parts):
+            if any(part is None for part in parts):
+                raise ValueError(
+                    "Embedding and output-head weight bytes are set together or "
+                    "not at all."
+                )
+            if sum(part for part in parts if part is not None) != (
+                self.estimated_non_block_weight_bytes
+            ):
+                raise ValueError(
+                    "Embedding and output-head weight bytes must sum exactly to "
+                    "estimated_non_block_weight_bytes."
+                )
         return self
 
 

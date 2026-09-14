@@ -13,15 +13,19 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.runtime.llama_cpp_launch_policy import pick_gpu_layers
+from jaull.runtime.llama_cpp_tensor_policy import LlamaCppTensorContext
 
 
-def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecommendation:
+def build(
+    estimate: MemoryEstimate, hardware: HardwareProfile, *,
+    tensor_context: LlamaCppTensorContext | None = None,
+) -> RuntimeRecommendation:
     del hardware  # the launch policy reads everything it needs from the estimate
     cfg = estimate.inference_configuration
     variant = estimate.weights.gguf_variant or "model"
     file_hint = _first_gguf_filename(estimate) or f"{variant}.gguf"
 
-    layer_plan = pick_gpu_layers(estimate)
+    layer_plan = pick_gpu_layers(estimate, tensor_context=tensor_context)
     n_gpu_layers = layer_plan.n_gpu_layers
     reasons = layer_plan.reasons
     warnings = layer_plan.warnings
@@ -48,7 +52,7 @@ def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecomme
             value=str(n_gpu_layers),
             source=RuntimeFlagSource.HARDWARE,
             explanation=(
-                "Number of transformer layers to place on GPU. -1 means all."
+                "llama.cpp offload units requested by the launch policy. -1 means all."
             ),
         ),
         RuntimeFlag(
