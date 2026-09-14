@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from jaull.domain.comparison import (
+    ComparisonSemantics,
     CompatibilityComparison,
     CompatibilityOutcome,
+    ComponentComparison,
+    MemoryObservationSource,
     MetricComparison,
     MetricComparisonAvailability,
     PredictionComparison,
@@ -15,7 +18,11 @@ from jaull.domain.estimation import (
     HardwareFitResult,
     MemoryEstimate,
 )
-from jaull.domain.execution import ExecutionObservation
+from jaull.domain.execution import (
+    ExecutionObservation,
+    RuntimeBufferCategory,
+    RuntimeReportedAllocation,
+)
 from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 
@@ -84,11 +91,14 @@ def compare_prediction(
         estimate=estimate,
         runtime=runtime,
     )
+    vram_measured, vram_source = _observed_vram(observation)
     vram = _metric_comparison(
         predicted_bytes=vram_predicted,
-        measured_bytes=observation.peak_vram_bytes,
+        measured_bytes=vram_measured,
         unavailable_availability=vram_availability,
         unavailable_reason=vram_reason,
+        source=vram_source,
+        allocation=observation.runtime_allocation,
     )
 
     predicted_runnable = _predicted_runnable(
@@ -110,6 +120,11 @@ def compare_prediction(
         ram=ram,
         vram=vram,
         compatibility=compatibility,
+        vram_components=_vram_components(
+            estimate=estimate,
+            observation=observation,
+            runtime=runtime,
+        ),
     )
 
 
@@ -157,13 +172,144 @@ def assert_prediction_runtime_matches(
         )
 
 
+_OVERHEAD_PROXY_REASON = (
+    "Jaull's runtime overhead is a heuristic covering the allocator, activation "
+    "buffers and the CUDA context. llama.cpp's compute buffer is only the graph "
+    "allocation it enumerates; it does not report the context or anything the "
+    "allocator took on its own. The difference between the two therefore does "
+    "not measure how wrong the heuristic is, and must not be used to calibrate "
+    "it until a driver-attributed figure bounds the unreported part."
+)
+_Component = tuple[str, str, RuntimeBufferCategory, ComparisonSemantics, str | None]
+_COMPONENTS: tuple[_Component, ...] = (
+    (
+        "gpu_weight_bytes",
+        "CUDA model buffer",
+        RuntimeBufferCategory.MODEL,
+        ComparisonSemantics.DIRECT,
+        None,
+    ),
+    (
+        "gpu_kv_cache_bytes",
+        "CUDA KV buffer",
+        RuntimeBufferCategory.KV,
+        ComparisonSemantics.DIRECT,
+        None,
+    ),
+    (
+        "gpu_overhead_bytes",
+        "CUDA compute buffer",
+        RuntimeBufferCategory.COMPUTE,
+        ComparisonSemantics.PROXY,
+        _OVERHEAD_PROXY_REASON,
+    ),
+)
+
+
+def _vram_components(
+    *,
+    estimate: MemoryEstimate,
+    observation: ExecutionObservation,
+    runtime: RuntimeRecommendation | None,
+) -> tuple[ComponentComparison, ...]:
+    """Break the VRAM comparison down by component, when a runtime reported one.
+
+    A total says the prediction is off; only the breakdown says which term is
+    responsible. Nothing here is derived — every observed figure is a buffer the
+    runtime enumerated, and a component the runtime did not report stays
+    unavailable rather than being inferred from the others.
+    """
+
+    allocation = observation.runtime_allocation
+    fit = estimate.hardware_fit
+    if allocation is None or fit is None or not fit.places_weights_on_gpu:
+        return ()
+
+    # The same gate the total uses: comparing a predicted placement against a
+    # run that placed the model differently attributes the difference to the
+    # memory model when it belongs to the placement.
+    mismatch = _placement_mismatch(fit, runtime)
+
+    components: list[ComponentComparison] = []
+    for field, label, category, semantics, reason in _COMPONENTS:
+        predicted = getattr(fit, field, None)
+        observed = allocation.device_bytes_for(category)
+        if mismatch is not None:
+            components.append(
+                ComponentComparison(
+                    component=field,
+                    observed_label=label,
+                    semantics=ComparisonSemantics.UNAVAILABLE,
+                    semantics_reason=mismatch,
+                    metric=_metric_comparison(
+                        predicted_bytes=predicted,
+                        measured_bytes=observed,
+                        unavailable_availability=(
+                            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+                        ),
+                        unavailable_reason=mismatch,
+                        source=MemoryObservationSource.RUNTIME_REPORTED_ALLOCATION,
+                        allocation=allocation,
+                    ),
+                )
+            )
+            continue
+        components.append(
+            ComponentComparison(
+                component=field,
+                observed_label=label,
+                semantics=semantics,
+                semantics_reason=reason,
+                metric=_metric_comparison(
+                    predicted_bytes=predicted,
+                    measured_bytes=observed,
+                    source=MemoryObservationSource.RUNTIME_REPORTED_ALLOCATION,
+                    allocation=allocation,
+                ),
+            )
+        )
+    return tuple(components)
+
+
+def _observed_vram(
+    observation: ExecutionObservation,
+) -> tuple[int | None, MemoryObservationSource | None]:
+    """Pick the VRAM measurement, preferring the driver's own attribution.
+
+    NVML says what the driver charged to the process. A runtime's report says
+    what the runtime asked for and enumerated, which is strictly less — it
+    cannot see the CUDA context or anything the allocator took on its own. The
+    driver figure wins wherever it exists; on a GPU in WDDM mode it never does,
+    and the runtime report is the only observation available.
+    """
+
+    if observation.peak_vram_bytes is not None:
+        return observation.peak_vram_bytes, MemoryObservationSource.NVML_PROCESS_ALLOCATION
+    allocation = observation.runtime_allocation
+    if allocation is not None and allocation.buffers:
+        return (
+            allocation.total_device_bytes,
+            MemoryObservationSource.RUNTIME_REPORTED_ALLOCATION,
+        )
+    return None, None
+
+
 def _metric_comparison(
     *,
     predicted_bytes: int | None,
     measured_bytes: int | None,
     unavailable_availability: MetricComparisonAvailability | None = None,
     unavailable_reason: str | None = None,
+    source: MemoryObservationSource | None = None,
+    allocation: RuntimeReportedAllocation | None = None,
 ) -> MetricComparison:
+    provenance: dict[str, object] = {"source": source}
+    if source is MemoryObservationSource.RUNTIME_REPORTED_ALLOCATION:
+        provenance["driver_confirmed"] = False
+        provenance["runtime"] = allocation.runtime if allocation else None
+    elif source is MemoryObservationSource.NVML_PROCESS_ALLOCATION:
+        provenance["driver_confirmed"] = True
+
     if unavailable_availability is not None:
         return MetricComparison(
             predicted_bytes=predicted_bytes,
@@ -173,6 +319,7 @@ def _metric_comparison(
             error_percent=None,
             availability=unavailable_availability,
             unavailable_reason=unavailable_reason,
+            **provenance,  # type: ignore[arg-type]
         )
 
     if predicted_bytes is None:
@@ -184,6 +331,7 @@ def _metric_comparison(
             error_percent=None,
             availability=MetricComparisonAvailability.PREDICTION_UNAVAILABLE,
             unavailable_reason="Prediction is unavailable.",
+            **provenance,  # type: ignore[arg-type]
         )
     if measured_bytes is None:
         return MetricComparison(
@@ -194,6 +342,7 @@ def _metric_comparison(
             error_percent=None,
             availability=MetricComparisonAvailability.MEASUREMENT_UNAVAILABLE,
             unavailable_reason="Measurement is unavailable.",
+            **provenance,  # type: ignore[arg-type]
         )
 
     error = measured_bytes - predicted_bytes
@@ -206,6 +355,7 @@ def _metric_comparison(
         error_percent=percent,
         availability=MetricComparisonAvailability.AVAILABLE,
         unavailable_reason=None,
+        **provenance,  # type: ignore[arg-type]
     )
 
 

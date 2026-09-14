@@ -12,6 +12,7 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.llama_cpp_memory_report import parse_llama_cpp_allocation
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _DEFAULT_CONTEXT_SIZE = 4096
@@ -84,12 +85,21 @@ class LlamaCppRunner:
         result = self.backend.execute(
             ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)
         )
-        observed_backend = _observed_backend("\n".join((result.stdout, result.stderr)))
+        output = "\n".join((result.stdout, result.stderr))
+        observed_backend = _observed_backend(output)
+        # A second memory observation, from the runtime instead of the driver.
+        # It is the only one available where NVML cannot attribute per process.
+        allocation = parse_llama_cpp_allocation(output)
+        observation = result.observation
+        if allocation is not None:
+            observation = observation.model_copy(
+                update={"runtime_allocation": allocation}
+            )
         return InferenceResult(
             text=_clean_inference_text(result.stdout, prompt=prompt),
             runtime=RuntimeName.LLAMA_CPP.value,
             model_path=model_path,
-            observation=result.observation,
+            observation=observation,
             command=command,
             observed_backend=observed_backend,
             observed_backend_source=(

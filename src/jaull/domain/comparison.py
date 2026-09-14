@@ -26,6 +26,32 @@ class CompatibilityOutcome(StrEnum):
     UNKNOWN = "unknown"
 
 
+class MemoryObservationSource(StrEnum):
+    """Where a measured memory figure came from.
+
+    The two are not interchangeable. NVML reports what the driver attributed to
+    the process; a runtime reports what it asked for and enumerated. They can
+    coexist for the same run, and on a GPU in WDDM mode only the second exists.
+    """
+
+    NVML_PROCESS_ALLOCATION = "nvml_process_allocation"
+    RUNTIME_REPORTED_ALLOCATION = "runtime_reported_allocation"
+
+
+class ComparisonSemantics(StrEnum):
+    """How closely a predicted quantity and an observed one correspond.
+
+    ``PROXY`` is the load-bearing one. It marks a pair that is informative but
+    not equivalent, so a large error cannot be read as "the prediction is that
+    wrong" without first establishing what the observation leaves out.
+    """
+
+    DIRECT = "direct"
+    PARTIAL = "partial"
+    PROXY = "proxy"
+    UNAVAILABLE = "unavailable"
+
+
 class MetricComparison(BaseModel):
     """Point comparison for one resource metric.
 
@@ -46,6 +72,11 @@ class MetricComparison(BaseModel):
     error_percent: float | None = None
     availability: MetricComparisonAvailability
     unavailable_reason: str | None = None
+    # Provenance of ``measured_bytes``. Absent on records written before the
+    # observation contract existed, and on metrics with a single source.
+    source: MemoryObservationSource | None = None
+    runtime: str | None = None
+    driver_confirmed: bool | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -80,6 +111,35 @@ class CompatibilityComparison(BaseModel):
     failure_reason: ExecutionFailureReason | None = None
 
 
+class ComponentComparison(BaseModel):
+    """One predicted component against the observation that stands for it.
+
+    A total hides which term is wrong. On the recorded RTX 2060 cases the GPU
+    weights land within 5% while the overhead heuristic is several times the
+    compute buffer, and only the breakdown says so.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    component: str
+    observed_label: str
+    semantics: ComparisonSemantics
+    semantics_reason: str | None = None
+    metric: MetricComparison
+
+    @model_validator(mode="after")
+    def _proxy_is_explained(self) -> Self:
+        if (
+            self.semantics in {ComparisonSemantics.PROXY, ComparisonSemantics.PARTIAL}
+            and not self.semantics_reason
+        ):
+            raise ValueError(
+                "proxy and partial comparisons require a reason naming what the "
+                "observation does not cover"
+            )
+        return self
+
+
 class PredictionComparison(BaseModel):
     """Comparison between a Jaull prediction and one measured execution."""
 
@@ -88,11 +148,15 @@ class PredictionComparison(BaseModel):
     ram: MetricComparison
     vram: MetricComparison
     compatibility: CompatibilityComparison
+    vram_components: tuple[ComponentComparison, ...] = ()
 
 
 __all__ = [
+    "ComparisonSemantics",
     "CompatibilityComparison",
     "CompatibilityOutcome",
+    "ComponentComparison",
+    "MemoryObservationSource",
     "MetricComparison",
     "MetricComparisonAvailability",
     "PredictionComparison",
