@@ -82,10 +82,12 @@ README roadmap says so.
   a ranking signal — not a capacity model.
 - The requirements wizard captures intent, not service objectives: there is no throughput,
   latency or TTFT target anywhere in the model.
-- A guided run takes minutes, not seconds. Deep inspection covers 12 repositories, each
-  costing a metadata round-trip and (for safetensors repos) a header read per shard. A run
-  against the live Hub was observed at roughly 5–10 minutes on a home connection; the search
-  can be cancelled at any point.
+- A guided run takes minutes, not seconds. Deep inspection covers up to 12 repositories,
+  each costing a metadata round-trip and (for safetensors repos) a header read per shard.
+  Inspection runs with a bounded concurrency of four; a cold run against the live Hub was
+  observed at roughly 5–10 minutes on a home connection. Repeated analyses can use the
+  persistent model-analysis cache, and repeated safetensors metadata lookups within one
+  run are memoized, but the search can still be cancelled at any point.
 - Which candidates get deep-inspected is decided by a heuristic, including a parameter count
   read from the repository name (`...-7B-Instruct`). That heuristic only orders the
   inspection queue — it never becomes a reported number.

@@ -31,7 +31,7 @@ class PerformanceTelemetry:
         with self._lock:
             self.counters[name] = self.counters.get(name, 0) + amount
 
-    def snapshot(self) -> dict[str, float | int]:
+    def snapshot(self, *, wall_seconds: float | None = None) -> dict[str, float | int]:
         with self._lock:
             durations = dict(self.durations)
             counters = dict(self.counters)
@@ -40,7 +40,12 @@ class PerformanceTelemetry:
             payload[f"duration.{key}"] = value
         for key, value in counters.items():
             payload[f"count.{key}"] = value
-        payload["duration.total"] = sum(durations.values())
+        # Phase durations can overlap because candidate evaluation is parallel.
+        # A caller that knows the workflow wall time must provide it instead of
+        # exposing the sum as an apparent user-facing latency.
+        payload["duration.total"] = (
+            wall_seconds if wall_seconds is not None else sum(durations.values())
+        )
         return payload
 
 

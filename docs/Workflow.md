@@ -1386,7 +1386,14 @@ Diagnostica l’entorn; no decideix quin model és millor.
 # 15.3. `observability/`: telemetria
 
 `observability/telemetry.py` són comptadors i temps lleugers per a les etapes llargues
-(`filter`, `deep_inspection`, …). No és un sistema de mètriques ni surt de la màquina.
+(`filter`, `deep_inspection`, …). No és un sistema de mètriques ni modifica ranking,
+shortlist o estimacions.
+
+El report JSON de recomanacions (schema 2) pot incloure aquest perfil tècnic: temps de
+paret del workflow, temps agregats per fase, comptadors de cache i latència per candidat
+del shortlist. Els temps agregats de fases concorrents poden solapar-se; `wall_seconds`
+és l'únic total end-to-end. La telemetria permet comparar runs freds i calents, però no
+és evidencia de rendiment del model ni es persisteix com a resultat experimental.
 
 ---
 

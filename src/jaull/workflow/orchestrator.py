@@ -10,8 +10,13 @@ of any UI dependency.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
+from pathlib import Path
+
+from huggingface_hub.hf_api import ModelInfo
 
 from jaull.application import requirements as requirements_service
 from jaull.application.recommendation import policies
@@ -25,10 +30,18 @@ from jaull.domain.candidates import (
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
-from jaull.domain.model import ModelAnalysis
+from jaull.domain.model import ModelAnalysis, SafetensorsSummary
 from jaull.domain.requirements import UserAnswers, UserRequirements
-from jaull.exceptions import HuggingFaceUnavailableError, JaullError
+from jaull.exceptions import (
+    ConfigurationNotFoundError,
+    HuggingFaceUnavailableError,
+    JaullError,
+    ModelAccessDeniedError,
+    ModelNotFoundError,
+)
+from jaull.huggingface.client import HfClientProtocol
 from jaull.observability.telemetry import PerformanceTelemetry
+from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.recommendation import explanations
 from jaull.recommendation.engine_v2 import PlanRankingContext
 from jaull.workflow.cache import RunCache
@@ -40,7 +53,7 @@ from jaull.workflow.progress import (
     ProgressCallback,
     ProgressReporter,
 )
-from jaull.workflow.state import RecommendationWorkflowState
+from jaull.workflow.state import CandidateLatency, RecommendationWorkflowState
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +62,111 @@ CancelCheck = Callable[[], bool]
 
 class WorkflowCancelled(Exception):
     """Raised internally when the caller asks the run to stop."""
+
+
+@dataclass
+class _CandidateLatencyCollector:
+    repo_id: str
+    started_at: float
+    persistent_cache_lookup_seconds: float = 0.0
+    deep_inspection_seconds: float = 0.0
+    estimation_seconds: float = 0.0
+    persistent_cache_hit: bool | None = None
+    estimation_attempts: int = 0
+
+    def snapshot(self) -> CandidateLatency:
+        return CandidateLatency(
+            repo_id=self.repo_id,
+            total_seconds=time.perf_counter() - self.started_at,
+            persistent_cache_lookup_seconds=self.persistent_cache_lookup_seconds,
+            deep_inspection_seconds=self.deep_inspection_seconds,
+            estimation_seconds=self.estimation_seconds,
+            persistent_cache_hit=self.persistent_cache_hit,
+            estimation_attempts=self.estimation_attempts,
+        )
+
+
+@dataclass(frozen=True)
+class _InspectionOutcome:
+    analysis: ModelAnalysis
+    persistent_cache_lookup_seconds: float
+    deep_inspection_seconds: float
+    persistent_cache_hit: bool | None
+
+
+@dataclass(frozen=True)
+class _SmallFileOutcome:
+    path: Path | None
+    deterministic_error: JaullError | None = None
+
+
+class _RunMetadataClient:
+    """Memoize immutable Hub metadata while a configuration ladder is evaluated.
+
+    Repository information and small config files are invariant within one
+    workflow, including a deterministic missing/gated-file outcome. Keeping
+    them here prevents a GGUF ladder from repeating the same Hub lookup for
+    every quantization. Transient network failures remain uncached so a later
+    attempt can recover. Cache identity, persistence and invalidation remain
+    owned by their existing layers.
+    """
+
+    def __init__(self, delegate: HfClientProtocol, telemetry: PerformanceTelemetry) -> None:
+        self._delegate = delegate
+        self._model_info: RunCache[str, ModelInfo] = RunCache()
+        self._small_files: RunCache[tuple[str, str], _SmallFileOutcome] = RunCache()
+        self._summaries: RunCache[str, SafetensorsSummary | None] = RunCache()
+        self._telemetry = telemetry
+
+    def model_info(self, repo_id: str) -> ModelInfo:
+        if repo_id in self._model_info:
+            self._telemetry.increment("run_model_info_cache_hits")
+        else:
+            self._telemetry.increment("run_model_info_cache_misses")
+        return self._model_info.get_or_compute(
+            repo_id,
+            lambda: self._delegate.model_info(repo_id),
+        )
+
+    def download_small_file(self, repo_id: str, filename: str) -> Path:
+        key = (repo_id, filename)
+        cached = key in self._small_files
+        if cached:
+            self._telemetry.increment("run_small_file_cache_hits")
+        else:
+            self._telemetry.increment("run_small_file_cache_misses")
+        outcome = self._small_files.get_or_compute(
+            key,
+            lambda: self._download_small_file(repo_id, filename),
+        )
+        if outcome.deterministic_error is not None:
+            if cached:
+                self._telemetry.increment("run_small_file_negative_cache_hits")
+            raise outcome.deterministic_error
+        assert outcome.path is not None
+        return outcome.path
+
+    def safetensors_summary(self, repo_id: str) -> SafetensorsSummary | None:
+        if repo_id in self._summaries:
+            self._telemetry.increment("run_safetensors_summary_cache_hits")
+        else:
+            self._telemetry.increment("run_safetensors_summary_cache_misses")
+        return self._summaries.get_or_compute(
+            repo_id,
+            lambda: self._delegate.safetensors_summary(repo_id),
+        )
+
+    def _download_small_file(self, repo_id: str, filename: str) -> _SmallFileOutcome:
+        try:
+            return _SmallFileOutcome(
+                path=self._delegate.download_small_file(repo_id, filename)
+            )
+        except (
+            ConfigurationNotFoundError,
+            ModelAccessDeniedError,
+            ModelNotFoundError,
+        ) as exc:
+            return _SmallFileOutcome(path=None, deterministic_error=exc)
 
 
 def scan_hardware(
@@ -89,6 +207,7 @@ def run_workflow(
     """Run discovery, evaluation and ranking. Never raises for one bad model."""
     reporter = ProgressReporter(DISCOVERY_STEPS, on_progress)
     telemetry = PerformanceTelemetry()
+    started_at = time.perf_counter()
     current = (state or RecommendationWorkflowState()).model_copy(
         update={
             "answers": answers,
@@ -120,7 +239,7 @@ def run_workflow(
         warnings.extend(search_warnings)
         if not candidates:
             return _finish_without_results(
-                current, requirements, reporter, warnings, [], queries, telemetry
+                current, requirements, reporter, warnings, [], queries, telemetry, started_at
             )
         reporter.done("search", f"{len(candidates)} unique repositories")
 
@@ -147,10 +266,10 @@ def run_workflow(
         )
         if not shortlist:
             return _finish_without_results(
-                current, requirements, reporter, warnings, [], queries, telemetry
+                current, requirements, reporter, warnings, [], queries, telemetry, started_at
             )
 
-        evaluated = _evaluate(
+        evaluated, candidate_latency = _evaluate(
             shortlist,
             requirements,
             hardware,
@@ -159,7 +278,12 @@ def run_workflow(
             cancelled,
             telemetry,
         )
-        current = current.model_copy(update={"evaluated_candidates": evaluated})
+        current = current.model_copy(
+            update={
+                "evaluated_candidates": evaluated,
+                "candidate_latency": candidate_latency,
+            }
+        )
 
         reporter.start("rank")
         with telemetry.timed("ranking"):
@@ -173,6 +297,7 @@ def run_workflow(
                     evaluated,
                     queries,
                     telemetry,
+                    started_at,
                 )
 
             recommendations = recommendation_service.recommend(
@@ -192,6 +317,7 @@ def run_workflow(
                 evaluated,
                 queries,
                 telemetry,
+                started_at,
             )
         reporter.done("rank", f"{len(recommendations)} recommendations")
 
@@ -200,7 +326,7 @@ def run_workflow(
                 "recommendations": recommendations,
                 "progress": reporter.progress,
                 "warnings": warnings,
-                "telemetry": telemetry.snapshot(),
+                "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
                 "current_step": WorkflowStep.COMPLETED,
             }
         )
@@ -211,7 +337,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
-                "telemetry": telemetry.snapshot(),
+                "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
                 "current_step": WorkflowStep.FAILED,
                 "errors": ["Search cancelled."],
             }
@@ -222,7 +348,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
-                "telemetry": telemetry.snapshot(),
+                "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
                 "current_step": WorkflowStep.FAILED,
                 "errors": [str(exc)],
             }
@@ -233,7 +359,7 @@ def run_workflow(
             update={
                 "progress": reporter.progress,
                 "warnings": warnings,
-                "telemetry": telemetry.snapshot(),
+                "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
                 "current_step": WorkflowStep.FAILED,
                 "errors": [str(exc)],
             }
@@ -308,24 +434,30 @@ def _evaluate(
     reporter: ProgressReporter,
     cancelled: CancelCheck,
     telemetry: PerformanceTelemetry,
-) -> list[EvaluatedCandidate]:
+) -> tuple[list[EvaluatedCandidate], list[CandidateLatency]]:
     """Inspect and estimate the shortlist, caching within this run."""
-    analysis_cache: RunCache[str, ModelAnalysis] = RunCache()
+    analysis_cache: RunCache[str, _InspectionOutcome] = RunCache()
     estimate_cache: RunCache[tuple[str, str], MemoryEstimate] = RunCache()
+    metadata_client = _RunMetadataClient(services.hf_client, telemetry)
 
-    def inspect(candidate: ModelCandidate) -> ModelAnalysis:
+    def inspect(candidate: ModelCandidate) -> _InspectionOutcome:
         return analysis_cache.get_or_compute(
             _analysis_run_key(candidate),
-            lambda: _inspect_with_persistent_cache(candidate, services, telemetry),
+            lambda: _inspect_with_persistent_cache(
+                candidate,
+                services,
+                telemetry,
+                client=metadata_client,
+            ),
         )
 
     def make_estimate_fn(
         repo_id: str,
         range_client: object | None,
+        latency: _CandidateLatencyCollector,
     ) -> Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]:
-        def estimate(
-            analysis: ModelAnalysis, config: InferenceConfiguration
-        ) -> MemoryEstimate:
+        def estimate(analysis: ModelAnalysis, config: InferenceConfiguration) -> MemoryEstimate:
+            latency.estimation_attempts += 1
             key = (repo_id, _config_key(config))
             return estimate_cache.get_or_compute(
                 key,
@@ -335,40 +467,61 @@ def _evaluate(
                     config=config,
                     services=services,
                     range_client=range_client,
+                    client=metadata_client,
+                    gguf_header_cache=services.gguf_header_cache,
                     telemetry=telemetry,
                 ),
             )
 
         return estimate
 
-    def evaluate_one(candidate: ModelCandidate) -> EvaluatedCandidate:
+    def evaluate_one(
+        candidate: ModelCandidate,
+    ) -> tuple[EvaluatedCandidate, CandidateLatency]:
+        latency = _CandidateLatencyCollector(candidate.repo_id, time.perf_counter())
         range_client = _build_range_client(services)
 
         def inspect_repo(repo_id: str) -> ModelAnalysis:
-            if repo_id != candidate.repo_id:
-                fallback = ModelCandidate(repo_id=repo_id)
-                return inspect(fallback)
-            return inspect(candidate)
+            inspected = inspect(
+                candidate if repo_id == candidate.repo_id else ModelCandidate(repo_id=repo_id)
+            )
+            if repo_id == candidate.repo_id:
+                latency.persistent_cache_lookup_seconds = inspected.persistent_cache_lookup_seconds
+                latency.deep_inspection_seconds = inspected.deep_inspection_seconds
+                latency.persistent_cache_hit = inspected.persistent_cache_hit
+            return inspected.analysis
 
-        return enrichment.evaluate_candidate(
+        def estimate_repo(
+            analysis: ModelAnalysis,
+            config: InferenceConfiguration,
+        ) -> MemoryEstimate:
+            started_at = time.perf_counter()
+            try:
+                return make_estimate_fn(candidate.repo_id, range_client, latency)(analysis, config)
+            finally:
+                latency.estimation_seconds += time.perf_counter() - started_at
+
+        evaluated = enrichment.evaluate_candidate(
             candidate=candidate,
             requirements=requirements,
             hardware=hardware,
             inspect_fn=inspect_repo,
-            estimate_fn=make_estimate_fn(candidate.repo_id, range_client),
+            estimate_fn=estimate_repo,
         )
+        return evaluated, latency.snapshot()
 
     evaluated: list[EvaluatedCandidate | None] = [None] * len(shortlist)
+    latency: list[CandidateLatency | None] = [None] * len(shortlist)
     reporter.start("inspect")
     if not shortlist:
         reporter.done("inspect", "0 inspected")
         reporter.done("estimate", "0 estimated")
-        return []
+        return [], []
     max_workers = max(1, min(policies.MAX_CONCURRENT_INSPECTIONS, len(shortlist)))
     telemetry.increment("max_concurrent_inspection_workers", max_workers)
     completed = 0
     next_index = 0
-    pending: dict[Future[EvaluatedCandidate], int] = {}
+    pending: dict[Future[tuple[EvaluatedCandidate, CandidateLatency]], int] = {}
     with ThreadPoolExecutor(
         max_workers=max_workers,
         thread_name_prefix="jaull-inspect",
@@ -387,7 +540,7 @@ def _evaluate(
                     continue
                 for future in done:
                     index = pending.pop(future)
-                    evaluated[index] = future.result()
+                    evaluated[index], latency[index] = future.result()
                     completed += 1
                     cache_stats = (
                         services.model_analysis_cache.stats
@@ -401,9 +554,7 @@ def _evaluate(
                     )
                     if next_index < len(shortlist):
                         _check(cancelled)
-                        next_future = executor.submit(
-                            evaluate_one, shortlist[next_index]
-                        )
+                        next_future = executor.submit(evaluate_one, shortlist[next_index])
                         pending[next_future] = next_index
                         next_index += 1
         except WorkflowCancelled:
@@ -424,7 +575,7 @@ def _evaluate(
         "estimate",
         f"{sum(1 for e in result if e.memory_estimate is not None)} estimated",
     )
-    return result
+    return result, [item for item in latency if item is not None]
 
 
 def _estimate_with_timing(
@@ -434,6 +585,8 @@ def _estimate_with_timing(
     config: InferenceConfiguration,
     services: ServiceContainer,
     range_client: object | None,
+    client: HfClientProtocol,
+    gguf_header_cache: GgufHeaderCacheProtocol | None,
     telemetry: PerformanceTelemetry,
 ) -> MemoryEstimate:
     with telemetry.timed("estimation"):
@@ -441,8 +594,9 @@ def _estimate_with_timing(
             analysis=analysis,
             hardware=hardware,
             inference_cfg=config,
-            client=services.hf_client,
+            client=client,
             range_client=range_client,
+            gguf_header_cache=gguf_header_cache,
         )
 
 
@@ -450,25 +604,39 @@ def _inspect_with_persistent_cache(
     candidate: ModelCandidate,
     services: ServiceContainer,
     telemetry: PerformanceTelemetry,
-) -> ModelAnalysis:
+    *,
+    client: HfClientProtocol,
+) -> _InspectionOutcome:
     cache = services.model_analysis_cache
+    cache_lookup_seconds = 0.0
+    persistent_cache_hit: bool | None = None
     if cache is not None:
+        started_at = time.perf_counter()
         with telemetry.timed("persistent_cache_lookup"):
             cached = cache.get(candidate)
+        cache_lookup_seconds = time.perf_counter() - started_at
         if cached is not None:
             telemetry.increment("persistent_cache_hits")
-            return cached
+            return _InspectionOutcome(cached, cache_lookup_seconds, 0.0, True)
         telemetry.increment("persistent_cache_misses")
+        persistent_cache_hit = False
     telemetry.increment("deep_inspections")
+    started_at = time.perf_counter()
     with telemetry.timed("deep_inspection"):
         analysis = services.inspect_model(
             candidate.repo_id,
-            client=services.hf_client,
+            client=client,
         )
+    deep_inspection_seconds = time.perf_counter() - started_at
     if cache is not None:
         with telemetry.timed("persistent_cache_write"):
             cache.put(candidate, analysis)
-    return analysis
+    return _InspectionOutcome(
+        analysis,
+        cache_lookup_seconds,
+        deep_inspection_seconds,
+        persistent_cache_hit,
+    )
 
 
 def _build_range_client(services: ServiceContainer) -> object | None:
@@ -504,6 +672,7 @@ def _finish_without_results(
     evaluated: list[EvaluatedCandidate],
     queries: list[SearchQuery],
     telemetry: PerformanceTelemetry,
+    started_at: float,
 ) -> RecommendationWorkflowState:
     """Complete the run with an explanation instead of recommendations."""
     del requirements
@@ -515,7 +684,7 @@ def _finish_without_results(
             "evaluated_candidates": evaluated or state.evaluated_candidates,
             "search_queries": [q.label for q in queries] or state.search_queries,
             "no_results_reason": explanations.no_results_explanation(evaluated),
-            "telemetry": telemetry.snapshot(),
+            "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
             "current_step": WorkflowStep.COMPLETED,
         }
     )

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from jaull.adapters.cache.gguf_header_cache import GgufHeaderCache
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import EstimationConfidence, MetadataSource
 from jaull.domain.model import (
@@ -58,6 +59,17 @@ class _StubRangeClient:
         return RangeResponse(
             body=self.body[start : end + 1], honored_range=True, status_code=206
         )
+
+
+@dataclass
+class _CountingRangeClient(_StubRangeClient):
+    calls: int = 0
+
+    def fetch_range(
+        self, url: str, start: int, end: int, timeout: float
+    ) -> RangeResponse:
+        self.calls += 1
+        return super().fetch_range(url, start, end, timeout)
 
 
 def _gguf_analysis() -> ModelAnalysis:
@@ -144,6 +156,40 @@ def test_enrich_without_base_model_declared_still_uses_gguf_header() -> None:
     assert result.base_model_resolution.source is MetadataSource.UNRESOLVED
     assert result.enriched_config is not None
     assert result.enriched_config.config.num_hidden_layers == 32
+
+
+def test_enrich_reuses_cached_header_for_the_same_artifact(tmp_path: Path) -> None:
+    analysis = _gguf_analysis()
+    variant = analysis.classification.gguf_variants[0]
+    client = _StubClient()
+    range_client = _CountingRangeClient(
+        body=build_header(
+            {
+                "general.architecture": "llama",
+                "llama.block_count": 32,
+            }
+        )
+    )
+    cache = GgufHeaderCache(root=tmp_path)
+
+    first = service.enrich(
+        analysis=analysis,
+        variant=variant,
+        client=client,
+        range_client=range_client,
+        header_cache=cache,
+    )
+    second = service.enrich(
+        analysis=analysis,
+        variant=variant,
+        client=client,
+        range_client=range_client,
+        header_cache=cache,
+    )
+
+    assert first.gguf_header == second.gguf_header
+    assert range_client.calls == 1
+    assert cache.stats.hits == 1
 
 
 def test_enrich_when_base_is_gated_degrades_cleanly() -> None:

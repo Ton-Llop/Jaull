@@ -25,6 +25,7 @@ from jaull.exceptions import HuggingFaceUnavailableError
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata import service as metadata_service
 from jaull.metadata.range_reader import HttpRangeClient
+from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.runtime import service as runtime_service
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def estimate_memory(
     *,
     resolve_base_model: bool = True,
     range_client: HttpRangeClient | None = None,
+    gguf_header_cache: GgufHeaderCacheProtocol | None = None,
     recommend_runtime: bool = True,
 ) -> MemoryEstimate:
     assumptions: list[str] = []
@@ -58,6 +60,7 @@ def estimate_memory(
         client=client,
         resolve_base_model=resolve_base_model,
         range_client=range_client,
+        gguf_header_cache=gguf_header_cache,
     )
     warnings.extend(enrichment.warnings)
     if enrichment.base_model_resolution.repo_id:
@@ -181,6 +184,7 @@ def _run_enrichment(
     client: HfClientProtocol,
     resolve_base_model: bool,
     range_client: HttpRangeClient | None,
+    gguf_header_cache: GgufHeaderCacheProtocol | None,
 ) -> EnrichmentResult:
     if analysis.classification.primary_type is not RepositoryType.GGUF:
         return metadata_service.unresolved_result()
@@ -194,6 +198,7 @@ def _run_enrichment(
         variant=variant,
         client=client,
         range_client=range_client,
+        header_cache=gguf_header_cache,
     )
 
 
