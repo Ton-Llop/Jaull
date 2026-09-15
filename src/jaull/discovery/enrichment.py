@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable
 
 from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
+from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.families import resolve_parameter_count
 from jaull.domain.hardware import HardwareProfile
@@ -57,6 +58,13 @@ def evaluate_candidate(
         raise exc
     except JaullError as exc:
         return _failed(candidate, f"Could not inspect repository: {exc}")
+
+    if analysis.classification.primary_type is RepositoryType.ADAPTER:
+        return _failed(
+            _with_repository_type(candidate, analysis),
+            "Repository is an adapter, not a standalone executable model.",
+            analysis=analysis,
+        )
 
     try:
         choice = select_configuration(analysis, requirements, estimate_fn)

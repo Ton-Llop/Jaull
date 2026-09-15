@@ -302,7 +302,13 @@ class RecommendationResultsScreen(Screen[None]):
                         )
                     )
             case "res-details":
-                self.app.push_screen(RecommendationDetailsScreen(self._state))
+                if self._state.recommendations:
+                    self.app.push_screen(
+                        RecommendationDetailsScreen(
+                            self._state,
+                            self._state.recommendations[self._selected],
+                        )
+                    )
             case "res-export":
                 self.app.push_screen(ExportReportModal(self._state))
             case "res-restart":
@@ -481,9 +487,14 @@ class ExecutionPathBenchmarkCompareScreen(Screen[None]):
 class RecommendationDetailsScreen(Screen[None]):
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, state: RecommendationWorkflowState) -> None:
+    def __init__(
+        self,
+        state: RecommendationWorkflowState,
+        recommendation: ModelRecommendation,
+    ) -> None:
         super().__init__()
         self._state = state
+        self._recommendation = recommendation
 
     def compose(self) -> ComposeResult:
         yield WorkflowHeader(
@@ -492,19 +503,16 @@ class RecommendationDetailsScreen(Screen[None]):
             "Assessment, memory, assumptions and the equivalent CLI command.",
         )
         with VerticalScroll(id="details-body"):
-            if not self._state.recommendations:
-                yield Static("No technical details.", classes="text-muted")
-            else:
-                yield from self._compose_details()
+            yield from self._compose_details()
             yield ActionButton("Back", id="details-back")
         yield Footer()
 
     def _compose_details(self) -> ComposeResult:
-        primary = self._state.recommendations[0]
-        yield SummaryCard("Recommendation assessment", _assessment_rows(primary))
-        yield SummaryCard("Recommendation", _recommendation_rows(primary))
+        recommendation = self._recommendation
+        yield SummaryCard("Recommendation assessment", _assessment_rows(recommendation))
+        yield SummaryCard("Recommendation", _recommendation_rows(recommendation))
 
-        estimate = primary.evaluated.memory_estimate
+        estimate = recommendation.evaluated.memory_estimate
         if estimate is not None:
             yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
             if estimate.total_bytes is not None:
@@ -520,8 +528,11 @@ class RecommendationDetailsScreen(Screen[None]):
                 )
 
         rows: list[tuple[str, str]] = [
-            ("Configuration chosen", primary.evaluated.configuration_reason or "-"),
-            ("Variants considered", ", ".join(primary.evaluated.alternatives_considered) or "-"),
+            ("Configuration chosen", recommendation.evaluated.configuration_reason or "-"),
+            (
+                "Variants considered",
+                ", ".join(recommendation.evaluated.alternatives_considered) or "-",
+            ),
             ("Search queries", str(len(self._state.search_queries))),
             ("Candidates found", str(len(self._state.candidates))),
             ("Candidates evaluated", str(len(self._state.evaluated_candidates))),
@@ -536,7 +547,7 @@ class RecommendationDetailsScreen(Screen[None]):
         yield SummaryCard("Pipeline", rows)
         yield SummaryCard(
             "Execution paths",
-            _execution_path_detail_rows(primary),
+            _execution_path_detail_rows(recommendation),
         )
 
         if self._state.requirements is not None:
@@ -551,7 +562,7 @@ class RecommendationDetailsScreen(Screen[None]):
                 ]
                 or [("-", "none recorded")],
             )
-        yield CliEquivalent(_equivalent_cli_for(primary))
+        yield CliEquivalent(_equivalent_cli_for(recommendation))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "details-back":

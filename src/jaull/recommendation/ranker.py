@@ -169,6 +169,21 @@ def select_ranked(
     if not ordered:
         return []
 
+    # Keep the score order within each group, but do not present an incomplete
+    # memory estimate ahead of a concrete, actionable placement. This is a
+    # presentation policy; ScoreBreakdown.total remains the original formula.
+    confirmed = [
+        pair
+        for pair in ordered
+        if policies.has_confirmed_memory_compatibility(status_of(pair[0]))
+    ]
+    unconfirmed = [
+        pair
+        for pair in ordered
+        if not policies.has_confirmed_memory_compatibility(status_of(pair[0]))
+    ]
+    ordered = [*confirmed, *unconfirmed]
+
     # Promote the best candidate that is allowed to lead. If none qualifies we
     # return the list unchanged: the caller renders it as "closest matches"
     # rather than as a recommendation.

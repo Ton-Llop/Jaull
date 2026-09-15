@@ -26,6 +26,7 @@ from jaull.discovery.search_client import (
     candidate_from_model_info,
 )
 from jaull.domain.candidates import SearchQuery
+from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import EstimationConfidence, HardwareFitMode
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import CommercialUse, UseCase
@@ -270,6 +271,17 @@ def test_adapter_without_base_model_is_rejected() -> None:
     )
     assert outcome.kept == []
     assert "Adapter" in outcome.rejected[0][1]
+
+
+def test_known_adapter_is_rejected_even_with_a_declared_base_model() -> None:
+    adapter = candidate(repo_id="org/lora", base_model="org/base").model_copy(
+        update={"repository_type": RepositoryType.ADAPTER}
+    )
+
+    outcome = filter_candidates([adapter], _requirements())
+
+    assert outcome.kept == []
+    assert "standalone model" in outcome.rejected[0][1]
 
 
 def test_adapter_with_base_model_survives() -> None:

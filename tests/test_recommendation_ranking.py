@@ -7,10 +7,11 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
-from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.inference import InferenceConfiguration, WeightPrecision
 from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation import explanations, policies, ranker, scoring
 from jaull.recommendation.capability import CapabilitySignal
+from jaull.recommendation.models import ScoreBreakdown
 from jaull.workflow import policies as workflow_policies
 from jaull.workflow.ranking import recommend
 from jaull.workflow.requirements import build_requirements
@@ -215,6 +216,43 @@ def test_unknown_compatibility_cannot_lead() -> None:
     assert not ranker.can_be_primary(unknown)
 
 
+def test_known_memory_fit_precedes_higher_scoring_unknown_in_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback results preserve score values while presenting known fits first."""
+    unknown = _evaluated(
+        repo_id="org/Unknown-High-Score",
+        status=CompatibilityStatus.UNKNOWN,
+        confidence=EstimationConfidence.UNKNOWN,
+    )
+    compatible = _evaluated(
+        repo_id="org/Compatible-Lower-Score",
+        status=CompatibilityStatus.COMPATIBLE,
+    )
+    unknown_score = ScoreBreakdown(total=0.99)
+    compatible_score = ScoreBreakdown(total=0.20)
+    monkeypatch.setattr(
+        ranker,
+        "sort_candidates",
+        lambda *args, **kwargs: [
+            (unknown, unknown_score),
+            (compatible, compatible_score),
+        ],
+    )
+
+    ranked = ranker.select_ranked(
+        [unknown, compatible],
+        RecommendationPriority.BALANCED,
+        limit=5,
+    )
+
+    assert [item.candidate.repo_id for item, _ in ranked] == [
+        "org/Compatible-Lower-Score",
+        "org/Unknown-High-Score",
+    ]
+    assert [score.total for _, score in ranked] == [0.20, 0.99]
+
+
 def test_unknown_compatibility_lowers_the_reported_confidence() -> None:
     unknown = _evaluated(
         repo_id="org/Mystery",
@@ -369,6 +407,81 @@ def test_positive_reasons_are_produced() -> None:
     reasons = results[0].reasons
     assert any("programming" in r for r in reasons)
     assert any("Apache" in r or "apache" in r for r in reasons)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected", "forbidden"),
+    [
+        (
+            CompatibilityStatus.COMFORTABLE,
+            "Q6_K variant fits comfortably",
+            "selected for evaluation",
+        ),
+        (
+            CompatibilityStatus.COMPATIBLE,
+            "Q6_K variant fits in the detected memory.",
+            "selected for evaluation",
+        ),
+        (
+            CompatibilityStatus.TIGHT,
+            "Q6_K variant fits with limited memory headroom.",
+            "selected for evaluation",
+        ),
+        (
+            CompatibilityStatus.OFFLOADING_REQUIRED,
+            "Q6_K variant requires an offloaded memory placement.",
+            "fits in the detected memory",
+        ),
+        (
+            CompatibilityStatus.UNKNOWN,
+            "Q6_K variant selected for evaluation.",
+            "fits",
+        ),
+        (
+            CompatibilityStatus.INSUFFICIENT,
+            "",
+            "fits",
+        ),
+    ],
+)
+def test_configuration_memory_reason_follows_compatibility_status(
+    status: CompatibilityStatus,
+    expected: str,
+    forbidden: str,
+) -> None:
+    evaluated = _evaluated(status=status).model_copy(
+        update={
+            "selected_configuration": InferenceConfiguration(
+                context_length=4096,
+                quantization="Q6_K",
+            )
+        }
+    )
+
+    reasons = explanations.build_reasons(evaluated, _req())  # type: ignore[arg-type]
+
+    assert (
+        any(expected in reason for reason in reasons)
+        if expected
+        else not any("Q6_K variant" in reason for reason in reasons)
+    )
+    assert not any(forbidden in reason.lower() for reason in reasons)
+
+
+def test_precision_memory_reason_uses_the_same_compatibility_policy() -> None:
+    evaluated = _evaluated(status=CompatibilityStatus.UNKNOWN).model_copy(
+        update={
+            "selected_configuration": InferenceConfiguration(
+                context_length=4096,
+                precision=WeightPrecision.INT4,
+            )
+        }
+    )
+
+    reasons = explanations.build_reasons(evaluated, _req())  # type: ignore[arg-type]
+
+    assert "Int4 precision selected for evaluation." in reasons
+    assert not any("fits" in reason.lower() for reason in reasons)
 
 
 def test_tight_fit_produces_a_warning() -> None:

@@ -106,6 +106,23 @@ CONFIDENCE_MULTIPLIER: dict[EstimationConfidence, float] = {
 # A model may not be recommended as the primary pick below this status.
 WORST_PRIMARY_STATUS = CompatibilityStatus.OFFLOADING_REQUIRED
 
+# A known placement result is materially different from an incomplete memory
+# estimate. Both can remain useful recommendations, but the latter must not
+# displace a configuration whose viability has actually been established.
+CONFIRMED_MEMORY_STATUSES: frozenset[CompatibilityStatus] = frozenset(
+    {
+        CompatibilityStatus.COMFORTABLE,
+        CompatibilityStatus.COMPATIBLE,
+        CompatibilityStatus.TIGHT,
+        CompatibilityStatus.OFFLOADING_REQUIRED,
+    }
+)
+
+
+def has_confirmed_memory_compatibility(status: CompatibilityStatus) -> bool:
+    """Whether ``status`` establishes a concrete, non-insufficient placement."""
+    return status in CONFIRMED_MEMORY_STATUSES
+
 
 # --------------------------------------------------------------------------
 # Licensing.
@@ -153,6 +170,7 @@ __all__ = [
     "ARTIFACT_REALISM_SCORES",
     "BASE_WEIGHTS",
     "CONFIDENCE_SCORE",
+    "CONFIRMED_MEMORY_STATUSES",
     "CUSTOM_LICENSE_PREFIXES",
     "LEGAL_DISCLAIMER",
     "LICENSE_SCORE",
@@ -167,4 +185,5 @@ __all__ = [
     "WORST_PRIMARY_STATUS",
     "LicenseCategory",
     "classify_license",
+    "has_confirmed_memory_compatibility",
 ]

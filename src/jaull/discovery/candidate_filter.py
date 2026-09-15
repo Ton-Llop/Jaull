@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, replace
 
 from jaull.domain import licenses
 from jaull.domain.candidates import ModelCandidate
+from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     EstimationConfidence,
     HardwareFitMode,
@@ -165,6 +166,9 @@ def _rejection_reason(
         return "Repository is private."
     if candidate.gated:
         return "Repository is gated and cannot be inspected without access."
+
+    if candidate.repository_type is RepositoryType.ADAPTER:
+        return "Repository is an adapter, not a standalone model."
 
     tags = {tag.lower() for tag in candidate.tags}
 

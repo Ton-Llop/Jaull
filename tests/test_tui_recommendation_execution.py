@@ -206,6 +206,7 @@ def _recommendation(
     rank: int = 1,
     repo_id: str = "org/Tiny-GGUF",
     quantization: str = "Q4_K_M",
+    total_bytes: int = 4 * GIB,
     runtime: RuntimeRecommendation | None = None,
 ) -> ModelRecommendation:
     config = InferenceConfiguration(
@@ -216,7 +217,7 @@ def _recommendation(
     estimate = memory_estimate(
         analysis,
         config,
-        total_bytes=4 * GIB,
+        total_bytes=total_bytes,
         status=CompatibilityStatus.COMFORTABLE,
     ).model_copy(update={"runtime_recommendation": runtime or _runtime()})
     base_candidate = candidate(repo_id=repo_id).model_copy(
@@ -2273,6 +2274,80 @@ def test_selecting_a_recommendation_expands_it_and_collapses_the_others() -> Non
             # free of duplicate-id collisions.
             assert screen.query_one("#res-run-0", Button)
             assert screen.query_one("#res-run-1", Button)
+
+    _run(scenario())
+
+
+def test_details_uses_the_explicitly_selected_recommendation() -> None:
+    async def scenario() -> None:
+        state = RecommendationWorkflowState(
+            recommendations=[
+                _recommendation(
+                    rank=1,
+                    repo_id="org/First-GGUF",
+                    quantization="Q4_K_M",
+                    total_bytes=4 * GIB,
+                ),
+                _recommendation(
+                    rank=2,
+                    repo_id="org/Second-GGUF",
+                    quantization="Q5_K_M",
+                    total_bytes=5 * GIB,
+                ),
+                _recommendation(
+                    rank=3,
+                    repo_id="org/Third-GGUF",
+                    quantization="Q6_K",
+                    total_bytes=6 * GIB,
+                ),
+            ]
+        )
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(state)
+            await pilot.pause()
+
+            # Keyboard navigation selects the third row before opening Details.
+            await pilot.press("down", "down")
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            screen.query_one("#res-details", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen),
+            )
+            details = pilot.app.screen
+            assert isinstance(details, RecommendationDetailsScreen)
+            assert details._recommendation.repo_id == "org/Third-GGUF"
+            third_text = _visible_text(details)
+            assert "org/Third-GGUF" in third_text
+            assert "Q6_K" in third_text
+            assert "6.00 GiB" in third_text
+            assert "org/First-GGUF" not in third_text
+
+            details.query_one("#details-back", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
+
+            # A pointer selection follows the same explicit recommendation path.
+            await pilot.click("#rec-row-1")
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            screen.query_one("#res-details", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen),
+            )
+            details = pilot.app.screen
+            assert isinstance(details, RecommendationDetailsScreen)
+            assert details._recommendation.repo_id == "org/Second-GGUF"
+            second_text = _visible_text(details)
+            assert "org/Second-GGUF" in second_text
+            assert "Q5_K_M" in second_text
+            assert "5.00 GiB" in second_text
 
     _run(scenario())
 

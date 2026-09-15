@@ -142,12 +142,14 @@ def _select_transformers(
     considered: list[str] = []
     warnings: list[str] = []
     best_effort: tuple[InferenceConfiguration, MemoryEstimate] | None = None
+    saw_unknown = False
 
     for precision in policies.TRANSFORMERS_DTYPE_LADDER:
         config = _build_config(requirements, precision=precision)
         estimate = estimate_fn(analysis, config)
         status = estimate.assessment.status
         considered.append(f"{precision.value}: {status.value}")
+        saw_unknown = saw_unknown or status is CompatibilityStatus.UNKNOWN
 
         if best_effort is None:
             best_effort = (config, estimate)
@@ -171,11 +173,18 @@ def _select_transformers(
                 warnings=warnings,
             )
 
-    warnings.append("No precision fits the detected memory, including int4.")
+    if saw_unknown:
+        message = (
+            "No precision could be confirmed to fit the detected memory; "
+            "reporting the closest option."
+        )
+    else:
+        message = "No precision fits the detected memory, including int4."
+    warnings.append(message)
     return ConfigurationChoice(
         configuration=best_effort[0] if best_effort else None,
         estimate=best_effort[1] if best_effort else None,
-        reason="No precision fits; reporting the closest option.",
+        reason=message,
         considered=considered,
         warnings=warnings,
     )
