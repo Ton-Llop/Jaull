@@ -12,10 +12,11 @@ from jaull.domain.artifact_profile import ArtifactConfirmation
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
+    CompatibilityAssessment,
     CompatibilityStatus,
     EstimationConfidence,
 )
-from jaull.domain.inference import TargetDevice
+from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.requirements import UseCase, UserRequirements
 from jaull.domain.runtime import RuntimeExecutability
 from jaull.recommendation import policies
@@ -49,18 +50,12 @@ def build_reasons(
         listed = ", ".join(sorted({lang.upper() for lang in candidate.languages})[:4])
         reasons.append(f"Model metadata lists {listed}.")
 
-    config = evaluated.selected_configuration
-    if config is not None:
-        if config.quantization:
-            reasons.append(
-                f"{config.quantization} variant fits in the detected memory."
-            )
-        elif config.precision:
-            reasons.append(
-                f"Fits in the detected memory at {config.precision.value} precision."
-            )
-
     assessment = evaluated.compatibility
+    config = evaluated.selected_configuration
+    configuration_reason = _configuration_memory_reason(config, assessment)
+    if configuration_reason is not None:
+        reasons.append(configuration_reason)
+
     if assessment is not None:
         if assessment.status is CompatibilityStatus.COMFORTABLE:
             reasons.append("Leaves comfortable free memory after loading.")
@@ -77,6 +72,35 @@ def build_reasons(
         reasons.append(f"Suggested context of {config.context_length} tokens.")
 
     return reasons
+
+
+def _configuration_memory_reason(
+    config: InferenceConfiguration | None,
+    assessment: CompatibilityAssessment | None,
+) -> str | None:
+    """Describe a chosen representation without claiming unproven memory fit."""
+    if config is None:
+        return None
+    if config.quantization:
+        label = f"{config.quantization} variant"
+    elif config.precision:
+        label = f"{config.precision.value} precision"
+    else:
+        return None
+
+    display_label = label[:1].upper() + label[1:]
+
+    if assessment is None or assessment.status is CompatibilityStatus.UNKNOWN:
+        return f"{display_label} selected for evaluation."
+    if assessment.status is CompatibilityStatus.COMFORTABLE:
+        return f"{display_label} fits comfortably in the detected memory."
+    if assessment.status is CompatibilityStatus.COMPATIBLE:
+        return f"{display_label} fits in the detected memory."
+    if assessment.status is CompatibilityStatus.TIGHT:
+        return f"{display_label} fits with limited memory headroom."
+    if assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED:
+        return f"{display_label} requires an offloaded memory placement."
+    return None
 
 
 def build_warnings(

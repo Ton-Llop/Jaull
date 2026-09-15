@@ -51,7 +51,11 @@ from jaull.execution_plans import build_execution_plan, resolve_model_identity
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
 from jaull.recommendation.local_evidence import matching_benchmark, matching_experiment
-from jaull.recommendation.policies import LicenseCategory, classify_license
+from jaull.recommendation.policies import (
+    LicenseCategory,
+    classify_license,
+    has_confirmed_memory_compatibility,
+)
 
 EstimatePlanFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
 
@@ -102,6 +106,7 @@ def rank_execution_plans(
             )
             ranked.append(RankedPlan(evaluated=item, plan=plan, assessment=assessment))
     ordered = sorted(ranked, key=lambda item: _ranking_key(item, requirements.priority))
+    ordered = _prioritize_confirmed_memory_fit(ordered)
     if limit is None:
         return ordered
     return ordered[:limit]
@@ -947,6 +952,31 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
         item.plan.artifact.quantization or item.plan.artifact.precision or "",
         item.plan.runtime.runtime.value,
     )
+
+
+def _prioritize_confirmed_memory_fit(
+    ordered: Sequence[RankedPlan],
+) -> list[RankedPlan]:
+    """Keep base v2 ranking within viability groups for user-facing results.
+
+    A plan with an UNKNOWN estimate can still be useful as a best-effort
+    alternative, but must not take a displayed slot ahead of an actionable
+    plan whose memory placement is known. This deliberately does not alter
+    PlanAssessment or any score-like ranking dimension.
+    """
+    confirmed: list[RankedPlan] = []
+    unconfirmed: list[RankedPlan] = []
+    for item in ordered:
+        estimate = item.plan.memory_prediction
+        if (
+            not item.assessment.rejected
+            and estimate is not None
+            and has_confirmed_memory_compatibility(estimate.assessment.status)
+        ):
+            confirmed.append(item)
+        else:
+            unconfirmed.append(item)
+    return [*confirmed, *unconfirmed]
 
 
 def _quantization_quality_rank(plan: ExecutionPlan) -> int:

@@ -39,7 +39,7 @@ Generated: <redacted>
 
 - Strong match for programming tasks.
 - Model metadata lists EN, ES.
-- Fits in the detected memory at float16 precision.
+- Float16 precision fits comfortably in the detected memory.
 - Leaves comfortable free memory after loading.
 - apache-2.0 license is generally suitable for commercial use.
 - Suggested context of 4096 tokens.

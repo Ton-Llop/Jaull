@@ -54,7 +54,7 @@ from jaull.domain.runtime import (
 )
 from jaull.experiments.storage import ExperimentStore
 from jaull.presentation.plan_labels import artifact_display, plan_backend
-from jaull.recommendation import scoring
+from jaull.recommendation import engine_v2, scoring
 from jaull.recommendation.engine_v2 import (
     PlanRankingContext,
     assess_plan,
@@ -742,6 +742,91 @@ def test_balanced_can_still_prefer_more_capable_compatible_plan() -> None:
     assert ranked[0].assessment.execution_fitness is AssessmentLevel.ADEQUATE
     assert ranked[1].assessment.capability is AssessmentLevel.ADEQUATE
     assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
+
+
+def test_confirmed_memory_fit_precedes_higher_ranked_unknown_plan(
+    monkeypatch,
+) -> None:
+    """User-facing v2 order keeps its base rank within viability groups."""
+    unknown = _evaluated_transformers(
+        repo_id="org/Unknown-High-Score",
+        status=CompatibilityStatus.UNKNOWN,
+    )
+    compatible = _evaluated_transformers(
+        repo_id="org/Compatible-Lower-Score",
+        status=CompatibilityStatus.COMPATIBLE,
+    )
+    monkeypatch.setattr(
+        engine_v2,
+        "_ranking_key",
+        lambda item, priority: (0 if item.evaluated is unknown else 1,),
+    )
+
+    ranked = rank_execution_plans(
+        [compatible, unknown],
+        _requirements(RecommendationPriority.QUALITY),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Compatible-Lower-Score",
+        "org/Unknown-High-Score",
+    ]
+
+
+def test_offloading_required_remains_a_confirmed_memory_placement(
+    monkeypatch,
+) -> None:
+    unknown = _evaluated_transformers(
+        repo_id="org/Unknown-High-Score",
+        status=CompatibilityStatus.UNKNOWN,
+    )
+    offloading = _evaluated_transformers(
+        repo_id="org/Offloading-Lower-Score",
+        status=CompatibilityStatus.OFFLOADING_REQUIRED,
+    )
+    monkeypatch.setattr(
+        engine_v2,
+        "_ranking_key",
+        lambda item, priority: (0 if item.evaluated is unknown else 1,),
+    )
+
+    ranked = rank_execution_plans(
+        [offloading, unknown],
+        _requirements(RecommendationPriority.QUALITY),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Offloading-Lower-Score",
+        "org/Unknown-High-Score",
+    ]
+
+
+def test_all_unknown_plans_keep_their_base_ranking_order(
+    monkeypatch,
+) -> None:
+    first = _evaluated_transformers(
+        repo_id="org/Unknown-First",
+        status=CompatibilityStatus.UNKNOWN,
+    )
+    second = _evaluated_transformers(
+        repo_id="org/Unknown-Second",
+        status=CompatibilityStatus.UNKNOWN,
+    )
+    monkeypatch.setattr(
+        engine_v2,
+        "_ranking_key",
+        lambda item, priority: (0 if item.evaluated is second else 1,),
+    )
+
+    ranked = rank_execution_plans(
+        [first, second],
+        _requirements(RecommendationPriority.QUALITY),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Unknown-Second",
+        "org/Unknown-First",
+    ]
 
 
 def test_quality_policy_is_unchanged_by_balanced_runnability_gate() -> None:
