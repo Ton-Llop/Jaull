@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from jaull.analyzers.transformers import _model_config_from_dict
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.inference import WeightPrecision
 from jaull.domain.model import ModelConfig
@@ -22,6 +23,27 @@ def test_kv_cache_mha_standard() -> None:
     assert est.component.bytes == 2 * 32 * 32 * 128 * 2048 * 1 * 2
     assert est.kv_heads == 32
     assert est.head_dim == 128
+
+
+def test_kv_cache_can_use_normalized_gpt2_config() -> None:
+    config = _model_config_from_dict(
+        {
+            "model_type": "gpt2",
+            "n_embd": 768,
+            "n_layer": 12,
+            "n_head": 12,
+        }
+    )
+
+    est = kv_cache.estimate_kv_cache(
+        config=config,
+        context_length=1024,
+        batch_size=1,
+        kv_dtype=WeightPrecision.FLOAT16,
+    )
+
+    assert est.component.bytes == 2 * 12 * 12 * 64 * 1024 * 1 * 2
+    assert est.component.bytes is not None
 
 
 def test_kv_cache_gqa_reduces_bytes_and_warns() -> None:

@@ -198,6 +198,33 @@ def test_transformers_with_nothing_fitting_reports_the_closest() -> None:
     assert any("No precision fits" in w for w in choice.warnings)
 
 
+def test_transformers_unknown_estimates_are_not_reported_as_not_fitting() -> None:
+    base_estimator = size_driven_estimator(vram_budget=1 * GIB)
+
+    def unknown_estimator(
+        analysis: ModelAnalysis, config: InferenceConfiguration
+    ) -> MemoryEstimate:
+        estimate = base_estimator(analysis, config)
+        return estimate.model_copy(
+            update={
+                "assessment": estimate.assessment.model_copy(
+                    update={"status": CompatibilityStatus.UNKNOWN}
+                )
+            }
+        )
+
+    choice = select_configuration(
+        transformers_analysis(),
+        _req(RecommendationPriority.BALANCED),  # type: ignore[arg-type]
+        unknown_estimator,
+    )
+
+    assert choice.configuration is not None
+    assert any("could be confirmed" in warning for warning in choice.warnings)
+    assert all("No precision fits" not in warning for warning in choice.warnings)
+    assert "could be confirmed" in choice.reason
+
+
 def test_guided_mode_never_asks_the_user_for_a_quantization() -> None:
     """The chosen config is fully derived: the user supplied no technical input."""
     choice = select_configuration(

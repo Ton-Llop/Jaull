@@ -26,6 +26,21 @@ def test_raw_config_preserves_quantization_config(method: str) -> None:
     }
 
 
+def test_gpt2_legacy_fields_are_normalized_for_estimators() -> None:
+    config = _model_config_from_dict(
+        {
+            "model_type": "gpt2",
+            "n_embd": 768,
+            "n_layer": 12,
+            "n_head": 12,
+        }
+    )
+
+    assert config.hidden_size == 768
+    assert config.num_hidden_layers == 12
+    assert config.num_attention_heads == 12
+
+
 # ---------------------------------------------------------------------------
 # Sliding window: the number and the flag are separate facts
 # ---------------------------------------------------------------------------

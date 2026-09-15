@@ -19,7 +19,9 @@ from jaull.ports.cache import ModelAnalysisCacheProtocol, ModelAnalysisCacheStat
 
 logger = logging.getLogger(__name__)
 
-ANALYSIS_CACHE_SCHEMA_VERSION = 2
+# Config parsing now normalizes GPT-2's legacy architecture field names into
+# ModelConfig. Invalidate entries created before that normalization existed.
+ANALYSIS_CACHE_SCHEMA_VERSION = 3
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
 

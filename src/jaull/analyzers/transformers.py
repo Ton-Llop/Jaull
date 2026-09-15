@@ -75,9 +75,13 @@ def _model_config_from_dict(data: dict[str, object]) -> ModelConfig:
         [str(x) for x in raw_architectures] if isinstance(raw_architectures, list) else []
     )
 
-    def _int_or_none(key: str) -> int | None:
-        value = data.get(key)
-        return int(value) if isinstance(value, int) else None
+    def _int_or_none(key: str, *aliases: str) -> int | None:
+        """Read a canonical config key, with narrowly defined legacy aliases."""
+        for candidate in (key, *aliases):
+            value = data.get(candidate)
+            if isinstance(value, int) and not isinstance(value, bool):
+                return int(value)
+        return None
 
     def _str_or_none(key: str) -> str | None:
         value = data.get(key)
@@ -100,9 +104,11 @@ def _model_config_from_dict(data: dict[str, object]) -> ModelConfig:
         model_type=_str_or_none("model_type"),
         torch_dtype=_str_or_none("torch_dtype"),
         max_position_embeddings=_int_or_none("max_position_embeddings"),
-        hidden_size=_int_or_none("hidden_size"),
-        num_hidden_layers=_int_or_none("num_hidden_layers"),
-        num_attention_heads=_int_or_none("num_attention_heads"),
+        # GPT-2 configs use the older Transformers names. Normalize them here
+        # so downstream estimators can remain architecture-neutral.
+        hidden_size=_int_or_none("hidden_size", "n_embd"),
+        num_hidden_layers=_int_or_none("num_hidden_layers", "n_layer"),
+        num_attention_heads=_int_or_none("num_attention_heads", "n_head"),
         num_key_value_heads=_int_or_none("num_key_value_heads"),
         head_dim=_int_or_none("head_dim"),
         intermediate_size=_int_or_none("intermediate_size"),
