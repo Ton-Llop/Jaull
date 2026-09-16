@@ -122,7 +122,13 @@ def build_warnings(
         if assessment.status is CompatibilityStatus.TIGHT:
             warnings.append(_tight_warning(device, has_gpu))
         elif assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED:
-            warnings.append(_offloading_warning(has_gpu))
+            # The configuration ladder already explains the offload when it
+            # exhausted itself, and its wording is the more precise of the two
+            # (it says which option is being reported, and that a placement
+            # estimate is not a verified run). `_dedupe` cannot catch this: the
+            # two sentences differ, they just say the same thing.
+            if not any("offloading" in warning.lower() for warning in warnings):
+                warnings.append(_offloading_warning(has_gpu))
         elif assessment.status is CompatibilityStatus.UNKNOWN:
             warnings.append(
                 "Memory estimate is incomplete; treat this as a low-confidence suggestion."
@@ -240,11 +246,13 @@ def _confidence_warning(evaluated: EvaluatedCandidate) -> str:
             "compatibility assessment rather than by any single component."
         )
     detail = ", ".join(weakest)
-    if assumed:
+    heuristic = [name for name in weakest if name in assumed]
+    if heuristic:
+        plural = "s are" if len(heuristic) > 1 else " is"
         return (
-            f"Confidence is low because the estimate rests on {detail}, which "
-            f"{'is' if len(assumed) == 1 else 'are'} a documented heuristic "
-            f"({', '.join(assumed)}), not a measurement."
+            f"Confidence is low because the estimate rests on {detail}. The "
+            f"{', '.join(heuristic)} figure{plural} a documented heuristic, "
+            "not a measurement."
         )
     return f"Confidence is low because of the {detail} estimate."
 

@@ -995,19 +995,31 @@ def ranking_criteria(
         and prediction is not None
         and has_confirmed_memory_compatibility(prediction.assessment.status)
     )
+    # Both of these compare as two states, so the published value has to read as
+    # two states too. Printing the raw status made `offloading_required` sit
+    # above `comfortable` and look like a violated ordering, when the axis had
+    # in fact tied them; and "hard_constraints: none" contradicted the same
+    # entry's "Unmet requirements" list, which is a different gate.
+    status_detail = (
+        f" ({prediction.assessment.status.value})" if prediction is not None else ""
+    )
     leading: tuple[tuple[str, str, int | float], ...] = (
         (
             "viability",
             (
-                prediction.assessment.status.value
-                if confirmed and prediction is not None
-                else "placement not confirmed"
+                f"placement confirmed{status_detail}"
+                if confirmed
+                else f"placement not confirmed{status_detail}"
             ),
             0 if confirmed else 1,
         ),
         (
-            "hard_constraints",
-            "failed" if assessment.rejected else "none",
+            "plan_constraints",
+            (
+                "failed: " + ", ".join(c.code.value for c in assessment.hard_constraints)
+                if assessment.rejected
+                else "none"
+            ),
             1 if assessment.rejected else 0,
         ),
     )

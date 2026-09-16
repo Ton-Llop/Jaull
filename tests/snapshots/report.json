@@ -108,10 +108,10 @@
         "criteria": [
           {
             "axis": "viability",
-            "value": "comfortable"
+            "value": "placement confirmed (comfortable)"
           },
           {
-            "axis": "hard_constraints",
+            "axis": "plan_constraints",
             "value": "none"
           },
           {

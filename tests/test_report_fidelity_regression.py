@@ -178,7 +178,7 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
     # sort, then the quality branch of the ranking key, then its tie-breaks.
     assert axes == [
         "viability",
-        "hard_constraints",
+        "plan_constraints",
         "suitability",
         "capability",
         "quantization_quality",

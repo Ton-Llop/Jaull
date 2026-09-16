@@ -1413,7 +1413,7 @@ def test_viability_is_the_outermost_published_criterion(
     first, second = (ranking_criteria(item, priority) for item in ranked)
     assert first[0].axis == "viability"
     assert first[0].rank < second[0].rank
-    assert second[0].value == "placement not confirmed"
+    assert second[0].value.startswith("placement not confirmed")
 
 
 def test_every_priority_publishes_at_least_one_criterion() -> None:

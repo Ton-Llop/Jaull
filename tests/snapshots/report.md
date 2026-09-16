@@ -33,8 +33,8 @@ Generated: <redacted>
 
 **Why this position?** Compared in order, for `balanced`:
 
-1. viability: comfortable
-2. hard constraints: none
+1. viability: placement confirmed (comfortable)
+2. plan constraints: none
 3. suitability: strong
 4. runnability: strong
 5. capability: adequate
