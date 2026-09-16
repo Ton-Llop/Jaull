@@ -34,10 +34,29 @@ def test_offloading_becomes_closest_option_even_with_high_confidence() -> None:
     assert result is RecommendationTier.CLOSEST_OPTION
 
 
-def test_low_confidence_always_best_effort() -> None:
+def test_insufficient_fit_never_gets_a_strong_heading() -> None:
+    for confidence in (EstimationConfidence.HIGH, EstimationConfidence.LOW):
+        result = choose_tier(
+            CompatibilityStatus.INSUFFICIENT,
+            confidence,
+            hard_penalty=1.0,
+        )
+        assert result is RecommendationTier.CLOSEST_OPTION
+
+
+def test_low_confidence_known_fit_is_recommended() -> None:
     result = choose_tier(
         CompatibilityStatus.COMFORTABLE,
         EstimationConfidence.LOW,
+        hard_penalty=1.0,
+    )
+    assert result is RecommendationTier.RECOMMENDED
+
+
+def test_unknown_confidence_remains_best_effort() -> None:
+    result = choose_tier(
+        CompatibilityStatus.COMFORTABLE,
+        EstimationConfidence.UNKNOWN,
         hard_penalty=1.0,
     )
     assert result is RecommendationTier.BEST_EFFORT

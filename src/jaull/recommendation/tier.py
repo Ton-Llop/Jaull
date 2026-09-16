@@ -46,18 +46,26 @@ def choose_tier(
     Ordered from strongest to weakest downgrade:
 
     1. Any hard requirement missed → ``BEST_EFFORT``.
-    2. Low or unknown confidence → ``BEST_EFFORT``.
+    2. Unknown confidence → ``BEST_EFFORT``.
     3. Speculative actionability (theoretical artifact / unknown runtime) →
        at most ``BEST_EFFORT``.
-    4. Offloading required or unknown status → ``CLOSEST_OPTION``.
-    5. Tight fit or only medium confidence → ``RECOMMENDED``.
+    4. No confirmed viable placement (offloading, insufficient or unknown)
+       → ``CLOSEST_OPTION``.
+    5. Tight fit or low/medium confidence → ``RECOMMENDED``.
     6. Likely-actionable but not confirmed actionable → at most
        ``RECOMMENDED``.
     7. Everything else with high confidence → ``BEST_MATCH``.
+
+    ``LOW`` confidence means that the estimate contains a documented policy
+    assumption (for example the runtime-overhead heuristic), not that the
+    compatibility status is unknown. It therefore caps a known placement at
+    ``RECOMMENDED`` instead of making the normal hardware path permanently
+    ``BEST_EFFORT``. ``UNKNOWN`` remains a hard limit because there is no
+    confidence-bearing estimate to support a stronger heading.
     """
     if hard_penalty < 1.0:
         return RecommendationTier.BEST_EFFORT
-    if confidence in (EstimationConfidence.LOW, EstimationConfidence.UNKNOWN):
+    if confidence is EstimationConfidence.UNKNOWN:
         return RecommendationTier.BEST_EFFORT
     if actionability is ActionabilityLevel.SPECULATIVE:
         # Ranker still ranks it, but it can never earn a BEST/RECOMMENDED
@@ -65,12 +73,13 @@ def choose_tier(
         return RecommendationTier.BEST_EFFORT
     if status in (
         CompatibilityStatus.OFFLOADING_REQUIRED,
+        CompatibilityStatus.INSUFFICIENT,
         CompatibilityStatus.UNKNOWN,
     ):
         return RecommendationTier.CLOSEST_OPTION
     if status is CompatibilityStatus.TIGHT:
         return RecommendationTier.RECOMMENDED
-    if confidence is EstimationConfidence.MEDIUM:
+    if confidence in (EstimationConfidence.LOW, EstimationConfidence.MEDIUM):
         return RecommendationTier.RECOMMENDED
     if actionability is ActionabilityLevel.LIKELY_ACTIONABLE:
         # Runtime is *potentially* executable — good, but not "best-match" good.
