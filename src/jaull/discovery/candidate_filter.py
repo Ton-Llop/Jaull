@@ -23,7 +23,7 @@ from jaull.domain.estimation import (
     HardwareFitMode,
     HardwareFitPlacementMethod,
 )
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import HardwareProfile, planning_accelerator_memory_bytes
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import UserRequirements
 from jaull.estimator import policies as estimator_policies
@@ -710,9 +710,7 @@ def _max_gpu_weight_bytes(
 
 
 def _planning_vram_bytes(hardware: HardwareProfile) -> int | None:
-    if not hardware.gpus:
-        return None
-    return max(gpu.vram_total_bytes for gpu in hardware.gpus)
+    return planning_accelerator_memory_bytes(hardware)
 
 
 def _has_unified_memory(hardware: HardwareProfile) -> bool:

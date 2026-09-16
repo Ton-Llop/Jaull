@@ -22,7 +22,7 @@ from jaull.domain.estimation import (
     TransformerBlockWeightDecomposition,
     TransformerBlockWeightDecompositionMethod,
 )
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import HardwareProfile, available_accelerator_memory_bytes
 
 
 @dataclass(frozen=True)
@@ -725,9 +725,7 @@ def _split_heuristic_bytes(
 
 
 def _available_vram(hardware: HardwareProfile) -> int | None:
-    if not hardware.gpus:
-        return None
-    return max(gpu.vram_available_bytes for gpu in hardware.gpus)
+    return available_accelerator_memory_bytes(hardware)
 
 
 def _valid_transformer_block_count(total_transformer_blocks: int | None) -> bool:

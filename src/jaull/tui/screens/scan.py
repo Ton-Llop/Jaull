@@ -11,7 +11,11 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator
 
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import (
+    AcceleratorType,
+    BackendAvailability,
+    HardwareProfile,
+)
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -133,9 +137,42 @@ class ScanScreen(Screen[None]):
                     ],
                 )
             )
+        elif accelerator := next(
+            (
+                item
+                for item in profile.accelerators
+                if item.type is not AcceleratorType.SOFTWARE
+            ),
+            None,
+        ):
+            memory = (
+                _fmt(accelerator.dedicated_memory_bytes)
+                if accelerator.dedicated_memory_bytes is not None
+                else "shared system memory"
+                if accelerator.shared_memory
+                else "unknown"
+            )
+            content.mount(
+                SummaryCard(
+                    "Accelerator",
+                    [
+                        ("Name", accelerator.name),
+                        ("Memory", memory),
+                        (
+                            "Backends",
+                            ", ".join(
+                                backend.backend.value
+                                for backend in accelerator.backends
+                                if backend.availability is BackendAvailability.AVAILABLE
+                            )
+                            or "unknown",
+                        ),
+                    ],
+                )
+            )
         else:
             content.mount(
-                SummaryCard("GPU", [("Status", "no NVIDIA GPU detected")])
+                SummaryCard("GPU", [("Status", "no usable accelerator detected")])
             )
 
         if profile.warnings:

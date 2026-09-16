@@ -73,9 +73,11 @@ Everything in this section exists in the code and is covered by the test suite.
 **Hardware and backends.** Detects OS, CPU, RAM and storage; NVIDIA GPUs with VRAM and
 driver versions through NVML; and non-NVIDIA adapters through a `vulkaninfo` probe that
 records per-backend availability (CUDA / Vulkan / HIP / CPU) and flags software renderers
-such as llvmpipe instead of treating them as usable accelerators. Memory-based
-compatibility still uses NVML VRAM only, so on AMD, Intel and Apple hardware the estimate
-falls back to system RAM.
+such as llvmpipe instead of treating them as usable accelerators. On Linux, a discrete
+Vulkan device can additionally obtain physical and, when the driver exposes it, available
+VRAM from DRM sysfs. That enables AMD/Vulkan planning without treating VRAM and system RAM
+as one pool. Runtime execution still requires a compatible local binary, verified separately
+through `llama-cli --list-devices`; Intel and Apple memory discovery remain outside this path.
 
 **Model inspection.** Normalises any Hugging Face URL form to a `repo_id`, classifies the
 repository (`transformers` / `gguf` / `diffusers` / `onnx` / `adapter` / `unknown`) and
@@ -362,7 +364,8 @@ Not implemented:
 - [ ] Deployment export
 - [ ] Multipart GGUF and Transformers artifacts in the CLI `run` path
 - [ ] Host/device split for VRAM prediction under offload
-- [ ] Non-NVIDIA VRAM in the memory model (AMD, Intel, Apple Silicon)
+- [ ] Non-NVIDIA VRAM in the memory model beyond Linux DRM-backed discrete Vulkan devices
+  (Intel, Apple Silicon and platforms without DRM VRAM telemetry)
 - [ ] Remote executor
 - [ ] Shared organisational deployment workflow
 

@@ -143,7 +143,7 @@ def test_large_vram_puts_safetensors_first() -> None:
 def test_no_gpu_prefers_gguf_and_says_why() -> None:
     req = build_requirements(answers(), hardware(vram_gib=None))
     assert req.preferred_formats[0] == "gguf"
-    assert any("No NVIDIA GPU" in note for note in req.assumptions)
+    assert any("No CUDA-capable NVIDIA GPU" in note for note in req.assumptions)
 
 
 def test_concurrency_above_one_records_a_no_throughput_caveat() -> None:

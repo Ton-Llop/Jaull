@@ -87,7 +87,7 @@ def test_status_unknown_when_total_missing() -> None:
 def test_gpu_requested_without_gpu_is_insufficient() -> None:
     result = compatibility.assess(1 * GIB, _profile(ram=8 * GIB), TargetDevice.GPU)
     assert result.status is CompatibilityStatus.INSUFFICIENT
-    assert any("no nvidia gpu" in r.lower() for r in result.reasons)
+    assert any("no gpu memory availability" in r.lower() for r in result.reasons)
 
 
 def test_auto_uses_gpu_when_it_fits() -> None:
