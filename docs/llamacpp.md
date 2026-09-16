@@ -2,7 +2,9 @@
 
 Jaull uses [`llama.cpp`](https://github.com/ggml-org/llama.cpp) as its local GGUF execution runtime.
 
-This document describes the development setup used to run Jaull with `llama-cli` and NVIDIA CUDA.
+This document describes CUDA, Vulkan and HIP/ROCm setup options for `llama-cli`.
+The CUDA commands below are the validated development setup; Vulkan and HIP remain
+experimental until they are exercised on the corresponding hardware.
 
 ## 1. Clone llama.cpp
 
@@ -84,6 +86,61 @@ Then:
 which llama-cli
 llama-cli --version
 ```
+
+### Vulkan build (GGUF)
+
+On a Linux host with a working Vulkan driver, build a separate runtime:
+
+```bash
+cd ~/tools/llama.cpp
+
+cmake -B build-vulkan \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_VULKAN=ON
+
+cmake --build build-vulkan \
+  --config Release \
+  --target llama-cli \
+  -j 2
+```
+
+Check the runtime device list before using it through Jaull:
+
+```bash
+~/tools/llama.cpp/build-vulkan/bin/llama-cli --list-devices
+```
+
+Jaull only pins `--device Vulkan0` (or another reported identifier) after this
+probe exposes a ready Vulkan device. `vulkaninfo` alone is hardware discovery;
+it does not prove that a particular `llama-cli` binary was built with Vulkan.
+
+### HIP/ROCm build (GGUF)
+
+On a Linux AMD/ROCm host, build a HIP runtime with the ROCm toolchain installed:
+
+```bash
+cd ~/tools/llama.cpp
+
+cmake -B build-hip \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_HIP=ON
+
+cmake --build build-hip \
+  --config Release \
+  --target llama-cli \
+  -j 2
+```
+
+Then verify the runtime probe:
+
+```bash
+~/tools/llama.cpp/build-hip/bin/llama-cli --list-devices
+```
+
+Jaull treats `HIP0`/`ROCm0` reported by llama.cpp as its HIP backend and passes
+the runtime identifier to the launch plan. The identifier is not interchangeable
+with a PyTorch device string: a ROCm PyTorch build normally still uses
+`cuda:0`/`cuda` inside Transformers.
 
 ## 4. Download a GGUF with Jaull
 
@@ -170,6 +227,10 @@ Generated text
 - `llama-cli` is not installed by cloning the repository; it must be compiled.
 - CUDA builds require both a working NVIDIA GPU setup and the CUDA Toolkit (`nvcc`).
 - Jaull currently executes GGUF artifacts through `llama-cli`.
+- Vulkan and HIP/ROCm GGUF execution requires a matching llama.cpp build and a
+  successful `--list-devices` probe; no backend is inferred from `vulkaninfo` alone.
+- Native Transformers ROCm execution is a separate path and depends on a ROCm-enabled
+  PyTorch installation. AWQ/GPTQ/bitsandbytes ROCm support is not claimed here.
 - `--single-turn` is added by `LlamaCppRunner` so executions terminate cleanly.
 - `n_gpu_layers=0` means CPU-only execution.
 - GPU offloading can later be selected automatically by Jaull instead of being manually specified.

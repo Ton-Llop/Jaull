@@ -126,7 +126,10 @@ probes which backends each one actually exposes, selects a compute backend for t
 hardware, and produces an `ExecutionReadiness` preflight decision before anything is run.
 
 **Real execution.** `jaull run` executes single-file GGUF artifacts through `llama-cli`.
-The TUI additionally executes Transformers repositories through an isolated Python worker.
+When its capability probe confirms a non-CPU device, the prepared launch pins the
+runtime to the reported device identifier (for example `Vulkan0` or `HIP0`) instead of
+guessing from the host GPU name. The TUI additionally executes Transformers repositories
+through an isolated Python worker.
 Every execution produces an `ExecutionObservation` — success, duration, exit status, peak
 sampled process RSS and, when NVML can attribute it to the PID, peak process VRAM — kept
 strictly separate from the prediction.
@@ -138,7 +141,9 @@ A failed execution is still a valid experiment: failures are evidence too.
 
 **Benchmark evidence.** llama.cpp benchmarks run through `llama-bench` (prefill and
 generation throughput at several token counts, with repetitions and standard deviations);
-Transformers benchmarks run through an isolated worker that also reports model load time
+Transformers benchmarks run through an isolated worker; PyTorch ROCm is represented by its
+normal `cuda` device namespace and is accepted only when the runtime probe confirms HIP.
+The worker also reports model load time
 and time to first token. Results are persisted as `BenchmarkRecord` JSON files, and
 benchmarks of the same logical model can be compared as complete execution plans rather
 than as disembodied numbers.
@@ -368,6 +373,11 @@ Not implemented:
   (Intel, Apple Silicon and platforms without DRM VRAM telemetry)
 - [ ] Remote executor
 - [ ] Shared organisational deployment workflow
+
+Vulkan and ROCm/HIP support is currently experimental: backend detection and runtime
+readiness are implemented, but AMD hardware validation is still required before treating
+the results as production-qualified. Vulkan is currently a llama.cpp/GGUF path; it is not
+presented as a Transformers backend.
 
 ---
 

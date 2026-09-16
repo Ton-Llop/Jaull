@@ -75,23 +75,35 @@ def _artifact(path: Path, **updates: object) -> ModelArtifact:
     return ModelArtifact(**data)
 
 
-def _runtime(*, ctx_size: int = 2048, n_gpu_layers: int = 0) -> RuntimeRecommendation:
-    return RuntimeRecommendation(
-        runtime=RuntimeName.LLAMA_CPP,
-        flags=[
+def _runtime(
+    *, ctx_size: int = 2048, n_gpu_layers: int = 0, device: str | None = None
+) -> RuntimeRecommendation:
+    flags = [
+        RuntimeFlag(
+            name="--ctx-size",
+            value=str(ctx_size),
+            source=RuntimeFlagSource.ESTIMATE,
+            explanation="test",
+        ),
+        RuntimeFlag(
+            name="--n-gpu-layers",
+            value=str(n_gpu_layers),
+            source=RuntimeFlagSource.HARDWARE,
+            explanation="test",
+        ),
+    ]
+    if device is not None:
+        flags.append(
             RuntimeFlag(
-                name="--ctx-size",
-                value=str(ctx_size),
-                source=RuntimeFlagSource.ESTIMATE,
-                explanation="test",
-            ),
-            RuntimeFlag(
-                name="--n-gpu-layers",
-                value=str(n_gpu_layers),
+                name="--device",
+                value=device,
                 source=RuntimeFlagSource.HARDWARE,
                 explanation="test",
-            ),
-        ],
+            )
+        )
+    return RuntimeRecommendation(
+        runtime=RuntimeName.LLAMA_CPP,
+        flags=flags,
         confidence=EstimationConfidence.HIGH,
     )
 
@@ -162,6 +174,24 @@ def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:
     command = backend.requests[0].command
     assert command[command.index("--ctx-size") + 1] == "4096"
     assert command[command.index("--n-gpu-layers") + 1] == "0"
+
+
+def test_runner_passes_confirmed_runtime_device_to_llama_cpp(
+    tmp_path: Path,
+) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend()
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    runner.run(
+        artifact=_artifact(model_path),
+        prompt="Hello",
+        runtime=_runtime(device="Vulkan0"),
+    )
+
+    command = backend.requests[0].command
+    assert command[command.index("--device") + 1] == "Vulkan0"
 
 
 def test_runner_enables_verbose_output_only_when_requested(tmp_path: Path) -> None:

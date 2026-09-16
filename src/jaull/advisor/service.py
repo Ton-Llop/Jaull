@@ -831,28 +831,44 @@ class AdvisorService:
         local_artifact: ModelArtifact | None = None,
         backend_selection: RuntimeBackendSelection | None = None,
         runtime_capability: RuntimeCapability | None = None,
+        execution_readiness: ExecutionReadiness | None = None,
         benchmark_capability: LlamaBenchCapability | None = None,
     ) -> RuntimeRecommendation:
         """Gather optional local evidence, then delegate the final launch decision."""
         from jaull.runtime.llama_cpp_tensor_policy import inspect_tensor_context
 
         tensor_context = None
+        selection = backend_selection
+        capability = runtime_capability
         explicit_layers = overrides is not None and overrides.n_gpu_layers is not None
+        if runtime is RuntimeName.LLAMA_CPP and hardware is not None:
+            selection = selection or self.select_runtime_backend(hardware)
         if (runtime is RuntimeName.LLAMA_CPP and local_artifact is not None
                 and hardware is not None and estimate is not None and not explicit_layers):
-            selection = backend_selection or self.select_runtime_backend(hardware)
-            capability = runtime_capability or self.inspect_llama_cpp_runtime(selection=selection)
+            assert selection is not None
+            capability = capability or self.inspect_llama_cpp_runtime(selection=selection)
             if isinstance(capability, LlamaCppRuntimeCapability):
                 tensor_context = inspect_tensor_context(
                     local_artifact, hardware, selection, capability,
                     benchmark_capability=benchmark_capability,
                 )
+                if execution_readiness is None:
+                    from jaull.runtime.llama_cpp_capability import (
+                        evaluate_execution_readiness,
+                    )
+
+                    execution_readiness = evaluate_execution_readiness(
+                        selection=selection,
+                        runtime_capability=capability,
+                    )
         return plan_launch(
             runtime=runtime,
             estimate=estimate,
             hardware=hardware,
             overrides=overrides,
             tensor_context=tensor_context,
+            backend_selection=selection,
+            execution_readiness=execution_readiness,
         )
 
     def plan_execution(
@@ -876,6 +892,7 @@ class AdvisorService:
                 runtime=runtime, estimate=estimate, hardware=hardware, overrides=overrides,
                 local_artifact=local_artifact, backend_selection=backend_selection,
                 runtime_capability=runtime_capability,
+                execution_readiness=execution_readiness,
             )
         return plan_execution(
             model_identity=model_identity,
@@ -951,6 +968,7 @@ class AdvisorService:
             runtime=plan.runtime_family, estimate=estimate, hardware=hw,
             local_artifact=artifact, backend_selection=selection,
             runtime_capability=runtime_capability,
+            execution_readiness=readiness,
             overrides=_execution_overrides_for_plan(plan),
             benchmark_capability=benchmark_capability,
         )

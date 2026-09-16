@@ -908,6 +908,9 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
                     pilot.app.screen
                 ),
             )
+            # Textual may complete the VerticalScroll child mount on the next
+            # message-pump turn after the predicate observes the path.
+            await pilot.pause()
             assert advisor.experiment_persisted_path.name in _visible_text(
                 pilot.app.screen
             )

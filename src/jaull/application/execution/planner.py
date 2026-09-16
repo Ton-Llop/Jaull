@@ -37,9 +37,11 @@ from dataclasses import dataclass
 
 from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.execution_plans import ArtifactVariant, ExecutionPlan, ModelIdentity
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadiness,
+    ExecutionReadinessStatus,
+    LlamaCppRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeCapability,
     RuntimeFlag,
@@ -79,6 +81,8 @@ def plan_launch(
     hardware: HardwareProfile | None,
     overrides: ExecutionOverrides | None = None,
     tensor_context: LlamaCppTensorContext | None = None,
+    backend_selection: RuntimeBackendSelection | None = None,
+    execution_readiness: ExecutionReadiness | None = None,
 ) -> RuntimeRecommendation:
     base = _automatic_launch(runtime, estimate, hardware)
     explicit_layers = overrides is not None and overrides.n_gpu_layers is not None
@@ -93,7 +97,12 @@ def plan_launch(
         else:
             base = base.model_copy(update={"warnings": [*base.warnings,
                 "Local tensor refinement skipped: context override differs from KV estimate."]})
-    resolved = _apply_overrides(base, overrides or ExecutionOverrides())
+    resolved = _apply_backend_device(
+        base,
+        backend_selection=backend_selection,
+        execution_readiness=execution_readiness,
+    )
+    resolved = _apply_overrides(resolved, overrides or ExecutionOverrides())
     _require_runnable(runtime, resolved)
     return resolved
 
@@ -119,6 +128,8 @@ def plan_execution(
             hardware=hardware,
             overrides=overrides,
             tensor_context=tensor_context,
+            backend_selection=backend_selection,
+            execution_readiness=execution_readiness,
         )
     else:
         _require_runnable(runtime, launch)
@@ -196,6 +207,60 @@ def _apply_overrides(
     if flags == list(rec.flags):
         return rec
     return rec.model_copy(update={"flags": flags})
+
+
+def _apply_backend_device(
+    rec: RuntimeRecommendation,
+    *,
+    backend_selection: RuntimeBackendSelection | None,
+    execution_readiness: ExecutionReadiness | None,
+) -> RuntimeRecommendation:
+    """Pin llama.cpp to the device confirmed by its runtime probe.
+
+    Hardware discovery identifies a physical accelerator, while llama.cpp
+    exposes its own stable identifiers (for example ``Vulkan0`` or ``HIP0``).
+    Only the latter is safe to pass to ``--device``.  A missing or incomplete
+    probe therefore keeps the existing automatic-device behaviour.
+    """
+
+    if rec.runtime is not RuntimeName.LLAMA_CPP:
+        return rec
+    if backend_selection is None or execution_readiness is None:
+        return rec
+    if execution_readiness.status is not ExecutionReadinessStatus.READY:
+        return rec
+    if backend_selection.selected_backend is ComputeBackend.CPU:
+        return rec
+    if not isinstance(
+        execution_readiness.runtime_capability, LlamaCppRuntimeCapability
+    ):
+        return rec
+    capability = execution_readiness.selected_backend_capability
+    if capability is None or not capability.devices:
+        return rec
+    runtime_id = capability.devices[0].runtime_id
+    if not runtime_id.strip():
+        return rec
+    updated = rec.model_copy(
+        update={
+            "flags": _upsert_flag(
+                list(rec.flags),
+                "--device",
+                runtime_id,
+                (
+                    "Runtime device selected by the confirmed llama.cpp capability "
+                    f"probe ({backend_selection.selected_backend.value})."
+                ),
+            )
+        }
+    )
+    if updated.command_preview is None:
+        return updated
+    return updated.model_copy(
+        update={
+            "command_preview": f"{updated.command_preview} --device {runtime_id}"
+        }
+    )
 
 
 def _upsert_flag(
