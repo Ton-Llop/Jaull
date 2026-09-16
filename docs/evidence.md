@@ -200,12 +200,34 @@ A positive error means Jaull **under**estimated real consumption; a negative err
 **RAM** is only compared when the executed configuration is CPU-only or without offload. The
 comparable prediction is then `weights + kv_cache + runtime_overhead`, excluding
 `device_reserve` and `safety_margin` — those are capacity policy, not observed RSS. Under
-GPU offload, Jaull does not yet keep a host/device breakdown, so `ram.predicted_bytes` is
-`null` and the comparison is marked `methodologically_unavailable`.
+GPU offload the comparison is marked `methodologically_unavailable`, and the reason is the
+measurement, not a missing breakdown: `HardwareFitResult` does carry `ram_weight_bytes`,
+`ram_kv_cache_bytes` and `ram_overhead_bytes`, but llama.cpp maps the whole model file, so
+peak RSS tracks the artifact rather than the placement and does not move when the placement
+does.
 
-**VRAM** is currently always `methodologically_unavailable`: the estimation model does not
-retain VRAM attributed to the executed PID and configuration. When NVML exposes no process
-memory, `peak_vram_bytes = null` is not treated as zero.
+**VRAM** is compared when the estimate carries a hardware fit that places weights on the
+GPU, the non-block weight split is not ambiguous, and a measurement exists. The predicted
+side is `gpu_physical_bytes` — weights, KV cache and runtime overhead, with the device
+reserve and safety margin removed, because those are capacity policy that no process
+allocates.
+
+The measurement comes from one of two sources, recorded in `MetricComparison.source`:
+
+| Source | `driver_confirmed` | What it is |
+|---|---|---|
+| `nvml_process_allocation` | `true` | What the driver charged to the PID. Preferred whenever it exists. |
+| `runtime_reported_allocation` | `false` | The buffers llama.cpp itself printed. The only observation available on a GPU in WDDM mode. |
+
+The fallback is strictly smaller than the driver figure: a runtime reports what it asked
+for, not the CUDA context or what the allocator took on its own. When neither exists,
+`peak_vram_bytes = null` is not treated as zero.
+
+`PredictionComparison.vram_components` breaks the total down per component, but only when
+the executed placement can be verified against the predicted one — today that means
+llama.cpp with a negative `--n-gpu-layers` against a `GPU_RESIDENT` prediction. Partial
+offload stays unavailable because transformer blocks and `--n-gpu-layers` units are not the
+same vocabulary, and Transformers exposes no equivalent flag at all.
 
 Alongside the metrics, the comparison classifies the compatibility verdict:
 

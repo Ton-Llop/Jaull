@@ -66,9 +66,10 @@ def compare_prediction(
 ) -> PredictionComparison:
     """Compare Jaull's prediction with a single measured execution.
 
-    RAM is compared only when the selected runtime is CPU-only/no-offload. For
-    GPU offload Jaull currently lacks a host/device memory split, so returning a
-    number would compare different quantities.
+    RAM is compared only when the selected runtime is CPU-only/no-offload. Under
+    offload the blocker is the measurement, not a missing host/device split --
+    ``HardwareFitResult`` carries one; see :func:`_predicted_ram` for why peak
+    RSS does not follow it.
 
     VRAM is compared when the estimate carries a hardware fit that places
     weights on the GPU *and* the run can be shown to have used that placement.

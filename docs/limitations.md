@@ -17,15 +17,33 @@ README roadmap says so.
 
 ## Hardware
 
-- VRAM in the memory model comes from NVML, so memory-based compatibility is NVIDIA-only.
-  AMD, Intel and Apple accelerators are detected and their backends probed, but their
-  memory does not enter the estimate — those machines fall back to system RAM.
+- Accelerator memory reaches the estimate through two views, merged in
+  `domain/hardware.py`: `gpus` (NVML, NVIDIA) and `accelerators` (the backend-neutral
+  view). `planning_accelerator_memory_bytes` takes the largest *capacity* and drives
+  discovery's shortlist; `available_accelerator_memory_bytes` takes the largest *observed
+  availability* and is what the estimator and Hardware Fit consume. Capacity is never
+  substituted for availability: a device that only reports its total size can be
+  shortlisted but cannot claim a run-now budget.
 - Non-NVIDIA detection depends on `vulkaninfo`. Without it, only CPU and NVIDIA paths are
   visible.
-- The Vulkan probe reports device identity and backend availability, not device memory.
+- **The Vulkan probe itself reports device identity and backend availability, not device
+  memory.** The memory figure for a Vulkan-detected card is read from Linux DRM sysfs
+  (`/sys/class/drm/card*/device/mem_info_vram_total`, and `mem_info_vram_used` when the
+  driver exposes it), matched by PCI vendor and device ID. This means memory-based
+  compatibility on AMD works on **Linux with an amdgpu-style driver only**. It does not
+  work on Windows, on Intel or Apple accelerators, or when two identical cards match the
+  same PCI IDs — Vulkan's summary carries no PCI bus ID, so an ambiguous match is
+  discarded rather than guessed, and those machines fall back to system RAM.
+- Shared-memory accelerators are deliberately excluded from both figures: their capacity
+  *is* system RAM, not a second pool.
 - A software renderer (llvmpipe and similar, common under WSL) proves the Vulkan API is
   present, not that a usable accelerator exists. It is recorded as a software renderer and
   not selected as a backend.
+- **The HIP/ROCm execution path is implemented but has never been validated on real
+  hardware.** Backend detection, selection and the llama.cpp launch path exist and are
+  unit-tested; no measurement on an AMD GPU backs them. Treat any HIP result as unverified
+  until a physical run exists. The same caveat applies to Vulkan execution, which has been
+  exercised only through a user-reported detection bug, not through a measured run.
 
 ## Estimation
 
@@ -145,8 +163,7 @@ README roadmap says so.
 - **Process-attributed VRAM cannot be measured on a consumer GPU in WDDM mode**, which is
   every GeForce driving a display on Windows — and the same card seen from WSL2. NVML lists
   the running processes but reports `usedGpuMemory` as unavailable for all of them, so
-  `ExecutionObservation.peak_vram_bytes` is `None` and the VRAM comparison has no measured
-  side to compare against. Measured on this project's RTX 2060 (driver 616.92): from
+  `ExecutionObservation.peak_vram_bytes` is `None`. Measured on this project's RTX 2060 (driver 616.92): from
   Windows, NVML returned 31 processes with `usedGpuMemory = None` for every one and
   `nvidia-smi --query-compute-apps` printed `[N/A]` in the memory column; from WSL2 the
   same query returned an empty list while a CUDA process held ~1.9 GiB. `nvidia-smi -q`
@@ -156,6 +173,23 @@ README roadmap says so.
   without a display attached does report per-process memory. Device-wide memory readings
   remain available, but they include every other consumer on the card and are not comparable
   with a planning budget.
+- **A second observation source exists where the driver has none.** llama.cpp prints the
+  buffers it allocated (`CUDA0 model / KV / compute buffer size = …`), and
+  `runtime/llama_cpp_memory_report.py` parses them into
+  `ExecutionObservation.runtime_allocation`. The comparison prefers NVML when the driver
+  attributes memory to the process and falls back to this report otherwise, recording
+  which one it used in `MetricComparison.source` and flagging the fallback with
+  `driver_confirmed = False`. The two are **not** equivalent: the runtime reports what it
+  asked for and enumerated, which is strictly less than what the driver charged — it
+  cannot see the CUDA context or anything the allocator took on its own. A host-pinned
+  `CUDA_Host` buffer is host memory despite the prefix and is excluded from the device
+  total.
+- The per-component VRAM breakdown (`PredictionComparison.vram_components`) pairs predicted
+  weights against the model buffer and predicted KV against the KV buffer as `DIRECT`
+  comparisons. Predicted runtime overhead against the compute buffer is marked `PROXY` and
+  **must not be used to calibrate the overhead heuristic**: the heuristic covers the CUDA
+  context and allocator behaviour that the compute buffer does not report, so their
+  difference does not measure how wrong the heuristic is.
 - RAM comparison is only available for CPU-only or non-offloaded configurations. Under
   offload the obstacle is not a missing host/device split — `HardwareFitResult` carries
   `ram_weight_bytes`, `ram_kv_cache_bytes` and `ram_overhead_bytes` — but the measurement:

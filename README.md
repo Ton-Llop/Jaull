@@ -354,7 +354,9 @@ Implemented and covered by tests:
 - [x] Real execution (llama.cpp `llama-cli`; Transformers through an isolated worker in the TUI)
 - [x] Persisted experiment records
 - [x] Benchmark evidence (`llama-bench`, Transformers worker) with persisted records
-- [x] Prediction vs observation comparison (RAM; VRAM reported as methodologically unavailable)
+- [x] Prediction vs observation comparison (RAM on CPU-only runs; VRAM against NVML or, where
+      the driver attributes nothing, llama.cpp's own buffer report, with a per-component
+      breakdown when the placement can be verified)
 - [x] Benchmark comparison across execution plans of the same logical model
 
 Not implemented:
@@ -409,13 +411,18 @@ The short version — the full list is in [docs/limitations.md](docs/limitations
 
 - Recommendation and estimation never download weights or run inference. Only `run`,
   validation and benchmarking do, and only when you ask for them.
-- Memory-based compatibility uses NVML VRAM, so it is NVIDIA-only. Other vendors are
-  detected, but their VRAM does not yet enter the memory model.
+- Memory-based compatibility reads NVML for NVIDIA and, for other vendors, Linux DRM sysfs
+  for the Vulkan-detected device — in practice discrete AMD on an amdgpu-style driver.
+  Windows AMD, Intel and Apple accelerators are still detected and their backends probed,
+  but their VRAM does not enter the memory model.
+- Vulkan and HIP/ROCm execution are implemented but not validated on real hardware.
 - The CLI `run` path is limited to single-file GGUF artifacts.
 - KV cache estimation assumes MHA/GQA with `sliding_window` as the only refinement; MoE,
   MLA and multimodal composites return `unknown` rather than a fabricated number.
 - Runtime overhead, device reserve and safety margin are documented heuristics tagged
-  `ASSUMED`, and per-layer offloading is not modelled.
+  `ASSUMED`. Per-block offloading *is* modelled, but as a runtime-agnostic placement, not as
+  a measured runtime layer cost — `gpu_transformer_blocks` is not the same unit as
+  llama.cpp's `--n-gpu-layers`.
 - Benchmarks measure single-process throughput. There is no load model, no concurrency
   sweep and no capacity curve yet.
 - No estimate substitutes for a real benchmark. That is the entire point of the second half

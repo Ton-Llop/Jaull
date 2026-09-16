@@ -201,8 +201,13 @@ The total is compared against local RAM/VRAM:
 With `--device auto` the estimator prefers GPU, falls back to `offloading_required` if the
 model fits combined memory, then CPU, then `insufficient`.
 
-VRAM comes from NVML, so this comparison is NVIDIA-only. On other vendors the accelerator
-is still detected and its backends probed, but the memory model falls back to system RAM.
+VRAM reaches this comparison from two merged views: NVML for NVIDIA, and the
+backend-neutral accelerator view for everything else. The second carries a memory figure
+only where Linux DRM sysfs exposes one for the detected PCI device — in practice discrete
+AMD on an amdgpu-style driver. On Windows AMD, Intel and Apple, the accelerator is still
+detected and its backends probed, but the memory model falls back to system RAM. The
+estimator consumes observed *availability*, never raw capacity, so a device that reports
+only its total size can be shortlisted without claiming a run-now budget.
 
 ## Where it fits, not just whether it fits
 

@@ -1071,9 +1071,14 @@ Funcions pures, sense E/S:
   ```
 
   Un error positiu vol dir que Jaull ha **infraestimat**. La comparació de RAM només es
-  calcula quan l’execució és CPU-only o sense offload; amb offload, Jaull encara no separa
-  host i dispositiu i la comparació queda marcada `methodologically_unavailable`. La de VRAM
-  ho està sempre en aquesta fase.
+  calcula quan l’execució és CPU-only o sense offload; amb offload queda
+  `methodologically_unavailable`, i el motiu és la mesura, no una separació host/dispositiu
+  que falti: `HardwareFitResult` sí que la té, però el `mmap` fa que el RSS segueixi el
+  fitxer del model i no la col·locació. La de VRAM sí que es calcula quan la predicció posa
+  pesos a la GPU i hi ha mesura, amb dues fonts possibles: NVML per procés
+  (`driver_confirmed = true`) o, quan el driver no atribueix res — qualsevol GPU de consum
+  en mode WDDM —, els buffers que el propi llama.cpp imprimeix
+  (`driver_confirmed = false`).
 - `benchmark_comparison.py` — compara benchmarks com a **plans d’execució complets**, no com a
   runtimes aïllats.
 - `hardware_fingerprint.py` — identitat estable de la màquina, per no comparar mesures fetes
@@ -1722,10 +1727,15 @@ sistema.
 5. **Les llicències personalitzades queden com a desconegudes.** El projecte no ofereix
    assessorament legal.
 6. **La mida del model no demostra automàticament més qualitat.**
-7. **L’offloading és aproximat.** Encara no es calcula capa per capa, i amb offload Jaull no
-   separa host i dispositiu: la comparació de RAM queda `methodologically_unavailable`.
-8. **La VRAM no es pot comparar encara.** El model d’estimació no reté la VRAM atribuïda al
-   PID executat.
+7. **L’offloading és aproximat.** Encara no es calcula capa per capa, i amb offload la
+   comparació de RAM queda `methodologically_unavailable` — no per falta de separació
+   host/dispositiu, que existeix, sinó perquè amb `mmap` el RSS segueix l’artefacte.
+8. **La VRAM ja es compara, però amb condicions.** Cal que la predicció posi pesos a la GPU,
+   que la part no-block dels pesos no sigui ambigua i que hi hagi mesura. El desglossament
+   per components només surt si es pot verificar la col·locació executada: avui, llama.cpp
+   amb `--n-gpu-layers` negatiu contra una predicció `GPU_RESIDENT`. L’offload parcial
+   segueix sense verificar-se perquè els blocs de transformer i les unitats de
+   `--n-gpu-layers` no són el mateix vocabulari.
 9. **No hi ha model explícit de workload ni de SLO.** No es demanen objectius de tokens/s,
    TTFT ni latència.
 10. **El workflow està limitat a text-generation.** Imatge, àudio i RAG complet queden fora.

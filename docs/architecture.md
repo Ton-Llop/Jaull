@@ -255,14 +255,19 @@ overestimated it.
 The RAM comparison is only computed when the executed configuration is CPU-only or without
 offload. In that case the comparable prediction is the sum of the components that represent
 process consumption (`weights + kv_cache + runtime_overhead`), excluding `device_reserve`
-and `safety_margin`, because those last two are capacity policy and not observed RSS. When
-the runtime uses GPU offload, Jaull does not yet keep a host/device breakdown, so
-`ram.predicted_bytes` stays `null` and the comparison is marked
-`methodologically_unavailable`.
+and `safety_margin`, because those last two are capacity policy and not observed RSS. Under
+GPU offload the comparison is marked `methodologically_unavailable`, and the obstacle is the
+measurement rather than a missing breakdown — `HardwareFitResult` carries the host-side
+components, but `mmap` makes peak RSS track the model file instead of the placement.
 
-The VRAM comparison is also `methodologically_unavailable` in this phase: the current
-estimation model does not retain VRAM attributed to the executed PID and configuration. If
-NVML exposes no process memory, `peak_vram_bytes = null` is not treated as zero.
+The VRAM comparison produces a number when the estimate carries a hardware fit that places
+weights on the GPU, the non-block weight split is unambiguous, and a measurement exists.
+There are two measurement sources: NVML's per-process attribution
+(`driver_confirmed = true`), and, where the driver reports nothing — every consumer GPU in
+WDDM mode — the buffer report llama.cpp prints itself, parsed by
+`runtime/llama_cpp_memory_report.py` into `ExecutionObservation.runtime_allocation`
+(`driver_confirmed = false`). The chosen source travels on `MetricComparison.source`. If
+neither exists, `peak_vram_bytes = null` is not treated as zero.
 
 ## Dependency composition
 

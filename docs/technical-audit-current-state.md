@@ -1,13 +1,128 @@
 # Auditoria tecnica del estado actual de Jaull
 
-Fecha de auditoria: 2026-09-03
+Auditoria original: 2026-09-03, branch `execution-plan`, commit
+`0910967e0768548b5fd84c83427a1754daf5816c`.
 
-Branch auditada: `execution-plan`
+**Revision: 2026-09-16, branch `master`, commit `5bf954b`.**
 
-Commit auditado: `0910967e0768548b5fd84c83427a1754daf5816c`
+El cuerpo del documento (secciones A-H) se conserva tal como se escribio el 03/09: es un
+registro fechado, no un documento vivo. La seccion R de mas abajo dice que ha cambiado desde
+entonces. Donde un hallazgo esta cerrado, lleva una marca **CERRADO (16/09)** en su sitio con
+la evidencia. Lo que no lleva marca sigue abierto.
 
 Esta auditoria describe el estado real del repositorio en el commit indicado. No presupone
 que cambios existentes en otras branches formen parte de este estado.
+
+---
+
+## R. Revision del 2026-09-16
+
+### R.1 Gates
+
+| Gate | 03/09 | 16/09 |
+|---|---|---|
+| ruff | clean | clean |
+| mypy | clean | clean, 244 ficheros |
+| pytest | 1381 | **1613 passed** |
+| cobertura | 84 % | **85 %** (17 271 stmts, 2 603 sin cubrir) |
+| allowlist arquitectura | vacia | vacia |
+| TODO/FIXME/HACK en `src/` | — | **0** |
+
+### R.2 Hallazgos cerrados
+
+| Id | Hallazgo | Evidencia de cierre |
+|---|---|---|
+| D.1 | Memoria incompleta podia producir `comfortable` | `estimator/compatibility.py:211` corta antes: si falta weights, KV u overhead devuelve `assess(None, …)` con motivo `"Cannot confirm compatibility: missing …"`. |
+| D.2 | Matching de evidencia local demasiado amplio | `recommendation/local_evidence.py:22-48` compara backend seleccionado, backend observado, `inference_configuration` completa y los flags de runtime incluido `--n-gpu-layers`. |
+| E.1 | Fallback por bytes devolvia `TOO_LARGE` | La sonda del propio documento (`weights=1000, VRAM=800, RAM=300`, 10 blocks) devuelve hoy `gpu_offload 8/10`. La busqueda usa una cota cerrada documentada como que nunca descarta una colocacion viable. |
+| E.2 | `WeightEstimate` sin descomposicion estructural | `transformer_block_decomposition` es ya la autoridad y llega a `assess_components_with_fit`. |
+| E.3 | Capacity y ocupacion mezcladas | Separadas y nombradas: `planning_accelerator_memory_bytes` (capacidad, usada por `discovery/candidate_filter.py:713` y `workflow/orchestrator.py:406`) frente a `available_accelerator_memory_bytes` (disponibilidad observada, usada por `estimator/compatibility.py:174` y `hardware_fit.py:728`). El no-determinismo entre dos runs sigue existiendo, pero ahora es deliberado. |
+| E.6 | Hardware Fit de aceleradores no NVIDIA | Cerrado por el fix de Vulkan (`ea26ffc`). Las dos vistas se fusionan en `domain/hardware.py`. Verificado: una RX 7800 XT de 16 GB sin entrada NVML da `gpu_resident 32/32`. La memoria sale de DRM sysfs, no de Vulkan; ver R.4. |
+| — | La comparacion prediccion/observacion no producia ningun numero | El observation contract (`3a6dc26`) anade una segunda fuente de medicion. `runtime/llama_cpp_memory_report.py` parsea los buffers de llama.cpp y `evaluation/comparison.py:274` los usa cuando NVML no atribuye. |
+
+### R.3 Hallazgos que siguen abiertos
+
+- **E.4 `AdvisorService` sigue creciendo:** 1305 -> **1483** lineas. `engine_v2.py` 1084,
+  `orchestrator.py` 699. La direccion es la contraria a la recomendada.
+- **E.5 Replayability depende del caller:** `prediction_input` sigue opcional en
+  `advisor/service.py:493`, `evaluation/experiments.py:40` y `domain/experiments.py:149,221,239`.
+- **Workers sin cobertura:** `transformers_benchmark_worker.py` 158/158 y
+  `transformers_worker.py` 76/76 sin cubrir.
+- **F: dos taxonomias en `workflow/`** y la capa `adapters/ports` parcial. Sin cambios.
+
+### R.4 Hallazgos nuevos
+
+1. **El camino HIP/ROCm esta en master sin validar en hardware.** El mensaje del commit
+   `a53bc11` lo dice: *"pending hardware validation"*. Deteccion, seleccion de backend y ruta
+   de lanzamiento existen y tienen tests unitarios; ninguna medicion en una GPU AMD los
+   respalda. Documentado ahora en `limitations.md`. Lo mismo vale para la ejecucion Vulkan,
+   ejercitada solo a traves de un bug de deteccion reportado por un usuario, no de una
+   ejecucion medida.
+2. **La memoria de aceleradores no-NVIDIA es mas estrecha de lo que sugiere el cierre de
+   E.6.** No viene de Vulkan sino de DRM sysfs
+   (`/sys/class/drm/card*/device/mem_info_vram_total`), emparejado por PCI vendor/device ID.
+   En la practica: **AMD discreta sobre Linux con driver estilo amdgpu**. No funciona en
+   Windows, ni en Intel o Apple, ni con dos tarjetas identicas — el resumen de Vulkan no
+   lleva PCI bus ID y una coincidencia ambigua se descarta en vez de adivinarse. Ademas, sin
+   `mem_info_vram_used` la tarjeta entra en la shortlist pero no en Hardware Fit, que exige
+   disponibilidad observada.
+3. **El tier de recomendacion solo podia valer `best_effort`.** `tier.py:choose_tier` regla 2
+   devolvia `BEST_EFFORT` para confianza LOW/UNKNOWN, y `scoring.py:319 confidence_of` lee la
+   confianza del `MemoryEstimate`, cuyo eslabon debil es el `runtime_overhead` siempre
+   `ASSUMED`. De cuatro tiers solo uno era alcanzable: sobre un perfil RTX 4060 los cinco
+   resultados salian `best_effort`.
+
+   **CERRADO (16/09).** `LOW` ya no cortocircuita a `BEST_EFFORT`; limita a `RECOMMENDED`,
+   que es la lectura correcta — significa que la estimacion lleva dentro una suposicion de
+   politica documentada, no que la colocacion sea desconocida. `UNKNOWN` sigue siendo limite
+   duro. En el mismo perfil RTX 4060, los `best_effort` que quedan son todos por la regla 1
+   (requisito duro incumplido: licencia no confirmada como comercial en dos casos, idioma no
+   confirmado en el tercero), que es lo que debe pasar.
+
+   **Matiz que hay que mantener en la memoria del TFG: `BEST_MATCH` sigue sin ser alcanzable
+   en produccion.** `estimator/overhead.py:39` emite `EstimationConfidence.LOW`
+   incondicionalmente — es la unica que ese componente puede producir — y
+   `_combined_confidence` se queda con la mas debil de las cuatro, asi que la confianza global
+   de un `MemoryEstimate` nunca pasa de `LOW`, y la regla 7 pide `HIGH`. El balance real es
+   **1 tier alcanzable -> 3** (`best_effort` / `recommended` / `closest_option`), no 4. El
+   cuarto queda abierto hasta que se calibre el `runtime_overhead`, que es trabajo aparcado
+   por falta de una segunda maquina.
+
+   De paso se cerro un agujero preexistente que este cambio dejaba mas cerca de ser
+   alcanzable: la regla 4 atrapaba `OFFLOADING_REQUIRED` y `UNKNOWN` pero no `INSUFFICIENT`,
+   asi que un modelo que no cabe caia hasta la regla 5 o la 7 (`insufficient` + `high` ->
+   `best_match`). No era alcanzable por la ruta de produccion — forzado con un perfil de
+   1 GiB VRAM / 2 GiB RAM, ningun `insufficient` llega a mostrarse — pero `choose_tier` es
+   publica y su propio test lo alcanzaba. `INSUFFICIENT` esta ahora en la regla 4.
+4. **Tres modelos sub-1.5B ocupan el Top 5 por delante de un 4B.** Cadena verificada:
+   `capability` colapsa 0.5B y 4B en el mismo bucket `adequate` (la separacion en la curva de
+   tamano, 0.158, es menor que el ancho de bucket, 0.17); al empatar decide
+   `execution_fitness`, que es funcion pura del estado de memoria, y el mas pequeno gana. Por
+   debajo, el 55 % de `capability_score` no mide capacidad: a Qwen3-4B le falta la linea
+   `language:` en el model card y eso le cuesta mas (-0.123) de lo que le dan 3.4B de
+   parametros extra (+0.106). El fix de `2f85c45` es real pero ortogonal: baja los modelos con
+   estado `UNKNOWN`, no los pequenos con estado `comfortable`.
+5. **Politica de "confirmed memory" duplicada** en `engine_v2._prioritize_confirmed_memory_fit`
+   y `ranker.select_ranked:172`. Solo la primera corre con hardware; divergiran.
+6. **Rama muerta en `estimator/service.py:315-319`:** las dos ramas de `_sum_components`
+   devuelven `sum(known)`. El aviso que describe el comentario lo da hoy D.1 en
+   `compatibility.py`. Cosmetico.
+
+### R.5 Documentacion corregida en esta revision
+
+Afirmaciones que el codigo habia dejado falsas, ya corregidas:
+
+- `limitations.md`: la VRAM ya no es "solo NVIDIA"; anadida la ruta real (DRM sysfs) con sus
+  limites, la segunda fuente de observacion, el desglose por componentes y el aviso de que
+  HIP/ROCm no esta validado.
+- `evidence.md`, `architecture.md`, `Workflow.md`, `Glossari.md`,
+  `experimental-protocol-biosfer.md`, `README.md`: decian que la VRAM estaba *siempre*
+  `methodologically_unavailable` y que con offload faltaba una separacion host/dispositivo.
+  Lo primero dejo de ser cierto con `3a6dc26`; lo segundo nunca lo fue — el obstaculo es el
+  `mmap`, que hace que el RSS siga el artefacto y no la colocacion.
+- `estimation.md`: la VRAM ya no viene solo de NVML.
+- `evaluation/comparison.py`: el docstring de `compare_prediction` contradecia al de
+  `_predicted_ram` veinte lineas mas abajo.
 
 ## A. Estado general
 
@@ -104,6 +219,9 @@ infraestructura agrupada por feature y presentacion CLI/TUI.
 
 ### 1. Memoria incompleta puede producir `comfortable`
 
+> **CERRADO (16/09).** `estimator/compatibility.py:211` devuelve `assess(None, ...)` con
+> motivo explicito cuando falta weights, KV u overhead. Ver R.2.
+
 **Problema:** un total parcial puede clasificarse como si fuera completo.
 
 **Donde:** [`_sum_components()`](../src/jaull/estimator/service.py#L301), fallback en
@@ -127,6 +245,9 @@ la confianza, no el status.
 ese resultado como fit confirmado.
 
 ### 2. Matching de evidencia local demasiado amplio
+
+> **CERRADO (16/09).** `recommendation/local_evidence.py` usa ya una clave canonica
+> completa, flags de runtime incluidos. Ver R.2.
 
 **Problema:** un benchmark o experimento diferente puede influir en el ranking actual.
 
@@ -154,6 +275,8 @@ y conservar RAM/VRAM como medidas separadas.
 
 ### 1. Busqueda incorrecta en el fallback por bytes
 
+> **CERRADO (16/09).** La sonda de este documento devuelve hoy `gpu_offload 8/10`. Ver R.2.
+
 **Problema:** puede devolver `TOO_LARGE` aunque exista un split valido.
 
 **Donde:** [`estimator/hardware_fit.py`](../src/jaull/estimator/hardware_fit.py#L317).
@@ -171,6 +294,8 @@ lo que afecta principalmente a la API directa y scripts.
 VRAM, con un regression test RAM-constrained.
 
 ### 2. `WeightEstimate` aun no posee la descomposicion estructural
+
+> **CERRADO (16/09).** `transformer_block_decomposition` es ya la autoridad. Ver R.2.
 
 **Problema:** HFA sigue calculando `ceil(total_weights / blocks)`.
 
@@ -190,6 +315,8 @@ inicialmente diagnostica y sin asumir placement de non-block weights.
 
 ### 3. Capacity y ocupacion actual siguen mezcladas
 
+> **CERRADO (16/09).** Separadas en `planning_` frente a `available_`. Ver R.2.
+
 **Problema:** la shortlist usa capacidad fisica, pero HFA usa RAM/VRAM libre instantanea.
 
 **Donde:** [`candidate_filter.py`](../src/jaull/discovery/candidate_filter.py#L303) y
@@ -206,6 +333,8 @@ uso.
 
 ### 4. `AdvisorService` sigue siendo facade y composition root parcial
 
+> **ABIERTO (16/09).** Ha crecido de 1305 a 1483 lineas.
+
 **Problema:** tiene 1305 lineas, muchas dependencias y construye servicios concretos mediante
 memoizacion mutable sobre una dataclass frozen.
 
@@ -221,6 +350,8 @@ memoizacion mutable sobre una dataclass frozen.
 
 ### 5. Replayability depende del caller
 
+> **ABIERTO (16/09).** `prediction_input` sigue opcional.
+
 **Problema:** `ExperimentPredictionInput` es opcional y el snapshot productivo se adjunta
 desde la validacion TUI:
 [`recommendation_validation.py`](../src/jaull/tui/screens/recommendation_validation.py#L256).
@@ -233,6 +364,9 @@ desde la validacion TUI:
 cuando los inputs esten disponibles.
 
 ### 6. Hardware Fit de aceleradores no NVIDIA
+
+> **CERRADO (16/09), con matices.** La memoria llega via DRM sysfs, no via Vulkan: en la
+> practica AMD discreta sobre Linux. Ver R.2 y R.4.2.
 
 **Problema:** Vulkan detecta AMD/Intel, pero no obtiene memoria; HFA consume `gpus`, poblado
 por NVML.

@@ -799,8 +799,16 @@ error_percent = (mesurat − predit) / predit × 100
 Un error **positiu** vol dir que Jaull ha infraestimat. La comparació no calibra cap fórmula:
 la predicció, l’observació i la comparació són tres coses separades.
 
-La de RAM només es calcula en execucions CPU-only o sense offload; amb offload, i sempre per
-la VRAM, queda marcada `methodologically_unavailable` en lloc de fingir un número.
+La de RAM només es calcula en execucions CPU-only o sense offload; amb offload queda
+`methodologically_unavailable` en lloc de fingir un número, perquè amb `mmap` el RSS
+segueix el fitxer del model i no la col·locació.
+
+La de VRAM sí que dóna número quan la predicció posa pesos a la GPU i hi ha mesura. La
+mesura pot venir de dues fonts, i la comparació sempre diu quina ha fet servir: NVML
+atribuint memòria al procés (`driver_confirmed = true`), o els buffers que el propi
+llama.cpp imprimeix (`driver_confirmed = false`), que és l’única disponible amb una GPU de
+consum en mode WDDM. La segona és estrictament més petita: el runtime reporta el que ha
+demanat, no el context de CUDA ni el que l’allocator s’ha quedat pel seu compte.
 
 ### Prompt
 Text d’entrada enviat al model.

@@ -254,29 +254,44 @@ more accurate.
 Current `PredictionComparison` compares:
 
 - RAM, when the prediction and measurement are methodologically comparable;
+- VRAM, under the conditions below;
+- per-component VRAM, when the executed placement can be verified;
 - compatibility outcome: correct success, correct failure, false positive,
   false negative or unknown.
 
-Current limitation:
+**The VRAM question is now decided.** The comparable prediction is
+`HardwareFitResult.gpu_physical_bytes`: physical GPU allocation plus runtime
+overhead, with the device reserve and safety margin removed. Reserve and margin
+are capacity policy — memory deliberately left free for other processes and
+padding — so including them would compare a budget against an allocation and
+report an error that is really just the size of the policy. Runtime overhead
+stays in because it models allocations the process genuinely makes; being wrong
+about a real quantity is a calibration result, which is what this comparison
+exists to surface.
 
-- VRAM is always marked `METHODOLOGICALLY_UNAVAILABLE` because the comparison
-  layer does not yet have a process-attributed device-memory prediction that
-  matches `peak_vram_bytes`.
-- RAM for GPU/offload execution can also be methodologically unavailable
-  because RSS and host/device placement are not the same quantity.
+The observed side has two sources, and the protocol must record which one a
+result used:
 
-The Hardware Fit Analyzer introduces the right conceptual data for future
-comparison: GPU required bytes, RAM required bytes, GPU weights, RAM weights,
-GPU layers and placement method. Before enabling VRAM error percentages, Jaull
-must decide which prediction field is comparable to the observed VRAM method:
+| Source | `driver_confirmed` | Meaning |
+|---|---|---|
+| `nvml_process_allocation` | `true` | The driver's own per-PID attribution. Preferred. |
+| `runtime_reported_allocation` | `false` | The buffers llama.cpp printed. Strictly smaller: it cannot see the CUDA context or allocator behaviour. |
 
-- physical GPU allocation only;
-- physical allocation plus runtime overhead;
-- allocation plus reserve/safety margin;
-- or a separate predicted peak process VRAM.
+The second source exists because the first is unavailable on any consumer GPU
+in WDDM mode. **Do not pool results across sources in one error statistic.**
 
-Until that decision is implemented, the protocol must report VRAM measurements
-as observations and avoid presenting a fake prediction error.
+Remaining limitations:
+
+- RAM for GPU/offload execution is still methodologically unavailable, because
+  `mmap` makes RSS track the model file rather than the placement — not because
+  a host/device breakdown is missing. `HardwareFitResult` has one.
+- The per-component breakdown requires a verifiable placement: llama.cpp with a
+  negative `--n-gpu-layers` against a `GPU_RESIDENT` prediction. Partial offload
+  cannot be verified while transformer blocks and `--n-gpu-layers` units remain
+  different vocabularies.
+- The overhead-vs-compute-buffer pair is marked `PROXY`. It must not be used to
+  calibrate the overhead heuristic until a driver-attributed figure bounds the
+  part the runtime does not report.
 
 ## Cost methodology
 
