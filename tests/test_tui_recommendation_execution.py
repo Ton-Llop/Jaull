@@ -2077,7 +2077,11 @@ def test_generate_runs_long_operations_without_blocking_ui() -> None:
             _set_prompt(screen, "Hello")
             started = time.perf_counter()
             screen.query_one("#run-generate", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: screen.query_one("#run-generate", Button).disabled,
+                timeout_seconds=advisor.prepare_delay / 2,
+            )
 
             assert time.perf_counter() - started < advisor.prepare_delay
             assert screen.query_one("#run-generate", Button).disabled is True
