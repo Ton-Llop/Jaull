@@ -1,10 +1,26 @@
 """Capability signal derived from inspected Hugging Face metadata.
 
 No benchmarks are run and no external leaderboard is queried. The score is a
-transparent heuristic over signals the workflow already has: parameter count,
-metadata completeness, confirmed artifact/runtime hints and Hub activity. That
-keeps recommendation tests offline while avoiding a hand-maintained quality
-table for named model families.
+transparent heuristic over two signals the workflow already has: parameter
+count, and what the repository actually contains. That keeps recommendation
+tests offline while avoiding a hand-maintained quality table for named model
+families.
+
+Metadata completeness and Hub activity are deliberately **not** part of this
+score, even though both are available here. The ranker already weighs them on
+their own axes -- ``metadata_quality``, ``popularity`` and ``license`` in
+``policies.BASE_WEIGHTS`` -- so folding them in again counted the same evidence
+twice, and on the hardware-aware path it counted for more than the parameter
+count itself: ``engine_v2`` orders on the *bucketed* capability level, so once
+two candidates fall on the same side of the size curve, metadata and downloads
+were the only terms left that could move the bucket.
+
+Measured on an RTX 4060 before this was split: Qwen3-4B-Instruct-2507 scored
+below TinyLlama-1.1B-Chat. Its 3.4B extra parameters earned it +0.106 on the
+size curve and it gave back 0.123 on the metadata term, because its model card
+declares no ``language:`` field. A missing YAML line outweighed eight times the
+parameter count. Popularity pushed the same way: TinyLlama has ~1.45M downloads
+against Qwen3-4B's ~3.6M, and neither number says anything about capability.
 """
 
 from __future__ import annotations
@@ -21,13 +37,6 @@ from jaull.domain.families import detect_family, parameter_count
 from jaull.domain.model import ModelAnalysis
 
 DEFAULT_CAPABILITY_SCORE = 0.5
-
-_CONFIDENCE_SIGNAL: dict[EstimationConfidence, float] = {
-    EstimationConfidence.HIGH: 0.85,
-    EstimationConfidence.MEDIUM: 0.65,
-    EstimationConfidence.LOW: 0.45,
-    EstimationConfidence.UNKNOWN: 0.25,
-}
 
 _REPOSITORY_TYPE_SIGNAL: dict[RepositoryType, float] = {
     RepositoryType.TRANSFORMERS: 0.75,
@@ -80,16 +89,13 @@ class MetadataCapabilityAnalyzer:
         params = parameter_count(candidate, analysis)
         family = detect_family(candidate, analysis)
         size_signal = _size_curve(params)
-        metadata_signal = _metadata_signal(candidate, analysis)
         artifact_signal = _artifact_signal(candidate, analysis)
-        activity_signal = _activity_signal(candidate)
 
-        score = _clamp(
-            0.45 * size_signal
-            + 0.30 * metadata_signal
-            + 0.15 * artifact_signal
-            + 0.10 * activity_signal
-        )
+        # The old 0.45/0.30/0.15/0.10 split renormalised over the two terms that
+        # are not already weighted elsewhere. The level thresholds in
+        # ``engine_v2._capability_level`` are unchanged and still separate the
+        # size classes they were tuned for.
+        score = _clamp(0.75 * size_signal + 0.25 * artifact_signal)
 
         return CapabilitySignal(
             score=score,
@@ -120,24 +126,6 @@ def capability_score(
     return MetadataCapabilityAnalyzer().analyze(candidate, analysis).score
 
 
-def _metadata_signal(
-    candidate: ModelCandidate, analysis: ModelAnalysis | None
-) -> float:
-    score = _CONFIDENCE_SIGNAL[candidate.metadata_confidence]
-    if candidate.license:
-        score += 0.05
-    if candidate.languages:
-        score += 0.05
-    if analysis is not None:
-        if analysis.config is not None:
-            score += 0.08
-        if analysis.total_size_bytes:
-            score += 0.04
-        score -= min(0.15, 0.03 * len(analysis.warnings))
-    score -= min(0.15, 0.03 * len(candidate.penalties))
-    return _clamp(score)
-
-
 def _artifact_signal(
     candidate: ModelCandidate, analysis: ModelAnalysis | None
 ) -> float:
@@ -158,12 +146,6 @@ def _artifact_signal(
     if analysis is not None and analysis.relevant_files:
         score += 0.05
     return _clamp(score)
-
-
-def _activity_signal(candidate: ModelCandidate) -> float:
-    downloads = math.log1p(max(0, candidate.downloads)) / math.log1p(1_000_000)
-    likes = math.log1p(max(0, candidate.likes)) / math.log1p(20_000)
-    return _clamp(0.75 * min(downloads, 1.0) + 0.25 * min(likes, 1.0))
 
 
 def _size_curve(params: int | None) -> float:

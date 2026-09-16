@@ -715,7 +715,7 @@ def test_balanced_prefers_runnable_plan_over_more_capable_offloading_plan() -> N
     )
 
     assert ranked[0].evaluated.repo_id == "org/Qwen2.5-1.5B-Instruct-GGUF"
-    assert ranked[0].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[0].assessment.capability is AssessmentLevel.WEAK
     assert ranked[0].assessment.execution_fitness is AssessmentLevel.STRONG
     assert ranked[1].assessment.capability is AssessmentLevel.STRONG
     assert ranked[1].assessment.execution_fitness is AssessmentLevel.WEAK
@@ -737,10 +737,14 @@ def test_balanced_can_still_prefer_more_capable_compatible_plan() -> None:
         context=_ready_llama_context(),
     )
 
+    # The RTX 4060 case, in miniature: the 4B only *fits*, the 1.5B fits
+    # comfortably. Capability has to outrank the spare VRAM, and it only can
+    # while the two land in different buckets — which is what keeps metadata
+    # completeness and download counts out of `capability_score`.
     assert ranked[0].evaluated.repo_id == "org/Qwen3-4B-Instruct-GGUF"
-    assert ranked[0].assessment.capability is AssessmentLevel.STRONG
+    assert ranked[0].assessment.capability is AssessmentLevel.ADEQUATE
     assert ranked[0].assessment.execution_fitness is AssessmentLevel.ADEQUATE
-    assert ranked[1].assessment.capability is AssessmentLevel.ADEQUATE
+    assert ranked[1].assessment.capability is AssessmentLevel.WEAK
     assert ranked[1].assessment.execution_fitness is AssessmentLevel.STRONG
 
 

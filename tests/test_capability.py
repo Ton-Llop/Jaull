@@ -82,14 +82,63 @@ def test_unknown_metadata_confidence_does_not_break_capability_analysis() -> Non
     assert 0.0 <= signal.score <= 1.0
 
 
-def test_popularity_is_secondary_to_parameter_count() -> None:
+def test_metadata_and_popularity_do_not_enter_the_capability_score() -> None:
+    """They already have their own weights in ``policies.BASE_WEIGHTS``.
+
+    Counting them here too made them decide the *bucket* on the hardware-aware
+    path, where ``engine_v2`` orders on the capability level rather than the raw
+    score. Same parameter count must mean the same capability, whatever the card
+    says and however many people downloaded it.
+    """
     analyzer = MetadataCapabilityAnalyzer()
-    tiny_popular = analyzer.analyze(
-        _candidate("org/Tiny-0.5B", downloads=1_000_000, likes=20_000),
+    rich = analyzer.analyze(
+        _candidate(
+            "org/Model-1B",
+            downloads=5_000_000,
+            likes=20_000,
+            confidence=EstimationConfidence.HIGH,
+        ),
         None,
     )
-    large_quiet = analyzer.analyze(_candidate("org/Large-7B"), None)
-    assert large_quiet.score > tiny_popular.score
+    thin = analyzer.analyze(
+        _candidate(
+            "org/Model-1B",
+            downloads=0,
+            likes=0,
+            confidence=EstimationConfidence.UNKNOWN,
+        ),
+        None,
+    )
+    assert rich.score == pytest.approx(thin.score)
+
+
+def test_a_larger_model_outranks_a_smaller_one_with_a_better_card() -> None:
+    """The measured RTX 4060 regression, reduced to one assertion.
+
+    Qwen3-4B-Instruct-2507 scored below TinyLlama-1.1B-Chat because its model
+    card declares no ``language:`` field and it had fewer downloads. Eight times
+    the parameter count lost to a missing YAML line.
+    """
+    analyzer = MetadataCapabilityAnalyzer()
+    large_thin_card = analyzer.analyze(
+        _candidate(
+            "org/Model-4B",
+            downloads=0,
+            likes=0,
+            confidence=EstimationConfidence.LOW,
+        ),
+        None,
+    )
+    small_perfect_card = analyzer.analyze(
+        _candidate(
+            "org/Model-1.1B",
+            downloads=5_000_000,
+            likes=20_000,
+            confidence=EstimationConfidence.HIGH,
+        ),
+        None,
+    )
+    assert large_thin_card.score > small_perfect_card.score
 
 
 def test_parameter_count_reads_repo_id_suffix() -> None:

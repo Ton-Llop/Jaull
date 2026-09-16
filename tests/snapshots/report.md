@@ -23,10 +23,10 @@ Generated: <redacted>
 
 ### 1. org/Coder-7B — Best Effort
 
-- Score: 62/100
+- Score: 61/100
 - Memory fit: 75%
 - Concurrency fit: 100%
-- Capability: 74%
+- Capability: 70%
 - Compatibility: comfortable
 - Confidence: high
 - License: apache-2.0 (commercial_allowed)
