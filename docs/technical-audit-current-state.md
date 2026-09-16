@@ -23,7 +23,7 @@ que cambios existentes en otras branches formen parte de este estado.
 |---|---|---|
 | ruff | clean | clean |
 | mypy | clean | clean, 244 ficheros |
-| pytest | 1381 | **1613 passed** |
+| pytest | 1381 | **1614 passed** |
 | cobertura | 84 % | **85 %** (17 271 stmts, 2 603 sin cubrir) |
 | allowlist arquitectura | vacia | vacia |
 | TODO/FIXME/HACK en `src/` | — | **0** |
@@ -94,14 +94,36 @@ que cambios existentes en otras branches formen parte de este estado.
    `best_match`). No era alcanzable por la ruta de produccion — forzado con un perfil de
    1 GiB VRAM / 2 GiB RAM, ningun `insufficient` llega a mostrarse — pero `choose_tier` es
    publica y su propio test lo alcanzaba. `INSUFFICIENT` esta ahora en la regla 4.
-4. **Tres modelos sub-1.5B ocupan el Top 5 por delante de un 4B.** Cadena verificada:
-   `capability` colapsa 0.5B y 4B en el mismo bucket `adequate` (la separacion en la curva de
-   tamano, 0.158, es menor que el ancho de bucket, 0.17); al empatar decide
-   `execution_fitness`, que es funcion pura del estado de memoria, y el mas pequeno gana. Por
-   debajo, el 55 % de `capability_score` no mide capacidad: a Qwen3-4B le falta la linea
-   `language:` en el model card y eso le cuesta mas (-0.123) de lo que le dan 3.4B de
+4. **Tres modelos sub-1.5B ocupaban el Top 5 por delante de un 4B.** Cadena verificada:
+   `capability` colapsaba 0.5B y 4B en el mismo bucket `adequate` (la separacion en la curva
+   de tamano, 0.158, era menor que el ancho de bucket, 0.17); al empatar decidia
+   `execution_fitness`, que es funcion pura del estado de memoria, y ganaba el mas pequeno.
+   Por debajo, el 55 % de `capability_score` no media capacidad: a Qwen3-4B le falta la linea
+   `language:` en el model card y eso le costaba mas (-0.123) de lo que le daban 3.4B de
    parametros extra (+0.106). El fix de `2f85c45` es real pero ortogonal: baja los modelos con
    estado `UNKNOWN`, no los pequenos con estado `comfortable`.
+
+   **CERRADO (16/09).** `capability_score` era `0.45*size + 0.30*metadata + 0.15*artifact +
+   0.10*activity`, y `metadata`, `activity` y la licencia ya tenian peso propio en
+   `policies.BASE_WEIGHTS` (`metadata_quality` 0.07, `popularity` 0.03, `license` 0.08). Eran
+   evidencia contada dos veces, y en la ruta con hardware contaba mas que el propio numero de
+   parametros: `engine_v2` ordena por el *bucket*, asi que una vez dos candidatos caen del
+   mismo lado de la curva de tamano, metadata y descargas eran los unicos terminos que podian
+   moverlo. Los dos terminos duplicados se han quitado y los dos que quedan se han
+   renormalizado a `0.75*size + 0.25*artifact`; los umbrales de `_capability_level` no se han
+   tocado. `_artifact_signal` se queda porque no esta cubierto por ningun otro eje y medido
+   sobre candidatos reales es casi constante (0.143-0.150), asi que no distorsiona.
+
+   Resultado en el replay del RTX 4060: Qwen3-4B pasa de #5 a **#2**, por detras solo del
+   Llama-3.1-8B, y los tres sub-1.5B caen a `capability=weak` en las posiciones #3-#5. Las
+   otras prioridades siguen comportandose como deben: con `memory` el orden se invierte y el
+   0.5B vuelve a ser #1.
+
+   Efecto lateral esperado: los niveles absolutos bajan un escalon (un 1.5B pasa de `adequate`
+   a `weak`, un 4B de `strong` a `adequate`) porque el suelo constante de ~0.55 que aportaban
+   metadata y actividad ha desaparecido. La escala nueva es aproximadamente <2.5B `weak`,
+   2.5-7B `adequate`, >=7B `strong`. El snapshot del report se movio en cuatro numeros y en
+   nada mas: `capability` 0.743 -> 0.700 y `total` 0.619 -> 0.614 para un unico candidato.
 5. **Politica de "confirmed memory" duplicada** en `engine_v2._prioritize_confirmed_memory_fit`
    y `ranker.select_ranked:172`. Solo la primera corre con hardware; divergiran.
 6. **Rama muerta en `estimator/service.py:315-319`:** las dos ramas de `_sum_components`
