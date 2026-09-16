@@ -12,6 +12,7 @@ import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from jaull.domain.hardware import (
     AcceleratorProfile,
@@ -27,10 +28,20 @@ logger = logging.getLogger(__name__)
 
 VulkanCommandRunner = Callable[[tuple[str, ...], float], subprocess.CompletedProcess[str]]
 
+
+@dataclass(frozen=True)
+class _DrmVram:
+    total_bytes: int
+    available_bytes: int | None
+
+
+DrmVramReader = Callable[[str | None, str | None], _DrmVram | None]
+
 _GPU_HEADER_RE = re.compile(r"^\s*GPU\d+\s*:")
 _KEY_VALUE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9]*)\s*=\s*(.*?)\s*$")
 _VULKAN_COMMAND = ("vulkaninfo", "--summary")
 _VULKAN_TIMEOUT_SECONDS = 5.0
+_DRM_ROOT = Path("/sys/class/drm")
 
 
 @dataclass(frozen=True)
@@ -41,6 +52,8 @@ class VulkanProbe:
 
 def detect_vulkan_accelerators(
     command_runner: VulkanCommandRunner | None = None,
+    *,
+    drm_vram_reader: DrmVramReader | None = None,
 ) -> VulkanProbe:
     runner = command_runner or _run_vulkaninfo
     try:
@@ -74,15 +87,25 @@ def detect_vulkan_accelerators(
             ],
         )
 
-    accelerators = accelerators_from_summary(completed.stdout)
+    accelerators = accelerators_from_summary(
+        completed.stdout,
+        drm_vram_reader=drm_vram_reader or _read_drm_vram_bytes,
+    )
     warnings: list[str] = []
     if not accelerators:
         warnings.append("No Vulkan devices could be parsed from vulkaninfo output.")
     return VulkanProbe(accelerators=accelerators, warnings=warnings)
 
 
-def accelerators_from_summary(output: str) -> list[AcceleratorProfile]:
-    return [_accelerator_from_device(device) for device in _parse_devices(output)]
+def accelerators_from_summary(
+    output: str,
+    *,
+    drm_vram_reader: DrmVramReader | None = None,
+) -> list[AcceleratorProfile]:
+    return [
+        _accelerator_from_device(device, drm_vram_reader=drm_vram_reader)
+        for device in _parse_devices(output)
+    ]
 
 
 def _run_vulkaninfo(
@@ -133,12 +156,21 @@ def _parse_devices(output: str) -> list[dict[str, str]]:
     return [device for device in devices if "deviceName" in device]
 
 
-def _accelerator_from_device(device: dict[str, str]) -> AcceleratorProfile:
+def _accelerator_from_device(
+    device: dict[str, str],
+    *,
+    drm_vram_reader: DrmVramReader | None,
+) -> AcceleratorProfile:
     name = device.get("deviceName", "unknown Vulkan device")
     driver = device.get("driverName")
     device_type = device.get("deviceType", "")
     software = _is_software_renderer(name=name, driver=driver, device_type=device_type)
     accelerator_type = _accelerator_type(device_type, software=software)
+    drm_vram = (
+        drm_vram_reader(device.get("vendorID"), device.get("deviceID"))
+        if accelerator_type is AcceleratorType.DEDICATED and drm_vram_reader is not None
+        else None
+    )
     backend_availability = (
         BackendAvailability.UNAVAILABLE
         if software
@@ -151,11 +183,13 @@ def _accelerator_from_device(device: dict[str, str]) -> AcceleratorProfile:
         type=accelerator_type,
         vendor_id=device.get("vendorID"),
         device_id=device.get("deviceID"),
-        dedicated_memory_bytes=None,
-        available_memory_bytes=None,
+        dedicated_memory_bytes=drm_vram.total_bytes if drm_vram is not None else None,
+        available_memory_bytes=(
+            drm_vram.available_bytes if drm_vram is not None else None
+        ),
         shared_memory=accelerator_type
         in {AcceleratorType.INTEGRATED, AcceleratorType.SOFTWARE},
-        detection_sources=["vulkaninfo"],
+        detection_sources=["vulkaninfo", "drm"] if drm_vram is not None else ["vulkaninfo"],
         backends=_backends_for_vulkan_device(
             vendor=vendor,
             vulkan=ComputeBackendInfo(
@@ -180,6 +214,84 @@ def _accelerator_from_device(device: dict[str, str]) -> AcceleratorProfile:
             software=software,
         ),
     )
+
+
+def _read_drm_vram_bytes(
+    vendor_id: str | None,
+    device_id: str | None,
+    *,
+    drm_root: Path = _DRM_ROOT,
+) -> _DrmVram | None:
+    """Read discrete AMD-style VRAM from Linux DRM sysfs when unambiguous.
+
+    Vulkan's summary has device identity but no memory information. DRM exposes
+    physical total VRAM and, on drivers that provide it, current usage. The
+    latter is optional: capacity remains useful for planning, while Hardware
+    Fit deliberately requires observed availability.
+    """
+
+    normalized_vendor = _normalized_pci_id(vendor_id)
+    normalized_device = _normalized_pci_id(device_id)
+    if normalized_vendor is None or normalized_device is None:
+        return None
+
+    matches: list[_DrmVram] = []
+    try:
+        cards = sorted(
+            path
+            for path in drm_root.iterdir()
+            if re.fullmatch(r"card\d+", path.name)
+        )
+    except OSError:
+        return None
+
+    for card in cards:
+        device = card / "device"
+        if (
+            _read_pci_id(device / "vendor") != normalized_vendor
+            or _read_pci_id(device / "device") != normalized_device
+        ):
+            continue
+        total_bytes = _read_non_negative_int(device / "mem_info_vram_total")
+        if total_bytes is None or total_bytes <= 0:
+            continue
+        used_bytes = _read_non_negative_int(device / "mem_info_vram_used")
+        matches.append(
+            _DrmVram(
+                total_bytes=total_bytes,
+                available_bytes=(
+                    max(0, total_bytes - used_bytes) if used_bytes is not None else None
+                ),
+            )
+        )
+
+    # Vulkan's summary does not expose a PCI bus ID. Do not guess which of two
+    # identical cards supplies the memory reading.
+    return matches[0] if len(matches) == 1 else None
+
+
+def _normalized_pci_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return f"0x{int(value.strip(), 0):04x}"
+    except ValueError:
+        return None
+
+
+def _read_pci_id(path: Path) -> str | None:
+    try:
+        return _normalized_pci_id(path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
+def _read_non_negative_int(path: Path) -> int | None:
+    try:
+        value = int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return value if value >= 0 else None
 
 
 def _backends_for_vulkan_device(

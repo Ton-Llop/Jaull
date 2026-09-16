@@ -140,6 +140,111 @@ def test_no_estimate_bare_recommendation_is_unknown_confidence() -> None:
     assert rec.confidence is EstimationConfidence.UNKNOWN
 
 
+def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device() -> None:
+    from jaull.domain.hardware import ComputeBackend
+    from jaull.domain.runtime import (
+        ExecutionReadiness,
+        ExecutionReadinessReason,
+        ExecutionReadinessStatus,
+        LlamaCppBackendCapability,
+        LlamaCppBackendCapabilityState,
+        LlamaCppBinaryStatus,
+        LlamaCppCapabilityReason,
+        LlamaCppRuntimeCapability,
+        LlamaCppRuntimeDevice,
+        RuntimeBackendSelection,
+        RuntimeBackendSelectionReason,
+    )
+
+    selection = RuntimeBackendSelection(
+        selected_backend=ComputeBackend.VULKAN,
+        reason=RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
+    )
+    capability = LlamaCppBackendCapability(
+        backend=ComputeBackend.VULKAN,
+        state=LlamaCppBackendCapabilityState.CONFIRMED,
+        reason=LlamaCppCapabilityReason.BACKEND_EXPOSED,
+        devices=[
+            LlamaCppRuntimeDevice(
+                backend=ComputeBackend.VULKAN,
+                runtime_id="Vulkan0",
+                name="AMD Radeon RX test",
+            )
+        ],
+    )
+    runtime_capability = LlamaCppRuntimeCapability(
+        binary_path="llama-cli",
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        backend_capabilities=[capability],
+    )
+    readiness = ExecutionReadiness(
+        status=ExecutionReadinessStatus.READY,
+        reason=ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED,
+        selection=selection,
+        runtime_capability=runtime_capability,
+        selected_backend_capability=capability,
+    )
+
+    rec = plan_launch(
+        runtime=RuntimeName.LLAMA_CPP,
+        estimate=qwen_ctx4096_estimate(with_runtime_recommendation=True),
+        hardware=qwen_hardware(),
+        backend_selection=selection,
+        execution_readiness=readiness,
+    )
+
+    assert _flag(rec, "--device") == "Vulkan0"
+    assert "--device Vulkan0" in (rec.command_preview or "")
+
+
+def test_llama_cpp_plan_does_not_guess_device_without_runtime_device_id() -> None:
+    from jaull.domain.hardware import ComputeBackend
+    from jaull.domain.runtime import (
+        ExecutionReadiness,
+        ExecutionReadinessReason,
+        ExecutionReadinessStatus,
+        LlamaCppBackendCapability,
+        LlamaCppBackendCapabilityState,
+        LlamaCppBinaryStatus,
+        LlamaCppCapabilityReason,
+        LlamaCppRuntimeCapability,
+        RuntimeBackendSelection,
+        RuntimeBackendSelectionReason,
+    )
+
+    selection = RuntimeBackendSelection(
+        selected_backend=ComputeBackend.HIP,
+        reason=RuntimeBackendSelectionReason.NATIVE_BACKEND_AVAILABLE,
+    )
+    capability = LlamaCppBackendCapability(
+        backend=ComputeBackend.HIP,
+        state=LlamaCppBackendCapabilityState.CONFIRMED,
+        reason=LlamaCppCapabilityReason.BACKEND_EXPOSED,
+    )
+    runtime_capability = LlamaCppRuntimeCapability(
+        binary_path="llama-cli",
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        backend_capabilities=[capability],
+    )
+    readiness = ExecutionReadiness(
+        status=ExecutionReadinessStatus.READY,
+        reason=ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED,
+        selection=selection,
+        runtime_capability=runtime_capability,
+        selected_backend_capability=capability,
+    )
+
+    rec = plan_launch(
+        runtime=RuntimeName.LLAMA_CPP,
+        estimate=qwen_ctx4096_estimate(with_runtime_recommendation=True),
+        hardware=qwen_hardware(),
+        backend_selection=selection,
+        execution_readiness=readiness,
+    )
+
+    assert _flag(rec, "--device") is None
+
+
 # ---------------------------------------------------------------------------
 # Routing: the TUI's prepare_execution_plan must obtain its runtime from the
 # planner after artifact preparation, then pass that same runtime into the plan.

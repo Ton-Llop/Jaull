@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from jaull.domain.hardware import (
     AcceleratorType,
@@ -10,6 +11,8 @@ from jaull.domain.hardware import (
     ComputeBackend,
 )
 from jaull.hardware.vulkan import (
+    _DrmVram,
+    _read_drm_vram_bytes,
     accelerators_from_summary,
     detect_vulkan_accelerators,
 )
@@ -31,6 +34,16 @@ GPU0:
     deviceType         = PHYSICAL_DEVICE_TYPE_CPU
     deviceName         = llvmpipe (LLVM 15.0.7, 256 bits)
     driverName         = llvmpipe
+"""
+
+AMD_DISCRETE_VULKAN_SUMMARY = """
+GPU0:
+    apiVersion         = 1.3.280
+    vendorID           = 0x1002
+    deviceID           = 0x744c
+    deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+    deviceName         = AMD Radeon RX 7600
+    driverName         = AMD proprietary driver
 """
 
 
@@ -134,3 +147,51 @@ def test_malformed_vulkan_output_returns_unknown_without_crashing() -> None:
 
     assert probe.accelerators == []
     assert any("No Vulkan devices" in warning for warning in probe.warnings)
+
+
+def test_discrete_amd_vulkan_device_receives_drm_memory_when_available() -> None:
+    accelerators = accelerators_from_summary(
+        AMD_DISCRETE_VULKAN_SUMMARY,
+        drm_vram_reader=lambda vendor_id, device_id: _drm_vram_reader(
+            vendor_id, device_id
+        ),
+    )
+
+    accelerator = accelerators[0]
+    assert accelerator.dedicated_memory_bytes == 8 * 1024**3
+    assert accelerator.available_memory_bytes == 6 * 1024**3
+    assert accelerator.detection_sources == ["vulkaninfo", "drm"]
+
+
+def test_drm_reader_uses_total_for_capacity_and_used_for_availability(
+    tmp_path: Path,
+) -> None:
+    device = tmp_path / "card0" / "device"
+    device.mkdir(parents=True)
+    (device / "vendor").write_text("0x1002\n", encoding="utf-8")
+    (device / "device").write_text("0x744c\n", encoding="utf-8")
+    (device / "mem_info_vram_total").write_text(str(8 * 1024**3), encoding="utf-8")
+    (device / "mem_info_vram_used").write_text(str(2 * 1024**3), encoding="utf-8")
+
+    memory = _read_drm_vram_bytes("0x1002", "0x744c", drm_root=tmp_path)
+
+    assert memory is not None
+    assert memory.total_bytes == 8 * 1024**3
+    assert memory.available_bytes == 6 * 1024**3
+
+
+def test_drm_reader_does_not_guess_between_identical_cards(tmp_path: Path) -> None:
+    for card in ("card0", "card1"):
+        device = tmp_path / card / "device"
+        device.mkdir(parents=True)
+        (device / "vendor").write_text("0x1002\n", encoding="utf-8")
+        (device / "device").write_text("0x744c\n", encoding="utf-8")
+        (device / "mem_info_vram_total").write_text(str(8 * 1024**3), encoding="utf-8")
+
+    assert _read_drm_vram_bytes("0x1002", "0x744c", drm_root=tmp_path) is None
+
+
+def _drm_vram_reader(vendor_id: str | None, device_id: str | None) -> _DrmVram:
+    assert vendor_id == "0x1002"
+    assert device_id == "0x744c"
+    return _DrmVram(total_bytes=8 * 1024**3, available_bytes=6 * 1024**3)

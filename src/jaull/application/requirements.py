@@ -140,7 +140,8 @@ def _preferred_formats(
     """Rank weight formats by how realistic they are on this machine."""
     if hardware is None or not hardware.gpus:
         assumptions.append(
-            "No NVIDIA GPU detected; preferring quantized GGUF builds, which run on CPU."
+            "No CUDA-capable NVIDIA GPU detected; preferring quantized GGUF builds, "
+            "which can run on CPU or a supported llama.cpp accelerator."
         )
         return ["gguf", "safetensors"]
 

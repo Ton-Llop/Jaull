@@ -18,7 +18,7 @@ from jaull.domain.artifact_profile import (
     ArtifactProfile,
 )
 from jaull.domain.estimation import CompatibilityStatus, MemoryEstimate
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import HardwareProfile, has_usable_accelerator
 from jaull.domain.runtime import (
     RuntimeAssessment,
     RuntimeExecutability,
@@ -38,7 +38,8 @@ def assess_runtime(
 ) -> RuntimeAssessment:
     """Grade the *ejecutabilidad* of a runtime recommendation."""
     runtime = recommendation.runtime if recommendation else RuntimeName.UNKNOWN
-    has_gpu = bool(hardware.gpus)
+    has_nvidia_gpu = bool(hardware.gpus)
+    has_accelerator = has_usable_accelerator(hardware)
 
     if recommendation is None or runtime is RuntimeName.UNKNOWN:
         return RuntimeAssessment(
@@ -55,11 +56,11 @@ def assess_runtime(
         )
 
     if runtime is RuntimeName.LLAMA_CPP:
-        return _assess_llama_cpp(has_gpu, artifact)
+        return _assess_llama_cpp(has_accelerator, artifact)
     if runtime is RuntimeName.TRANSFORMERS:
-        return _assess_transformers(has_gpu, artifact)
+        return _assess_transformers(has_nvidia_gpu, artifact)
     if runtime is RuntimeName.VLLM:
-        return _assess_vllm(has_gpu, artifact)
+        return _assess_vllm(has_nvidia_gpu, artifact)
 
     return RuntimeAssessment(
         runtime=runtime,

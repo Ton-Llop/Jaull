@@ -11,7 +11,7 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer
 
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import AcceleratorType, HardwareProfile
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -127,7 +127,7 @@ class HardwareAnalysisScreen(Screen[None]):
         content.mount(SummaryCard("This machine", _summary_rows(profile)))
 
         if profile.warnings:
-            # A missing NVIDIA GPU is a warning, never a failure: CPU-only
+            # A missing accelerator is a warning, never a failure: CPU-only
             # machines are a supported target.
             content.mount(WarningsPanel(profile.warnings))
 
@@ -176,6 +176,19 @@ def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
         gpu = profile.gpus[0]
         rows.append(("GPU", gpu.name))
         rows.append(("VRAM", _fmt(gpu.vram_total_bytes)))
+    elif accelerator := next(
+        (
+            item
+            for item in profile.accelerators
+            if item.type is not AcceleratorType.SOFTWARE
+        ),
+        None,
+    ):
+        rows.append(("Accelerator", accelerator.name))
+        if accelerator.dedicated_memory_bytes is not None:
+            rows.append(("Accelerator memory", _fmt(accelerator.dedicated_memory_bytes)))
+        elif accelerator.shared_memory:
+            rows.append(("Accelerator memory", "shared system memory"))
     else:
         rows.append(("GPU", "none detected — CPU inference only"))
     rows.append(("Platform", f"{profile.os} ({profile.arch})"))

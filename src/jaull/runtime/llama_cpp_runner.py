@@ -62,6 +62,8 @@ class LlamaCppRunner:
         n_gpu_layers = _int_flag(
             runtime, "--n-gpu-layers", default=_DEFAULT_GPU_LAYERS
         )
+        device = _str_flag(runtime, "--device")
+        device_flags = ("--device", device) if device is not None else ()
         command: tuple[str, ...] = (
             self._llama_cli,
             "--model",
@@ -70,6 +72,7 @@ class LlamaCppRunner:
             str(ctx_size),
             "--n-gpu-layers",
             str(n_gpu_layers),
+            *device_flags,
             "--no-display-prompt",
             "--color",
             "off",
@@ -172,6 +175,15 @@ def _bool_flag(runtime: RuntimeRecommendation | None, name: str) -> bool:
     raise LlamaCppRunnerError(
         f"Runtime flag {name} must be a boolean, got {raw!r}."
     )
+
+
+def _str_flag(runtime: RuntimeRecommendation | None, name: str) -> str | None:
+    if runtime is None:
+        return None
+    raw = next((flag.value for flag in runtime.flags if flag.name == name), None)
+    if raw is None or not raw.strip():
+        return None
+    return raw
 
 
 def _clean_inference_text(raw: str, *, prompt: str | None = None) -> str:

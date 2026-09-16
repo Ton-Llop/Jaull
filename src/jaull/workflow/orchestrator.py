@@ -28,7 +28,7 @@ from jaull.domain.candidates import (
     SearchQuery,
 )
 from jaull.domain.estimation import MemoryEstimate
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import HardwareProfile, planning_accelerator_memory_bytes
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis, SafetensorsSummary
 from jaull.domain.requirements import UserAnswers, UserRequirements
@@ -403,8 +403,9 @@ def _memory_budget(hardware: HardwareProfile) -> int | None:
     Used only to allocate the inspection budget. GPU memory when there is a GPU,
     otherwise system RAM, since a CPU-only machine runs the model in RAM.
     """
-    if hardware.gpus:
-        return max(gpu.vram_total_bytes for gpu in hardware.gpus)
+    accelerator_memory = planning_accelerator_memory_bytes(hardware)
+    if accelerator_memory is not None:
+        return accelerator_memory
     return hardware.memory.total_bytes or None
 
 

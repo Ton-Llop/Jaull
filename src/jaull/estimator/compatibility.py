@@ -13,7 +13,7 @@ from jaull.domain.estimation import (
     HardwareFitResult,
     TransformerBlockWeightDecomposition,
 )
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import HardwareProfile, available_accelerator_memory_bytes
 from jaull.domain.inference import TargetDevice
 from jaull.estimator import hardware_fit
 from jaull.estimator.policies import (
@@ -61,7 +61,7 @@ def assess(
                 available_vram_bytes=None,
                 available_ram_bytes=ram,
                 ratio=None,
-                reasons=["GPU requested but no NVIDIA GPU detected."],
+                reasons=["GPU requested but no GPU memory availability was detected."],
             )
         return _assess_single(
             device=TargetDevice.GPU,
@@ -171,10 +171,7 @@ def _status_from_ratio(ratio: float) -> CompatibilityStatus:
 
 
 def _available_vram(hardware: HardwareProfile) -> int | None:
-    if not hardware.gpus:
-        return None
-    # Use the GPU with most VRAM available (typical for a single-GPU setup).
-    return max(gpu.vram_available_bytes for gpu in hardware.gpus)
+    return available_accelerator_memory_bytes(hardware)
 
 
 class ComponentAssessment(NamedTuple):
