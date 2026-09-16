@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _workflow_fixtures import answers, hardware
+from jaull.reporting.recommendation import REPORT_SCHEMA_VERSION
 from jaull.workflow import orchestrator
 from test_workflow_orchestrator import _container, _search_with
 
@@ -72,7 +73,7 @@ def test_report_json_exposes_technical_latency_separately() -> None:
 
     payload = report_to_dict(_canonical_state())
     telemetry = payload["workflow_telemetry"]
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == REPORT_SCHEMA_VERSION
     assert telemetry["wall_seconds"] is not None
     assert isinstance(telemetry["phase_seconds"], dict)
     assert isinstance(telemetry["counters"], dict)

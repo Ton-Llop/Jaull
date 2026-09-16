@@ -85,13 +85,30 @@ def matching_benchmark(
             expected = "all" if record.gpu_layers.full_offload else str(record.gpu_layers.count)
             if raw != expected:
                 continue
-        elif _flags(plan.runtime).get("torch_dtype") != _flags(record.runtime).get("torch_dtype"):
+        elif not _transformers_precision_matches(plan, record):
             continue
         compatible.append(record)
     return max(
         compatible,
         key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
         default=None,
+    )
+
+
+def _transformers_precision_matches(
+    plan: ExecutionPlan, record: BenchmarkRecord,
+) -> bool:
+    """Both halves of the precision, not just the dtype one.
+
+    A quantized plan carries ``quantization`` and no ``torch_dtype``, so
+    comparing only the dtype made an int4 record and an int8 record look like
+    the same configuration — both answer ``None``.
+    """
+    plan_flags = _flags(plan.runtime)
+    record_flags = _flags(record.runtime)
+    return all(
+        plan_flags.get(name) == record_flags.get(name)
+        for name in ("torch_dtype", "quantization")
     )
 
 

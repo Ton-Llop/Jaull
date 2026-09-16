@@ -74,6 +74,11 @@ class TransformersRunner:
         torch_dtype = _flag(runtime, "torch_dtype", default=None)
         if torch_dtype is not None:
             command = _append_optional(command, "--torch-dtype", torch_dtype)
+        # A quantized plan carries `quantization` instead of `torch_dtype`; the
+        # worker refuses rather than loading unquantized weights.
+        quantization = _flag(runtime, "quantization", default=None)
+        if quantization is not None:
+            command = _append_optional(command, "--quantization", quantization)
 
         try:
             result = self.backend.execute(

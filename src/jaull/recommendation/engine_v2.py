@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from jaull.domain.benchmarks import (
     BenchmarkMeasurementKind,
@@ -954,6 +955,172 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
     )
 
 
+class RankingCriterion(NamedTuple):
+    """One axis of the ordering, with the value that placed this plan."""
+
+    axis: str
+    value: str
+    rank: int | float
+
+
+def ranking_criteria(
+    item: RankedPlan, priority: RecommendationPriority
+) -> tuple[RankingCriterion, ...]:
+    """The ordered criteria that decided this plan's position.
+
+    The report needs to say *why* a plan sits where it does. The composite
+    ``ScoreBreakdown`` cannot answer that — with hardware it does not order
+    anything — and printing it beside the rank made the highest-scoring model
+    appear fourth.
+
+    This mirrors the priority branch of :func:`_ranking_key` rather than
+    replacing it: the key runs on every comparison and is not worth
+    restructuring for an explanation. ``test_ranking_criteria_explain_the_real_order``
+    sorts by these ranks and asserts the result matches the key, so the two
+    cannot drift apart silently.
+
+    The order the user sees is **not** the key alone. ``rank_execution_plans``
+    sorts by the key and then applies :func:`_prioritize_confirmed_memory_fit`,
+    a stable partition that lifts every plan with a confirmed placement above
+    every plan without one. That partition is therefore the *outermost*
+    criterion, and leaving it out made the explanation disagree with the list:
+    on ``quality`` a 14B with an UNKNOWN estimate beats a 1.5B COMFORTABLE on
+    capability, yet the engine shows the 1.5B first.
+    """
+
+    assessment = item.assessment
+    prediction = item.plan.memory_prediction
+    confirmed = (
+        not assessment.rejected
+        and prediction is not None
+        and has_confirmed_memory_compatibility(prediction.assessment.status)
+    )
+    leading: tuple[tuple[str, str, int | float], ...] = (
+        (
+            "viability",
+            (
+                prediction.assessment.status.value
+                if confirmed and prediction is not None
+                else "placement not confirmed"
+            ),
+            0 if confirmed else 1,
+        ),
+        (
+            "hard_constraints",
+            "failed" if assessment.rejected else "none",
+            1 if assessment.rejected else 0,
+        ),
+    )
+    trailing: tuple[tuple[str, str, int | float], ...] = (
+        (
+            "performance_evidence",
+            assessment.performance_evidence.value,
+            _LEVEL_RANK[assessment.performance_evidence],
+        ),
+        (
+            "estimate_confidence",
+            assessment.confidence.value,
+            _CONFIDENCE_RANK[assessment.confidence],
+        ),
+    )
+    axes: tuple[tuple[str, str, int | float], ...]
+    if priority is RecommendationPriority.QUALITY:
+        axes = (
+            ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
+            (
+                "quantization_quality",
+                item.plan.artifact.quantization or "n/a",
+                _quantization_quality_rank(item.plan),
+            ),
+            (
+                "execution_fitness",
+                assessment.execution_fitness.value,
+                _LEVEL_RANK[assessment.execution_fitness],
+            ),
+        )
+    elif priority is RecommendationPriority.SPEED:
+        measured = assessment.measured_generation_tokens_per_second
+        axes = (
+            (
+                "executability",
+                assessment.executability.value,
+                _LEVEL_RANK[assessment.executability],
+            ),
+            (
+                "measured_throughput",
+                f"{measured:.1f} tok/s" if measured is not None else "not measured",
+                _throughput_rank(assessment),
+            ),
+            (
+                "quantization",
+                item.plan.artifact.quantization or "n/a",
+                _priority_quantization_rank(item.plan, priority),
+            ),
+            (
+                "memory_footprint",
+                _bytes_label(assessment),
+                _memory_efficiency_rank(assessment),
+            ),
+        )
+    elif priority is RecommendationPriority.MEMORY:
+        axes = (
+            (
+                "memory_footprint",
+                _bytes_label(assessment),
+                _memory_efficiency_rank(assessment),
+            ),
+            (
+                "execution_fitness",
+                assessment.execution_fitness.value,
+                _LEVEL_RANK[assessment.execution_fitness],
+            ),
+            (
+                "executability",
+                assessment.executability.value,
+                _LEVEL_RANK[assessment.executability],
+            ),
+        )
+    else:
+        axes = (
+            ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            (
+                "runnability",
+                assessment.execution_fitness.value,
+                _balanced_runnability_rank(assessment),
+            ),
+            ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
+            (
+                "execution_fitness",
+                assessment.execution_fitness.value,
+                _LEVEL_RANK[assessment.execution_fitness],
+            ),
+            (
+                "executability",
+                assessment.executability.value,
+                _LEVEL_RANK[assessment.executability],
+            ),
+            (
+                "memory_headroom",
+                assessment.feasibility.value,
+                _comfortable_memory_rank(assessment),
+            ),
+        )
+    return tuple(
+        RankingCriterion(*axis) for axis in (*leading, *axes, *trailing)
+    )
+
+
+def _bytes_label(assessment: PlanAssessment) -> str:
+    measured = assessment.measured_memory_bytes
+    estimated = assessment.estimated_memory_bytes
+    value = measured if measured is not None else estimated
+    if value is None:
+        return "unknown"
+    suffix = "measured" if measured is not None else "estimated"
+    return f"{value / 1024**3:.2f} GiB {suffix}"
+
+
 def _prioritize_confirmed_memory_fit(
     ordered: Sequence[RankedPlan],
 ) -> list[RankedPlan]:
@@ -1078,7 +1245,9 @@ __all__ = [
     "EstimatePlanFn",
     "PlanRankingContext",
     "RankedPlan",
+    "RankingCriterion",
     "assess_plan",
     "generate_execution_plans",
     "rank_execution_plans",
+    "ranking_criteria",
 ]

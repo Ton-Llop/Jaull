@@ -174,6 +174,15 @@ def build_transformers_benchmark_command(
     )
     if torch_dtype is not None:
         command = _append_optional(command, "--torch-dtype", torch_dtype)
+    # A quantized plan carries `quantization` instead of `torch_dtype`. Dropping
+    # it here would benchmark an unquantized model and file the numbers under
+    # the quantized plan.
+    quantization = next(
+        (flag.value for flag in request.runtime.flags if flag.name == "quantization"),
+        None,
+    )
+    if quantization is not None:
+        command = _append_optional(command, "--quantization", quantization)
     return command
 
 

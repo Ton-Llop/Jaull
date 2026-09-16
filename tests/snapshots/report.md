@@ -23,10 +23,6 @@ Generated: <redacted>
 
 ### 1. org/Coder-7B — Best Effort
 
-- Score: 61/100
-- Memory fit: 75%
-- Concurrency fit: 100%
-- Capability: 70%
 - Compatibility: comfortable
 - Confidence: high
 - License: apache-2.0 (commercial_allowed)
@@ -34,6 +30,21 @@ Generated: <redacted>
 - Context: 4096 tokens
 - Artifact: native float16 — confirmed
 - Parameter count: 7B (name inference, low confidence)
+
+**Why this position?** Compared in order, for `balanced`:
+
+1. viability: comfortable
+2. hard constraints: none
+3. suitability: strong
+4. runnability: strong
+5. capability: adequate
+6. execution fitness: strong
+7. executability: strong
+8. memory headroom: strong
+9. performance evidence: unknown
+10. estimate confidence: medium
+
+Diagnostic composite score: 61/100 (memory fit 75%, capability 70%). This is not what ordered the list.
 
 **Why this model?**
 

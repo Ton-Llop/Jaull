@@ -237,3 +237,28 @@ def _observation(
         peak_ram_bytes=peak_ram_bytes,
         peak_vram_bytes=peak_vram_bytes,
     )
+
+
+def test_a_quantized_plan_reaches_the_benchmark_worker(tmp_path: Path) -> None:
+    """Otherwise the numbers describe an unquantized run filed under a quantized plan."""
+    request = _request().model_copy(
+        update={
+            "runtime": RuntimeRecommendation(
+                runtime=RuntimeName.TRANSFORMERS,
+                flags=[
+                    RuntimeFlag(
+                        name="quantization",
+                        value="4bit",
+                        source=RuntimeFlagSource.ESTIMATE,
+                        explanation="test",
+                    )
+                ],
+                confidence=EstimationConfidence.HIGH,
+            )
+        }
+    )
+
+    command = build_transformers_benchmark_command(str(_python(tmp_path)), request)
+
+    assert command[command.index("--quantization") + 1] == "4bit"
+    assert "--torch-dtype" not in command

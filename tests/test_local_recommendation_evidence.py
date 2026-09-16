@@ -18,6 +18,7 @@ from tests._workflow_fixtures import hardware
 from tests.test_recommendation_engine_v2 import (
     _benchmark_record,
     _evaluated_gguf,
+    _evaluated_transformers,
     _experiment_record,
     _requirements,
     _selection,
@@ -190,3 +191,62 @@ def test_planning_margin_is_not_experimental_workload_identity() -> None:
         update={"inference_configuration": cfg},
     )})
     assert matching_experiment(plan, [record]) is record
+
+
+def _transformers_plan() -> ExecutionPlan:
+    return generate_execution_plans(
+        _evaluated_transformers(), _requirements(),
+        context=PlanRankingContext(hardware=hardware(), backend_selection=_selection()),
+    )[0]
+
+
+def _with_precision_flag(runtime, name: str, value: str):
+    """A Transformers plan carries exactly one precision-bearing flag."""
+    kept = [flag for flag in runtime.flags if flag.name not in {"torch_dtype", "quantization"}]
+    return runtime.model_copy(update={"flags": [*kept, RuntimeFlag(
+        name=name, value=value, source=RuntimeFlagSource.ESTIMATE,
+        explanation="test",
+    )]})
+
+
+@pytest.mark.parametrize(
+    ("plan_flag", "record_flag"),
+    [
+        (("quantization", "4bit"), ("quantization", "8bit")),
+        (("quantization", "4bit"), ("torch_dtype", "torch.float16")),
+        (("torch_dtype", "torch.float16"), ("quantization", "4bit")),
+    ],
+)
+def test_a_benchmark_of_another_precision_is_not_evidence(
+    plan_flag: tuple[str, str], record_flag: tuple[str, str],
+) -> None:
+    """Comparing only ``torch_dtype`` made two quantized plans look identical.
+
+    A quantized plan carries ``quantization`` and no ``torch_dtype``, so an int4
+    record and an int8 record both answered ``None`` and matched each other.
+    """
+    plan = _transformers_plan()
+    plan_runtime = _with_precision_flag(plan.runtime, *plan_flag)
+    record_runtime = _with_precision_flag(plan.runtime, *record_flag)
+    record = _benchmark_record(
+        plan.artifact.to_model_artifact(), record_runtime,
+        machine=hardware(), tps=50, methodology="transformers_isolated_inference_v2",
+    )
+
+    assert matching_benchmark(
+        plan.model_copy(update={"runtime": plan_runtime}), [record]
+    ) is None
+
+
+def test_the_same_precision_still_matches() -> None:
+    """The guard must not reject evidence that does describe the plan."""
+    plan = _transformers_plan()
+    runtime = _with_precision_flag(plan.runtime, "quantization", "4bit")
+    record = _benchmark_record(
+        plan.artifact.to_model_artifact(), runtime,
+        machine=hardware(), tps=50, methodology="transformers_isolated_inference_v2",
+    )
+
+    assert matching_benchmark(
+        plan.model_copy(update={"runtime": runtime}), [record]
+    ) is not None

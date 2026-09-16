@@ -14,6 +14,7 @@ from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
     CompatibilityStatus,
+    EstimateSource,
     EstimationConfidence,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
@@ -131,9 +132,7 @@ def build_warnings(
             EstimationConfidence.LOW,
             EstimationConfidence.UNKNOWN,
         ):
-            warnings.append(
-                "Confidence is low because part of the model metadata was missing."
-            )
+            warnings.append(_confidence_warning(evaluated))
 
     category = policies.classify_license(candidate.license)
     if category is policies.LicenseCategory.UNKNOWN:
@@ -196,6 +195,58 @@ def build_warnings(
         warnings.extend(runtime.warnings)
 
     return _dedupe(warnings)
+
+
+def _confidence_warning(evaluated: EvaluatedCandidate) -> str:
+    """Name the component that actually capped the confidence.
+
+    The old text blamed missing model-card metadata for every low-confidence
+    estimate. That is almost never the whole story and often not true at all:
+    the combined confidence is the weakest of the components, and
+    ``runtime_overhead`` is tagged ASSUMED unconditionally, so a model with a
+    complete card and an exact parameter count still lands on LOW. Blaming the
+    card sent readers to fix something that was not the cause.
+    """
+    estimate = evaluated.memory_estimate
+    if estimate is None:
+        return (
+            "Confidence is low: no memory estimate was produced for this "
+            "configuration."
+        )
+
+    weakest = [
+        name
+        for name, component in (
+            ("weights", estimate.weights.component),
+            ("KV cache", estimate.kv_cache.component),
+            ("runtime overhead", estimate.runtime_overhead.component),
+        )
+        if component.confidence
+        in (EstimationConfidence.LOW, EstimationConfidence.UNKNOWN)
+    ]
+    assumed = [
+        name
+        for name, component in (
+            ("weights", estimate.weights.component),
+            ("KV cache", estimate.kv_cache.component),
+            ("runtime overhead", estimate.runtime_overhead.component),
+        )
+        if component.source is EstimateSource.ASSUMED
+    ]
+
+    if not weakest:
+        return (
+            "Confidence is low: the overall estimate is capped by the "
+            "compatibility assessment rather than by any single component."
+        )
+    detail = ", ".join(weakest)
+    if assumed:
+        return (
+            f"Confidence is low because the estimate rests on {detail}, which "
+            f"{'is' if len(assumed) == 1 else 'are'} a documented heuristic "
+            f"({', '.join(assumed)}), not a measurement."
+        )
+    return f"Confidence is low because of the {detail} estimate."
 
 
 def _tight_warning(device: TargetDevice, has_gpu: bool) -> str:

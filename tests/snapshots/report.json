@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "timestamp": "<redacted>",
   "hardware": {
     "os": "Linux 6.8",
@@ -57,16 +57,16 @@
       "downloads": 10000,
       "compatibility": "comfortable",
       "scores": {
-        "memory_fit": 0.0,
-        "concurrency_fit": 0.0,
-        "capability": 0.0,
-        "artifact_realism": 1.0,
-        "hardware_fit": 0.0,
-        "task_match": 0.0,
-        "language_match": 0.0,
-        "license": 0.0,
-        "metadata_quality": 0.0,
-        "popularity": 0.0
+        "memory_fit": 0.75,
+        "concurrency_fit": 1.0,
+        "capability": 0.7003645535942264,
+        "artifact_realism": 0.75,
+        "hardware_fit": 0.75,
+        "task_match": 1.0,
+        "language_match": 1.0,
+        "license": 1.0,
+        "metadata_quality": 0.85,
+        "popularity": 0.8503224710098063
       },
       "configuration_reason": "float16 is the highest precision that fits the detected memory.",
       "alternatives_considered": [
@@ -103,7 +103,55 @@
       "rank": 1,
       "repo_id": "org/Coder-7B",
       "tier": "best_effort",
+      "ranking": {
+        "ordered_by": "balanced",
+        "criteria": [
+          {
+            "axis": "viability",
+            "value": "comfortable"
+          },
+          {
+            "axis": "hard_constraints",
+            "value": "none"
+          },
+          {
+            "axis": "suitability",
+            "value": "strong"
+          },
+          {
+            "axis": "runnability",
+            "value": "strong"
+          },
+          {
+            "axis": "capability",
+            "value": "adequate"
+          },
+          {
+            "axis": "execution_fitness",
+            "value": "strong"
+          },
+          {
+            "axis": "executability",
+            "value": "strong"
+          },
+          {
+            "axis": "memory_headroom",
+            "value": "strong"
+          },
+          {
+            "axis": "performance_evidence",
+            "value": "unknown"
+          },
+          {
+            "axis": "estimate_confidence",
+            "value": "medium"
+          }
+        ],
+        "ranked_by": "plan_criteria",
+        "note": "Position comes from `ranking.criteria`, compared in order. `score` is a weighted composite kept for compatibility and for comparing candidates without hardware; it does not determine the order shown here."
+      },
       "score": 61,
+      "score_role": "diagnostic",
       "score_breakdown": {
         "total": 0.6142950500185996,
         "memory_fit": 0.75,

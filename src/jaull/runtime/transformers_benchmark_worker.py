@@ -11,6 +11,8 @@ import time
 import traceback
 from typing import Any, cast
 
+from jaull.runtime.transformers_quantization import build_quantization_config
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -18,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--revision")
     parser.add_argument("--device-map", default="cpu")
     parser.add_argument("--torch-dtype")
+    parser.add_argument("--quantization")
     parser.add_argument("--prefill-sizes", default="128,512")
     parser.add_argument("--generation-sizes", default="128")
     parser.add_argument("--repetitions", type=int, default=3)
@@ -50,17 +53,28 @@ def _benchmark(args: argparse.Namespace) -> dict[str, object]:
     if dtype is not None:
         model_kwargs["torch_dtype"] = dtype
 
+    # Raises when bitsandbytes is absent instead of benchmarking unquantized
+    # weights and filing the numbers under the quantized plan.
+    quantization_config = build_quantization_config(args.quantization)
+    if quantization_config is not None:
+        model_kwargs["quantization_config"] = quantization_config
+
     device_map = str(args.device_map or "cpu")
-    use_accelerate_device_map = device_map == "auto"
-    if use_accelerate_device_map:
-        model_kwargs["device_map"] = "auto"
+    # A quantized model is placed while it loads: bitsandbytes rejects a later
+    # ``.to()``, and the snippet passes ``device_map`` to ``from_pretrained``
+    # too. Benchmarking a model moved after loading would time a different
+    # placement from the one the plan describes.
+    place_at_load = device_map == "auto" or quantization_config is not None
+    if place_at_load:
+        model_kwargs["device_map"] = (
+            "auto" if device_map == "auto" else _load_device(device_map)
+        )
 
     load_start = time.perf_counter()
     tokenizer = auto_tokenizer.from_pretrained(args.model_ref, **tokenizer_kwargs)
     model = auto_model.from_pretrained(args.model_ref, **model_kwargs)
-    if not use_accelerate_device_map:
-        target = "cuda" if device_map in {"cuda", "hip"} else "cpu"
-        model.to(target)
+    if not place_at_load:
+        model.to(_load_device(device_map))
     model_load_seconds = time.perf_counter() - load_start
 
     input_device = _input_device(model)
@@ -252,6 +266,11 @@ def _sizes(raw: str) -> list[int]:
         if stripped:
             values.append(max(1, int(stripped)))
     return values or [1]
+
+
+def _load_device(device_map: str) -> str:
+    """The concrete device behind a non-``auto`` device map."""
+    return "cuda" if device_map in {"cuda", "hip"} else "cpu"
 
 
 def _torch_dtype(torch: object, value: str | None) -> object | None:

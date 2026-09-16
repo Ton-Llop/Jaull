@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
@@ -25,6 +27,10 @@ from jaull.domain.inference import (
 )
 from jaull.domain.model import ModelRepositoryInfo
 from jaull.runtime import transformers as transformers_runtime
+from jaull.runtime.transformers_quantization import (
+    build_quantization_config,
+    quantization_mode,
+)
 
 GIB = 1024**3
 
@@ -175,3 +181,116 @@ def test_device_map_policy_auto_when_offloading() -> None:
     )
     assert plan.device_map == "auto"
     assert plan.warnings
+
+
+# ---------------------------------------------------------------------------
+# The estimate and the command must describe the same run
+#
+# `torch_dtype=torch.int8` was emitted for both int8 and int4 estimates, and the
+# workers passed it straight to `from_pretrained` with no quantization config.
+# So a plan predicted at 0.5 bytes/parameter executed as something else, and a
+# recorded experiment would have compared a prediction against a run of a
+# different configuration. Nothing in the suite noticed, because nothing
+# exercised a quantized precision end to end.
+# ---------------------------------------------------------------------------
+
+_PRECISION_FLAGS = ("torch_dtype", "quantization")
+
+
+def _precision_flags(rec: object) -> list[object]:
+    return [f for f in rec.flags if f.name in _PRECISION_FLAGS]
+
+
+@pytest.mark.parametrize("precision", list(WeightPrecision))
+def test_exactly_one_flag_carries_the_precision(precision: WeightPrecision) -> None:
+    rec = transformers_runtime.build(
+        _estimate(
+            status=CompatibilityStatus.COMFORTABLE,
+            effective_device=TargetDevice.GPU,
+            precision=precision,
+        ),
+        _hw(),
+    )
+
+    assert len(_precision_flags(rec)) == 1, (
+        f"{precision.value} produced {[f.name for f in _precision_flags(rec)]}"
+    )
+
+
+def test_no_two_precisions_share_a_flag_value() -> None:
+    """The regression, stated directly: int4 and int8 both said `torch.int8`."""
+    seen: dict[tuple[str, str], WeightPrecision] = {}
+    for precision in WeightPrecision:
+        rec = transformers_runtime.build(
+            _estimate(
+                status=CompatibilityStatus.COMFORTABLE,
+                effective_device=TargetDevice.GPU,
+                precision=precision,
+            ),
+            _hw(),
+        )
+        flag = _precision_flags(rec)[0]
+        key = (flag.name, flag.value)
+        assert key not in seen, (
+            f"{precision.value} and {seen[key].value} both emit {flag.name}={flag.value}"
+        )
+        seen[key] = precision
+
+
+@pytest.mark.parametrize(
+    "precision", [WeightPrecision.INT4, WeightPrecision.INT8]
+)
+def test_a_quantized_estimate_asks_for_a_quantization_config(
+    precision: WeightPrecision,
+) -> None:
+    """Never a torch dtype: `from_pretrained(torch_dtype=torch.int8)` does not quantize."""
+    rec = transformers_runtime.build(
+        _estimate(
+            status=CompatibilityStatus.COMFORTABLE,
+            effective_device=TargetDevice.GPU,
+            precision=precision,
+        ),
+        _hw(),
+    )
+
+    flag = _precision_flags(rec)[0]
+    assert flag.name == "quantization"
+    assert flag.value == quantization_mode(precision)
+    assert rec.python_snippet is not None
+    assert "BitsAndBytesConfig" in rec.python_snippet
+    assert "torch_dtype" not in rec.python_snippet
+    # The library is not a Jaull dependency, and the user is told so.
+    assert any("bitsandbytes" in warning for warning in rec.warnings)
+
+
+@pytest.mark.parametrize(
+    "precision",
+    [WeightPrecision.FLOAT32, WeightPrecision.FLOAT16, WeightPrecision.BFLOAT16],
+)
+def test_a_float_estimate_still_loads_as_a_dtype(
+    precision: WeightPrecision,
+) -> None:
+    rec = transformers_runtime.build(
+        _estimate(
+            status=CompatibilityStatus.COMFORTABLE,
+            effective_device=TargetDevice.GPU,
+            precision=precision,
+        ),
+        _hw(),
+    )
+
+    flag = _precision_flags(rec)[0]
+    assert flag.name == "torch_dtype"
+    assert flag.value == f"torch.{precision.value}"
+    assert rec.python_snippet is not None
+    assert "BitsAndBytesConfig" not in rec.python_snippet
+
+
+def test_an_unknown_quantization_mode_is_refused_not_ignored() -> None:
+    with pytest.raises(RuntimeError, match="Unknown quantization mode"):
+        build_quantization_config("3bit")
+
+
+def test_no_quantization_requested_is_not_an_error() -> None:
+    assert build_quantization_config(None) is None
+    assert build_quantization_config("") is None

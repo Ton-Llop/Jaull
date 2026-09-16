@@ -278,6 +278,23 @@ def run_workflow(
             cancelled,
             telemetry,
         )
+        # Publish the candidates *with* the features the ranker uses. Storing
+        # the pre-enrichment list made the report show every score at its 0.0
+        # default and `requirement_penalty` at 1.0 with no unmet requirements,
+        # while the recommendation built from the same candidate reported a
+        # 0.51 penalty and two of them — the same document contradicting itself.
+        #
+        # `enrich_candidate_features` is the function `recommend` calls, run on
+        # the same inputs, so these are the numbers that ordered the shortlist
+        # and not a second formula. Failed candidates never reach enrichment, so
+        # they stay as they are and the report marks them unscored.
+        enriched = recommendation_service.enrich_candidate_features(
+            evaluated,
+            requirements,
+            capability_analyzer=services.capability_analyzer,
+        )
+        by_repo = {item.repo_id: item for item in enriched}
+        evaluated = [by_repo.get(item.repo_id, item) for item in evaluated]
         current = current.model_copy(
             update={
                 "evaluated_candidates": evaluated,

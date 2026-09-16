@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from jaull.advisor.service import AdvisorService
 from jaull.analyzers.transformers import _model_config_from_dict
 from jaull.benchmarks.storage import BenchmarkStore
@@ -60,6 +62,7 @@ from jaull.recommendation.engine_v2 import (
     assess_plan,
     generate_execution_plans,
     rank_execution_plans,
+    ranking_criteria,
 )
 from jaull.workflow import ranking
 from jaull.workflow.container import ServiceContainer
@@ -1315,3 +1318,112 @@ def _experiment_record(
         observation=observation,
         comparison=comparison,
     )
+
+
+# ---------------------------------------------------------------------------
+# The explanation must describe the ordering that actually ran
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_ranking_criteria_explain_the_real_order(
+    priority: RecommendationPriority,
+) -> None:
+    """Sorting by the published criteria must reproduce the engine's order.
+
+    ``ranking_criteria`` mirrors the priority branch of ``_ranking_key`` instead
+    of replacing it, so this is what stops the report from explaining a
+    different ordering from the one that ran.
+    """
+    candidates = [
+        _evaluated_gguf(
+            repo_id="org/Qwen2.5-7B-Instruct-GGUF",
+            status=CompatibilityStatus.TIGHT,
+        ),
+        _evaluated_gguf(
+            repo_id="org/Qwen3-4B-Instruct-GGUF",
+            status=CompatibilityStatus.COMPATIBLE,
+        ),
+        _evaluated_gguf(
+            repo_id="org/Qwen2.5-1.5B-Instruct-GGUF",
+            status=CompatibilityStatus.COMFORTABLE,
+        ),
+        _evaluated_gguf(
+            repo_id="org/Qwen2.5-14B-Instruct-GGUF",
+            status=CompatibilityStatus.OFFLOADING_REQUIRED,
+        ),
+        # An UNKNOWN estimate on a model that wins the priority axes is what
+        # `_prioritize_confirmed_memory_fit` demotes after the sort. Without it
+        # in this list the test passed while the published criteria disagreed
+        # with the engine on `quality`.
+        _evaluated_gguf(
+            repo_id="org/Qwen2.5-32B-Instruct-GGUF",
+            status=CompatibilityStatus.UNKNOWN,
+        ),
+    ]
+    ranked = rank_execution_plans(
+        candidates,
+        _requirements(priority),
+        context=_ready_llama_context(),
+    )
+    assert len(ranked) > 1
+    assert any(
+        plan.plan.memory_prediction is not None
+        and plan.plan.memory_prediction.assessment.status
+        is CompatibilityStatus.UNKNOWN
+        for plan in ranked
+    ), "the fixture must exercise the viability partition"
+
+    by_criteria = sorted(
+        ranked,
+        key=lambda item: (
+            tuple(c.rank for c in ranking_criteria(item, priority)),
+            # Only the final identity tie-break of `_ranking_key` stays here;
+            # every ordering criterion above it must be published.
+            item.evaluated.repo_id,
+        ),
+    )
+
+    assert [item.evaluated.repo_id for item in by_criteria] == [
+        item.evaluated.repo_id for item in ranked
+    ]
+
+
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_viability_is_the_outermost_published_criterion(
+    priority: RecommendationPriority,
+) -> None:
+    """The partition runs after the sort, so it outranks every priority axis."""
+    ranked = rank_execution_plans(
+        [
+            _evaluated_gguf(
+                repo_id="org/Small-1.5B-Instruct-GGUF",
+                status=CompatibilityStatus.COMFORTABLE,
+            ),
+            _evaluated_gguf(
+                repo_id="org/Big-14B-Instruct-GGUF",
+                status=CompatibilityStatus.UNKNOWN,
+            ),
+        ],
+        _requirements(priority),
+        context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == "org/Small-1.5B-Instruct-GGUF"
+    first, second = (ranking_criteria(item, priority) for item in ranked)
+    assert first[0].axis == "viability"
+    assert first[0].rank < second[0].rank
+    assert second[0].value == "placement not confirmed"
+
+
+def test_every_priority_publishes_at_least_one_criterion() -> None:
+    ranked = rank_execution_plans(
+        [_evaluated_gguf(status=CompatibilityStatus.COMFORTABLE)],
+        _requirements(RecommendationPriority.BALANCED),
+        context=_ready_llama_context(),
+    )
+
+    for priority in RecommendationPriority:
+        criteria = ranking_criteria(ranked[0], priority)
+        assert criteria
+        assert all(c.axis and c.value for c in criteria)

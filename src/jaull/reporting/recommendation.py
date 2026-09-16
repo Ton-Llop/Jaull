@@ -4,6 +4,22 @@ The estimation section of the payload is delegated to
 ``jaull.reporting.estimation.estimate_to_json_dict`` so the estimate
 serialisation stays defined in exactly one place. Nothing sensitive is
 written: no token, no authorization header and no local filesystem path.
+
+Schema 3 (from 2) is **not** backwards compatible for a strict reader, and the
+break is deliberate:
+
+* ``evaluated_candidates[].scores``, ``.requirement_penalty`` and
+  ``.unmet_requirements`` are ``null`` for a candidate that failed inspection.
+  They used to be ``0.0``/``1.0``/``[]`` — the model defaults — which a reader
+  could not tell apart from a candidate that was genuinely scored at zero and
+  met every requirement.
+* ``recommendations[].ranking`` and ``.score_role`` are new. ``score`` and
+  ``score_breakdown`` are unchanged and keep their meaning, but ``score_role``
+  now states whether the composite ordered this run (no hardware, legacy
+  ranker) or merely describes it (the usual plan-based path).
+
+Nothing inside Jaull reads this payload back — ``reporting/writer.py`` only
+writes it — so the break is confined to whatever consumes the exported file.
 """
 
 from __future__ import annotations
@@ -13,11 +29,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from jaull.domain.licenses import LEGAL_DISCLAIMER
+from jaull.domain.requirements import RecommendationPriority
+from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
 from jaull.reporting.estimation import estimate_to_json_dict
 from jaull.workflow.state import RecommendationWorkflowState
 
-REPORT_SCHEMA_VERSION = 2
+REPORT_SCHEMA_VERSION = 3
 
 
 def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
@@ -37,7 +55,8 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             _evaluated_to_dict(item) for item in state.evaluated_candidates
         ],
         "recommendations": [
-            _recommendation_to_dict(rec) for rec in state.recommendations
+            _recommendation_to_dict(rec, _priority(state))
+            for rec in state.recommendations
         ],
         "warnings": list(state.warnings),
         "assumptions": (
@@ -101,10 +120,6 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
         lines += [
             f"### {rec.rank}. {rec.repo_id} — {heading}",
             "",
-            f"- Score: {rec.score.out_of_100}/100",
-            f"- Memory fit: {rec.score.memory_fit * 100:.0f}%",
-            f"- Concurrency fit: {rec.score.concurrency_fit * 100:.0f}%",
-            f"- Capability: {rec.score.capability * 100:.0f}%",
             f"- Compatibility: {rec.status.value}",
             f"- Confidence: {rec.confidence.value}",
             f"- License: {rec.evaluated.candidate.license or 'not declared'} "
@@ -148,6 +163,25 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             if runtime.command_preview:
                 lines.append(f"    - `{runtime.command_preview}`")
         lines.append("")
+        criteria = _ranking_to_dict(rec, _priority(state))["criteria"]
+        if criteria:
+            lines += [
+                f"**Why this position?** Compared in order, for "
+                f"`{_priority(state).value}`:",
+                "",
+            ]
+            lines += [
+                f"{index}. {item['axis'].replace('_', ' ')}: {item['value']}"
+                for index, item in enumerate(criteria, start=1)
+            ]
+            lines += [
+                "",
+                f"Diagnostic composite score: {rec.score.out_of_100}/100 "
+                f"(memory fit {rec.score.memory_fit * 100:.0f}%, "
+                f"capability {rec.score.capability * 100:.0f}%). "
+                "This is not what ordered the list.",
+                "",
+            ]
         if rec.reasons:
             lines += ["**Why this model?**", ""]
             lines += [f"- {reason}" for reason in rec.reasons]
@@ -280,7 +314,11 @@ def _evaluated_to_dict(item: Any) -> dict[str, Any]:
         "compatibility": (
             item.compatibility.status.value if item.compatibility else None
         ),
-        "scores": {
+        # A candidate that failed inspection never reaches feature enrichment,
+        # so its fields are still at their defaults. Publishing those as if they
+        # were measurements reads as "scored zero on everything"; `null` says
+        # what actually happened.
+        "scores": None if item.failed else {
             "memory_fit": item.memory_fit_score,
             "concurrency_fit": item.concurrency_fit_score,
             "capability": item.capability_score,
@@ -295,8 +333,10 @@ def _evaluated_to_dict(item: Any) -> dict[str, Any]:
         "configuration_reason": item.configuration_reason,
         "alternatives_considered": list(item.alternatives_considered),
         "warnings": list(item.warnings),
-        "requirement_penalty": item.requirement_penalty,
-        "unmet_requirements": list(item.unmet_requirement_labels),
+        "requirement_penalty": None if item.failed else item.requirement_penalty,
+        "unmet_requirements": (
+            None if item.failed else list(item.unmet_requirement_labels)
+        ),
         "parameter_count": _parameter_count_to_dict(item.parameter_count_info),
         "artifact": _artifact_to_dict(item.artifact_profile),
         "runtime_assessment": _runtime_assessment_to_dict(item.runtime_assessment),
@@ -335,12 +375,68 @@ def _runtime_assessment_to_dict(assessment: Any) -> dict[str, Any] | None:
     }
 
 
-def _recommendation_to_dict(rec: ModelRecommendation) -> dict[str, Any]:
+def _priority(state: RecommendationWorkflowState) -> RecommendationPriority:
+    if state.requirements is not None:
+        return state.requirements.priority
+    return RecommendationPriority.BALANCED
+
+
+_PLAN_RANKING_NOTE = (
+    "Position comes from `ranking.criteria`, compared in order. `score` is a "
+    "weighted composite kept for compatibility and for comparing candidates "
+    "without hardware; it does not determine the order shown here."
+)
+_COMPOSITE_RANKING_NOTE = (
+    "No hardware profile was available, so no execution plans were assessed. "
+    "This run fell back to the legacy ranker, where `score` *is* what ordered "
+    "the list."
+)
+
+
+def _ranking_to_dict(
+    rec: ModelRecommendation, priority: RecommendationPriority
+) -> dict[str, Any]:
+    # Without a plan there is no v2 assessment and the composite genuinely
+    # ordered the list. Labelling that run "diagnostic" would be the same class
+    # of untruth this block exists to remove, in the opposite direction.
+    if rec.plan is None or rec.plan_assessment is None:
+        return {
+            "ordered_by": priority.value,
+            "criteria": None,
+            "ranked_by": "composite_score",
+            "note": _COMPOSITE_RANKING_NOTE,
+        }
+    ranked = RankedPlan(
+        evaluated=rec.evaluated, plan=rec.plan, assessment=rec.plan_assessment
+    )
+    return {
+        "ordered_by": priority.value,
+        "criteria": [
+            {"axis": criterion.axis, "value": criterion.value}
+            for criterion in ranking_criteria(ranked, priority)
+        ],
+        "ranked_by": "plan_criteria",
+        "note": _PLAN_RANKING_NOTE,
+    }
+
+
+def _recommendation_to_dict(
+    rec: ModelRecommendation, priority: RecommendationPriority
+) -> dict[str, Any]:
+    ranking = _ranking_to_dict(rec, priority)
     payload: dict[str, Any] = {
         "rank": rec.rank,
         "repo_id": rec.repo_id,
         "tier": rec.tier,
+        # `ranking` is what placed this entry. `score` is kept for
+        # compatibility with existing consumers but does not order anything
+        # once hardware is known: the engine sorts on the criteria below, so
+        # a lower-scoring plan can legitimately outrank a higher-scoring one.
+        "ranking": ranking,
         "score": rec.score.out_of_100,
+        "score_role": (
+            "diagnostic" if ranking["ranked_by"] == "plan_criteria" else "ordering"
+        ),
         "score_breakdown": {
             "total": rec.score.total,
             "memory_fit": rec.score.memory_fit,

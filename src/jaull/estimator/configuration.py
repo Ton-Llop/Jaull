@@ -92,6 +92,7 @@ def _select_gguf(
 
     considered: list[str] = []
     warnings: list[str] = []
+    seen: list[CompatibilityStatus] = []
     best_effort: tuple[InferenceConfiguration, MemoryEstimate] | None = None
 
     for rung in ordered:
@@ -100,6 +101,7 @@ def _select_gguf(
         estimate = estimate_fn(analysis, config)
         status = estimate.assessment.status
         considered.append(f"{quantization}: {status.value}")
+        seen.append(status)
 
         if best_effort is None:
             best_effort = (config, estimate)
@@ -121,11 +123,17 @@ def _select_gguf(
                 warnings=warnings,
             )
 
-    warnings.append("No GGUF variant fits comfortably in the detected memory.")
+    message = _exhausted_ladder_message(
+        seen,
+        best_effort[1].assessment.status if best_effort else None,
+        unit="GGUF variant",
+        aggressive=", even the most aggressive variant",
+    )
+    warnings.append(message)
     return ConfigurationChoice(
         configuration=best_effort[0] if best_effort else None,
         estimate=best_effort[1] if best_effort else None,
-        reason="No variant fits; reporting the closest option.",
+        reason=f"{message} Reporting the closest option.",
         considered=considered,
         warnings=warnings,
     )
@@ -142,14 +150,14 @@ def _select_transformers(
     considered: list[str] = []
     warnings: list[str] = []
     best_effort: tuple[InferenceConfiguration, MemoryEstimate] | None = None
-    saw_unknown = False
+    seen: list[CompatibilityStatus] = []
 
     for precision in policies.TRANSFORMERS_DTYPE_LADDER:
         config = _build_config(requirements, precision=precision)
         estimate = estimate_fn(analysis, config)
         status = estimate.assessment.status
         considered.append(f"{precision.value}: {status.value}")
-        saw_unknown = saw_unknown or status is CompatibilityStatus.UNKNOWN
+        seen.append(status)
 
         if best_effort is None:
             best_effort = (config, estimate)
@@ -173,13 +181,12 @@ def _select_transformers(
                 warnings=warnings,
             )
 
-    if saw_unknown:
-        message = (
-            "No precision could be confirmed to fit the detected memory; "
-            "reporting the closest option."
-        )
-    else:
-        message = "No precision fits the detected memory, including int4."
+    message = _exhausted_ladder_message(
+        seen,
+        best_effort[1].assessment.status if best_effort else None,
+        unit="precision",
+        aggressive=", including int4",
+    )
     warnings.append(message)
     return ConfigurationChoice(
         configuration=best_effort[0] if best_effort else None,
@@ -187,6 +194,69 @@ def _select_transformers(
         reason=message,
         considered=considered,
         warnings=warnings,
+    )
+
+
+def _exhausted_ladder_message(
+    seen: list[CompatibilityStatus],
+    chosen: CompatibilityStatus | None,
+    *,
+    unit: str,
+    aggressive: str,
+) -> str:
+    """Say what the ladder found, for the option it is actually reporting.
+
+    The ladder stops only on a *resident* fit, so falling off the end covers
+    three different outcomes and they are not interchangeable:
+
+    * the reported option would run with offloading - it fits, just not in VRAM
+      alone;
+    * nothing could be confirmed - an unsupported architecture, for example a
+      MoE whose per-expert KV footprint is not modelled. Unknown means "cannot
+      confirm", never "shown not to fit";
+    * everything was measured as too large.
+
+    ``chosen`` is the status of the configuration this call returns, which is
+    the *first* rung tried, not the best one seen. Describing the set instead of
+    the returned option claimed offloading viability for a configuration the
+    estimator had marked INSUFFICIENT.
+    """
+    others = [status for status in seen if status is not chosen]
+
+    if chosen is CompatibilityStatus.OFFLOADING_REQUIRED:
+        return (
+            f"No {unit} fits in VRAM alone. The reported option is estimated to "
+            "fit with CPU/GPU offloading, which is significantly slower; that is "
+            "a placement estimate, not a verified run."
+        )
+    if chosen is CompatibilityStatus.UNKNOWN:
+        return (
+            f"No {unit} could be confirmed to fit: the memory model could not "
+            "produce an estimate for the reported option. This is an unconfirmed "
+            "result, not a demonstration that it does not fit."
+        )
+
+    suffix = ""
+    if any(status is CompatibilityStatus.OFFLOADING_REQUIRED for status in others):
+        suffix = (
+            " Other options on the ladder are estimated to fit with CPU/GPU "
+            "offloading."
+        )
+    elif any(status is CompatibilityStatus.UNKNOWN for status in others):
+        suffix = " Other options could not be confirmed either way."
+
+    if chosen is None:
+        return f"No {unit} was evaluated for the detected memory.{suffix}"
+
+    # "No X fits" is a claim about the whole ladder, so it may only be made when
+    # the whole ladder came back INSUFFICIENT. Saying it while `suffix` reports
+    # that other rungs do fit with offloading contradicts itself in successive
+    # sentences.
+    if all(status is CompatibilityStatus.INSUFFICIENT for status in seen):
+        return f"No {unit} fits the detected memory{aggressive}."
+    return (
+        "The reported configuration is estimated not to fit the detected "
+        f"memory.{suffix}"
     )
 
 

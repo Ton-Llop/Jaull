@@ -85,10 +85,30 @@ def _artifact(**updates: object) -> ModelArtifact:
 def _runtime(
     *,
     device_map: str = "cpu",
-    torch_dtype: str = "torch.float32",
+    torch_dtype: str | None = "torch.float32",
+    quantization: str | None = None,
     max_new_tokens: int = 12,
     runtime: RuntimeName = RuntimeName.TRANSFORMERS,
 ) -> RuntimeRecommendation:
+    precision_flags = []
+    if torch_dtype is not None:
+        precision_flags.append(
+            RuntimeFlag(
+                name="torch_dtype",
+                value=torch_dtype,
+                source=RuntimeFlagSource.ESTIMATE,
+                explanation="test",
+            )
+        )
+    if quantization is not None:
+        precision_flags.append(
+            RuntimeFlag(
+                name="quantization",
+                value=quantization,
+                source=RuntimeFlagSource.ESTIMATE,
+                explanation="test",
+            )
+        )
     return RuntimeRecommendation(
         runtime=runtime,
         flags=[
@@ -98,12 +118,7 @@ def _runtime(
                 source=RuntimeFlagSource.HARDWARE,
                 explanation="test",
             ),
-            RuntimeFlag(
-                name="torch_dtype",
-                value=torch_dtype,
-                source=RuntimeFlagSource.ESTIMATE,
-                explanation="test",
-            ),
+            *precision_flags,
             RuntimeFlag(
                 name="max_new_tokens",
                 value=str(max_new_tokens),
@@ -286,3 +301,23 @@ def test_runner_reports_missing_python_executable(tmp_path: Path) -> None:
             backend=_FakeExecutionBackend(),
             python_executable=tmp_path / "missing-python",
         )
+
+
+def test_a_quantized_plan_reaches_the_worker_as_a_quantization_config(
+    tmp_path: Path,
+) -> None:
+    """Dropping this flag is how an int4 plan used to execute unquantized."""
+    backend = _FakeExecutionBackend()
+    runner = TransformersRunner(backend=backend, python_executable=_executable(tmp_path))
+
+    runner.run(
+        artifact=_artifact(),
+        prompt="hello",
+        runtime=_runtime(device_map="cuda", torch_dtype=None, quantization="4bit"),
+    )
+
+    command = backend.requests[0].command
+    assert "--quantization" in command
+    assert command[command.index("--quantization") + 1] == "4bit"
+    # A quantized plan carries no dtype, and none is invented for it.
+    assert "--torch-dtype" not in command
