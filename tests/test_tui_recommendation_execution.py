@@ -51,6 +51,8 @@ from jaull.domain.recommendation import (
     RecommendationPosition,
 )
 from jaull.domain.runtime import (
+    ExecutionReadiness,
+    ExecutionReadinessReason,
     ExecutionReadinessStatus,
     LlamaCppBackendCapability,
     LlamaCppBackendCapabilityState,
@@ -855,6 +857,48 @@ def test_results_validation_and_benchmark_support_transformers_runtime() -> None
             assert isinstance(screen, RecommendationResultsScreen)
             assert screen.query_one("#res-validate-0", Button).disabled is False
             assert screen.query_one("#res-benchmark-0", Button).disabled is False
+
+    _run(scenario())
+
+
+def test_results_disable_execution_actions_for_a_not_ready_plan() -> None:
+    async def scenario() -> None:
+        identity = ModelIdentity(
+            model_name="Tiny-GGUF",
+            canonical_repo_id="org/Tiny-GGUF",
+        )
+        recommendation = _recommendation_with_plan(
+            repo_id="org/Tiny-GGUF",
+            identity=identity,
+            format_=ArtifactVariantFormat.GGUF,
+            quantization="Q4_K_M",
+        )
+        plan = recommendation.plan
+        assert plan is not None
+        blocked_plan = plan.model_copy(
+            update={
+                "execution_readiness": ExecutionReadiness(
+                    status=ExecutionReadinessStatus.NOT_READY,
+                    reason=ExecutionReadinessReason.RUNTIME_MISSING,
+                    selection=_backend_selection(ComputeBackend.CPU),
+                    runtime_capability=_runtime_capability(ComputeBackend.CPU),
+                    message="llama.cpp is not installed",
+                )
+            }
+        )
+        recommendation = recommendation.model_copy(update={"plan": blocked_plan})
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            assert screen.query_one("#res-run-0", Button).disabled is True
+            assert screen.query_one("#res-validate-0", Button).disabled is True
+            assert screen.query_one("#res-benchmark-0", Button).disabled is True
 
     _run(scenario())
 

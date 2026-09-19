@@ -79,11 +79,17 @@ class LlamaCppRunner:
             "--no-show-timings",
             "--simple-io",
             "--single-turn",
+            # The load log *is* the second memory observation. Without it
+            # llama.cpp writes nothing to stderr, `parse_llama_cpp_allocation`
+            # finds no buffer lines and `_observed_backend` finds no backend,
+            # so the observation contract never fires on the path that actually
+            # runs models -- which is what a real B001 re-run found. It only
+            # affects stderr: stdout is byte-identical with and without it,
+            # verified on llama.cpp 689e227db.
+            "--verbose",
             "--prompt",
             prompt,
         )
-        if _bool_flag(runtime, "--verbose"):
-            command += ("--verbose",)
 
         result = self.backend.execute(
             ExecutionRequest(command=command, timeout_seconds=self.timeout_seconds)

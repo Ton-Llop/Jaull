@@ -6,7 +6,12 @@ import pytest
 
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import EstimationConfidence
-from jaull.domain.execution import ExecutionObservation, ExecutionRequest, ExecutionResult
+from jaull.domain.execution import (
+    ExecutionObservation,
+    ExecutionRequest,
+    ExecutionResult,
+    RuntimeBufferCategory,
+)
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     RuntimeFlag,
@@ -138,6 +143,7 @@ def test_runner_builds_command_with_exact_local_path(tmp_path: Path) -> None:
         "--no-show-timings",
         "--simple-io",
         "--single-turn",
+        "--verbose",
         "--prompt",
         "Explain GGUF: caf\u00e9",
     )
@@ -194,26 +200,21 @@ def test_runner_passes_confirmed_runtime_device_to_llama_cpp(
     assert command[command.index("--device") + 1] == "Vulkan0"
 
 
-def test_runner_enables_verbose_output_only_when_requested(tmp_path: Path) -> None:
+def test_runner_always_asks_for_the_load_log(tmp_path: Path) -> None:
+    """Without it llama.cpp writes nothing to stderr and there is no observation.
+
+    Found by re-running B001 on real hardware: the run succeeded, and
+    `runtime_allocation` came back `None` because `--verbose` was conditional on
+    a flag nothing sets. The whole observation contract was unreachable from the
+    path that actually runs models.
+    """
     model_path = tmp_path / "model.gguf"
     model_path.write_bytes(b"gguf")
     backend = _FakeExecutionBackend()
     runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
-    runtime = _runtime().model_copy(
-        update={
-            "flags": [
-                *_runtime().flags,
-                RuntimeFlag(
-                    name="--verbose",
-                    value="true",
-                    source=RuntimeFlagSource.USER_INPUT,
-                    explanation="test",
-                ),
-            ]
-        }
-    )
 
-    runner.run(artifact=_artifact(model_path), prompt="Hello", runtime=runtime)
+    # No `--verbose` flag anywhere on the runtime recommendation.
+    runner.run(artifact=_artifact(model_path), prompt="Hello", runtime=_runtime())
 
     assert "--verbose" in backend.requests[0].command
 
@@ -335,3 +336,68 @@ def test_runner_reports_executable_not_found(tmp_path: Path) -> None:
             backend=_FakeExecutionBackend(),
             llama_cli_path=tmp_path / "missing llama-cli",
         )
+
+
+# Verbatim from a real B001 re-run on this project's RTX 2060, llama.cpp
+# 689e227db, `--n-gpu-layers 25`. Two properties of the real log that the
+# recorded August sweep did not have, and that a hand-written fixture would
+# not have guessed:
+#
+#   * every buffer is printed twice, and the *first* pass reports 0.00 MiB
+#     because it is the reserve pass before the weights are read;
+#   * the KV lines come from `llama_kv_cache:` and compute from
+#     `sched_reserve:`, not from `llama_context:`.
+B001_R7_STDERR = """
+0.00.488.277 I load_tensors:        CUDA0 model buffer size =     0.00 MiB
+0.00.488.278 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB
+0.00.492.675 I llama_context:  CUDA_Host  output buffer size =     0.58 MiB
+0.00.492.865 I llama_kv_cache:        CPU KV buffer size =     0.00 MiB
+0.00.492.867 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB
+0.00.497.968 I sched_reserve:      CUDA0 compute buffer size =   183.44 MiB
+0.00.497.989 I sched_reserve:  CUDA_Host compute buffer size =    18.01 MiB
+0.00.795.071 I load_tensors:   CPU_Mapped model buffer size =   844.04 MiB
+0.00.795.071 I load_tensors:        CUDA0 model buffer size =  3616.41 MiB
+0.04.355.258 I llama_context:  CUDA_Host  output buffer size =     0.58 MiB
+0.04.355.400 I llama_kv_cache:        CPU KV buffer size =    32.00 MiB
+0.04.369.084 I llama_kv_cache:      CUDA0 KV buffer size =   192.00 MiB
+0.04.395.075 I sched_reserve:      CUDA0 compute buffer size =   183.44 MiB
+0.04.395.097 I sched_reserve:  CUDA_Host compute buffer size =    18.01 MiB
+"""
+
+
+def test_a_real_load_log_becomes_a_runtime_allocation(tmp_path: Path) -> None:
+    """The contract, end to end through the runner, on a real capture."""
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend(
+        result=ExecutionResult(
+            stdout="generated text",
+            stderr=B001_R7_STDERR,
+            observation=_observation(duration_seconds=18.6),
+        )
+    )
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    result = runner.run(
+        artifact=_artifact(model_path), prompt="Hello", runtime=_runtime()
+    )
+
+    allocation = result.observation.runtime_allocation
+    assert allocation is not None
+    assert allocation.device == "CUDA0"
+
+    mib = 1024 * 1024
+    # The reserve pass must not win, and the duplicate compute line must not
+    # be added twice.
+    assert allocation.device_bytes_for(RuntimeBufferCategory.MODEL) == round(
+        3616.41 * mib
+    )
+    assert allocation.device_bytes_for(RuntimeBufferCategory.KV) == round(192.00 * mib)
+    assert allocation.device_bytes_for(RuntimeBufferCategory.COMPUTE) == round(
+        183.44 * mib
+    )
+    assert allocation.total_device_bytes == pytest.approx(
+        round((3616.41 + 192.00 + 183.44) * mib), abs=2
+    )
+    # `CUDA_Host` is host memory despite the prefix.
+    assert allocation.total_device_bytes < round(4000 * mib)

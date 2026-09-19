@@ -134,6 +134,11 @@ class RecommendationExecutionScreen(Screen[None]):
             )
             self.query_one("#run-generate", Button).disabled = True
             return
+        blocked = runtime_block_reason(self._execution_plan) if self._execution_plan else None
+        if blocked is not None:
+            self._render_error(blocked)
+            self.query_one("#run-generate", Button).disabled = True
+            return
         self.call_after_refresh(self._focus_prompt_input)
 
     def on_unmount(self) -> None:

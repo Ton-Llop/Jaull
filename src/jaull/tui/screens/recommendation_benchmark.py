@@ -144,6 +144,13 @@ class RecommendationBenchmarkScreen(Screen[None]):
         if self._runtime() is None:
             start.disabled = True
             self._set_error("Benchmark requires an executable runtime recommendation.")
+        elif self._execution_plan is not None:
+            blocked = runtime_block_reason(self._execution_plan)
+            if blocked is not None:
+                start.disabled = True
+                self._set_error(blocked)
+            else:
+                start.focus()
         else:
             start.focus()
         self._set_status("")

@@ -466,6 +466,7 @@ class AdvisorService:
         runtime_capability: PyTorchRuntimeCapability | None = None,
         hardware: HardwareProfile | None = None,
         backend: ExecutionBackendProtocol | None = None,
+        requires_bitsandbytes: bool = False,
     ) -> ExecutionReadiness:
         from jaull.runtime.pytorch_capability import (
             evaluate_pytorch_execution_readiness,
@@ -478,6 +479,7 @@ class AdvisorService:
         return evaluate_pytorch_execution_readiness(
             selection=effective_selection,
             runtime_capability=effective_capability,
+            requires_bitsandbytes=requires_bitsandbytes,
         )
 
     def build_experiment_record(
@@ -945,6 +947,11 @@ class AdvisorService:
             readiness = self.evaluate_pytorch_execution_readiness(
                 selection=selection,
                 runtime_capability=pytorch_capability,
+                requires_bitsandbytes=any(
+                    flag.name == "quantization"
+                    and flag.value in {"4bit", "8bit"}
+                    for flag in plan.runtime.flags
+                ),
             )
             runtime_capability: RuntimeCapability = pytorch_capability
         else:

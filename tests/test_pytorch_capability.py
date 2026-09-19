@@ -199,6 +199,74 @@ def test_cuda_selection_ready_when_cuda_device_is_observable() -> None:
     assert readiness.reason is ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED
 
 
+def test_quantized_transformers_plan_is_not_ready_without_bitsandbytes() -> None:
+    capability = parse_pytorch_probe_json(
+        _probe_json(
+            torch_cuda_version="12.4",
+            cuda_available=True,
+            cuda_device_count=1,
+            bitsandbytes_available=False,
+            devices=[{"index": 0, "name": "NVIDIA RTX 2060"}],
+        )
+    )
+
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CUDA),
+        runtime_capability=capability,
+        requires_bitsandbytes=True,
+    )
+
+    assert readiness.status is ExecutionReadinessStatus.NOT_READY
+    assert readiness.reason is ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_MISSING
+    assert "bitsandbytes" in (readiness.message or "")
+
+
+def test_quantized_transformers_plan_is_ready_with_bitsandbytes() -> None:
+    capability = parse_pytorch_probe_json(
+        _probe_json(
+            torch_cuda_version="12.4",
+            cuda_available=True,
+            cuda_device_count=1,
+            bitsandbytes_available=True,
+            bitsandbytes_version="0.46.1",
+            devices=[{"index": 0, "name": "NVIDIA RTX 2060"}],
+        )
+    )
+
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CUDA),
+        runtime_capability=capability,
+        requires_bitsandbytes=True,
+    )
+
+    assert capability.bitsandbytes_available is True
+    assert capability.bitsandbytes_version == "0.46.1"
+    assert readiness.status is ExecutionReadinessStatus.READY
+    assert readiness.reason is ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED
+
+
+def test_quantized_transformers_plan_stays_unknown_when_bitsandbytes_probe_failed() -> None:
+    capability = parse_pytorch_probe_json(
+        _probe_json(
+            torch_cuda_version="12.4",
+            cuda_available=True,
+            cuda_device_count=1,
+            bitsandbytes_available=None,
+            bitsandbytes_message="CUDA extension failed to load",
+            devices=[{"index": 0, "name": "NVIDIA RTX 2060"}],
+        )
+    )
+
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CUDA),
+        runtime_capability=capability,
+        requires_bitsandbytes=True,
+    )
+
+    assert readiness.status is ExecutionReadinessStatus.UNKNOWN
+    assert readiness.reason is ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_UNKNOWN
+
+
 def test_cuda_selection_not_ready_when_cuda_is_not_observed() -> None:
     capability = parse_pytorch_probe_json(
         _probe_json(cuda_available=False, cuda_device_count=0)

@@ -162,6 +162,12 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 lines.append(f"- Runtime: {runtime.runtime.value}")
             if runtime.command_preview:
                 lines.append(f"    - `{runtime.command_preview}`")
+        if rec.plan is not None and rec.plan.execution_readiness is not None:
+            readiness = rec.plan.execution_readiness
+            lines.append(
+                f"- Runtime readiness: {readiness.status.value}"
+                + (f" — {readiness.message}" if readiness.message else "")
+            )
         lines.append("")
         criteria = _ranking_to_dict(rec, _priority(state))["criteria"]
         if criteria:
@@ -375,6 +381,17 @@ def _runtime_assessment_to_dict(assessment: Any) -> dict[str, Any] | None:
     }
 
 
+def _execution_readiness_to_dict(readiness: Any) -> dict[str, Any] | None:
+    if readiness is None:
+        return None
+    return {
+        "status": readiness.status.value,
+        "reason": readiness.reason.value,
+        "message": readiness.message,
+        "selected_backend": readiness.selection.selected_backend.value,
+    }
+
+
 def _priority(state: RecommendationWorkflowState) -> RecommendationPriority:
     if state.requirements is not None:
         return state.requirements.priority
@@ -478,6 +495,9 @@ def _recommendation_to_dict(
         "artifact": _artifact_to_dict(rec.evaluated.artifact_profile),
         "runtime_assessment": _runtime_assessment_to_dict(
             rec.evaluated.runtime_assessment
+        ),
+        "execution_readiness": _execution_readiness_to_dict(
+            rec.plan.execution_readiness if rec.plan is not None else None
         ),
     }
     if rec.evaluated.memory_estimate is not None:

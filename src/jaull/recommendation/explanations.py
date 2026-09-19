@@ -127,7 +127,7 @@ def build_warnings(
             # (it says which option is being reported, and that a placement
             # estimate is not a verified run). `_dedupe` cannot catch this: the
             # two sentences differ, they just say the same thing.
-            if not any("offloading" in warning.lower() for warning in warnings):
+            if not any(_is_offloading_memory_warning(warning) for warning in warnings):
                 warnings.append(_offloading_warning(has_gpu))
         elif assessment.status is CompatibilityStatus.UNKNOWN:
             warnings.append(
@@ -199,6 +199,10 @@ def build_warnings(
                     f"Runtime {runtime.runtime.value} is not usable here: {reason}"
                 )
         warnings.extend(runtime.warnings)
+
+    estimate = evaluated.memory_estimate
+    if estimate is not None and estimate.runtime_recommendation is not None:
+        warnings.extend(estimate.runtime_recommendation.warnings)
 
     return _dedupe(warnings)
 
@@ -285,6 +289,16 @@ def _offloading_warning(has_gpu: bool) -> str:
         "Model does not fit in VRAM alone and would need CPU/GPU offloading, "
         "which is significantly slower."
     )
+
+
+def _is_offloading_memory_warning(value: str) -> bool:
+    """Recognize the ladder's memory warning without hiding unrelated warnings.
+
+    A backend warning may mention offloading too, but it must not suppress the
+    compatibility warning explaining that the selected placement needs it.
+    """
+    normalized = value.lower()
+    return "fits in vram alone" in normalized and "offloading" in normalized
 
 
 def _dedupe(values: list[str]) -> list[str]:

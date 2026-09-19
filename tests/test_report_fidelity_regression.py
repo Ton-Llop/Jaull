@@ -184,7 +184,7 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "quantization_quality",
         "execution_fitness",
         "performance_evidence",
-        "estimate_confidence",
+        "plan_confidence",
     ]
 
 
@@ -231,6 +231,59 @@ def test_the_confidence_warning_names_the_component_that_capped_it() -> None:
     assert "runtime overhead" in warning
     assert "heuristic" in warning
     assert "metadata was missing" not in warning
+
+
+def test_runtime_recommendation_warnings_reach_user_facing_warnings() -> None:
+    state = _run()
+    evaluated = state.recommendations[0].evaluated
+    estimate = evaluated.memory_estimate
+    assert estimate is not None
+
+    expected = (
+        "Running this configuration requires the 'bitsandbytes' package, "
+        "which Jaull does not install."
+    )
+    from jaull.domain.estimation import EstimationConfidence
+    from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+
+    updated_runtime = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        confidence=EstimationConfidence.LOW,
+        warnings=[expected],
+    )
+    updated_estimate = estimate.model_copy(
+        update={"runtime_recommendation": updated_runtime}
+    )
+    updated = evaluated.model_copy(update={"memory_estimate": updated_estimate})
+
+    from jaull.recommendation.explanations import build_warnings
+
+    warnings = build_warnings(updated, state.requirements)
+
+    assert expected in warnings
+
+
+def test_unrelated_offloading_warning_does_not_hide_memory_warning() -> None:
+    from jaull.domain.estimation import CompatibilityStatus
+    from test_recommendation_engine_v2 import _evaluated_transformers, _requirements
+
+    evaluated = _evaluated_transformers(
+        status=CompatibilityStatus.OFFLOADING_REQUIRED
+    )
+    unrelated = "The selected backend does not support offloading efficiently."
+    updated = evaluated.model_copy(
+        update={"warnings": [unrelated]}
+    )
+
+    from jaull.recommendation.explanations import build_warnings
+
+    warnings = build_warnings(updated, _requirements())
+
+    assert unrelated in warnings
+    assert any(
+        warning.startswith("Model does not fit in VRAM alone")
+        for warning in warnings
+    )
 
 
 def test_an_offloadable_model_is_not_reported_as_not_fitting() -> None:

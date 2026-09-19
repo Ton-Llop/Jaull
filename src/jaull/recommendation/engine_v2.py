@@ -43,6 +43,7 @@ from jaull.domain.requirements import RecommendationPriority, UseCase, UserRequi
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessStatus,
+    PyTorchRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeName,
     RuntimeRecommendation,
@@ -303,7 +304,12 @@ def _gguf_plans(
             build_execution_plan(
                 model_identity=identity,
                 artifact=artifact,
-                runtime=_runtime_for_artifact(artifact),
+                runtime=(
+                    estimate.runtime_recommendation
+                    if estimate is not None
+                    and estimate.runtime_recommendation is not None
+                    else _runtime_for_artifact(artifact)
+                ),
                 memory_prediction=estimate,
                 hardware=context.hardware,
                 backend_selection=context.backend_selection,
@@ -347,14 +353,20 @@ def _transformers_plan(
         confidence=identity.confidence,
         evidence=list(identity.evidence),
     )
+    runtime = (
+        evaluated.memory_estimate.runtime_recommendation
+        if evaluated.memory_estimate is not None
+        and evaluated.memory_estimate.runtime_recommendation is not None
+        else _runtime_for_artifact(artifact)
+    )
     return build_execution_plan(
         model_identity=identity,
         artifact=artifact,
-        runtime=_runtime_for_artifact(artifact),
+        runtime=runtime,
         memory_prediction=evaluated.memory_estimate,
         hardware=context.hardware,
         backend_selection=context.backend_selection,
-        execution_readiness=_readiness_for(RuntimeName.TRANSFORMERS, context),
+        execution_readiness=_transformers_readiness(runtime=runtime, context=context),
     )
 
 
@@ -437,6 +449,32 @@ def _readiness_for(
     if context.readiness_by_runtime is None:
         return None
     return context.readiness_by_runtime.get(runtime)
+
+
+def _transformers_readiness(
+    *,
+    runtime: RuntimeRecommendation,
+    context: PlanRankingContext,
+) -> ExecutionReadiness | None:
+    readiness = _readiness_for(RuntimeName.TRANSFORMERS, context)
+    if readiness is None or not _requires_bitsandbytes(runtime):
+        return readiness
+    if not isinstance(readiness.runtime_capability, PyTorchRuntimeCapability):
+        return readiness
+    from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
+
+    return evaluate_pytorch_execution_readiness(
+        selection=readiness.selection,
+        runtime_capability=readiness.runtime_capability,
+        requires_bitsandbytes=True,
+    )
+
+
+def _requires_bitsandbytes(runtime: RuntimeRecommendation) -> bool:
+    return any(
+        flag.name == "quantization" and flag.value in {"4bit", "8bit"}
+        for flag in runtime.flags
+    )
 
 
 def _hard_constraints(
@@ -1030,7 +1068,7 @@ def ranking_criteria(
             _LEVEL_RANK[assessment.performance_evidence],
         ),
         (
-            "estimate_confidence",
+            "plan_confidence",
             assessment.confidence.value,
             _CONFIDENCE_RANK[assessment.confidence],
         ),

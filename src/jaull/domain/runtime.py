@@ -284,6 +284,9 @@ class PyTorchRuntimeCapability(BaseModel):
     transformers_version: str | None = None
     torch_cuda_version: str | None = None
     torch_hip_version: str | None = None
+    bitsandbytes_available: bool | None = None
+    bitsandbytes_version: str | None = None
+    bitsandbytes_message: str | None = None
     backend_capabilities: list[PyTorchBackendCapability] = Field(default_factory=list)
     probe_source: str | None = None
     message: str | None = None
@@ -330,6 +333,8 @@ class ExecutionReadinessReason(StrEnum):
     PROBE_FAILED = "probe_failed"
     SELECTED_BACKEND_EXPOSED = "selected_backend_exposed"
     SELECTED_BACKEND_NOT_EXPOSED = "selected_backend_not_exposed"
+    QUANTIZATION_DEPENDENCY_MISSING = "quantization_dependency_missing"
+    QUANTIZATION_DEPENDENCY_UNKNOWN = "quantization_dependency_unknown"
     CAPABILITY_UNKNOWN = "capability_unknown"
 
 

@@ -112,7 +112,12 @@ class _RecommendationRow(Vertical):
         if rec.reasons:
             yield Static(rec.reasons[0], classes="rec-reason -expanded")
         with Horizontal(classes="rec-actions -expanded"):
-            yield Button("Run", id=f"res-run-{self._index}", classes="-primary -compact")
+            yield Button(
+                "Run",
+                id=f"res-run-{self._index}",
+                classes="-primary -compact",
+                disabled=not _can_run(rec),
+            )
             yield ActionButton(
                 "Validate",
                 id=f"res-validate-{self._index}",
@@ -269,17 +274,20 @@ class RecommendationResultsScreen(Screen[None]):
         if button_id.startswith("res-run-"):
             index = int(button_id.removeprefix("res-run-"))
             if 0 <= index < len(self._state.recommendations):
-                app.run_recommendation(self._state.recommendations[index])
+                recommendation = self._state.recommendations[index]
+                app.run_recommendation(recommendation, recommendation.plan)
             return
         if button_id.startswith("res-validate-"):
             index = int(button_id.removeprefix("res-validate-"))
             if 0 <= index < len(self._state.recommendations):
-                app.validate_recommendation(self._state.recommendations[index])
+                recommendation = self._state.recommendations[index]
+                app.validate_recommendation(recommendation, recommendation.plan)
             return
         if button_id.startswith("res-benchmark-"):
             index = int(button_id.removeprefix("res-benchmark-"))
             if 0 <= index < len(self._state.recommendations):
-                app.benchmark_recommendation(self._state.recommendations[index])
+                recommendation = self._state.recommendations[index]
+                app.benchmark_recommendation(recommendation, recommendation.plan)
             return
         if button_id.startswith("res-paths-"):
             index = int(button_id.removeprefix("res-paths-"))
@@ -1168,7 +1176,7 @@ def _can_validate(rec: ModelRecommendation) -> bool:
     return estimate.runtime_recommendation.runtime in {
         RuntimeName.LLAMA_CPP,
         RuntimeName.TRANSFORMERS,
-    }
+    } and _runtime_action_allowed(rec)
 
 
 def _can_benchmark(rec: ModelRecommendation) -> bool:
@@ -1180,7 +1188,26 @@ def _can_benchmark(rec: ModelRecommendation) -> bool:
     return estimate.runtime_recommendation.runtime in {
         RuntimeName.LLAMA_CPP,
         RuntimeName.TRANSFORMERS,
-    }
+    } and _runtime_action_allowed(rec)
+
+
+def _can_run(rec: ModelRecommendation) -> bool:
+    from jaull.domain.runtime import RuntimeName
+
+    estimate = rec.evaluated.memory_estimate
+    if estimate is None or estimate.runtime_recommendation is None:
+        return False
+    return estimate.runtime_recommendation.runtime in {
+        RuntimeName.LLAMA_CPP,
+        RuntimeName.TRANSFORMERS,
+    } and _runtime_action_allowed(rec)
+
+
+def _runtime_action_allowed(rec: ModelRecommendation) -> bool:
+    """Disable conclusive preflight failures, but allow unknown probes to try."""
+    from jaull.presentation.plan_labels import runtime_block_reason
+
+    return rec.plan is None or runtime_block_reason(rec.plan) is None
 
 
 # Green comfortable, amber tight, red insufficient — the same reading the rest

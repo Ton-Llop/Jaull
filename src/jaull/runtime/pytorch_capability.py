@@ -77,6 +77,8 @@ if error is not None:
     emit({"runtime_status": status, "message": error["message"]})
     raise SystemExit(0)
 
+bitsandbytes, bitsandbytes_error = import_module("bitsandbytes")
+
 cuda_available = None
 cuda_device_count = None
 cuda_error = None
@@ -116,6 +118,22 @@ emit(
         "transformers_version": getattr(transformers, "__version__", None),
         "torch_cuda_version": getattr(torch.version, "cuda", None),
         "torch_hip_version": getattr(torch.version, "hip", None),
+        "bitsandbytes_available": (
+            None
+            if bitsandbytes_error is not None
+            and bitsandbytes_error.get("status") == "import_failed"
+            else bitsandbytes is not None
+        ),
+        "bitsandbytes_version": (
+            getattr(bitsandbytes, "__version__", None)
+            if bitsandbytes is not None
+            else None
+        ),
+        "bitsandbytes_message": (
+            bitsandbytes_error.get("message")
+            if bitsandbytes_error is not None
+            else None
+        ),
         "cuda_available": cuda_available,
         "cuda_device_count": cuda_device_count,
         "cuda_error": cuda_error,
@@ -226,6 +244,9 @@ def parse_pytorch_probe_json(
             transformers_version=_str_or_none(raw.get("transformers_version")),
             torch_cuda_version=_str_or_none(raw.get("torch_cuda_version")),
             torch_hip_version=_str_or_none(raw.get("torch_hip_version")),
+            bitsandbytes_available=_bool_or_none(raw.get("bitsandbytes_available")),
+            bitsandbytes_version=_str_or_none(raw.get("bitsandbytes_version")),
+            bitsandbytes_message=_str_or_none(raw.get("bitsandbytes_message")),
             backend_capabilities=_build_backend_capabilities(raw),
             probe_source=_PROBE_SOURCE,
             message=_str_or_none(raw.get("cuda_error")),
@@ -243,6 +264,7 @@ def evaluate_pytorch_execution_readiness(
     *,
     selection: RuntimeBackendSelection,
     runtime_capability: PyTorchRuntimeCapability,
+    requires_bitsandbytes: bool = False,
 ) -> ExecutionReadiness:
     """Return a conservative preflight decision for PyTorch/Transformers."""
 
@@ -287,16 +309,21 @@ def evaluate_pytorch_execution_readiness(
 
     capability = _find_capability(runtime_capability, selection.selected_backend)
     if selection.selected_backend is ComputeBackend.CPU:
-        return _readiness(
-            status=ExecutionReadinessStatus.READY,
-            reason=ExecutionReadinessReason.RUNTIME_AVAILABLE,
+        return _with_quantization_readiness(
+            _readiness(
+                status=ExecutionReadinessStatus.READY,
+                reason=ExecutionReadinessReason.RUNTIME_AVAILABLE,
+                selection=selection,
+                runtime_capability=runtime_capability,
+                selected_backend_capability=capability,
+                message=(
+                    "CPU execution is available because Python, PyTorch and "
+                    "Transformers import successfully"
+                ),
+            ),
             selection=selection,
             runtime_capability=runtime_capability,
-            selected_backend_capability=capability,
-            message=(
-                "CPU execution is available because Python, PyTorch and "
-                "Transformers import successfully"
-            ),
+            requires_bitsandbytes=requires_bitsandbytes,
         )
 
     if capability is None:
@@ -308,16 +335,21 @@ def evaluate_pytorch_execution_readiness(
             message=f"{selection.selected_backend.value} capability was not reported",
         )
     if capability.state is PyTorchBackendCapabilityState.CONFIRMED:
-        return _readiness(
-            status=ExecutionReadinessStatus.READY,
-            reason=ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED,
+        return _with_quantization_readiness(
+            _readiness(
+                status=ExecutionReadinessStatus.READY,
+                reason=ExecutionReadinessReason.SELECTED_BACKEND_EXPOSED,
+                selection=selection,
+                runtime_capability=runtime_capability,
+                selected_backend_capability=capability,
+                message=(
+                    "PyTorch exposes "
+                    f"{selection.selected_backend.value} device(s) for this runtime"
+                ),
+            ),
             selection=selection,
             runtime_capability=runtime_capability,
-            selected_backend_capability=capability,
-            message=(
-                "PyTorch exposes "
-                f"{selection.selected_backend.value} device(s) for this runtime"
-            ),
+            requires_bitsandbytes=requires_bitsandbytes,
         )
     if capability.state is PyTorchBackendCapabilityState.NOT_OBSERVED:
         return _readiness(
@@ -572,6 +604,70 @@ def _readiness(
     )
 
 
+def _with_quantization_readiness(
+    readiness: ExecutionReadiness,
+    *,
+    selection: RuntimeBackendSelection,
+    runtime_capability: PyTorchRuntimeCapability,
+    requires_bitsandbytes: bool,
+) -> ExecutionReadiness:
+    if not requires_bitsandbytes:
+        return readiness
+    selected_backend_capability = readiness.selected_backend_capability
+    if not isinstance(selected_backend_capability, PyTorchBackendCapability):
+        selected_backend_capability = None
+    if selection.selected_backend is ComputeBackend.CPU:
+        return _readiness(
+            status=ExecutionReadinessStatus.NOT_READY,
+            reason=ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_MISSING,
+            selection=selection,
+            runtime_capability=runtime_capability,
+            selected_backend_capability=selected_backend_capability,
+            message=(
+                "This quantized Transformers plan requires a CUDA/HIP-capable "
+                "backend; CPU execution is not supported by bitsandbytes."
+            ),
+        )
+    if selection.selected_backend is not ComputeBackend.CUDA:
+        return _readiness(
+            status=ExecutionReadinessStatus.UNKNOWN,
+            reason=ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_UNKNOWN,
+            selection=selection,
+            runtime_capability=runtime_capability,
+            selected_backend_capability=selected_backend_capability,
+            message=(
+                "The selected Transformers plan requires bitsandbytes, but "
+                f"support for the {selection.selected_backend.value} backend "
+                "has not been validated."
+            ),
+        )
+    if runtime_capability.bitsandbytes_available is False:
+        return _readiness(
+            status=ExecutionReadinessStatus.NOT_READY,
+            reason=ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_MISSING,
+            selection=selection,
+            runtime_capability=runtime_capability,
+            selected_backend_capability=selected_backend_capability,
+            message=(
+                "The selected Transformers plan requires bitsandbytes, but it "
+                "is not installed in the probed Python environment."
+            ),
+        )
+    if runtime_capability.bitsandbytes_available is not True:
+        return _readiness(
+            status=ExecutionReadinessStatus.UNKNOWN,
+            reason=ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_UNKNOWN,
+            selection=selection,
+            runtime_capability=runtime_capability,
+            selected_backend_capability=selected_backend_capability,
+            message=(
+                "The selected Transformers plan requires bitsandbytes, but its "
+                "availability could not be confirmed."
+            ),
+        )
+    return readiness
+
+
 def _missing_message(capability: PyTorchRuntimeCapability) -> str:
     if capability.message:
         return capability.message
@@ -600,6 +696,14 @@ def _int_or_none(value: object) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _bool_or_none(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return None
 
 
 __all__ = [

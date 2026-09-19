@@ -42,7 +42,7 @@ Generated: <redacted>
 7. executability: strong
 8. memory headroom: strong
 9. performance evidence: unknown
-10. estimate confidence: medium
+10. plan confidence: medium
 
 Diagnostic composite score: 61/100 (memory fit 75%, capability 70%). This is not what ordered the list.
 

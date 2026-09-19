@@ -44,7 +44,11 @@ from jaull.experiments.errors import (
     ExperimentRunnerError,
 )
 from jaull.presentation.console import format_bytes
-from jaull.presentation.plan_labels import model_display_name, plan_backend
+from jaull.presentation.plan_labels import (
+    model_display_name,
+    plan_backend,
+    runtime_block_reason,
+)
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -157,6 +161,13 @@ class RecommendationValidationScreen(Screen[None]):
         if runtime is None:
             start.disabled = True
             self._set_error("Validation requires an executable runtime recommendation.")
+        elif self._execution_plan is not None:
+            blocked = runtime_block_reason(self._execution_plan)
+            if blocked is not None:
+                start.disabled = True
+                self._set_error(blocked)
+            else:
+                start.focus()
         else:
             start.focus()
         self._set_status("")

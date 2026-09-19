@@ -51,6 +51,8 @@ from jaull.domain.runtime import (
     PyTorchRuntimeStatus,
     RuntimeBackendSelection,
     RuntimeBackendSelectionReason,
+    RuntimeFlag,
+    RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
 )
@@ -89,6 +91,38 @@ def test_same_model_can_produce_multiple_execution_plans() -> None:
     assert len(plans) > 1
     assert {plan.artifact.quantization for plan in plans} >= {"Q4_K_M", "Q5_K_M"}
     assert all(plan.runtime_family is RuntimeName.LLAMA_CPP for plan in plans)
+
+
+def test_transformers_plan_preserves_the_estimated_quantization_mechanism() -> None:
+    evaluated = _evaluated_transformers()
+    estimate = evaluated.memory_estimate
+    assert estimate is not None
+    runtime = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        confidence=EstimationConfidence.HIGH,
+        flags=[
+            RuntimeFlag(
+                name="quantization",
+                value="4bit",
+                source=RuntimeFlagSource.ESTIMATE,
+                explanation="Test quantized plan",
+            )
+        ],
+    )
+    evaluated = evaluated.model_copy(
+        update={"memory_estimate": estimate.model_copy(update={"runtime_recommendation": runtime})}
+    )
+
+    plans = generate_execution_plans(
+        evaluated,
+        _requirements(),
+        context=PlanRankingContext(),
+    )
+
+    assert len(plans) == 1
+    assert [(flag.name, flag.value) for flag in plans[0].runtime.flags] == [
+        ("quantization", "4bit")
+    ]
 
 
 def test_recommendation_result_operates_on_plan_not_only_repo() -> None:

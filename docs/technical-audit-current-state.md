@@ -3,12 +3,12 @@
 Auditoria original: 2026-09-03, branch `execution-plan`, commit
 `0910967e0768548b5fd84c83427a1754daf5816c`.
 
-**Revision: 2026-09-16, branch `master`, commit `5bf954b`.**
+**Revisiones: R (2026-09-16, commit `5bf954b`) y S (2026-09-17, commit `059dac3`).**
 
 El cuerpo del documento (secciones A-H) se conserva tal como se escribio el 03/09: es un
-registro fechado, no un documento vivo. La seccion R de mas abajo dice que ha cambiado desde
-entonces. Donde un hallazgo esta cerrado, lleva una marca **CERRADO (16/09)** en su sitio con
-la evidencia. Lo que no lleva marca sigue abierto.
+registro fechado, no un documento vivo. Las secciones R y S de mas abajo dicen que ha
+cambiado desde entonces, cada una en su fecha. Donde un hallazgo esta cerrado, lleva una
+marca **CERRADO** fechada en su sitio, con la evidencia. Lo que no lleva marca sigue abierto.
 
 Esta auditoria describe el estado real del repositorio en el commit indicado. No presupone
 que cambios existentes en otras branches formen parte de este estado.
@@ -145,6 +145,191 @@ Afirmaciones que el codigo habia dejado falsas, ya corregidas:
 - `estimation.md`: la VRAM ya no viene solo de NVML.
 - `evaluation/comparison.py`: el docstring de `compare_prediction` contradecia al de
   `_predicted_ram` veinte lineas mas abajo.
+
+---
+
+## S. Revision del 2026-09-17
+
+Dos bloques que la revision R no recoge, porque salieron *despues* de escribirla, de
+ejecutar Jaull en la RTX 4060 y leer el report que produce.
+
+### S.1 Gates
+
+| Gate | 16/09 | 17/09 |
+|---|---|---|
+| ruff | clean | clean |
+| mypy | clean, 244 ficheros | clean, **245** ficheros |
+| pytest | 1614 | **1674 passed** |
+| cobertura | 85 % (17 271 stmts) | 85 % (17 392 stmts, 2 561 sin cubrir) |
+
+Commits: `bb1a7a9`, `92c541c`, `89a30c7`, `4a054d6`, `7c68cb0`, `78ecf2e`, `059dac3`.
+
+### S.2 La configuracion estimada no era la que se ejecutaba
+
+**El hallazgo mas grave de los dos**, porque no era un problema de presentacion: rompia la
+cadena de evidencia sobre la que se apoya el TFG.
+
+`runtime/transformers.py` convertia `WeightPrecision.INT4` **y** `INT8` en
+`torch_dtype="torch.int8"`. Eso no cuantiza nada: `from_pretrained(torch_dtype=torch.int8)`
+pide un dtype de tensor que el cargador no puede usar para pesos. Y no era solo el snippet
+que se mostraba — `transformers_worker.py` y `transformers_benchmark_worker.py` pasaban ese
+mismo dtype al cargador sin ninguna `quantization_config`, asi que **Run y Benchmark
+ejecutaban pesos sin cuantizar y los reportaban como la configuracion predita**. Un
+`ExperimentRecord` a int4 habria emparejado una prediccion de 0,5 bytes/parametro con una
+ejecucion que no lo era, y la capa de comparacion habria calculado un porcentaje de error
+entre dos cosas distintas.
+
+Comprobado que **ningun bundle de `validation/` menciona int4 ni int8**: todo lo medido hasta
+hoy es llama.cpp GGUF, asi que ninguna medicion existente esta contaminada. El riesgo era
+prospectivo — el `#1` del report de la 4060 es exactamente esa configuracion.
+
+**CERRADO (17/09).** `runtime/transformers_quantization.py` concentra la traduccion
+precision <-> mecanismo. Ahora la precision viaja en un solo flag: `torch_dtype` para los
+floats, `quantization` para los cuantizados, que el worker convierte en
+`BitsAndBytesConfig`. Sin `bitsandbytes` **falla con un motivo explicito** en vez de degradar
+en silencio. No se anade la dependencia: es CUDA-centrica, incomoda en Windows, y un plan
+Transformers cuantizado ya se reporta como artefacto teorico.
+
+Verificado en esta maquina (RTX 2060, sin `bitsandbytes` instalado), contra los workers
+reales y sin descargar ningun modelo:
+
+```
+$ python -m jaull.runtime.transformers_worker --quantization 4bit ...
+{"error": "This configuration needs the 'bitsandbytes' package, which Jaull does not
+ install. ... Jaull will not run an unquantized model in place of a quantized estimate:
+ the measurement would not describe the configuration that was predicted.",
+ "success": false}                                                            exit=1
+```
+
+Identico por el worker de benchmark. Control negativo: con `--torch-dtype torch.float16` el
+guard no interviene y el fallo llega mas tarde, al cargar. Falta la verificacion de la
+cadena entera (`jaull run` desde la TUI sobre la recomendacion `#1`), que necesita el modelo
+descargado.
+
+Dos defectos colaterales del mismo cambio, encontrados en revision cruzada:
+
+- El helper importaba `WeightPrecision`, que arrastra Pydantic. Los workers corren en el
+  Python de PyTorch del usuario, que no es el venv de Jaull: el worker moria con
+  `ModuleNotFoundError: pydantic` **antes** de poder emitir su error estructurado. El modulo
+  ya no importa nada del dominio; indexa por el valor de la precision.
+- Los workers solo pasaban `device_map` cuando era `"auto"`; con `"cuda"` cargaban y despues
+  hacian `.to("cuda")`. Sobre un modelo bnb de 4 bits eso no es estilo: **bitsandbytes
+  rechaza `.to()`**. Un plan cuantizado se coloca ahora al cargar, como dice el snippet.
+
+Y `recommendation/local_evidence.py` comparaba solo `torch_dtype`, asi que un record int4 y
+uno int8 respondian ambos `None` y se consideraban la misma configuracion — la misma familia
+que D.2.
+
+### S.3 El report no describia la ejecucion que habia hecho
+
+Cuatro contradicciones, las cuatro visibles en un unico report de la 4060:
+
+1. **`evaluated_candidates` publicaba los defaults del modelo.** Todos los scores a `0.0`,
+   `requirement_penalty` a `1.0` y `unmet_requirements` vacio, mientras la recomendacion
+   construida desde *el mismo candidato* reportaba `0.51` y dos requisitos incumplidos. El
+   orquestador guardaba la lista previa al enriquecimiento, que ocurre dentro de `recommend`.
+2. **El score contradecia la posicion en pantalla.** Rank 1 con 44/100, rank 4 con 65/100. El
+   orden lo da la tupla lexicografica de `engine_v2`; el numero impreso al lado venia del
+   compuesto ponderado, que con hardware no ordena nada.
+3. **La confianza baja se atribuia siempre a metadata ausente.** Como `overhead.py` emite
+   `LOW` incondicionalmente, ese aviso salia en el 100 % de las recomendaciones, con ficha
+   completa o sin ella.
+4. **"No precision fits" se decia con peldanos en `offloading_required`**, y `unknown` se
+   presentaba como si se hubiera demostrado que no cabe.
+
+**CERRADO (17/09).**
+
+- El orquestador publica el resultado de `enrich_candidate_features` — *la misma funcion que
+  llama `recommend`*, sobre las mismas entradas. Verificado digito a digito: `capability`
+  `0.7003645535942264` en los dos bloques. Los candidatos fallidos nunca pasan por el
+  enriquecimiento, asi que salen `null`: "nunca se evaluo" no es "saco cero en todo".
+- `ranking.criteria` publica los ejes reales, y `score_role` distingue `diagnostic` de
+  `ordering` — sin hardware el compuesto **si** ordena, y etiquetarlo diagnostico habria sido
+  la misma mentira en direccion contraria.
+- `_confidence_warning` nombra el componente que topa la confianza.
+  `_exhausted_ladder_message` distingue los tres desenlaces, y describe **la configuracion
+  devuelta**, no el conjunto: `best_effort` guarda el primer peldano, asi que afirmar
+  viabilidad de offload para algo marcado INSUFFICIENT era otra contradiccion. La afirmacion
+  global "ninguna cabe" solo se emite si toda la escalera salio INSUFFICIENT.
+
+**Schema 3**: el cambio a `null` no es compatible hacia atras para un lector estricto. Nada
+dentro de Jaull lee el payload de vuelta (`reporting/writer.py` solo lo escribe), asi que la
+ruptura queda confinada a lo que consuma el fichero exportado.
+
+Tres iteraciones de revision cruzada corrigieron, sobre el propio texto publicado: que
+`ranking_criteria` omitia la particion de viabilidad que corre *despues* del sort (en
+`quality` la explicacion contradecia la lista), que `viability` publicaba el estado crudo y
+hacia que `offloading_required` pareciera ir por encima de `comfortable` cuando el eje solo
+compara dos estados, y que `hard_constraints: none` chocaba con la seccion "Unmet
+requirements" de la misma entrada, que es otra puerta.
+
+### S.4 Lo que sigue abierto
+
+Ademas de R.3:
+
+- **Dos definiciones de "requisito duro".** `_hard_constraints` (que ordena) solo rechaza
+  licencias `COMMERCIAL_RESTRICTED`; el compuesto penaliza tambien las `UNKNOWN`. Y
+  `requirements_gate.py:118` marca el idioma como `required=False` con penalizacion 0,15, que
+  aun asi arrastra `hard_penalty` por debajo de 1,0 y fuerza `BEST_EFFORT` por la regla 1 de
+  `choose_tier`. Un check blando produciendo una degradacion dura. **Es decision de producto,
+  no un bug**, y por eso sigue sin tocarse.
+- `quantization_quality: n/a` aparece en toda entrada de Transformers, donde el eje no
+  significa nada. Ruido, no falsedad.
+
+### S.5 El hueco real de la campana experimental
+
+**Ninguna medicion registrada pasa por el observation contract.**
+
+```
+b001-r4-full-offload    runtime_allocation=None   peak_vram=None
+b001-r4-launch-policy   runtime_allocation=None   peak_vram=None
+
+ultima medicion fisica : 14/09
+ultimo commit          : 16/09
+```
+
+Los bundles son anteriores al contrato. Todo el trabajo del 15 al 17 mejora lo que Jaull
+*dice*; la campana experimental, que es donde vive la tesis, no se ha movido.
+
+La consecuencia concreta: la frase que persigue el TFG — *"Jaull lo ha predicho, lo ha
+ejecutado, lo ha medido y sabe en que se ha equivocado, termino a termino"* — sigue sin
+respaldo experimental, **aunque el codigo que la sostiene ya este escrito y probado**. Una
+re-ejecucion de B001 con el codigo actual seria el primer `ExperimentRecord` con
+`runtime_allocation`, y por tanto el primer error por componente: pesos DIRECT, KV DIRECT,
+overhead PROXY.
+
+Es lo unico de esta lista que no puede hacerse sin la GPU, y lo que mas valor tiene.
+
+**PARCIALMENTE CERRADO (17/09).** Ejecutado: ver
+[B001-R7](../docs/qwen2.5-tests/b001-r7-observation-contract.md). La re-ejecucion encontro
+primero que **el contrato no llegaba a dispararse nunca**: `llama_cpp_runner.py` pasaba
+`--verbose` solo si un flag de runtime lo pedia, y nada lo pone. Sin el, este build no
+escribe *ninguna* linea a stderr, asi que el parser no tenia lineas de buffer y
+`_observed_backend` tampoco encontraba backend. Todos los tests del contrato le daban al
+parser un log de agosto ya grabado; ninguno comprobaba que una ejecucion viva produjera uno.
+
+Corregido (se pide el log siempre) y re-ejecutado. **Primera medicion de dispositivo de la
+historia del proyecto en esta maquina:**
+
+| Buffer | Medido |
+|---|---:|
+| `CUDA0 model` | 3741.47 MiB |
+| `CUDA0 KV` | 200.00 MiB |
+| `CUDA0 compute` | 183.44 MiB |
+| **total dispositivo** | **4124.91 MiB** |
+
+`source = runtime_reported_allocation`, `driver_confirmed = false` — NVML no atribuye nada
+bajo WDDM, asi que el reporte del propio runtime es la unica observacion disponible, que es
+para lo que se construyo.
+
+**Lo que sigue abierto es la otra mitad.** La comparacion sigue
+`methodologically_unavailable`: la prediccion esta dimensionada en 20 bloques de transformer
+y la ejecucion uso 26 unidades de `--n-gpu-layers`. Son colocaciones distintas, asi que la
+diferencia entre 3372.7 MiB predichos y 3741.47 MiB medidos es sobre todo colocacion, no
+error del modelo de memoria. **Ningun numero de esta ejecucion debe usarse para calibrar.**
+
+El estado paso de *"no hay medicion"* a *"hay medicion y no hay prediccion comparable"*. Lo
+que bloquea el resto es el mapeo bloque <-> unidad de lanzamiento, no el lado de la medida.
 
 ## A. Estado general
 
