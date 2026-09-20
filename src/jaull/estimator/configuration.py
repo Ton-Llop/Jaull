@@ -93,7 +93,9 @@ def _select_gguf(
     considered: list[str] = []
     warnings: list[str] = []
     seen: list[CompatibilityStatus] = []
-    best_effort: tuple[InferenceConfiguration, MemoryEstimate] | None = None
+    fallback_options: list[
+        tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]
+    ] = []
 
     for rung in ordered:
         quantization = available[rung]
@@ -103,8 +105,7 @@ def _select_gguf(
         considered.append(f"{quantization}: {status.value}")
         seen.append(status)
 
-        if best_effort is None:
-            best_effort = (config, estimate)
+        fallback_options.append((status, config, estimate))
 
         if status in _ACCEPTABLE:
             if rung in policies.AGGRESSIVE_QUANTIZATIONS:
@@ -125,14 +126,22 @@ def _select_gguf(
 
     message = _exhausted_ladder_message(
         seen,
-        best_effort[1].assessment.status if best_effort else None,
+        _fallback_status(fallback_options),
         unit="GGUF variant",
         aggressive=", even the most aggressive variant",
     )
     warnings.append(message)
     return ConfigurationChoice(
-        configuration=best_effort[0] if best_effort else None,
-        estimate=best_effort[1] if best_effort else None,
+        configuration=(
+            _fallback_option(fallback_options)[1]
+            if fallback_options
+            else None
+        ),
+        estimate=(
+            _fallback_option(fallback_options)[2]
+            if fallback_options
+            else None
+        ),
         reason=f"{message} Reporting the closest option.",
         considered=considered,
         warnings=warnings,
@@ -149,7 +158,9 @@ def _select_transformers(
 ) -> ConfigurationChoice:
     considered: list[str] = []
     warnings: list[str] = []
-    best_effort: tuple[InferenceConfiguration, MemoryEstimate] | None = None
+    fallback_options: list[
+        tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]
+    ] = []
     seen: list[CompatibilityStatus] = []
 
     for precision in policies.TRANSFORMERS_DTYPE_LADDER:
@@ -159,8 +170,7 @@ def _select_transformers(
         considered.append(f"{precision.value}: {status.value}")
         seen.append(status)
 
-        if best_effort is None:
-            best_effort = (config, estimate)
+        fallback_options.append((status, config, estimate))
 
         if status in _ACCEPTABLE:
             if precision in policies.THEORETICAL_DTYPES:
@@ -183,14 +193,22 @@ def _select_transformers(
 
     message = _exhausted_ladder_message(
         seen,
-        best_effort[1].assessment.status if best_effort else None,
+        _fallback_status(fallback_options),
         unit="precision",
         aggressive=", including int4",
     )
     warnings.append(message)
     return ConfigurationChoice(
-        configuration=best_effort[0] if best_effort else None,
-        estimate=best_effort[1] if best_effort else None,
+        configuration=(
+            _fallback_option(fallback_options)[1]
+            if fallback_options
+            else None
+        ),
+        estimate=(
+            _fallback_option(fallback_options)[2]
+            if fallback_options
+            else None
+        ),
         reason=message,
         considered=considered,
         warnings=warnings,
@@ -258,6 +276,28 @@ def _exhausted_ladder_message(
         "The reported configuration is estimated not to fit the detected "
         f"memory.{suffix}"
     )
+
+
+def _fallback_option(
+    options: list[tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]],
+) -> tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]:
+    """Choose the most actionable result after the ladder is exhausted."""
+    priority = (
+        CompatibilityStatus.OFFLOADING_REQUIRED,
+        CompatibilityStatus.UNKNOWN,
+        CompatibilityStatus.INSUFFICIENT,
+    )
+    for status in priority:
+        for option in options:
+            if option[0] is status:
+                return option
+    return options[0]
+
+
+def _fallback_status(
+    options: list[tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]],
+) -> CompatibilityStatus | None:
+    return _fallback_option(options)[0] if options else None
 
 
 def _build_config(

@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jaull.advisor.service import AdvisorService
+from jaull.advisor.service import AdvisorService, _readiness_for_plan_variant
+from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import (
     ExecutionFailureReason,
     ExecutionObservation,
@@ -24,6 +25,10 @@ from jaull.domain.runtime import (
     PyTorchRuntimeStatus,
     RuntimeBackendSelection,
     RuntimeBackendSelectionReason,
+    RuntimeFlag,
+    RuntimeFlagSource,
+    RuntimeName,
+    RuntimeRecommendation,
 )
 from jaull.execution.errors import ExecutionFailedError
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
@@ -219,6 +224,58 @@ def test_quantized_transformers_plan_is_not_ready_without_bitsandbytes() -> None
     assert readiness.status is ExecutionReadinessStatus.NOT_READY
     assert readiness.reason is ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_MISSING
     assert "bitsandbytes" in (readiness.message or "")
+
+
+def test_variant_readiness_is_recomputed_from_its_runtime_flags() -> None:
+    capability = parse_pytorch_probe_json(
+        _probe_json(
+            torch_cuda_version="12.4",
+            cuda_available=True,
+            cuda_device_count=1,
+            bitsandbytes_available=False,
+            devices=[{"index": 0, "name": "NVIDIA RTX 2060"}],
+        )
+    )
+    quantized = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        confidence=EstimationConfidence.HIGH,
+        flags=[
+            RuntimeFlag(
+                name="quantization",
+                value="4bit",
+                source=RuntimeFlagSource.ESTIMATE,
+                explanation="test",
+            )
+        ],
+    )
+    native = RuntimeRecommendation(
+        runtime=RuntimeName.TRANSFORMERS,
+        confidence=EstimationConfidence.HIGH,
+        flags=[
+            RuntimeFlag(
+                name="torch_dtype",
+                value="torch.float16",
+                source=RuntimeFlagSource.ESTIMATE,
+                explanation="test",
+            )
+        ],
+    )
+
+    quantized_readiness = _readiness_for_plan_variant(
+        runtime=quantized,
+        selection=_selection(ComputeBackend.CUDA),
+        capability=capability,
+    )
+    native_readiness = _readiness_for_plan_variant(
+        runtime=native,
+        selection=_selection(ComputeBackend.CUDA),
+        capability=capability,
+    )
+
+    assert quantized_readiness is not None
+    assert quantized_readiness.status is ExecutionReadinessStatus.NOT_READY
+    assert native_readiness is not None
+    assert native_readiness.status is ExecutionReadinessStatus.READY
 
 
 def test_quantized_transformers_plan_is_ready_with_bitsandbytes() -> None:

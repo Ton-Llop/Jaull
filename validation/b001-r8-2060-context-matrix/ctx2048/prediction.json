@@ -1,0 +1,108 @@
+{
+  "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+  "quantization": "Q4_K_M",
+  "context_length": 2048,
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2060",
+    "vram_total_bytes": 6442450944,
+    "vram_available_bytes": 5208571904,
+    "ram_total_bytes": 8278130688,
+    "ram_available_bytes": 7355469824
+  },
+  "estimate": {
+    "weights_bytes": 4683074240,
+    "transformer_block_decomposition": {
+      "total_weight_bytes": 4683074240,
+      "estimated_transformer_block_weight_bytes": 4012773975,
+      "estimated_non_block_weight_bytes": 670300265,
+      "estimated_bytes_per_transformer_block": 143313357,
+      "total_transformer_blocks": 28,
+      "method": "config_parameter_decomposition"
+    },
+    "kv_cache_bytes": 117440512,
+    "kv_cache_layers": 28,
+    "kv_cache_formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+    "runtime_overhead_bytes": 1005178336,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 634256400,
+    "total_bytes": 6976820400,
+    "status": "offloading_required",
+    "confidence": "low"
+  },
+  "fit": {
+    "mode": "gpu_offload",
+    "memory_topology": "discrete_memory",
+    "placement_method": "transformer_blocks",
+    "gpu_transformer_blocks": 18,
+    "total_transformer_blocks": 28,
+    "offload_diagnostics": {
+      "search_ceiling_transformer_blocks": 27,
+      "selected": {
+        "gpu_transformer_blocks": 18,
+        "gpu_required_bytes": 5014483710,
+        "ram_required_bytes": 1962336690,
+        "available_vram_bytes": 5208571904,
+        "excess_bytes": 0,
+        "headroom_bytes": 194088194,
+        "gpu_weight_bytes": 3249940678,
+        "ram_weight_bytes": 1433133562,
+        "kv_cache_bytes": 117440512,
+        "gpu_kv_cache_bytes": 75497472,
+        "ram_kv_cache_bytes": 41943040,
+        "device_reserve_bytes": 536870912,
+        "gpu_overhead_bytes": 696312492,
+        "gpu_safety_margin_bytes": 455862156,
+        "ram_overhead_bytes": 308865844,
+        "ram_safety_margin_bytes": 178394244,
+        "non_block_placement_bounds": {
+          "gpu_transformer_block_weight_bytes": 2579640413,
+          "ram_transformer_block_weight_bytes": 1433133562,
+          "non_block_weight_bytes": 670300265,
+          "gpu_required_min_bytes": 4122764050,
+          "ram_required_max_bytes": 2854056350,
+          "ram_overhead_max_bytes": 449219815,
+          "ram_safety_margin_max_bytes": 259459668
+        }
+      },
+      "first_rejected_higher": {
+        "gpu_transformer_blocks": 19,
+        "gpu_required_bytes": 5210717378,
+        "ram_required_bytes": 1766103022,
+        "available_vram_bytes": 5208571904,
+        "excess_bytes": 2145474,
+        "headroom_bytes": 0,
+        "gpu_weight_bytes": 3393254034,
+        "ram_weight_bytes": 1289820206,
+        "kv_cache_bytes": 117440512,
+        "gpu_kv_cache_bytes": 79691776,
+        "ram_kv_cache_bytes": 37748736,
+        "device_reserve_bytes": 536870912,
+        "gpu_overhead_bytes": 727199076,
+        "gpu_safety_margin_bytes": 473701580,
+        "ram_overhead_bytes": 277979260,
+        "ram_safety_margin_bytes": 160554820,
+        "non_block_placement_bounds": {
+          "gpu_transformer_block_weight_bytes": 2722953769,
+          "ram_transformer_block_weight_bytes": 1289820206,
+          "non_block_weight_bytes": 670300265,
+          "gpu_required_min_bytes": 4318997720,
+          "ram_required_max_bytes": 2657822680,
+          "ram_overhead_max_bytes": 418333230,
+          "ram_safety_margin_max_bytes": 241620243
+        }
+      }
+    },
+    "gpu_required_bytes": 5014483710,
+    "ram_required_bytes": 1962336690,
+    "gpu_weight_bytes": 3249940678,
+    "ram_weight_bytes": 1433133562,
+    "gpu_overhead_bytes": 696312492,
+    "ram_overhead_bytes": 308865844,
+    "gpu_safety_margin_bytes": 455862156,
+    "ram_safety_margin_bytes": 178394244,
+    "reason": "Model does not fit fully in VRAM, but a valid GPU/RAM weight placement fits without treating RAM and VRAM as one pool.",
+    "warnings": [
+      "Non-block placement is unknown. Both GPU-heavy and host-heavy endpoint budgets fit; neither endpoint is a runtime prediction."
+    ]
+  }
+}

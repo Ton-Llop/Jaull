@@ -44,13 +44,26 @@ from test_workflow_orchestrator import _container
 VRAM_BYTES = 8 * GIB
 
 # A spread that reaches the branches the report has to describe: one model that
-# fits comfortably, one that only just fits and whose licence and language cannot
-# be confirmed, and one that does not fit at all. The ladder-exhausted wording is
+# fits comfortably, one that only just fits and whose declared language cannot be
+# confirmed, and one that does not fit at all. The ladder-exhausted wording is
 # covered directly below, because the fixture estimator never returns
 # `offloading_required`.
+#
+# Every licence here is confirmed on purpose. `requirement_confirmation` orders
+# a confirmed licence ahead of an unknown one on a commercial-use run, and it
+# outranks every priority axis, so an unknown licence in this fixture would
+# reorder the shortlist and this file would stop testing what it is for: the
+# report's *description* of an order, not the order itself.
+#
+# What that costs is covered elsewhere on purpose:
+#   - the ordering policy, in `test_recommendation_engine_v2`
+#     ::test_confirmed_commercial_license_precedes_unknown_license;
+#   - the wording for an unrecognised licence, in
+#     `test_an_unrecognised_licence_is_described_as_unconfirmed` below, which
+#     exists because this fixture stopped producing one.
 SHORTLIST: tuple[tuple[str, int, list[str], str | None], ...] = (
     ("org/Coder-3B-Instruct-GGUF", int(2.0 * GIB), ["en"], "apache-2.0"),
-    ("org/Coder-7B-Instruct-GGUF", int(7.6 * GIB), [], "other"),
+    ("org/Coder-7B-Instruct-GGUF", int(7.6 * GIB), [], "apache-2.0"),
     ("org/Coder-32B-Instruct-GGUF", int(40.0 * GIB), ["en"], "apache-2.0"),
 )
 
@@ -179,6 +192,7 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
     assert axes == [
         "viability",
         "plan_constraints",
+        "requirement_confirmation",
         "suitability",
         "capability",
         "quantization_quality",
@@ -191,6 +205,58 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
 # ---------------------------------------------------------------------------
 # 3. The explanations say what is true
 # ---------------------------------------------------------------------------
+
+
+def test_an_unrecognised_licence_is_described_as_unconfirmed() -> None:
+    """An unknown licence is uncertainty, not a proven restriction.
+
+    The shortlist above stopped carrying an `"other"` licence when
+    `requirement_confirmation` started ordering on it, and nothing else covered
+    this wording: `test_recommendation_ranking` only exercises a *missing*
+    licence, which produces a different sentence.
+    """
+    search = FakeSearchClient(
+        default=[
+            candidate(
+                repo_id="org/Unrecognised-3B-Instruct-GGUF",
+                tags=["text-generation", "instruct", "gguf", "code"],
+                languages=["en"],
+                license_value="other",
+            )
+        ]
+    )
+    state = orchestrator.run_workflow(
+        answers(
+            use_case=UseCase.CODING,
+            priority=RecommendationPriority.QUALITY,
+            languages=["English"],
+        ),
+        hardware(vram_gib=8, ram_gib=32),
+        _container(
+            search,
+            analyses={
+                "org/Unrecognised-3B-Instruct-GGUF": gguf_analysis(
+                    repo_id="org/Unrecognised-3B-Instruct-GGUF",
+                    quantizations=("Q4_K_M",),
+                    base_bytes=int(2.0 * GIB),
+                )
+            },
+            vram_budget=VRAM_BYTES,
+        ),
+    )
+    payload = report_to_dict(state)
+
+    assert payload["recommendations"]
+    rec = payload["recommendations"][0]
+    assert rec["license_category"] == "unknown"
+
+    warnings = " ".join(rec["warnings"])
+    assert "custom or unrecognised" in warnings
+    # Uncertainty, never a verdict: an unknown licence is not a restricted one.
+    assert "restricts commercial use" not in warnings
+
+    unmet = " ".join(rec["score_breakdown"]["unmet_requirements"])
+    assert "could not be confirmed" in unmet
 
 
 def test_low_confidence_is_not_blamed_on_the_model_card() -> None:
@@ -405,8 +471,8 @@ def test_reporting_changes_did_not_move_a_single_decision() -> None:
 
     primary = payload["recommendations"][0]
     assert primary["compatibility"] == "tight"
-    assert primary["score"] == 26
-    assert primary["score_breakdown"]["hard_penalty"] == 0.51
+    assert primary["score"] == 46
+    assert primary["score_breakdown"]["hard_penalty"] == 0.85
     assert primary["memory"]["inference_configuration"]["quantization"] == "Q4_K_M"
     assert primary["memory"]["memory"]["total_bytes"] == 8160437862
 
@@ -420,7 +486,7 @@ def test_the_composite_score_really_does_disagree_with_the_order() -> None:
     """This fixture reproduces the confusion, so the fix is not cosmetic.
 
     ``quality`` compares capability before memory headroom, so the 7B leads on
-    26/100 while the 3B sits second on 64/100. Printing those two numbers under
+    46/100 while the 3B sits second on 64/100. Printing those two numbers under
     the ranks, with nothing else, is what made the tool look broken. The order
     is right; the old presentation was not.
     """

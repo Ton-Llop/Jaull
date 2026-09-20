@@ -326,6 +326,58 @@ def test_license_hard_constraint() -> None:
     }
 
 
+def test_confirmed_commercial_license_precedes_unknown_license() -> None:
+    unknown = _evaluated_gguf(
+        repo_id="org/Unknown-License-7B-GGUF",
+        license_value="other",
+    )
+    confirmed = _evaluated_gguf(
+        repo_id="org/Apache-3B-GGUF",
+        license_value="apache-2.0",
+    )
+
+    ranked = rank_execution_plans(
+        [unknown, confirmed],
+        _requirements(commercial=CommercialUse.YES),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Apache-3B-GGUF",
+        "org/Unknown-License-7B-GGUF",
+    ]
+    assert not ranked[1].assessment.rejected
+
+
+def test_license_confirmation_does_not_reorder_when_commercial_use_is_not_required(
+    monkeypatch,
+) -> None:
+    unknown = _evaluated_gguf(
+        repo_id="org/Unknown-License-7B-GGUF",
+        license_value="other",
+    )
+    confirmed = _evaluated_gguf(
+        repo_id="org/Apache-3B-GGUF",
+        license_value="apache-2.0",
+    )
+    monkeypatch.setattr(
+        engine_v2,
+        "_ranking_key",
+        lambda item, priority, **kwargs: (
+            0 if item.evaluated is unknown else 1,
+        ),
+    )
+
+    ranked = rank_execution_plans(
+        [confirmed, unknown],
+        _requirements(commercial=CommercialUse.NO),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Unknown-License-7B-GGUF",
+        "org/Apache-3B-GGUF",
+    ]
+
+
 def test_language_hard_constraint_when_metadata_explicitly_conflicts() -> None:
     evaluated = _evaluated_gguf(languages=["fr"])
     req = _requirements(languages=["Spanish"])
@@ -800,7 +852,7 @@ def test_confirmed_memory_fit_precedes_higher_ranked_unknown_plan(
     monkeypatch.setattr(
         engine_v2,
         "_ranking_key",
-        lambda item, priority: (0 if item.evaluated is unknown else 1,),
+        lambda item, priority, **kwargs: (0 if item.evaluated is unknown else 1,),
     )
 
     ranked = rank_execution_plans(
@@ -828,7 +880,7 @@ def test_offloading_required_remains_a_confirmed_memory_placement(
     monkeypatch.setattr(
         engine_v2,
         "_ranking_key",
-        lambda item, priority: (0 if item.evaluated is unknown else 1,),
+        lambda item, priority, **kwargs: (0 if item.evaluated is unknown else 1,),
     )
 
     ranked = rank_execution_plans(
@@ -856,7 +908,7 @@ def test_all_unknown_plans_keep_their_base_ranking_order(
     monkeypatch.setattr(
         engine_v2,
         "_ranking_key",
-        lambda item, priority: (0 if item.evaluated is second else 1,),
+        lambda item, priority, **kwargs: (0 if item.evaluated is second else 1,),
     )
 
     ranked = rank_execution_plans(
@@ -1359,15 +1411,26 @@ def _experiment_record(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("commercial", [CommercialUse.YES, CommercialUse.NO])
 @pytest.mark.parametrize("priority", list(RecommendationPriority))
 def test_ranking_criteria_explain_the_real_order(
     priority: RecommendationPriority,
+    commercial: CommercialUse,
 ) -> None:
     """Sorting by the published criteria must reproduce the engine's order.
 
     ``ranking_criteria`` mirrors the priority branch of ``_ranking_key`` instead
     of replacing it, so this is what stops the report from explaining a
     different ordering from the one that ran.
+
+    Both values of the commercial flag are exercised because
+    ``requirement_confirmation`` is published only when commercial use is
+    required, and it outranks every priority axis when it is. The flag is read
+    off the requirements the engine was given rather than written as a literal:
+    a hardcoded ``True`` agreed with the engine only because ``_requirements()``
+    defaults to ``CommercialUse.YES``, so changing that default would have made
+    this guard compare one configuration's criteria against another's order
+    without failing.
     """
     candidates = [
         _evaluated_gguf(
@@ -1395,9 +1458,10 @@ def test_ranking_criteria_explain_the_real_order(
             status=CompatibilityStatus.UNKNOWN,
         ),
     ]
+    requirements = _requirements(priority, commercial=commercial)
     ranked = rank_execution_plans(
         candidates,
-        _requirements(priority),
+        requirements,
         context=_ready_llama_context(),
     )
     assert len(ranked) > 1
@@ -1408,10 +1472,18 @@ def test_ranking_criteria_explain_the_real_order(
         for plan in ranked
     ), "the fixture must exercise the viability partition"
 
+    commercial_use_required = requirements.commercial_use_required is True
     by_criteria = sorted(
         ranked,
         key=lambda item: (
-            tuple(c.rank for c in ranking_criteria(item, priority)),
+            tuple(
+                c.rank
+                for c in ranking_criteria(
+                    item,
+                    priority,
+                    commercial_use_required=commercial_use_required,
+                )
+            ),
             # Only the final identity tie-break of `_ranking_key` stays here;
             # every ordering criterion above it must be published.
             item.evaluated.repo_id,
@@ -1444,10 +1516,60 @@ def test_viability_is_the_outermost_published_criterion(
     )
 
     assert ranked[0].evaluated.repo_id == "org/Small-1.5B-Instruct-GGUF"
-    first, second = (ranking_criteria(item, priority) for item in ranked)
+    first, second = (
+        ranking_criteria(item, priority, commercial_use_required=True)
+        for item in ranked
+    )
     assert first[0].axis == "viability"
     assert first[0].rank < second[0].rank
     assert second[0].value.startswith("placement not confirmed")
+
+
+def test_requirement_confirmation_is_published_only_when_it_ordered() -> None:
+    """The axis appears and disappears with the answer, and so must its criterion.
+
+    `ranking_criteria` exists so the explanation matches the order. This axis is
+    the one that moves between runs, so publishing it on a run it did not touch
+    -- or hiding it on a run it decided -- is the exact failure the function is
+    meant to prevent.
+    """
+    unknown = _evaluated_gguf(
+        repo_id="org/Unknown-License-7B-GGUF", license_value="other"
+    )
+    confirmed = _evaluated_gguf(
+        repo_id="org/Apache-3B-GGUF", license_value="apache-2.0"
+    )
+
+    required = rank_execution_plans(
+        [unknown, confirmed], _requirements(commercial=CommercialUse.YES)
+    )
+    not_required = rank_execution_plans(
+        [unknown, confirmed], _requirements(commercial=CommercialUse.NO)
+    )
+
+    # The flag really does decide this pair, so the two branches below are not
+    # describing the same ordering.
+    assert [item.evaluated.repo_id for item in required] != [
+        item.evaluated.repo_id for item in not_required
+    ]
+
+    published = {
+        criterion.axis
+        for criterion in ranking_criteria(
+            required[0], _requirements().priority, commercial_use_required=True
+        )
+    }
+    assert "requirement_confirmation" in published
+
+    omitted = {
+        criterion.axis
+        for criterion in ranking_criteria(
+            not_required[0], _requirements().priority, commercial_use_required=False
+        )
+    }
+    assert "requirement_confirmation" not in omitted
+    # Nothing else disappears with it.
+    assert published - omitted == {"requirement_confirmation"}
 
 
 def test_every_priority_publishes_at_least_one_criterion() -> None:
@@ -1458,6 +1580,8 @@ def test_every_priority_publishes_at_least_one_criterion() -> None:
     )
 
     for priority in RecommendationPriority:
-        criteria = ranking_criteria(ranked[0], priority)
+        criteria = ranking_criteria(
+            ranked[0], priority, commercial_use_required=True
+        )
         assert criteria
         assert all(c.axis and c.value for c in criteria)

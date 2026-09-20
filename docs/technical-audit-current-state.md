@@ -729,3 +729,28 @@ GPUs antes de corregirlos produciria evidencia contaminada.
 
 Los dos probes fallan antes y pasan despues, todos los escenarios HFA completos mantienen sus
 resultados, y suite, ruff, mypy y arquitectura permanecen verdes.
+
+## T. Estado posterior: consolidacion 2026-09-20
+
+La seleccion de configuracion ya no conserva automaticamente la primera opcion
+insuficiente cuando otra precision o cuantizacion de la misma escalera tiene un
+placement `OFFLOADING_REQUIRED` conocido. El fallback prioriza, en este orden,
+offload conocido, resultado `UNKNOWN` e insuficiente. La busqueda de fits
+residentes no cambia.
+
+La readiness de experimentos Transformers incluye ahora el requisito real de
+bitsandbytes para planes INT4/INT8. Las variantes alternativas no heredan una
+readiness que puede corresponder a otros flags; se vuelven a evaluar al preparar
+el plan concreto.
+
+Cuando se exige uso comercial, una licencia confirmada se ordena antes que una
+licencia desconocida. La desconocida sigue visible como alternativa y no se
+trata como una incompatibilidad legal confirmada. El score compuesto conserva
+su significado diagnostico y no se modifica para forzar el orden.
+
+La campaña [B001-R8](qwen2.5-tests/b001-r8-2060-context-matrix.md) ejecuto el
+artefacto local Q4_K_M en la RTX 2060 con contextos 512, 2048 y 4096, mas una
+repeticion a 4096. Las cuatro ejecuciones arrancaron. La comparacion numerica sigue metodologicamente
+indisponible porque HFA expresa bloques de transformer y llama.cpp expresa
+unidades `--n-gpu-layers`; los resultados no se han usado para calibrar
+overhead, reserve, margen ni politica de lanzamiento.

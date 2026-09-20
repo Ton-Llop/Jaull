@@ -67,7 +67,7 @@ from jaull.domain.experiments import (
     ExperimentRunResult,
     ExperimentWorkload,
 )
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
@@ -77,6 +77,7 @@ from jaull.domain.runtime import (
     LlamaCppRuntimeCapability,
     PyTorchRuntimeCapability,
     RuntimeBackendSelection,
+    RuntimeBackendSelectionReason,
     RuntimeCapability,
     RuntimeFlag,
     RuntimeFlagSource,
@@ -585,14 +586,26 @@ class AdvisorService:
         persist: bool,
     ) -> BenchmarkRunResult:
         from jaull.benchmarks.errors import BenchmarkUnavailableError
-        from jaull.domain.runtime import PyTorchRuntimeStatus
         from jaull.observability.provenance import capture_git_commit
+        from jaull.runtime.transformers_quantization import requires_bitsandbytes
 
         capability = self.inspect_pytorch_runtime()
-        if capability.runtime_status is not PyTorchRuntimeStatus.AVAILABLE:
+        selection = _selection_for_requested_backend(
+            self.select_runtime_backend(hardware),
+            request.backend,
+        )
+        requires_bnb = any(
+            flag.name == "quantization" and requires_bitsandbytes(flag.value)
+            for flag in request.runtime.flags
+        )
+        readiness = self.evaluate_pytorch_execution_readiness(
+            selection=selection,
+            runtime_capability=capability,
+            requires_bitsandbytes=requires_bnb,
+        )
+        if readiness.status is not ExecutionReadinessStatus.READY:
             raise BenchmarkUnavailableError(
-                capability.message
-                or f"PyTorch runtime is {capability.runtime_status.value}."
+                readiness.message or "Transformers benchmark is not ready to run."
             )
         observation = self._transformers_benchmark_runner().run(request)
         record = BenchmarkRecord.create(
@@ -798,13 +811,13 @@ class AdvisorService:
                 else _runtime_for_variant(variant)
             )
             memory = current.memory_prediction if variant == current.artifact else None
-            # The ranked plan already carries the readiness that was probed for
-            # its runtime; rebuilding the siblings without it left every plan on
-            # this screen reading "Ready when prepared" and the Ready filter
-            # permanently empty. Readiness is per-runtime, so it only carries
-            # over to a sibling on the same one; hardware and backend selection
-            # are runtime-independent.
             same_runtime = runtime.runtime is current.runtime_family
+            capability = current.runtime_capability if same_runtime else None
+            readiness = _readiness_for_plan_variant(
+                runtime=runtime,
+                selection=current.backend_selection,
+                capability=capability,
+            )
             plans.append(
                 build_execution_plan(
                     model_identity=current.model_identity,
@@ -813,12 +826,8 @@ class AdvisorService:
                     memory_prediction=memory,
                     hardware=current.hardware,
                     backend_selection=current.backend_selection,
-                    runtime_capability=(
-                        current.runtime_capability if same_runtime else None
-                    ),
-                    execution_readiness=(
-                        current.execution_readiness if same_runtime else None
-                    ),
+                    runtime_capability=capability,
+                    execution_readiness=readiness,
                 )
             )
         return plans or [current]
@@ -1412,6 +1421,72 @@ class AdvisorService:
             llama_bench_timeout_seconds=llama_bench_timeout_seconds,
             runtime_locator=runtime_locator,
         )
+
+
+def _readiness_for_plan_variant(
+    *,
+    runtime: RuntimeRecommendation,
+    selection: RuntimeBackendSelection | None,
+    capability: RuntimeCapability | None,
+) -> ExecutionReadiness | None:
+    if selection is None or capability is None:
+        return None
+    if runtime.runtime is RuntimeName.TRANSFORMERS and isinstance(
+        capability, PyTorchRuntimeCapability
+    ):
+        from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
+        from jaull.runtime.transformers_quantization import requires_bitsandbytes
+
+        requires_bnb = any(
+            flag.name == "quantization" and requires_bitsandbytes(flag.value)
+            for flag in runtime.flags
+        )
+        return evaluate_pytorch_execution_readiness(
+            selection=selection,
+            runtime_capability=capability,
+            requires_bitsandbytes=requires_bnb,
+        )
+    if runtime.runtime is RuntimeName.LLAMA_CPP and isinstance(
+        capability, LlamaCppRuntimeCapability
+    ):
+        from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
+
+        return evaluate_execution_readiness(
+            selection=selection,
+            runtime_capability=capability,
+        )
+    return None
+
+
+def _selection_for_requested_backend(
+    selection: RuntimeBackendSelection,
+    backend: ComputeBackend,
+) -> RuntimeBackendSelection:
+    if selection.selected_backend is backend:
+        return selection
+    candidate = next(
+        (item for item in selection.alternatives if item.backend is backend),
+        None,
+    )
+    if candidate is None:
+        return selection.model_copy(
+            update={
+                "selected_backend": backend,
+                "selected_accelerator": None,
+                "backend_info": None,
+                "reason": RuntimeBackendSelectionReason.NO_USABLE_ACCELERATOR,
+            }
+        )
+    return RuntimeBackendSelection(
+        selected_backend=backend,
+        selected_accelerator=candidate.accelerator,
+        reason=candidate.reason,
+        backend_info=candidate.backend_info,
+        alternatives=[
+            item for item in selection.alternatives if item.backend is not backend
+        ],
+        notes=selection.notes,
+    )
 
 
 def _runtime_for_variant(variant: ArtifactVariant) -> RuntimeRecommendation:

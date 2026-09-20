@@ -55,7 +55,11 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             _evaluated_to_dict(item) for item in state.evaluated_candidates
         ],
         "recommendations": [
-            _recommendation_to_dict(rec, _priority(state))
+            _recommendation_to_dict(
+                rec,
+                _priority(state),
+                commercial_use_required=_commercial_use_required(state),
+            )
             for rec in state.recommendations
         ],
         "warnings": list(state.warnings),
@@ -169,7 +173,11 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 + (f" — {readiness.message}" if readiness.message else "")
             )
         lines.append("")
-        criteria = _ranking_to_dict(rec, _priority(state))["criteria"]
+        criteria = _ranking_to_dict(
+            rec,
+            _priority(state),
+            commercial_use_required=_commercial_use_required(state),
+        )["criteria"]
         if criteria:
             lines += [
                 f"**Why this position?** Compared in order, for "
@@ -398,6 +406,10 @@ def _priority(state: RecommendationWorkflowState) -> RecommendationPriority:
     return RecommendationPriority.BALANCED
 
 
+def _commercial_use_required(state: RecommendationWorkflowState) -> bool:
+    return bool(state.requirements and state.requirements.commercial_use_required)
+
+
 _PLAN_RANKING_NOTE = (
     "Position comes from `ranking.criteria`, compared in order. `score` is a "
     "weighted composite kept for compatibility and for comparing candidates "
@@ -411,7 +423,10 @@ _COMPOSITE_RANKING_NOTE = (
 
 
 def _ranking_to_dict(
-    rec: ModelRecommendation, priority: RecommendationPriority
+    rec: ModelRecommendation,
+    priority: RecommendationPriority,
+    *,
+    commercial_use_required: bool = False,
 ) -> dict[str, Any]:
     # Without a plan there is no v2 assessment and the composite genuinely
     # ordered the list. Labelling that run "diagnostic" would be the same class
@@ -430,7 +445,11 @@ def _ranking_to_dict(
         "ordered_by": priority.value,
         "criteria": [
             {"axis": criterion.axis, "value": criterion.value}
-            for criterion in ranking_criteria(ranked, priority)
+            for criterion in ranking_criteria(
+                ranked,
+                priority,
+                commercial_use_required=commercial_use_required,
+            )
         ],
         "ranked_by": "plan_criteria",
         "note": _PLAN_RANKING_NOTE,
@@ -438,9 +457,16 @@ def _ranking_to_dict(
 
 
 def _recommendation_to_dict(
-    rec: ModelRecommendation, priority: RecommendationPriority
+    rec: ModelRecommendation,
+    priority: RecommendationPriority,
+    *,
+    commercial_use_required: bool = False,
 ) -> dict[str, Any]:
-    ranking = _ranking_to_dict(rec, priority)
+    ranking = _ranking_to_dict(
+        rec,
+        priority,
+        commercial_use_required=commercial_use_required,
+    )
     payload: dict[str, Any] = {
         "rank": rec.rank,
         "repo_id": rec.repo_id,

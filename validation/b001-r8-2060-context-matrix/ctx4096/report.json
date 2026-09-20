@@ -1,0 +1,313 @@
+{
+  "llama_cpp_version": "version: 10357 (689e227db)",
+  "prediction": {
+    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "quantization": "Q4_K_M",
+    "context_length": 4096,
+    "hardware": {
+      "gpu": "NVIDIA GeForce RTX 2060",
+      "vram_total_bytes": 6442450944,
+      "vram_available_bytes": 4654415872,
+      "ram_total_bytes": 8278130688,
+      "ram_available_bytes": 7373946880
+    },
+    "estimate": {
+      "weights_bytes": 4683074240,
+      "transformer_block_decomposition": {
+        "total_weight_bytes": 4683074240,
+        "estimated_transformer_block_weight_bytes": 4012773975,
+        "estimated_non_block_weight_bytes": 670300265,
+        "estimated_bytes_per_transformer_block": 143313357,
+        "total_transformer_blocks": 28,
+        "method": "config_parameter_decomposition"
+      },
+      "kv_cache_bytes": 234881024,
+      "kv_cache_layers": 28,
+      "kv_cache_formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+      "runtime_overhead_bytes": 1005178336,
+      "device_reserve_bytes": 536870912,
+      "safety_margin_bytes": 646000452,
+      "total_bytes": 7106004964,
+      "status": "offloading_required",
+      "confidence": "low"
+    },
+    "fit": {
+      "mode": "gpu_offload",
+      "memory_topology": "discrete_memory",
+      "placement_method": "transformer_blocks",
+      "gpu_transformer_blocks": 15,
+      "total_transformer_blocks": 28,
+      "offload_diagnostics": {
+        "search_ceiling_transformer_blocks": 22,
+        "selected": {
+          "gpu_transformer_blocks": 15,
+          "gpu_required_bytes": 4493276985,
+          "ram_required_bytes": 2612727979,
+          "available_vram_bytes": 4654415872,
+          "excess_bytes": 0,
+          "headroom_bytes": 161138887,
+          "gpu_weight_bytes": 2820000609,
+          "ram_weight_bytes": 1863073631,
+          "kv_cache_bytes": 234881024,
+          "gpu_kv_cache_bytes": 125829120,
+          "ram_kv_cache_bytes": 109051904,
+          "device_reserve_bytes": 536870912,
+          "gpu_overhead_bytes": 602096617,
+          "gpu_safety_margin_bytes": 408479727,
+          "ram_overhead_bytes": 403081719,
+          "ram_safety_margin_bytes": 237520725,
+          "non_block_placement_bounds": {
+            "gpu_transformer_block_weight_bytes": 2149700344,
+            "ram_transformer_block_weight_bytes": 1863073631,
+            "non_block_weight_bytes": 670300265,
+            "gpu_required_min_bytes": 3605244136,
+            "ram_required_max_bytes": 3500760828,
+            "ram_overhead_max_bytes": 540084044,
+            "ram_safety_margin_max_bytes": 318250984
+          }
+        },
+        "first_rejected_higher": {
+          "gpu_transformer_blocks": 16,
+          "gpu_required_bytes": 4694256060,
+          "ram_required_bytes": 2411748904,
+          "available_vram_bytes": 4654415872,
+          "excess_bytes": 39840188,
+          "headroom_bytes": 0,
+          "gpu_weight_bytes": 2963313965,
+          "ram_weight_bytes": 1719760275,
+          "kv_cache_bytes": 234881024,
+          "gpu_kv_cache_bytes": 134217728,
+          "ram_kv_cache_bytes": 100663296,
+          "device_reserve_bytes": 536870912,
+          "gpu_overhead_bytes": 633102903,
+          "gpu_safety_margin_bytes": 426750552,
+          "ram_overhead_bytes": 372075433,
+          "ram_safety_margin_bytes": 219249900,
+          "non_block_placement_bounds": {
+            "gpu_transformer_block_weight_bytes": 2293013700,
+            "ram_transformer_block_weight_bytes": 1719760275,
+            "non_block_weight_bytes": 670300265,
+            "gpu_required_min_bytes": 3806223211,
+            "ram_required_max_bytes": 3299781753,
+            "ram_overhead_max_bytes": 509077758,
+            "ram_safety_margin_max_bytes": 299980159
+          }
+        }
+      },
+      "gpu_required_bytes": 4493276985,
+      "ram_required_bytes": 2612727979,
+      "gpu_weight_bytes": 2820000609,
+      "ram_weight_bytes": 1863073631,
+      "gpu_overhead_bytes": 602096617,
+      "ram_overhead_bytes": 403081719,
+      "gpu_safety_margin_bytes": 408479727,
+      "ram_safety_margin_bytes": 237520725,
+      "reason": "Model does not fit fully in VRAM, but a valid GPU/RAM weight placement fits without treating RAM and VRAM as one pool.",
+      "warnings": [
+        "Non-block placement is unknown. Both GPU-heavy and host-heavy endpoint budgets fit; neither endpoint is a runtime prediction."
+      ]
+    }
+  },
+  "runs": {
+    "cpu_baseline": {
+      "gpu_layers": 0,
+      "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 0 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+      "exit_code": 0,
+      "seconds": 21.14,
+      "started": true,
+      "oom": false,
+      "offloaded_layers": "0/29",
+      "buffers_mib": {
+        "CPU_Mapped model": 4460.45,
+        "CPU output": 0.58,
+        "CPU kv": 224.0,
+        "CUDA0 compute": 183.44,
+        "CUDA_Host compute": 18.01
+      },
+      "vram_baseline_mib": 1504,
+      "vram_peak_mib": 1763,
+      "vram_delta_mib": 259,
+      "peak_rss_bytes": 5243195392,
+      "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl0.log"
+    },
+    "at_hfa_transformer_block_count": {
+      "gpu_layers": 15,
+      "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 15 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+      "exit_code": 0,
+      "seconds": 5.76,
+      "started": true,
+      "oom": false,
+      "offloaded_layers": "15/29",
+      "buffers_mib": {
+        "CPU_Mapped model": 2198.74,
+        "CUDA0 model": 2314.38,
+        "CUDA_Host output": 0.58,
+        "CPU kv": 112.0,
+        "CUDA0 kv": 112.0,
+        "CUDA0 compute": 183.44,
+        "CUDA_Host compute": 18.01
+      },
+      "vram_baseline_mib": 1343,
+      "vram_peak_mib": 4052,
+      "vram_delta_mib": 2709,
+      "peak_rss_bytes": 4951511040,
+      "log": "/tmp/jaull-2060-consolidation-r1/llama-hfa-block-count-probe.log"
+    },
+    "sweep": [
+      {
+        "gpu_layers": 12,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 12 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 5.96,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "12/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2538.4,
+          "CUDA0 model": 1922.05,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 136.0,
+          "CUDA0 kv": 88.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1342,
+        "vram_peak_mib": 3644,
+        "vram_delta_mib": 2302,
+        "peak_rss_bytes": 4951621632,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl12.log"
+      },
+      {
+        "gpu_layers": 15,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 15 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.88,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "15/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2314.38,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 112.0,
+          "CUDA0 kv": 112.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1351,
+        "vram_peak_mib": 4034,
+        "vram_delta_mib": 2683,
+        "peak_rss_bytes": 4951810048,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl15.log"
+      },
+      {
+        "gpu_layers": 16,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 16 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.78,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "16/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2439.44,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 104.0,
+          "CUDA0 kv": 120.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1325,
+        "vram_peak_mib": 4205,
+        "vram_delta_mib": 2880,
+        "peak_rss_bytes": 4951887872,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl16.log"
+      },
+      {
+        "gpu_layers": 18,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 18 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 4.83,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "18/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2706.7,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 88.0,
+          "CUDA0 kv": 136.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1333,
+        "vram_peak_mib": 4484,
+        "vram_delta_mib": 3151,
+        "peak_rss_bytes": 4951859200,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl18.log"
+      },
+      {
+        "gpu_layers": 29,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 29 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is.",
+        "exit_code": 0,
+        "seconds": 3.84,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "29/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 292.36,
+          "CUDA0 model": 4168.09,
+          "CUDA_Host output": 0.58,
+          "CUDA0 kv": 224.0,
+          "CUDA0 compute": 136.01,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 1359,
+        "vram_peak_mib": 5505,
+        "vram_delta_mib": 4146,
+        "peak_rss_bytes": 4951973888,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-ngl29.log"
+      }
+    ],
+    "kv_offload": [
+      {
+        "gpu_layers": 15,
+        "command": "/home/ton/tools/llama.cpp/build-cuda/bin/llama-cli -m /home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 15 -c 4096 -n 32 --fit off -no-cnv -st -v -p Explain briefly what a local language model is. --no-kv-offload",
+        "exit_code": 0,
+        "seconds": 6.12,
+        "started": true,
+        "oom": false,
+        "offloaded_layers": "15/29",
+        "buffers_mib": {
+          "CPU_Mapped model": 2198.74,
+          "CUDA0 model": 2314.38,
+          "CUDA_Host output": 0.58,
+          "CPU kv": 224.0,
+          "CUDA0 compute": 183.44,
+          "CUDA_Host compute": 18.01
+        },
+        "vram_baseline_mib": 874,
+        "vram_peak_mib": 3487,
+        "vram_delta_mib": 2613,
+        "peak_rss_bytes": 4951834624,
+        "log": "/tmp/jaull-2060-consolidation-r1/llama-nokvoffload.log"
+      }
+    ]
+  },
+  "metrics": {
+    "predicted_vram_mib": 4285.122857093811,
+    "observed_vram_device_delta_mib": 2709,
+    "observed_vram_llama_buffers_mib": 2609.82,
+    "vram_error_pct_vs_device_delta": null,
+    "vram_error_pct_vs_llama_buffers": null,
+    "vram_error_note": "Not available: the run uses llama.cpp --n-gpu-layers units, while HardwareFitResult reports runtime-agnostic transformer blocks. A validated mapping between transformer blocks and runtime offload units is required before this probe can be reported as a prediction error.",
+    "observed_vram_llama_buffers_note": "CUDA0 device buffers only; CPU/CPU_Mapped/CUDA_Host are host memory",
+    "predicted_gpu_transformer_blocks": 15,
+    "real_max_runtime_gpu_layers": 29,
+    "runtime_layer_difference": null,
+    "runtime_layer_difference_note": "Not computed: HardwareFitResult reports transformer blocks, while llama.cpp reports backend-specific --n-gpu-layers units.",
+    "predicted_ram_bytes": 2612727979,
+    "observed_peak_rss_bytes": 4951511040,
+    "cpu_baseline_peak_rss_bytes": 5243195392
+  }
+}

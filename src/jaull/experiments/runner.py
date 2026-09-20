@@ -168,6 +168,7 @@ class ExperimentRunner:
             pytorch_readiness = evaluate_pytorch_execution_readiness(
                 selection=request.backend_selection,
                 runtime_capability=pytorch_capability,
+                requires_bitsandbytes=_runtime_requires_bitsandbytes(request.runtime),
             )
             return pytorch_capability, pytorch_readiness, self.transformers_runner
 
@@ -227,6 +228,15 @@ def _validate_request(request: ExperimentRequest) -> None:
         )
     except PredictionRuntimeMismatchError as exc:
         raise ExperimentConfigurationError(str(exc)) from exc
+
+
+def _runtime_requires_bitsandbytes(runtime: RuntimeRecommendation) -> bool:
+    from jaull.runtime.transformers_quantization import requires_bitsandbytes
+
+    return any(
+        flag.name == "quantization" and requires_bitsandbytes(flag.value)
+        for flag in runtime.flags
+    )
 
 
 __all__ = [

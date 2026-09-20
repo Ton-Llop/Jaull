@@ -115,6 +115,10 @@
             "value": "none"
           },
           {
+            "axis": "requirement_confirmation",
+            "value": "commercial use confirmed"
+          },
+          {
             "axis": "suitability",
             "value": "strong"
           },

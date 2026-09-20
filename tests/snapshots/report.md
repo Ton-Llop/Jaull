@@ -35,14 +35,15 @@ Generated: <redacted>
 
 1. viability: placement confirmed (comfortable)
 2. plan constraints: none
-3. suitability: strong
-4. runnability: strong
-5. capability: adequate
-6. execution fitness: strong
-7. executability: strong
-8. memory headroom: strong
-9. performance evidence: unknown
-10. plan confidence: medium
+3. requirement confirmation: commercial use confirmed
+4. suitability: strong
+5. runnability: strong
+6. capability: adequate
+7. execution fitness: strong
+8. executability: strong
+9. memory headroom: strong
+10. performance evidence: unknown
+11. plan confidence: medium
 
 Diagnostic composite score: 61/100 (memory fit 75%, capability 70%). This is not what ordered the list.
 

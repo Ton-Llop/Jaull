@@ -118,6 +118,42 @@ def test_no_compatible_quantization_reports_the_closest_option() -> None:
     assert choice.configuration is not None
 
 
+@pytest.mark.parametrize("repository", ["gguf", "transformers"])
+def test_exhausted_ladder_prefers_known_offload_over_insufficient(
+    repository: str,
+) -> None:
+    """A viable offload option is more useful than the first rejected rung."""
+    analysis = gguf_analysis() if repository == "gguf" else transformers_analysis()
+    calls = 0
+    base_estimate = size_driven_estimator(vram_budget=24 * GIB)
+
+    def estimate_with_offload(
+        model: ModelAnalysis, config: InferenceConfiguration
+    ) -> MemoryEstimate:
+        nonlocal calls
+        calls += 1
+        result = base_estimate(model, config)
+        status = (
+            CompatibilityStatus.INSUFFICIENT
+            if calls == 1
+            else CompatibilityStatus.OFFLOADING_REQUIRED
+        )
+        return result.model_copy(
+            update={"assessment": result.assessment.model_copy(update={"status": status})}
+        )
+
+    choice = select_configuration(
+        analysis,
+        _req(RecommendationPriority.QUALITY),  # type: ignore[arg-type]
+        estimate_with_offload,
+    )
+
+    assert choice.configuration is not None
+    assert choice.estimate is not None
+    assert choice.estimate.assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED
+    assert "offloading" in choice.reason.lower()
+
+
 def test_aggressive_quantization_is_flagged_when_it_is_the_only_fit() -> None:
     choice = select_configuration(
         gguf_analysis(quantizations=("Q2_K", "Q6_K"), base_bytes=2 * GIB),

@@ -73,6 +73,12 @@ def quantization_mode(precision: Any) -> str | None:
     return QUANTIZATION_MODES.get(value)
 
 
+def requires_bitsandbytes(mode_or_precision: Any) -> bool:
+    """Whether a runtime mode requires the bitsandbytes loader path."""
+    value = getattr(mode_or_precision, "value", mode_or_precision)
+    return value in set(QUANTIZATION_MODES) or value in set(QUANTIZATION_MODES.values())
+
+
 def build_quantization_config(mode: str | None) -> Any | None:
     """Return a ``BitsAndBytesConfig`` for ``mode``, or ``None`` when unset.
 
@@ -110,4 +116,5 @@ __all__ = [
     "QUANTIZATION_MODES",
     "build_quantization_config",
     "quantization_mode",
+    "requires_bitsandbytes",
 ]

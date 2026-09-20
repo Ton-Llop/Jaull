@@ -107,7 +107,14 @@ def rank_execution_plans(
                 context=ctx,
             )
             ranked.append(RankedPlan(evaluated=item, plan=plan, assessment=assessment))
-    ordered = sorted(ranked, key=lambda item: _ranking_key(item, requirements.priority))
+    ordered = sorted(
+        ranked,
+        key=lambda item: _ranking_key(
+            item,
+            requirements.priority,
+            commercial_use_required=requirements.commercial_use_required is True,
+        ),
+    )
     ordered = _prioritize_confirmed_memory_fit(ordered)
     if limit is None:
         return ordered
@@ -471,8 +478,10 @@ def _transformers_readiness(
 
 
 def _requires_bitsandbytes(runtime: RuntimeRecommendation) -> bool:
+    from jaull.runtime.transformers_quantization import requires_bitsandbytes
+
     return any(
-        flag.name == "quantization" and flag.value in {"4bit", "8bit"}
+        flag.name == "quantization" and requires_bitsandbytes(flag.value)
         for flag in runtime.flags
     )
 
@@ -502,18 +511,19 @@ def _hard_constraints(
                 evidence_key="memory.estimate",
             )
         )
-    if (
-        requirements.commercial_use_required
-        and classify_license(evaluated.candidate.license)
-        is LicenseCategory.COMMERCIAL_RESTRICTED
-    ):
-        constraints.append(
-            HardConstraint(
-                code=HardConstraintCode.LICENSE_INCOMPATIBLE,
-                message=f"License {evaluated.candidate.license!r} restricts commercial use.",
-                evidence_key="license",
+    if requirements.commercial_use_required:
+        license_category = classify_license(evaluated.candidate.license)
+        if license_category is LicenseCategory.COMMERCIAL_RESTRICTED:
+            constraints.append(
+                HardConstraint(
+                    code=HardConstraintCode.LICENSE_INCOMPATIBLE,
+                    message=(
+                        f"License {evaluated.candidate.license!r} restricts "
+                        "commercial use."
+                    ),
+                    evidence_key="license",
+                )
             )
-        )
     if _declared_language_mismatch(evaluated, requirements):
         constraints.append(
             HardConstraint(
@@ -951,7 +961,12 @@ _CONFIDENCE_RANK = {
 }
 
 
-def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[object, ...]:
+def _ranking_key(
+    item: RankedPlan,
+    priority: RecommendationPriority,
+    *,
+    commercial_use_required: bool = False,
+) -> tuple[object, ...]:
     assessment = item.assessment
     if priority is RecommendationPriority.QUALITY:
         priority_axes: tuple[int | float, ...] = (
@@ -984,6 +999,11 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
         )
     return (
         1 if assessment.rejected else 0,
+        (
+            _requirement_confirmation_rank(item)
+            if commercial_use_required
+            else 0
+        ),
         *priority_axes,
         _LEVEL_RANK[assessment.performance_evidence],
         _CONFIDENCE_RANK[assessment.confidence],
@@ -991,6 +1011,28 @@ def _ranking_key(item: RankedPlan, priority: RecommendationPriority) -> tuple[ob
         item.plan.artifact.quantization or item.plan.artifact.precision or "",
         item.plan.runtime.runtime.value,
     )
+
+
+def _requirement_confirmation_rank(item: RankedPlan) -> int:
+    """Prefer confirmed commercial-use evidence when it is required.
+
+    Unknown license terms remain visible as alternatives and retain their
+    diagnostic penalty; this key only makes the uncertainty explicit in the
+    user-facing order.
+    """
+    if item.assessment.license_fit is AssessmentLevel.STRONG:
+        return 0
+    if item.assessment.license_fit is AssessmentLevel.UNKNOWN:
+        return 1
+    return 2
+
+
+def _requirement_confirmation_label(item: RankedPlan) -> str:
+    if item.assessment.license_fit is AssessmentLevel.STRONG:
+        return "commercial use confirmed"
+    if item.assessment.license_fit is AssessmentLevel.UNKNOWN:
+        return "commercial use unconfirmed"
+    return "commercial use incompatible"
 
 
 class RankingCriterion(NamedTuple):
@@ -1002,7 +1044,10 @@ class RankingCriterion(NamedTuple):
 
 
 def ranking_criteria(
-    item: RankedPlan, priority: RecommendationPriority
+    item: RankedPlan,
+    priority: RecommendationPriority,
+    *,
+    commercial_use_required: bool = False,
 ) -> tuple[RankingCriterion, ...]:
     """The ordered criteria that decided this plan's position.
 
@@ -1061,6 +1106,14 @@ def ranking_criteria(
             1 if assessment.rejected else 0,
         ),
     )
+    if commercial_use_required:
+        leading += (
+            (
+                "requirement_confirmation",
+                _requirement_confirmation_label(item),
+                _requirement_confirmation_rank(item),
+            ),
+        )
     trailing: tuple[tuple[str, str, int | float], ...] = (
         (
             "performance_evidence",
