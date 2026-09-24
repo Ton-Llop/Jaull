@@ -41,6 +41,7 @@ from jaull.presentation.plan_labels import (
     is_ready_plan,
     model_display_name,
     readiness_label,
+    runtime_block_reason,
     selected_plan_label,
 )
 from jaull.recommendation.models import ModelRecommendation
@@ -189,6 +190,7 @@ class ExecutionPathsScreen(Screen[None]):
                 yield ActionButton("Validate", id="paths-validate", disabled=True)
                 yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
                 yield ActionButton("Back", id="paths-back")
+            yield Static("", id="paths-action-reason", classes="warning-line")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -241,8 +243,10 @@ class ExecutionPathsScreen(Screen[None]):
         # settle the actions first: otherwise the screen looks ready while
         # `#paths-run` is still disabled, and Textual swallows the press.
         selected = self._selected_plan()
+        reason = self._action_block_reason(selected)
         self._set_actions(
-            enabled=selected is not None and self._plan_matches_filter(selected)
+            enabled=reason is None,
+            reason=reason,
         )
         await self._render_plans()
 
@@ -423,7 +427,10 @@ class ExecutionPathsScreen(Screen[None]):
             title.display = False
             meta.display = False
             warnings.display = False
-            self._set_actions(enabled=False)
+            self._set_actions(
+                enabled=False,
+                reason="No execution path is selected.",
+            )
             return
 
         evidence = self._evidence.for_plan(selected)
@@ -439,7 +446,10 @@ class ExecutionPathsScreen(Screen[None]):
         warnings.update(text)
         warnings.display = bool(text)
 
-        self._set_actions(enabled=self._plan_matches_filter(selected))
+        self._set_actions(
+            enabled=self._action_block_reason(selected) is None,
+            reason=self._action_block_reason(selected),
+        )
         self._label_actions(evidence)
 
     def _apply_filter_chips(self) -> None:
@@ -447,9 +457,20 @@ class ExecutionPathsScreen(Screen[None]):
             chip = self.query_one(f"#paths-filter-{key}", Button)
             chip.set_class(key == self._path_filter, "-active")
 
-    def _set_actions(self, *, enabled: bool) -> None:
+    def _set_actions(self, *, enabled: bool, reason: str | None = None) -> None:
         for button_id in ("#paths-run", "#paths-validate", "#paths-benchmark"):
             self.query_one(button_id, Button).disabled = not enabled
+            self.query_one(button_id, Button).tooltip = reason
+        reason_widget = self.query_one("#paths-action-reason", Static)
+        reason_widget.update(f"Actions unavailable: {reason}" if reason else "")
+        reason_widget.display = reason is not None
+
+    def _action_block_reason(self, plan: ExecutionPlan | None) -> str | None:
+        if plan is None:
+            return "No execution path is selected."
+        if not self._plan_matches_filter(plan):
+            return "The selected execution path is hidden by the current filter."
+        return runtime_block_reason(plan)
 
     def _label_actions(self, evidence: PlanEvidence) -> None:
         """A tick on an action that already has evidence behind it.

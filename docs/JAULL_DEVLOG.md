@@ -122,8 +122,44 @@ Ho donava per pendent i resulta que no és cosa meva: amb la GPU en mode WDDM, q
 
 Estimava els bytes dels embeddings i del cap de sortida projectant el config, que no prova res sobre l'artefacte real; ara llegeixo el tensor table. La comprovació que més m'agrada: els descriptors reprodueixen els buffers que llama.cpp va registrar fa un mes amb 0,01 MiB d'error.
 
+## 16/09 — El tier sempre deia el mateix
+
+Miro una captura de resultats a la 4060 i totes les recomanacions porten «BEST-EFFORT SUGGESTION». Resulta que de quatre capçaleres només n'hi havia una d'assolible: qualsevol confiança LOW hi anava directa, i com que l'overhead és sempre una heurística assumida, tota estimació és LOW. Ara LOW limita a RECOMMENDED, que és el que vol dir de debò: hi ha una suposició documentada a dins, no que no sàpiga on va el model.
+
+## 16/09 — Capability mesurava popularitat
+
+A la mateixa captura hi ha tres models de menys de 1.5B per davant d'un 4B. El culpable: el 55 % de `capability_score` eren metadata i descàrregues, que ja tenien pes propi al ranking. A Qwen3-4B li falta la línia `language:` al model card i això li costava més (-0,123) del que li donaven 3400 milions de paràmetres de més (+0,106). Trec els dos termes duplicats i el 4B passa del cinquè lloc al segon.
+
+## 16/09 — Un test que miri el Top 5 sencer
+
+El bug anterior va passar per davant de 1600 tests perquè cap comparava més de dos candidats a la vegada. Cada regla era correcta per parelles; el que estava malament era el resultat conjunt. Afegeixo un test amb sis candidats que fixa l'ordre, i el comprovo restaurant la fórmula vella per veure que falla de debò.
+
+## 17/09 — int4 s'estimava d'una manera i s'executava d'una altra
+
+El pitjor dels trobats. Per int4 i int8 Jaull emetia `torch_dtype=torch.int8`, que no quantitza res, i els dos workers el passaven al carregador tal qual: carregaven pesos sense quantitzar i els reportaven com si fossin la configuració predita. Un experiment hauria comparat una predicció de 0,5 bytes per paràmetre contra una execució que no ho era. Ara la precisió viatja en un sol flag i el worker construeix el `BitsAndBytesConfig`; sense `bitsandbytes` es nega amb un motiu explícit en comptes de degradar en silenci. Cap mesura anterior estava contaminada: tot el que hi ha mesurat és llama.cpp.
+
+## 17/09 — El report es contradeia a si mateix
+
+El mateix candidat sortia dues vegades al mateix fitxer amb penalitzacions diferents, i el número que s'imprimia al costat del rank no era el que ordenava — el model amb més puntuació sortia quart. Ara es publiquen els eixos que decideixen de veritat, i el compost queda etiquetat com a diagnòstic. De passada arreglo tres frases que deien coses falses, com culpar el model card de la confiança baixa quan la causa és l'overhead heurístic.
+
+## 17/09 — El contracte d'observació no s'arribava a disparar
+
+Torno a executar el B001 per veure el primer error per component i em surt `runtime_allocation: None`. El runner demanava el log de llama.cpp només si un flag ho deia, i ningú el posa: sense ell aquest build no escriu ni una línia a stderr. Tot el contracte era inabastable des del camí que executa models, i cap test ho veia perquè tots donaven al parser un log ja gravat. Corregit, i a la segona: 4124,91 MiB de buffers reals a dispositiu. La comparació encara no dona número, però ara per la raó bona.
+
+## 20/09 — Matriu de contextos a la 2060
+
+Executo el mateix model a 512, 2048 i 4096 de context per veure si l'estimador es comporta de manera coherent quan creix el KV. Ho fa: com més context, menys blocs a GPU. Les quatre execucions arrenquen i els percentatges d'error surten buits amb una nota explicant per què no es calculen, que és el que toca.
+
+## 24/09 — Quant costa ser prudent
+
+La matriu anterior mesurava que tot arrencava però no a quina velocitat, i llegida així semblava que Jaull regalava 3–4x de rendiment. No és cert: el recompte de blocs de l'HFA no és el que Jaull llança. Mesuro el nivell que emet la política de debò i el cost real és **1,4x–2,1x**. El que compra a canvi és marge — amb tot a GPU la targeta es queda amb 196 MiB lliures de 6144, per sota del que ja hi ha ocupat de base. No toco cap constant: tres mesures d'una sola repetició en una màquina no són base per moure un marge de seguretat.
+
 ---
 
 ## Ara mateix
 
-La política ja és correcta i el que queda és una constant: falten 27 MB per pujar una unitat més, amb 768 MiB retinguts per prudència. Per tocar-ho necessito mesures de més d'una màquina, i el baseline 2060 contra 4060 haurà d'anar de rendiment i col·locació, perquè cap de les dues em donarà VRAM per procés.
+La política de llançament ja no és el problema: mesurada, costa 1,4x–2,1x i el que compra és marge, i moure'l demanaria una campanya de calibratge amb repeticions i més d'una màquina.
+
+El que bloqueja de debò és la traducció entre els blocs de transformer que compta l'HFA i les unitats de `--n-gpu-layers` que fa servir llama.cpp. Sense això la comparació per component no es pot publicar, encara que ja tingui les dues meitats: la predicció i, des del 17/09, la mesura.
+
+I una cosa pendent que és meva: la fontaneria del contracte d'observació està provada i no l'ha fet servir cap campanya. Les mesures del 20 i el 24 es munten els seus propis JSON en comptes de passar per `ExperimentRequest`, així que encara no hi ha ni un sol record amb la mesura a dins. Convertir això en evidència és el següent pas.

@@ -112,23 +112,32 @@ class _RecommendationRow(Vertical):
         if rec.reasons:
             yield Static(rec.reasons[0], classes="rec-reason -expanded")
         with Horizontal(classes="rec-actions -expanded"):
-            yield Button(
+            action_reason = _runtime_action_reason(rec)
+            run = Button(
                 "Run",
                 id=f"res-run-{self._index}",
                 classes="-primary -compact",
-                disabled=not _can_run(rec),
+                disabled=action_reason is not None,
             )
-            yield ActionButton(
+            validate = ActionButton(
                 "Validate",
                 id=f"res-validate-{self._index}",
-                disabled=not _can_validate(rec),
+                disabled=action_reason is not None,
             )
-            yield ActionButton(
+            benchmark = ActionButton(
                 "Benchmark",
                 id=f"res-benchmark-{self._index}",
-                disabled=not _can_benchmark(rec),
+                disabled=action_reason is not None,
             )
+            for button in (run, validate, benchmark):
+                button.tooltip = action_reason
+                yield button
             yield ActionButton("Paths", id=f"res-paths-{self._index}")
+        yield Static(
+            f"Actions unavailable: {action_reason}" if action_reason else "",
+            id=f"rec-actions-reason-{self._index}",
+            classes="warning-line rec-actions-reason -expanded",
+        )
 
     def on_mount(self) -> None:
         self._apply()
@@ -150,6 +159,8 @@ class _RecommendationRow(Vertical):
             widget.display = self._selected
         evidence = self.query_one(f"#rec-evidence-{self._index}", Static)
         evidence.display = self._selected and bool(self._evidence_summary)
+        reason = self.query_one(f"#rec-actions-reason-{self._index}", Static)
+        reason.display = self._selected and _runtime_action_reason(self._rec) is not None
 
     def on_click(self) -> None:
         self.post_message(self.Chosen(self._index))
@@ -1167,47 +1178,37 @@ def _status_label(rec: ModelRecommendation) -> str:
     return rec.status.value.replace("_", " ").capitalize()
 
 
-def _can_validate(rec: ModelRecommendation) -> bool:
+def _runtime_action_reason(rec: ModelRecommendation) -> str | None:
+    estimate = rec.evaluated.memory_estimate
+    if estimate is None:
+        return "No memory estimate is available for this recommendation."
+    runtime = estimate.runtime_recommendation
+    if runtime is None:
+        return "No executable runtime recommendation is available."
     from jaull.domain.runtime import RuntimeName
 
-    estimate = rec.evaluated.memory_estimate
-    if estimate is None or estimate.runtime_recommendation is None:
-        return False
-    return estimate.runtime_recommendation.runtime in {
+    if runtime.runtime not in {
         RuntimeName.LLAMA_CPP,
         RuntimeName.TRANSFORMERS,
-    } and _runtime_action_allowed(rec)
+    }:
+        return f"Runtime '{runtime.runtime.value}' is not executable from this screen."
+    if rec.plan is not None:
+        from jaull.presentation.plan_labels import runtime_block_reason
+
+        return runtime_block_reason(rec.plan)
+    return None
+
+
+def _can_validate(rec: ModelRecommendation) -> bool:
+    return _runtime_action_reason(rec) is None
 
 
 def _can_benchmark(rec: ModelRecommendation) -> bool:
-    from jaull.domain.runtime import RuntimeName
-
-    estimate = rec.evaluated.memory_estimate
-    if estimate is None or estimate.runtime_recommendation is None:
-        return False
-    return estimate.runtime_recommendation.runtime in {
-        RuntimeName.LLAMA_CPP,
-        RuntimeName.TRANSFORMERS,
-    } and _runtime_action_allowed(rec)
+    return _runtime_action_reason(rec) is None
 
 
 def _can_run(rec: ModelRecommendation) -> bool:
-    from jaull.domain.runtime import RuntimeName
-
-    estimate = rec.evaluated.memory_estimate
-    if estimate is None or estimate.runtime_recommendation is None:
-        return False
-    return estimate.runtime_recommendation.runtime in {
-        RuntimeName.LLAMA_CPP,
-        RuntimeName.TRANSFORMERS,
-    } and _runtime_action_allowed(rec)
-
-
-def _runtime_action_allowed(rec: ModelRecommendation) -> bool:
-    """Disable conclusive preflight failures, but allow unknown probes to try."""
-    from jaull.presentation.plan_labels import runtime_block_reason
-
-    return rec.plan is None or runtime_block_reason(rec.plan) is None
+    return _runtime_action_reason(rec) is None
 
 
 # Green comfortable, amber tight, red insufficient — the same reading the rest

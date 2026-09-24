@@ -140,6 +140,7 @@ class AdvisorService:
     case_store: CaseStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
+    transformers_timeout_seconds: float = field(default=900.0)
     python_executable: str | Path | None = field(default=None)
     pytorch_probe_timeout_seconds: float = field(default=10.0)
     llama_bench_path: str | Path | None = field(default=None)
@@ -1132,7 +1133,7 @@ class AdvisorService:
         fresh = TransformersRunner(
             backend=self._host_execution_backend(),
             python_executable=installation.python_executable,
-            timeout_seconds=self.llama_cli_timeout_seconds,
+            timeout_seconds=self.transformers_timeout_seconds,
         )
         object.__setattr__(self, "transformers_runner", fresh)
         return fresh
@@ -1331,6 +1332,7 @@ class AdvisorService:
         *,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        transformers_timeout_seconds: float = 900.0,
         python_executable: str | Path | None = None,
         pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
@@ -1351,6 +1353,7 @@ class AdvisorService:
             artifacts=artifacts,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            transformers_timeout_seconds=transformers_timeout_seconds,
             python_executable=python_executable,
             pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,
@@ -1379,6 +1382,7 @@ class AdvisorService:
         case_store: CaseStore | None = None,
         llama_cli_path: str | Path | None = None,
         llama_cli_timeout_seconds: float = 300.0,
+        transformers_timeout_seconds: float = 900.0,
         python_executable: str | Path | None = None,
         pytorch_probe_timeout_seconds: float = 10.0,
         llama_bench_path: str | Path | None = None,
@@ -1415,6 +1419,7 @@ class AdvisorService:
             case_store=case_store,
             llama_cli_path=llama_cli_path,
             llama_cli_timeout_seconds=llama_cli_timeout_seconds,
+            transformers_timeout_seconds=transformers_timeout_seconds,
             python_executable=python_executable,
             pytorch_probe_timeout_seconds=pytorch_probe_timeout_seconds,
             llama_bench_path=llama_bench_path,

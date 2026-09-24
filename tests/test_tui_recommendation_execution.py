@@ -899,6 +899,49 @@ def test_results_disable_execution_actions_for_a_not_ready_plan() -> None:
             assert screen.query_one("#res-run-0", Button).disabled is True
             assert screen.query_one("#res-validate-0", Button).disabled is True
             assert screen.query_one("#res-benchmark-0", Button).disabled is True
+            assert "llama.cpp is not installed" in _visible_text(screen)
+
+    _run(scenario())
+
+
+def test_execution_paths_show_why_actions_are_disabled() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation()
+        plan = execution_plan_for_recommendation(recommendation)
+        blocked_plan = plan.model_copy(
+            update={
+                "execution_readiness": ExecutionReadiness(
+                    status=ExecutionReadinessStatus.NOT_READY,
+                    reason=ExecutionReadinessReason.RUNTIME_MISSING,
+                    selection=_backend_selection(ComputeBackend.CPU),
+                    runtime_capability=_runtime_capability(ComputeBackend.CPU),
+                    message="llama.cpp is not installed",
+                )
+            }
+        )
+        advisor = _FakeAdvisor(execution_plans=[blocked_plan])
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+            results.query_one("#res-paths-0", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
+                and bool(pilot.app.screen.query("#paths-action-reason"))
+                and "llama.cpp is not installed" in _visible_text(pilot.app.screen),
+            )
+
+            paths = pilot.app.screen
+            assert isinstance(paths, ExecutionPathsScreen)
+            assert paths.query_one("#paths-run", Button).disabled is True
+            assert paths.query_one("#paths-validate", Button).disabled is True
+            assert paths.query_one("#paths-benchmark", Button).disabled is True
 
     _run(scenario())
 

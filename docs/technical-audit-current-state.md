@@ -3,15 +3,18 @@
 Auditoria original: 2026-09-03, branch `execution-plan`, commit
 `0910967e0768548b5fd84c83427a1754daf5816c`.
 
-**Revisiones: R (2026-09-16, commit `5bf954b`) y S (2026-09-17, commit `059dac3`).**
+**Revisiones: R (2026-09-16, `5bf954b`), S (2026-09-17, `059dac3`), T (2026-09-20) y U (2026-09-24, working tree sobre `1c341c4`).**
 
-El cuerpo del documento (secciones A-H) se conserva tal como se escribio el 03/09: es un
-registro fechado, no un documento vivo. Las secciones R y S de mas abajo dicen que ha
-cambiado desde entonces, cada una en su fecha. Donde un hallazgo esta cerrado, lleva una
-marca **CERRADO** fechada en su sitio, con la evidencia. Lo que no lleva marca sigue abierto.
+El cuerpo original (secciones A-L) se conserva tal como se escribio el 03/09: es un
+registro fechado, no un documento vivo. Sus cifras, prioridades y tareas pendientes
+no describen por si solas el estado actual. Las revisiones R, S, T y U anteriores
+en este archivo documentan los cambios posteriores; para saber si un hallazgo sigue
+abierto hay que leer la revision mas reciente, aunque la seccion original no lleve
+una marca **CERRADO**.
 
-Esta auditoria describe el estado real del repositorio en el commit indicado. No presupone
-que cambios existentes en otras branches formen parte de este estado.
+La auditoria original describe el commit `0910967`; cada revision tiene su propia
+fecha y base. U se preparo sobre cambios del working tree posteriores a `1c341c4`:
+sus medidas R9 y tests no forman parte de ese commit base.
 
 ---
 
@@ -330,6 +333,154 @@ error del modelo de memoria. **Ningun numero de esta ejecucion debe usarse para 
 
 El estado paso de *"no hay medicion"* a *"hay medicion y no hay prediccion comparable"*. Lo
 que bloquea el resto es el mapeo bloque <-> unidad de lanzamiento, no el lado de la medida.
+
+---
+
+## T. Estado posterior: consolidacion 2026-09-20
+
+La seleccion de configuracion ya no conserva automaticamente la primera opcion
+insuficiente cuando otra precision o cuantizacion de la misma escalera tiene un
+placement `OFFLOADING_REQUIRED` conocido. El fallback prioriza, en este orden,
+offload conocido, resultado `UNKNOWN` e insuficiente. La busqueda de fits
+residentes no cambia.
+
+La readiness de experimentos Transformers incluye ahora el requisito real de
+bitsandbytes para planes INT4/INT8. Las variantes alternativas no heredan una
+readiness que puede corresponder a otros flags; se vuelven a evaluar al preparar
+el plan concreto.
+
+Cuando se exige uso comercial, una licencia confirmada se ordena antes que una
+licencia desconocida. La desconocida sigue visible como alternativa y no se
+trata como una incompatibilidad legal confirmada. El score compuesto conserva
+su significado diagnostico y no se modifica para forzar el orden.
+
+La campaña [B001-R8](qwen2.5-tests/b001-r8-2060-context-matrix.md) ejecuto el
+artefacto local Q4_K_M en la RTX 2060 con contextos 512, 2048 y 4096, mas una
+repeticion a 4096. Las cuatro ejecuciones arrancaron. La comparacion numerica sigue metodologicamente
+indisponible porque HFA expresa bloques de transformer y llama.cpp expresa
+unidades `--n-gpu-layers`; los resultados no se han usado para calibrar
+overhead, reserve, margen ni politica de lanzamiento.
+
+---
+
+## U. Revision del 2026-09-24
+
+### U.1 Gates
+
+| Gate | 17/09 | 24/09 |
+|---|---|---|
+| ruff | clean | clean |
+| mypy | clean, 245 | clean, 245 |
+| pytest | 1674 | **1705 passed** |
+| cobertura | 85 % | **86 %** (17 544 stmts, 2 416 sin cubrir) |
+
+### U.2 Lo que ha empeorado
+
+Los ficheros que E.4 senalo por tamano han seguido creciendo, en la direccion
+contraria a la recomendada:
+
+| Fichero | 03/09 | 16/09 | 24/09 |
+|---|---:|---:|---:|
+| `advisor/service.py` | 1305 | 1483 | **1570** |
+| `recommendation/engine_v2.py` | — | 1084 | **1356** |
+| `tui/screens/recommendation_results.py` | — | 1262 | **1290** |
+
+No bloquea nada y no es lo que se evalua en el TFG, pero conviene no seguir
+anadiendo ahi sin motivo.
+
+Sin cambios: **E.5** (`prediction_input` opcional en cinco sitios), la rama
+muerta de `_sum_components`, la politica de memoria confirmada duplicada entre
+`engine_v2` y `ranker`, y `BEST_MATCH` inalcanzable porque `overhead.py:39`
+emite `LOW` incondicionalmente.
+
+Tambien sigue abierto el **check blando de idioma que degrada duro**:
+`requirements_gate.py:118` marca `language:` como `required=False` con
+penalizacion 0,15, que aun asi baja `hard_penalty` de 1,0 y fuerza
+`BEST_EFFORT` por la regla 1 de `choose_tier`. El eje `requirement_confirmation`
+resolvio la mitad de licencias de este problema; esta mitad no.
+
+### U.3 B001-R8 media una cosa que no contaba
+
+La matriz de contextos registro que todos los niveles de offload arrancaron,
+pero no registro a que velocidad. Leida asi, invitaba a una conclusion falsa:
+HFA predice 15–20 bloques mientras llama.cpp arranca con 29/29, asi que el hueco
+parecia una perdida de rendimiento de 3–4x.
+
+**No lo es**, porque el numero de bloques de HFA no es lo que Jaull lanza. La
+politica de lanzamiento emite su propio valor en sus propias unidades, y ese
+valor no se habia medido nunca.
+
+Medido en [B001-R9](qwen2.5-tests/b001-r9-launch-policy-throughput.md), mismo
+artefacto, maquina, build e invocacion que R8, con el nivel tomado de la ruta de
+produccion (`estimate_model` -> `runtime_recommendation`), no elegido a mano:
+
+| Contexto | HFA | Politica | t/s politica | t/s full | Ratio |
+|---:|---:|---:|---:|---:|---:|
+| 512 | 20/28 | `ngl 26` | 27,1 | 39,9 | **1,47x** |
+| 2048 | 20/28 | `ngl 26` | 27,9 | 39,4 | **1,41x** |
+| 4096 | 19/28 | `ngl 25` | 24,8 | 52,0 | **2,10x** |
+
+En estas ejecuciones, el cociente entre full offload y la politica fue
+**1,4x–2,1x**, no el 3–4x que se inferia al confundir bloques HFA con unidades
+de lanzamiento. Solo hay una ejecucion por celda, asi que no es una estimacion
+estable del coste de la politica. A offload completo quedaron 196–366 MiB libres
+de 6144; esa cifra ya descuenta la ocupacion basal del momento. Una mayor carga
+del escritorio podria agotar ese margen, pero comparar directamente los MiB
+libres con la ocupacion basal de R8 (930–1359 MiB) no demuestra que vaya a ocurrir.
+
+**Lo que no queda establecido** es si 512 MiB de reserve mas 256 de headroom es
+la cantidad correcta. Nunca se ha calibrado; es una suposicion documentada. R9
+tampoco la calibra, y a proposito: tres medidas de una sola repeticion, en una
+maquina, un modelo y un build no son base para mover una constante de seguridad.
+El propio dato lo recuerda — 52,0 t/s a contexto 4096 frente a 39,4 y 39,9 a
+contextos menores es ruido, no tendencia.
+
+R8 queda enlazado a R9 para que no se lea suelto.
+
+### U.4 Cobertura del benchmark worker
+
+`transformers_benchmark_worker.py` estaba a **0 %** (164/164 sin cubrir) y
+mientras tanto habia recibido la rama de cuantizacion: `build_quantization_config`,
+la decision `place_at_load` y `_load_device`. El test del runner solo comprobaba
+que `--quantization` llegaba a la linea de comandos; lo que recibia el *cargador*
+estaba sin verificar, y esa es justo la mitad donde un plan cuantizado se
+convierte en silencio en una medicion sin cuantizar.
+
+`tests/test_transformers_benchmark_worker.py` lo cubre con torch y transformers
+falseados (el worker corre en el entorno PyTorch del usuario, asi que el test no
+puede necesitar uno): colocacion al cargar frente a `.to()` posterior, `auto`
+intacto, el alias HIP->CUDA, la negativa sin bitsandbytes **antes** de cargar
+nada, el payload estructurado del fallo, y la cadena `methodology` sobre la que
+`local_evidence` empareja records.
+
+Resultado: **0 % -> 92 %**, y el total del repositorio 85 % -> 86 %.
+
+Queda a 61 % `transformers_worker.py`, que es el camino de `run`.
+
+### U.5 El observation contract sigue con cero records
+
+B001-R7 arreglo el runner para que pida el log siempre, y la fontaneria esta
+probada. Pero **ningun fichero de `validation/` lleva todavia un
+`runtime_allocation` dentro de un `ExperimentRecord`**: los bundles son
+anteriores al contrato, y R8/R9 no pasan por `ExperimentRequest` — generan
+`report.json` y `prediction.json` propios.
+
+Lo que R8 hace bien y conviene no perder: sus `vram_error_pct_*` salen `None`
+con una nota en el propio record explicando por que no se calculan. El dato dice
+que no sabe en lugar de inventar un porcentaje.
+
+### U.6 Lo que haria ahora
+
+1. Una campana que pase por `ExperimentRequest` para que exista al menos un
+   record con `runtime_allocation`. Es lo unico que convierte la fontaneria en
+   evidencia.
+2. El mapeo bloque <-> unidad de lanzamiento, que es lo que bloquea el error por
+   componente. B001-R6 ya lo deriva para `689e227db` + `qwen2` denso dentro de la
+   politica; la capa de comparacion no lo consume.
+3. La decision de producto pendiente sobre el idioma blando que degrada duro.
+
+Lo que **no** haria todavia: calibrar reserve y headroom. R9 mide lo que cuestan
+pero no da base para moverlos.
 
 ## A. Estado general
 
@@ -729,28 +880,3 @@ GPUs antes de corregirlos produciria evidencia contaminada.
 
 Los dos probes fallan antes y pasan despues, todos los escenarios HFA completos mantienen sus
 resultados, y suite, ruff, mypy y arquitectura permanecen verdes.
-
-## T. Estado posterior: consolidacion 2026-09-20
-
-La seleccion de configuracion ya no conserva automaticamente la primera opcion
-insuficiente cuando otra precision o cuantizacion de la misma escalera tiene un
-placement `OFFLOADING_REQUIRED` conocido. El fallback prioriza, en este orden,
-offload conocido, resultado `UNKNOWN` e insuficiente. La busqueda de fits
-residentes no cambia.
-
-La readiness de experimentos Transformers incluye ahora el requisito real de
-bitsandbytes para planes INT4/INT8. Las variantes alternativas no heredan una
-readiness que puede corresponder a otros flags; se vuelven a evaluar al preparar
-el plan concreto.
-
-Cuando se exige uso comercial, una licencia confirmada se ordena antes que una
-licencia desconocida. La desconocida sigue visible como alternativa y no se
-trata como una incompatibilidad legal confirmada. El score compuesto conserva
-su significado diagnostico y no se modifica para forzar el orden.
-
-La campaña [B001-R8](qwen2.5-tests/b001-r8-2060-context-matrix.md) ejecuto el
-artefacto local Q4_K_M en la RTX 2060 con contextos 512, 2048 y 4096, mas una
-repeticion a 4096. Las cuatro ejecuciones arrancaron. La comparacion numerica sigue metodologicamente
-indisponible porque HFA expresa bloques de transformer y llama.cpp expresa
-unidades `--n-gpu-layers`; los resultados no se han usado para calibrar
-overhead, reserve, margen ni politica de lanzamiento.

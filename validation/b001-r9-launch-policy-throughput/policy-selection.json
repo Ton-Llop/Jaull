@@ -1,0 +1,23 @@
+{
+  "512": {
+    "hfa_blocks": 20,
+    "total_blocks": 28,
+    "policy_ngl": "26",
+    "status": "offloading_required",
+    "available_vram_mib": 4601
+  },
+  "2048": {
+    "hfa_blocks": 20,
+    "total_blocks": 28,
+    "policy_ngl": "26",
+    "status": "offloading_required",
+    "available_vram_mib": 4601
+  },
+  "4096": {
+    "hfa_blocks": 19,
+    "total_blocks": 28,
+    "policy_ngl": "25",
+    "status": "offloading_required",
+    "available_vram_mib": 4601
+  }
+}

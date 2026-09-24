@@ -281,6 +281,7 @@ def test_advisor_uses_same_llama_cpp_installation_for_run_and_benchmark(
     bench = _exe(cli.parent / "llama-bench")
     advisor = AdvisorService(
         services=_services(),
+        llama_cli_timeout_seconds=17.0,
         runtime_locator=RuntimeLocator(
             config=RuntimeLocatorConfig(llama_cli_path=cli),
             registry=None,
@@ -290,6 +291,7 @@ def test_advisor_uses_same_llama_cpp_installation_for_run_and_benchmark(
     )
 
     assert advisor._llama_cpp_runner()._llama_cli == _norm(cli)
+    assert advisor._llama_cpp_runner().timeout_seconds == 17.0
     assert advisor._llama_bench_runner()._llama_bench == _norm(bench)
 
 
@@ -297,6 +299,8 @@ def test_advisor_uses_same_python_for_probe_run_and_benchmark(tmp_path: Path) ->
     python = _exe(tmp_path / "venv" / "bin" / "python")
     advisor = AdvisorService(
         services=_services(),
+        llama_cli_timeout_seconds=17.0,
+        transformers_timeout_seconds=901.0,
         runtime_locator=RuntimeLocator(
             config=RuntimeLocatorConfig(python_executable=python),
             registry=None,
@@ -307,6 +311,7 @@ def test_advisor_uses_same_python_for_probe_run_and_benchmark(tmp_path: Path) ->
 
     assert advisor._resolved_pytorch_installation().python_executable == _norm(python)
     assert advisor._transformers_runner()._python == _norm(python)
+    assert advisor._transformers_runner().timeout_seconds == 901.0
     assert advisor._transformers_benchmark_runner()._python == _norm(python)
 
 

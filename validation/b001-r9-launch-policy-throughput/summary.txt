@@ -1,0 +1,12 @@
+  ctx  ngl label     offl  gen t/s  device MiB   free
+  512   26 policy   26/29    27.13        3948    790
+  512   29 full     29/29    39.87        4328    366
+ 2048   26 policy   26/29    27.93        4023    667
+ 2048   29 full     29/29     39.4        4414    271
+ 4096   25 policy   25/29    24.79        3991    713
+ 4096   29 full     29/29    52.03        4528    196
+
+ratio full / policy:
+  ctx 512   policy ngl 26 = 27.1 t/s   full ngl 29 = 39.9 t/s   ->  x1.47
+  ctx 2048  policy ngl 26 = 27.9 t/s   full ngl 29 = 39.4 t/s   ->  x1.41
+  ctx 4096  policy ngl 25 = 24.8 t/s   full ngl 29 = 52.0 t/s   ->  x2.10

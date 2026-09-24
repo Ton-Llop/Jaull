@@ -46,6 +46,21 @@ component totals and does not calibrate any estimator constant.
 RSS remains around 4.7 GiB across placements. This is expected to include the
 memory-mapped model file and is not the same quantity as HFA's `ram_required`.
 
+## Throughput, and what the sweep does not say
+
+This matrix recorded that every offload level started; it did not record how
+fast any of them ran. Read without that, the table above invites a wrong
+conclusion — HFA predicts 15–20 blocks while llama.cpp starts with 29/29, so the
+gap looks like a 3–4x performance loss.
+
+The HFA block count is not what Jaull launches. Measured in
+[B001-R9](b001-r9-launch-policy-throughput.md), the launch policy emits
+`--n-gpu-layers` 25–26 for these same contexts. In one run per cell, full offload
+was **1.4x–2.1x** faster than the selected level, not the 3–4x inferred by
+mistaking HFA blocks for launch units. Full offload left 196–366 MiB free after
+baseline occupancy; the typical performance gap and failure threshold remain
+unmeasured.
+
 ## Limitations
 
 - NVML cannot attribute process VRAM under WDDM on this GeForce, so the runtime
