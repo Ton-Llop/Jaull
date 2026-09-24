@@ -225,7 +225,7 @@ def _observed_backend(runtime_output: str) -> ComputeBackend | None:
     """Return a backend only when llama.cpp emitted an explicit marker."""
 
     lowered = runtime_output.casefold()
-    if "ggml_cuda" in lowered:
+    if "ggml_cuda" in lowered or "ggml_backend_cuda" in lowered:
         return ComputeBackend.CUDA
     if "ggml_vulkan" in lowered:
         return ComputeBackend.VULKAN

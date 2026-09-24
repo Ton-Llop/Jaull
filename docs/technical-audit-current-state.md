@@ -457,30 +457,34 @@ Resultado: **0 % -> 92 %**, y el total del repositorio 85 % -> 86 %.
 
 Queda a 61 % `transformers_worker.py`, que es el camino de `run`.
 
-### U.5 El observation contract sigue con cero records
+### U.5 B001-R10 registra la asignacion, no cierra la comparacion
 
 B001-R7 arreglo el runner para que pida el log siempre, y la fontaneria esta
-probada. Pero **ningun fichero de `validation/` lleva todavia un
-`runtime_allocation` dentro de un `ExperimentRecord`**: los bundles son
-anteriores al contrato, y R8/R9 no pasan por `ExperimentRequest` — generan
-`report.json` y `prediction.json` propios.
+probada. R8/R9 no pasaban por `ExperimentRequest`; B001-R10 ya ejecuta el flujo
+con una `ExperimentRequest` persistida. El record exitoso contiene ocho buffers
+del runtime y un total de 2459.61 MiB en `CUDA0`; peak VRAM por NVML sigue siendo
+`null` bajo WDDM. Ver [B001-R10](qwen2.5-tests/b001-r10-experiment-record.md).
 
-Lo que R8 hace bien y conviene no perder: sus `vram_error_pct_*` salen `None`
-con una nota en el propio record explicando por que no se calculan. El dato dice
-que no sabe en lugar de inventar un porcentaje.
+El campo separado `backend_trace.observed_backend` quedo `null`, aunque los
+buffers reportados identifican `CUDA0`. Una repeticion diagnostica produjo el
+marcador `ggml_backend_cuda_graph_compute`; el detector solo reconocia la forma
+`ggml_cuda`. Ahora reconoce ambas. El record R10 permanece inmutable y conserva
+el `null` original. La comparacion de VRAM sigue metodologicamente no disponible
+por el placement parcial, de modo que no se publica un error porcentual. Lo
+correcto de R8 se mantiene: sus `vram_error_pct_*` son `None` con la razon
+documentada.
 
 ### U.6 Lo que haria ahora
 
-1. Una campana que pase por `ExperimentRequest` para que exista al menos un
-   record con `runtime_allocation`. Es lo unico que convierte la fontaneria en
-   evidencia.
-2. El mapeo bloque <-> unidad de lanzamiento, que es lo que bloquea el error por
-   componente. B001-R6 ya lo deriva para `689e227db` + `qwen2` denso dentro de la
-   politica; la capa de comparacion no lo consume.
-3. La decision de producto pendiente sobre el idioma blando que degrada duro.
+1. Hacer que la capa de comparacion consuma el mapeo bloque <-> unidad de
+   lanzamiento ya derivado por B001-R6 para `689e227db` + `qwen2` denso. Aplicarlo
+   solo en ese ambito verificado; otros builds/arquitecturas deben seguir sin
+   comparacion hasta tener evidencia propia.
+2. La decision de producto pendiente sobre el idioma blando que degrada duro.
 
-Lo que **no** haria todavia: calibrar reserve y headroom. R9 mide lo que cuestan
-pero no da base para moverlos.
+Lo que **no** haria todavia: calibrar reserve y headroom. R9 mide su coste
+observado, y R10 confirma la captura de buffers, pero ninguno da base para
+moverlos.
 
 ## A. Estado general
 

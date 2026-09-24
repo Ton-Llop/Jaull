@@ -169,6 +169,24 @@ def test_runner_records_cuda_only_when_llama_cpp_reports_it(tmp_path: Path) -> N
     assert result.observed_backend_source == "llama.cpp runtime output"
 
 
+def test_runner_recognizes_cuda_graph_backend_marker(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend(
+        ExecutionResult(
+            stdout="generated",
+            stderr="ggml_backend_cuda_graph_compute: CUDA graph warmup complete",
+            observation=_observation(),
+        )
+    )
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+
+    result = runner.run(artifact=_artifact(model_path), prompt="Hello")
+
+    assert result.observed_backend is ComputeBackend.CUDA
+    assert result.observed_backend_source == "llama.cpp runtime output"
+
+
 def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:
     model_path = tmp_path / "model.gguf"
     model_path.write_bytes(b"gguf")

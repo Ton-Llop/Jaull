@@ -1,0 +1,191 @@
+{
+  "experiment_id": "exp-55503df0-8a63-4859-abcb-63f7b8a90d2b",
+  "persisted_path": "/home/ton/.local/share/jaull/experiments/exp-55503df0-8a63-4859-abcb-63f7b8a90d2b.json",
+  "artifact_sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+  "hardware": {
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
+    "os_version": "#1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026",
+    "arch": "x86_64",
+    "cpu": {
+      "model": "AMD Ryzen 5 3600 6-Core Processor",
+      "physical_cores": 6,
+      "logical_cores": 12
+    },
+    "memory": {
+      "total_bytes": 8278126592,
+      "available_bytes": 6497562624
+    },
+    "storage": [
+      {
+        "mountpoint": "/",
+        "total_bytes": 1081101176832,
+        "available_bytes": 976442159104
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vram_total_bytes": 6442450944,
+        "vram_available_bytes": 3640582144,
+        "driver_version": "616.92",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": null,
+        "pci_bus_id": "00000000:08:00.0",
+        "uuid": "GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5",
+        "dedicated_memory_bytes": 6442450944,
+        "available_memory_bytes": 3640582144,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "616.92",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "Vulkan backend not checked by NVML.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "vulkaninfo is not installed; skipping Vulkan detection."
+    ]
+  },
+  "prediction_status": "offloading_required",
+  "prediction_fit_mode": "gpu_offload",
+  "runtime": "llama.cpp",
+  "runtime_flags": [
+    {
+      "name": "--model",
+      "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+      "source": "user_input",
+      "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+    },
+    {
+      "name": "--ctx-size",
+      "value": "4096",
+      "source": "estimate",
+      "explanation": "Context length used for the memory estimate."
+    },
+    {
+      "name": "--n-gpu-layers",
+      "value": "14",
+      "source": "hardware",
+      "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+    },
+    {
+      "name": "--batch-size",
+      "value": "1",
+      "source": "estimate",
+      "explanation": "Prompt batch size (llama.cpp calls this -b)."
+    }
+  ],
+  "observation": {
+    "success": true,
+    "duration_seconds": 16.051776594998955,
+    "peak_ram_bytes": 4952629248,
+    "peak_vram_bytes": null,
+    "exit_code": 0,
+    "failure_reason": null,
+    "measurement": {
+      "ram_measurement": "process_rss",
+      "vram_measurement": "nvml_process_memory",
+      "sample_interval_seconds": 0.05
+    },
+    "runtime_allocation": {
+      "runtime": "llama.cpp",
+      "device": "CUDA0",
+      "runtime_build": null,
+      "buffers": [
+        {
+          "category": "kv",
+          "location": "host",
+          "bytes": 125829120,
+          "raw_label": "CPU kv"
+        },
+        {
+          "category": "model",
+          "location": "host",
+          "bytes": 2399435489,
+          "raw_label": "CPU_Mapped model"
+        },
+        {
+          "category": "compute",
+          "location": "device",
+          "bytes": 192350781,
+          "raw_label": "CUDA0 compute"
+        },
+        {
+          "category": "kv",
+          "location": "device",
+          "bytes": 109051904,
+          "raw_label": "CUDA0 kv"
+        },
+        {
+          "category": "model",
+          "location": "device",
+          "bytes": 2277685330,
+          "raw_label": "CUDA0 model"
+        },
+        {
+          "category": "compute",
+          "location": "host",
+          "bytes": 18884854,
+          "raw_label": "CUDA_Host compute"
+        },
+        {
+          "category": "model",
+          "location": "host",
+          "bytes": 0,
+          "raw_label": "CUDA_Host model"
+        },
+        {
+          "category": "output",
+          "location": "host",
+          "bytes": 608174,
+          "raw_label": "CUDA_Host output"
+        }
+      ],
+      "total_device_bytes": 2579088015
+    }
+  },
+  "observed_backend": null,
+  "comparison_availability": "methodologically_unavailable",
+  "comparison_reason": "Non-block weight placement is bounded, not a device-specific point prediction."
+}
