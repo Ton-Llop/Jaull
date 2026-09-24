@@ -19,6 +19,7 @@ from jaull.domain.execution import ExecutionObservation
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis
+from jaull.domain.requirements import WorkloadProfile
 from jaull.domain.runtime import (
     ExecutionReadiness,
     RuntimeBackendSelection,
@@ -112,6 +113,7 @@ class ExperimentWorkload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     prompt: str
+    profile: WorkloadProfile | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -151,7 +153,23 @@ class ExperimentRequest(BaseModel):
     requested_backend: RequestedComputeBackend = RequestedComputeBackend.AUTO
     workload: ExperimentWorkload
     persist: bool = True
+    capture_raw_logs: bool = False
     notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _workload_matches_prediction(self) -> Self:
+        profile = self.workload.profile
+        if profile is not None:
+            config = self.prediction.inference_configuration
+            if (
+                profile.context_length != config.context_length
+                or profile.concurrent_users != config.concurrent_users
+            ):
+                raise ValueError(
+                    "Workload context and concurrency must match the predicted "
+                    "inference configuration."
+                )
+        return self
 
 
 class ExperimentBackendTrace(BaseModel):
@@ -302,6 +320,7 @@ class ExperimentRunResult(BaseModel):
 
     record: ExperimentRecord
     persisted_path: Path | None = None
+    raw_log_path: Path | None = None
 
 
 __all__ = [

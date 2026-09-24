@@ -9,6 +9,10 @@ from jaull.domain.requirements import (
     DocumentScale,
     RecommendationPriority,
     UseCase,
+    UserAnswers,
+    UserRequirements,
+    WorkloadMode,
+    WorkloadProfile,
 )
 from jaull.workflow.requirements import (
     build_requirements,
@@ -18,11 +22,68 @@ from jaull.workflow.requirements import (
 from tests._workflow_fixtures import answers, hardware
 
 
-@pytest.mark.parametrize("use_case", list(UseCase))
+@pytest.mark.parametrize(
+    "use_case", [case for case in UseCase if case is not UseCase.BATCH_PROCESSING]
+)
 def test_every_use_case_maps_through(use_case: UseCase) -> None:
     req = build_requirements(answers(use_case=use_case), hardware())
     assert req.use_case is use_case
     assert req.pipeline_tag == policies.TEXT_GENERATION_PIPELINE
+
+
+def test_legacy_batch_is_a_general_chat_task_with_batch_mode() -> None:
+    old = answers().model_dump(mode="json")
+    old["use_case"] = "batch_processing"
+    old.pop("workload_mode", None)
+    loaded = UserAnswers.model_validate(old)
+    assert loaded.use_case is UseCase.GENERAL_CHAT
+    assert loaded.workload_mode is WorkloadMode.BATCH
+    req = build_requirements(loaded, hardware())
+    assert req.use_case is UseCase.GENERAL_CHAT
+    assert req.workload_mode is WorkloadMode.BATCH
+    old_req = req.model_dump(mode="json")
+    old_req["use_case"] = "batch_processing"
+    old_req.pop("workload_mode", None)
+    restored = UserRequirements.model_validate(old_req)
+    assert restored.use_case is UseCase.GENERAL_CHAT
+    assert restored.workload_mode is WorkloadMode.BATCH
+
+
+def test_coding_task_match_is_independent_of_workload_mode() -> None:
+    interactive = build_requirements(answers(use_case=UseCase.CODING), hardware())
+    batch = interactive.model_copy(update={"workload_mode": WorkloadMode.BATCH})
+    from jaull.discovery.query_builder import build_queries
+    from jaull.recommendation.scoring import task_match
+    from tests._workflow_fixtures import candidate
+
+    model = candidate(repo_id="org/Coder-7B", tags=["coder", "instruct"])
+    assert task_match(model, interactive) == task_match(model, batch)
+    assert build_queries(interactive) == build_queries(batch)
+    assert batch.workload_profile.mode is WorkloadMode.BATCH
+
+
+def test_workload_profile_optional_slos_and_serialization() -> None:
+    minimal = WorkloadProfile(context_length=4096)
+    assert minimal.concurrent_users == 1
+    assert minimal.min_generation_tps is None
+    assert minimal.max_ttft_ms is None
+    assert WorkloadProfile.model_validate_json(minimal.model_dump_json()) == minimal
+
+    req = build_requirements(answers(use_case=UseCase.CODING), hardware())
+    enriched = req.model_copy(
+        update={
+            "expected_input_tokens": 512,
+            "expected_output_tokens": 128,
+            "min_generation_tps": 20.0,
+            "max_ttft_ms": 1000.0,
+        }
+    )
+    profile = enriched.workload_profile
+    assert profile.context_length == enriched.desired_context
+    assert profile.concurrent_users == enriched.concurrent_users
+    assert profile.min_generation_tps == 20.0
+    assert profile.max_ttft_ms == 1000.0
+    assert UserRequirements.model_validate_json(enriched.model_dump_json()) == enriched
 
 
 @pytest.mark.parametrize("priority", list(RecommendationPriority))

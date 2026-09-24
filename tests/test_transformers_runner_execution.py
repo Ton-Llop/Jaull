@@ -273,8 +273,10 @@ def test_runner_rejects_worker_reported_failure(tmp_path: Path) -> None:
     )
     runner = TransformersRunner(backend=backend, python_executable=_executable(tmp_path))
 
-    with pytest.raises(TransformersRunnerError, match="model load failed"):
+    with pytest.raises(TransformersRunnerError, match="model load failed") as error:
         runner.run(artifact=_artifact(), prompt="Hello")
+    assert error.value.result is not None
+    assert "model load failed" in error.value.result.stdout
 
 
 def test_runner_surfaces_worker_failure_from_non_zero_exit(tmp_path: Path) -> None:
@@ -291,8 +293,9 @@ def test_runner_surfaces_worker_failure_from_non_zero_exit(tmp_path: Path) -> No
     )
     runner = TransformersRunner(backend=backend, python_executable=_executable(tmp_path))
 
-    with pytest.raises(TransformersRunnerError, match="transformers import failed"):
+    with pytest.raises(TransformersRunnerError, match="transformers import failed") as error:
         runner.run(artifact=_artifact(), prompt="Hello")
+    assert error.value.result == failed_result
 
 
 def test_runner_reports_missing_python_executable(tmp_path: Path) -> None:

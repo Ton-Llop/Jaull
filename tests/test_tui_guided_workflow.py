@@ -14,7 +14,7 @@ from threading import Event, Lock
 
 from textual.widgets import Button, Checkbox, DataTable, RadioSet
 
-from jaull.domain.requirements import UseCase
+from jaull.domain.requirements import UseCase, WorkloadMode
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
 from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
@@ -309,7 +309,31 @@ def test_wizard_collects_answers_from_its_widgets() -> None:
             answers = screen.collect_answers()
             assert answers is not None
             assert answers.use_case is UseCase.GENERAL_CHAT
+            assert answers.workload_mode is WorkloadMode.INTERACTIVE
             assert answers.languages == ["English"]
+
+    _run(scenario())
+
+
+def test_wizard_collects_task_and_batch_mode_separately() -> None:
+    async def scenario() -> None:
+        app = JaullApp(services=_services())
+        async with app.run_test() as pilot:
+            app.push_screen(RequirementsWizardScreen())
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
+            screen = pilot.app.screen
+            assert isinstance(screen, RequirementsWizardScreen)
+            screen.query_one("#uc-coding").value = True  # type: ignore[attr-defined]
+            screen.query_one("#wm-batch").value = True  # type: ignore[attr-defined]
+            await pilot.pause()
+            answers = screen.collect_answers()
+            assert answers is not None
+            assert answers.use_case is UseCase.CODING
+            assert answers.workload_mode is WorkloadMode.BATCH
+            assert not screen.query("#uc-batch_processing")
 
     _run(scenario())
 

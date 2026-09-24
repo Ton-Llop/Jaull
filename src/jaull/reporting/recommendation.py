@@ -28,6 +28,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
 from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
@@ -105,9 +106,18 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             f"- Languages: {', '.join(req.languages)}",
             f"- Concurrency: {req.concurrency_range}",
             f"- Context: {req.desired_context} tokens",
+            f"- Workload mode: {req.workload_mode.value}",
             f"- Commercial use required: {_yes_no(req.commercial_use_required)}",
-            "",
         ]
+        for label, value, unit in (
+            ("Expected input", req.expected_input_tokens, "tokens"),
+            ("Expected output", req.expected_output_tokens, "tokens"),
+            ("Minimum generation", req.min_generation_tps, "tok/s"),
+            ("Maximum TTFT", req.max_ttft_ms, "ms"),
+        ):
+            if value is not None:
+                lines.append(f"- {label}: {value} {unit}")
+        lines.append("")
 
     if not state.recommendations:
         lines += ["## Result", ""]
@@ -115,16 +125,39 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
         lines.append("")
         return "\n".join(lines)
 
-    lines += ["## Recommendations", ""]
+    has_confirmed = any(
+        rec.displayed_status is not CompatibilityStatus.UNKNOWN
+        for rec in state.recommendations
+    )
+    lines += [
+        "## Confirmed recommendations" if has_confirmed else "## Recommendations",
+        "",
+    ]
+    if not has_confirmed:
+        lines += ["No confirmed recommendations were found.", ""]
+    unconfirmed_section_started = False
     for rec in state.recommendations:
-        if rec.is_primary:
+        if (
+            rec.displayed_status is CompatibilityStatus.UNKNOWN
+            and not unconfirmed_section_started
+        ):
+            unconfirmed_section_started = True
+            lines += [
+                "## Unconfirmed alternatives",
+                "",
+                "No confirmed recommendation is implied by this section.",
+                "",
+            ]
+        if rec.displayed_status is CompatibilityStatus.UNKNOWN:
+            heading = "Unconfirmed alternative"
+        elif rec.is_primary:
             heading = rec.tier.replace("_", " ").title()
         else:
             heading = rec.alternative_label or "Alternative"
         lines += [
             f"### {rec.rank}. {rec.repo_id} — {heading}",
             "",
-            f"- Compatibility: {rec.status.value}",
+            f"- Compatibility: {rec.displayed_status.value}",
             f"- Confidence: {rec.confidence.value}",
             f"- License: {rec.evaluated.candidate.license or 'not declared'} "
             f"({rec.license_category.value})",
@@ -200,6 +233,8 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             lines += ["**Why this model?**", ""]
             lines += [f"- {reason}" for reason in rec.reasons]
             lines.append("")
+        if rec.unknown_reason:
+            lines += ["**Why unconfirmed?**", "", rec.unknown_reason, ""]
         if rec.warnings:
             lines += ["**Limitations and warnings**", ""]
             lines += [f"- {warning}" for warning in rec.warnings]
@@ -287,6 +322,11 @@ def _requirements_to_dict(
         "concurrent_users": req.concurrent_users,
         "concurrency_range": req.concurrency_range,
         "desired_context": req.desired_context,
+        "workload_mode": req.workload_mode.value,
+        "expected_input_tokens": req.expected_input_tokens,
+        "expected_output_tokens": req.expected_output_tokens,
+        "min_generation_tps": req.min_generation_tps,
+        "max_ttft_ms": req.max_ttft_ms,
         "commercial_use_required": req.commercial_use_required,
         "pipeline_tag": req.pipeline_tag,
         "preferred_formats": list(req.preferred_formats),
@@ -495,7 +535,7 @@ def _recommendation_to_dict(
             "unmet_requirements": list(rec.score.unmet_requirements),
             "weights": dict(rec.score.weights),
         },
-        "compatibility": rec.status.value,
+        "compatibility": rec.displayed_status.value,
         "confidence": rec.confidence.value,
         "license": rec.evaluated.candidate.license,
         "license_category": rec.license_category.value,

@@ -110,7 +110,7 @@ ExperimentRecord
 ├── environment        # Jaull version, Python version/implementation, git commit
 ├── hardware           # the full HardwareProfile it ran on
 ├── artifact           # repo, revision, filename, format, quantization, size
-├── workload           # the prompt that was run
+├── workload           # prompt; optional requested workload profile and SLOs
 ├── backend_trace      # requested vs observed backend
 ├── runtime            # runtime recommendation and flags actually used
 ├── prediction         # the MemoryEstimate
@@ -119,9 +119,11 @@ ExperimentRecord
 └── comparison         # the PredictionComparison
 ```
 
-A failed execution is still a valid experiment. Failures are part of the empirical
-evidence, and a record that only says "this configuration did not run, here is why" is
-exactly the kind of result the qualification workflow needs.
+A failed execution is still valid empirical evidence: a record that only says
+"this configuration did not run, here is why" is useful to the qualification
+workflow. The optional raw stdout/stderr sidecar is saved only when selected in
+Validate; it is not part of the immutable record and may contain the prompt or
+model output.
 
 ## Benchmarks
 

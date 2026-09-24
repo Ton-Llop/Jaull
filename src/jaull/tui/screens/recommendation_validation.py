@@ -11,7 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Footer, Static
+from textual.widgets import Button, Checkbox, Footer, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
@@ -25,6 +25,7 @@ from jaull.domain.experiments import (
     RequestedComputeBackend,
 )
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.requirements import UserRequirements, WorkloadProfile
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     LlamaCppRuntimeCapability,
@@ -142,6 +143,11 @@ class RecommendationValidationScreen(Screen[None]):
             # end of the body, so the outcome of the run sat below the button
             # that started it, under a fully expanded progress log.
             yield Vertical(id="validation-result")
+            yield Checkbox("Save raw runtime logs", id="validation-capture-logs")
+            yield Static(
+                "Raw logs can contain the prompt and model output. Review before sharing.",
+                classes="text-muted",
+            )
             with Horizontal(id="validation-actions"):
                 yield Button(
                     "Validate on this machine",
@@ -217,6 +223,12 @@ class RecommendationValidationScreen(Screen[None]):
             estimate,
             runtime,
             self._execution_plan,
+            (
+                app.workflow_state.requirements
+                if app.workflow_state is not None
+                else None
+            ),
+            self.query_one("#validation-capture-logs", Checkbox).value,
         )
 
     def _validation_worker(
@@ -226,6 +238,8 @@ class RecommendationValidationScreen(Screen[None]):
         estimate: MemoryEstimate | None,
         runtime: RuntimeRecommendation,
         execution_plan: ExecutionPlan | None,
+        requirements: UserRequirements | None,
+        capture_raw_logs: bool,
     ) -> None:
         try:
             if execution_plan is not None:
@@ -264,6 +278,20 @@ class RecommendationValidationScreen(Screen[None]):
                     "Selected execution path is missing prediction or backend data."
                 )
             self._post_step("Checking runtime readiness")
+            config = estimate.inference_configuration
+            profile = (
+                requirements.workload_profile.model_copy(
+                    update={
+                        "context_length": config.context_length,
+                        "concurrent_users": config.concurrent_users,
+                    }
+                )
+                if requirements is not None
+                else WorkloadProfile(
+                    context_length=config.context_length,
+                    concurrent_users=config.concurrent_users,
+                )
+            )
             request = ExperimentRequest(
                 hardware=hardware,
                 artifact=artifact,
@@ -272,8 +300,9 @@ class RecommendationValidationScreen(Screen[None]):
                 prediction_input=_prediction_input(self._recommendation, estimate),
                 backend_selection=selection,
                 requested_backend=RequestedComputeBackend.AUTO,
-                workload=ExperimentWorkload(prompt=VALIDATION_PROMPT),
+                workload=ExperimentWorkload(prompt=VALIDATION_PROMPT, profile=profile),
                 persist=True,
+                capture_raw_logs=capture_raw_logs,
             )
             self._post_step("Running controlled validation")
             result = advisor.run_experiment(request)
@@ -313,7 +342,11 @@ class RecommendationValidationScreen(Screen[None]):
         self._last_persisted_path = message.result.persisted_path
         self._set_busy(False)
         self._set_error("")
-        self._render_record(message.result.record, message.result.persisted_path)
+        self._render_record(
+            message.result.record,
+            message.result.persisted_path,
+            raw_log_path=message.result.raw_log_path,
+        )
 
     @on(_ValidationNotReady)
     def _validation_not_ready_message(self, message: _ValidationNotReady) -> None:
@@ -404,6 +437,7 @@ class RecommendationValidationScreen(Screen[None]):
         persisted_path: Path | None,
         *,
         persistence_failed: bool = False,
+        raw_log_path: Path | None = None,
     ) -> None:
         self._clear_result()
         self._last_record = record
@@ -446,6 +480,8 @@ class RecommendationValidationScreen(Screen[None]):
             ("Experiment ID", record.identity.experiment_id),
             ("Saved", str(persisted_path) if persisted_path else "not saved"),
         ]
+        if raw_log_path is not None:
+            detail_rows.append(("Raw runtime log", str(raw_log_path)))
         detail_rows.extend(
             (f"Step {index}", step)
             for index, step in enumerate(self._log_messages, start=1)

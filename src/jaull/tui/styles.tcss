@@ -1037,6 +1037,11 @@ DataTable > .datatable--header {
     padding: 0 0 0 4;
 }
 
+.rec-unknown-reason {
+    color: $ink-2;
+    padding: 0 0 0 4;
+}
+
 .rec-evidence {
     padding: 0 0 0 4;
 }

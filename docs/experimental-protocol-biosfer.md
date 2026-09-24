@@ -93,8 +93,10 @@ The same comparative experiment should pin:
 ## Biosfer workloads
 
 Use workload fixtures that map to Biosfer use cases rather than generic demos.
-Jaull currently stores `ExperimentWorkload.prompt`, so each workload needs a
-stable prompt or input identifier. Richer workload metadata can be added later.
+Jaull stores `ExperimentWorkload.prompt` and can also snapshot an optional
+`WorkloadProfile` (mode, context, concurrency, expected token lengths and optional
+TPS/TTFT objectives). Keep a stable prompt or input identifier. The objectives are
+requests, not observations or qualification results.
 
 | Workload | Goal | Initial fixture |
 | --- | --- | --- |

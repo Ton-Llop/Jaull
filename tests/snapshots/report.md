@@ -17,9 +17,10 @@ Generated: <redacted>
 - Languages: es, en
 - Concurrency: One user
 - Context: 4096 tokens
+- Workload mode: interactive
 - Commercial use required: yes
 
-## Recommendations
+## Confirmed recommendations
 
 ### 1. org/Coder-7B — Best Effort
 

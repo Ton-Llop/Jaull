@@ -34,7 +34,6 @@ _USE_CASE_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
         "instruct",
     ),
     UseCase.REASONING: ("reasoning", "math", "logic", "problem", "instruct"),
-    UseCase.BATCH_PROCESSING: ("fast", "small", "efficient", "instruct"),
     UseCase.WRITING_TRANSLATION: (
         "instruct",
         "translation",
@@ -53,7 +52,6 @@ _STRONG_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
     UseCase.DOCUMENT_QA: ("long-context", "longcontext", "rag"),
     UseCase.SUMMARIZATION_EXTRACTION: ("summarization", "extraction"),
     UseCase.REASONING: ("reasoning", "math"),
-    UseCase.BATCH_PROCESSING: ("fast", "small", "efficient"),
     UseCase.WRITING_TRANSLATION: ("translation", "multilingual"),
 }
 
@@ -65,7 +63,6 @@ _NEGATIVE_KEYWORDS: dict[UseCase, tuple[str, ...]] = {
     UseCase.DOCUMENT_QA: ("coder",),
     UseCase.SUMMARIZATION_EXTRACTION: ("coder",),
     UseCase.REASONING: (),
-    UseCase.BATCH_PROCESSING: (),
     UseCase.WRITING_TRANSLATION: ("coder",),
 }
 

@@ -187,8 +187,19 @@ def recommend(
         label = (
             None if index == 1 else ranker.alternative_label(primary, item)
         )
-        status = ranker.status_of(item)
-        confidence = scoring.confidence_of(item)
+        selected_estimate = (
+            ranked_plan.plan.memory_prediction if ranked_plan is not None else None
+        )
+        status = (
+            selected_estimate.assessment.status
+            if selected_estimate is not None
+            else ranker.status_of(item)
+        )
+        confidence = (
+            selected_estimate.assessment.confidence
+            if selected_estimate is not None
+            else scoring.confidence_of(item)
+        )
         rec_tier = tier.choose_tier(
             status,
             confidence,
@@ -224,8 +235,12 @@ def recommend(
                 confidence=confidence,
                 license_category=policies.classify_license(item.candidate.license),
                 tier=rec_tier.value,
-                reasons=explanations.build_reasons(item, requirements),
-                warnings=explanations.build_warnings(item, requirements),
+                reasons=explanations.build_reasons(
+                    item, requirements, selected_estimate=selected_estimate
+                ),
+                warnings=explanations.build_warnings(
+                    item, requirements, selected_estimate=selected_estimate
+                ),
                 related_repositories=siblings.get(item.repo_id, []),
                 alternative_label=label,
                 series_alternatives=_build_series_siblings(

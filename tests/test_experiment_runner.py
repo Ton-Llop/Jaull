@@ -51,6 +51,7 @@ from jaull.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
+from jaull.domain.requirements import WorkloadMode, WorkloadProfile
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     PyTorchRuntimeStatus,
@@ -91,6 +92,72 @@ def test_successful_cpu_experiment_produces_and_persists_record(
     assert result.persisted_path is not None
     assert runner.store is not None
     assert runner.store.load(result.record.identity.experiment_id) == result.record
+
+
+def test_workload_profile_is_persisted_separately_from_observed_metrics(
+    tmp_path: Path,
+) -> None:
+    runner = _experiment_runner(tmp_path, devices="Available devices:\n")
+    request = _request(tmp_path, backend=ComputeBackend.CPU)
+    config = request.prediction.inference_configuration
+    profile = WorkloadProfile(
+        context_length=config.context_length,
+        concurrent_users=config.concurrent_users,
+        mode=WorkloadMode.BATCH,
+        min_generation_tps=20.0,
+        max_ttft_ms=1000.0,
+    )
+    request = request.model_copy(
+        update={"workload": ExperimentWorkload(prompt="test", profile=profile)}
+    )
+    result = runner.run(request)
+    assert result.record.workload is not None
+    assert result.record.workload.profile == profile
+    assert result.record.observation.model_dump().get("min_generation_tps") is None
+    assert result.persisted_path is not None
+    restored = ExperimentStore(tmp_path / "store").load(
+        result.record.identity.experiment_id
+    )
+    assert restored == result.record
+
+
+def test_raw_runtime_logs_are_opt_in_sidecars(tmp_path: Path) -> None:
+    runner = _experiment_runner(tmp_path, devices="Available devices:\n")
+    without_logs = runner.run(_request(tmp_path, backend=ComputeBackend.CPU))
+    assert without_logs.raw_log_path is None
+
+    request = _request(tmp_path, backend=ComputeBackend.CPU).model_copy(
+        update={"capture_raw_logs": True}
+    )
+    result = runner.run(request)
+    assert result.raw_log_path is not None
+    assert result.persisted_path is not None
+    assert result.raw_log_path.suffix == ".runtime-log"
+    assert json.loads(result.raw_log_path.read_text(encoding="utf-8"))["stdout"] == "runtime output"
+    assert runner.store is not None
+    assert result.record.identity.experiment_id in runner.store.list_ids()
+    assert len(runner.store.list_ids()) == 2
+
+
+def test_failed_execution_can_keep_its_raw_log(tmp_path: Path) -> None:
+    failed = _observation(
+        success=False,
+        exit_code=1,
+        failure_reason=ExecutionFailureReason.NON_ZERO_EXIT,
+    )
+    runner = _experiment_runner(
+        tmp_path,
+        devices="Available devices:\n",
+        artifact_runner=_FakeArtifactRunner(error_observation=failed),
+    )
+    request = _request(tmp_path, backend=ComputeBackend.CPU).model_copy(
+        update={"capture_raw_logs": True}
+    )
+    result = runner.run(request)
+    assert result.record.observation.success is False
+    assert result.raw_log_path is not None
+    payload = json.loads(result.raw_log_path.read_text(encoding="utf-8"))
+    assert payload["stderr"] == "failure"
 
 
 def test_experiment_record_captures_command_observed_backend_and_git_commit(
@@ -459,6 +526,8 @@ class _FakeArtifactRunner:
             command=self.command,
             observed_backend=self.observed_backend,
             observed_backend_source=self.observed_backend_source,
+            raw_stdout="runtime output",
+            raw_stderr="",
         )
 
 

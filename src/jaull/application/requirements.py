@@ -92,6 +92,7 @@ def build_requirements(
 
     return UserRequirements(
         use_case=answers.use_case,
+        workload_mode=answers.workload_mode,
         priority=answers.priority,
         languages=languages,
         concurrent_users=users,

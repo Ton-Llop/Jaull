@@ -114,6 +114,8 @@ class LlamaCppRunner:
             observed_backend_source=(
                 "llama.cpp runtime output" if observed_backend is not None else None
             ),
+            raw_stdout=result.stdout,
+            raw_stderr=result.stderr,
         )
 
 

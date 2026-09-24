@@ -1736,8 +1736,10 @@ sistema.
    amb `--n-gpu-layers` negatiu contra una predicció `GPU_RESIDENT`. L’offload parcial
    segueix sense verificar-se perquè els blocs de transformer i les unitats de
    `--n-gpu-layers` no són el mateix vocabulari.
-9. **No hi ha model explícit de workload ni de SLO.** No es demanen objectius de tokens/s,
-   TTFT ni latència.
+9. **Hi ha un contracte mínim de workload, però no qualificació SLO.** La tasca i el mode
+   (interactiu, batch, servei) són dimensions diferents. Es poden registrar objectius
+   opcionals de tokens/s i TTFT, però el wizard no els demana i cap motor els converteix
+   encara en un veredicte de capacitat o servei.
 10. **El workflow està limitat a text-generation.** Imatge, àudio i RAG complet queden fora.
 11. **Les dades de les model cards poden ser incompletes o incorrectes.** El sistema redueix
     la confiança, però no pot corregir-ho tot.

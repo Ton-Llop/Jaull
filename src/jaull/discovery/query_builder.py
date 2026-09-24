@@ -36,11 +36,6 @@ _USE_CASE_PHRASES: dict[UseCase, tuple[str, ...]] = {
         "math reasoning",
         "problem solving instruct",
     ),
-    UseCase.BATCH_PROCESSING: (
-        "fast instruct",
-        "small instruct",
-        "efficient text generation",
-    ),
     UseCase.WRITING_TRANSLATION: (
         "multilingual instruct",
         "translation instruct",

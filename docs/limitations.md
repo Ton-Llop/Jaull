@@ -98,8 +98,9 @@ README roadmap says so.
 - **No performance is predicted.** The ranking is about whether a model *fits* and *matches
   the task*, never how fast it will run. The concurrency answer is a memory multiplier plus
   a ranking signal — not a capacity model.
-- The requirements wizard captures intent, not service objectives: there is no throughput,
-  latency or TTFT target anywhere in the model.
+- The requirements wizard captures task and workload mode, not service objectives. The
+  optional workload profile can record a minimum generation rate and maximum TTFT, but
+  Jaull does not yet qualify a plan against either SLO or run a concurrent load test.
 - A guided run takes minutes, not seconds. Deep inspection covers up to 12 repositories,
   each costing a metadata round-trip and (for safetensors repos) a header read per shard.
   Inspection runs with a bounded concurrency of four; a cold run against the live Hub was

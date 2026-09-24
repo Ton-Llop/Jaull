@@ -16,6 +16,7 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimateSource,
     EstimationConfidence,
+    MemoryEstimate,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.requirements import UseCase, UserRequirements
@@ -26,6 +27,8 @@ _USE_CASE_LABEL: dict[UseCase, str] = {
     UseCase.GENERAL_CHAT: "general chat and assistant use",
     UseCase.CODING: "programming tasks",
     UseCase.DOCUMENT_QA: "working with documents",
+    UseCase.SUMMARIZATION_EXTRACTION: "summarization and extraction",
+    UseCase.REASONING: "reasoning tasks",
     UseCase.WRITING_TRANSLATION: "writing and translation",
 }
 
@@ -36,7 +39,10 @@ _WEAK = 0.4
 
 
 def build_reasons(
-    evaluated: EvaluatedCandidate, requirements: UserRequirements
+    evaluated: EvaluatedCandidate,
+    requirements: UserRequirements,
+    *,
+    selected_estimate: MemoryEstimate | None = None,
 ) -> list[str]:
     """Positive, user-facing reasons this model was picked."""
     reasons: list[str] = []
@@ -51,8 +57,16 @@ def build_reasons(
         listed = ", ".join(sorted({lang.upper() for lang in candidate.languages})[:4])
         reasons.append(f"Model metadata lists {listed}.")
 
-    assessment = evaluated.compatibility
-    config = evaluated.selected_configuration
+    assessment = (
+        selected_estimate.assessment
+        if selected_estimate is not None
+        else evaluated.compatibility
+    )
+    config = (
+        selected_estimate.inference_configuration
+        if selected_estimate is not None
+        else evaluated.selected_configuration
+    )
     configuration_reason = _configuration_memory_reason(config, assessment)
     if configuration_reason is not None:
         reasons.append(configuration_reason)
@@ -105,12 +119,19 @@ def _configuration_memory_reason(
 
 
 def build_warnings(
-    evaluated: EvaluatedCandidate, requirements: UserRequirements
+    evaluated: EvaluatedCandidate,
+    requirements: UserRequirements,
+    *,
+    selected_estimate: MemoryEstimate | None = None,
 ) -> list[str]:
     """Limitations the user needs to see before trusting the recommendation."""
     warnings: list[str] = list(evaluated.warnings)
     candidate = evaluated.candidate
-    assessment = evaluated.compatibility
+    assessment = (
+        selected_estimate.assessment
+        if selected_estimate is not None
+        else evaluated.compatibility
+    )
 
     if assessment is None:
         warnings.append(
@@ -138,7 +159,7 @@ def build_warnings(
             EstimationConfidence.LOW,
             EstimationConfidence.UNKNOWN,
         ):
-            warnings.append(_confidence_warning(evaluated))
+            warnings.append(_confidence_warning(evaluated, selected_estimate))
 
     category = policies.classify_license(candidate.license)
     if category is policies.LicenseCategory.UNKNOWN:
@@ -200,14 +221,16 @@ def build_warnings(
                 )
         warnings.extend(runtime.warnings)
 
-    estimate = evaluated.memory_estimate
+    estimate = selected_estimate or evaluated.memory_estimate
     if estimate is not None and estimate.runtime_recommendation is not None:
         warnings.extend(estimate.runtime_recommendation.warnings)
 
     return _dedupe(warnings)
 
 
-def _confidence_warning(evaluated: EvaluatedCandidate) -> str:
+def _confidence_warning(
+    evaluated: EvaluatedCandidate, selected_estimate: MemoryEstimate | None = None
+) -> str:
     """Name the component that actually capped the confidence.
 
     The old text blamed missing model-card metadata for every low-confidence
@@ -217,7 +240,7 @@ def _confidence_warning(evaluated: EvaluatedCandidate) -> str:
     complete card and an exact parameter count still lands on LOW. Blaming the
     card sent readers to fix something that was not the cause.
     """
-    estimate = evaluated.memory_estimate
+    estimate = selected_estimate or evaluated.memory_estimate
     if estimate is None:
         return (
             "Confidence is low: no memory estimate was produced for this "

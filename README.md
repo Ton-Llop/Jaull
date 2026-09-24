@@ -202,16 +202,15 @@ More screens — search, run history, failure states, the memory estimate view �
 
 ## Where Jaull is going
 
-None of this is implemented yet. It is written down because it is the direction that
-explains the architecture, not because it is available.
+The workload contract is available; qualification and capacity measurement are not.
+The sections below describe the intended direction, not a current verdict.
 
 ### Workload-aware qualification
 
-Today Jaull asks whether a model *fits*. The goal is to let you state what you actually
-need — concurrent users, context size, expected prompt and output lengths, a minimum
-generation throughput, a time-to-first-token or latency objective, memory headroom, license
-constraints — and qualify a configuration against that, instead of against a memory
-threshold alone.
+Jaull can record task separately from interactive, batch or service mode, plus context,
+concurrent users and optional input/output lengths, minimum generation throughput and
+maximum time-to-first-token. These are requested objectives, not measured results or a
+qualification verdict. The wizard only asks for task and mode; SLOs are optional API data.
 
 ### Capacity and load experiments
 
@@ -361,7 +360,7 @@ Implemented and covered by tests:
 
 Not implemented:
 
-- [ ] Explicit workload / SLO model (throughput, TTFT, latency objectives)
+- [x] Minimal workload / optional throughput and TTFT objective contract (no qualification)
 - [ ] Concurrent load experiments
 - [ ] Capacity curves
 - [ ] Sustainable concurrency estimation
@@ -370,7 +369,8 @@ Not implemented:
 - [ ] Reproducible deployment manifest (`jaull.lock`)
 - [ ] Deployment export
 - [ ] Multipart GGUF and Transformers artifacts in the CLI `run` path
-- [ ] Host/device split for VRAM prediction under offload
+- [ ] Runtime-exact placement point prediction under partial offload (the host/device
+      estimate and component split already exist)
 - [ ] Non-NVIDIA VRAM in the memory model beyond Linux DRM-backed discrete Vulkan devices
   (Intel, Apple Silicon and platforms without DRM VRAM telemetry)
 - [ ] Remote executor

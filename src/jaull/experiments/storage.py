@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -75,6 +76,35 @@ class ExperimentStore:
         except OSError as exc:
             temporary.unlink(missing_ok=True)
             raise ExperimentStoreError(f"Could not save experiment {path}: {exc}") from exc
+        return path
+
+    def save_runtime_log(
+        self, experiment_id: str, *, stdout: str, stderr: str
+    ) -> Path:
+        """Save opt-in raw output outside the immutable experiment JSON."""
+        path = self.path_for(experiment_id).with_suffix(".runtime-log")
+        payload = json.dumps(
+            {"experiment_id": experiment_id, "stdout": stdout, "stderr": stderr},
+            ensure_ascii=True,
+            indent=2,
+        ) + "\n"
+        if path.exists():
+            if path.read_text(encoding="utf-8") != payload:
+                raise ExperimentStoreError(
+                    f"Runtime log already exists with different content: {path}."
+                )
+            return path
+        temporary = path.with_name(path.name + ".tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        except OSError as exc:
+            temporary.unlink(missing_ok=True)
+            raise ExperimentStoreError(f"Could not save runtime log {path}: {exc}") from exc
         return path
 
     def load(self, experiment_id: str) -> ExperimentRecord:

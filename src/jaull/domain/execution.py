@@ -157,6 +157,8 @@ class InferenceResult(BaseModel):
     command: tuple[str, ...] = Field(default_factory=tuple)
     observed_backend: ComputeBackend | None = None
     observed_backend_source: str | None = None
+    raw_stdout: str | None = None
+    raw_stderr: str | None = None
 
     @property
     def exit_code(self) -> int | None:

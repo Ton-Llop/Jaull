@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _workflow_fixtures import answers, hardware
+from jaull.domain.estimation import CompatibilityStatus
 from jaull.reporting.recommendation import REPORT_SCHEMA_VERSION
 from jaull.workflow import orchestrator
 from test_workflow_orchestrator import _container, _search_with
@@ -66,6 +67,47 @@ def test_report_markdown_is_byte_identical_to_snapshot() -> None:
     actual = _redact_timestamp_markdown(report_to_markdown(state))
     expected = (SNAPSHOT_DIR / "report.md").read_text(encoding="utf-8")
     assert actual == expected
+
+
+def test_report_separates_unknown_plan_without_changing_rank_or_score() -> None:
+    from jaull.recommendation.report import report_to_dict, report_to_markdown
+
+    state = _canonical_state()
+    confirmed = state.recommendations[0]
+    assert confirmed.plan is not None
+    estimate = confirmed.plan.memory_prediction
+    assert estimate is not None
+    unknown_assessment = estimate.assessment.model_copy(
+        update={
+            "status": CompatibilityStatus.UNKNOWN,
+            "reasons": ["KV cache could not be estimated."],
+        }
+    )
+    unknown_plan = confirmed.plan.model_copy(
+        update={
+            "memory_prediction": estimate.model_copy(
+                update={"assessment": unknown_assessment}
+            )
+        }
+    )
+    unknown = confirmed.model_copy(update={"rank": 2, "plan": unknown_plan})
+    mixed = state.model_copy(update={"recommendations": [confirmed, unknown]})
+
+    markdown = report_to_markdown(mixed)
+    assert "## Confirmed recommendations" in markdown
+    assert "## Unconfirmed alternatives" in markdown
+    assert "KV cache could not be estimated." in markdown
+    payload = report_to_dict(mixed)
+    assert [item["rank"] for item in payload["recommendations"]] == [1, 2]
+    assert payload["recommendations"][1]["compatibility"] == "unknown"
+    assert payload["recommendations"][1]["score_breakdown"] == payload[
+        "recommendations"
+    ][0]["score_breakdown"]
+
+    only_unknown = state.model_copy(
+        update={"recommendations": [unknown.model_copy(update={"rank": 1})]}
+    )
+    assert "No confirmed recommendations were found." in report_to_markdown(only_unknown)
 
 
 def test_report_json_exposes_technical_latency_separately() -> None:

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
+    CompatibilityAssessment,
     CompatibilityStatus,
     EstimationConfidence,
 )
@@ -88,6 +89,29 @@ class ModelRecommendation(BaseModel):
     @property
     def is_primary(self) -> bool:
         return self.rank == 1
+
+    @property
+    def displayed_assessment(self) -> CompatibilityAssessment | None:
+        """Assessment for the selected plan, falling back to the legacy candidate."""
+        if self.plan is not None and self.plan.memory_prediction is not None:
+            return self.plan.memory_prediction.assessment
+        return self.evaluated.compatibility
+
+    @property
+    def displayed_status(self) -> CompatibilityStatus:
+        assessment = self.displayed_assessment
+        return assessment.status if assessment is not None else self.status
+
+    @property
+    def unknown_reason(self) -> str | None:
+        assessment = self.displayed_assessment
+        if assessment is None or assessment.status is not CompatibilityStatus.UNKNOWN:
+            return None
+        return (
+            assessment.reasons[0]
+            if assessment.reasons
+            else "Compatibility could not be confirmed."
+        )
 
 
 __all__ = ["ModelRecommendation", "ScoreBreakdown", "SeriesSibling"]

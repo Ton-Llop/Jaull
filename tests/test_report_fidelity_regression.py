@@ -130,6 +130,33 @@ def test_a_candidate_does_not_contradict_its_own_recommendation() -> None:
             assert evaluated["scores"][axis] == breakdown[axis], (rec["repo_id"], axis)
 
 
+def test_selected_unknown_plan_does_not_inherit_preliminary_fit_claim() -> None:
+    from jaull.domain.estimation import CompatibilityStatus
+    from jaull.recommendation.explanations import build_reasons
+
+    state = _run()
+    rec = state.recommendations[0]
+    assert rec.plan is not None
+    assert rec.plan.memory_prediction is not None
+    assert state.requirements is not None
+    preliminary = build_reasons(rec.evaluated, state.requirements)
+    assert any("fits" in reason for reason in preliminary)
+
+    estimate = rec.plan.memory_prediction
+    unknown = estimate.model_copy(
+        update={
+            "assessment": estimate.assessment.model_copy(
+                update={"status": CompatibilityStatus.UNKNOWN}
+            )
+        }
+    )
+    selected = build_reasons(
+        rec.evaluated, state.requirements, selected_estimate=unknown
+    )
+    assert not any("fits" in reason for reason in selected)
+    assert any("selected for evaluation" in reason for reason in selected)
+
+
 def test_a_failed_candidate_is_unscored_rather_than_zero() -> None:
     """``null`` says "never evaluated"; 0.0 reads as "scored badly"."""
     search = FakeSearchClient(

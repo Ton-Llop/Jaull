@@ -22,6 +22,7 @@ from jaull.domain.requirements import (
     RecommendationPriority,
     UseCase,
     UserAnswers,
+    WorkloadMode,
 )
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
@@ -38,8 +39,13 @@ _USE_CASES: tuple[tuple[UseCase, str], ...] = (
     (UseCase.DOCUMENT_QA, "Documents and company knowledge"),
     (UseCase.SUMMARIZATION_EXTRACTION, "Summarization and extraction"),
     (UseCase.REASONING, "Reasoning and problem solving"),
-    (UseCase.BATCH_PROCESSING, "Batch processing"),
     (UseCase.WRITING_TRANSLATION, "Writing and translation"),
+)
+
+_WORKLOAD_MODES: tuple[tuple[WorkloadMode, str], ...] = (
+    (WorkloadMode.INTERACTIVE, "Interactive use"),
+    (WorkloadMode.BATCH, "Batch processing"),
+    (WorkloadMode.SERVICE, "Service"),
 )
 
 _PRIORITIES: tuple[tuple[RecommendationPriority, str], ...] = (
@@ -74,7 +80,7 @@ _COMMERCIAL: tuple[tuple[CommercialUse, str], ...] = (
 
 
 class RequirementsWizardScreen(Screen[None]):
-    """Step 2: six plain-language questions, no technical terms."""
+    """Step 2: task and workload are separate questions."""
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
@@ -97,7 +103,20 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-use-case",
                 )
             with Vertical(classes="question"):
-                yield Static("2  What matters most?", classes="question-title")
+                yield Static("2  How will it be used?", classes="question-title")
+                yield RadioSet(
+                    *[
+                        RadioButton(
+                            label,
+                            value=mode is WorkloadMode.INTERACTIVE,
+                            id=f"wm-{mode.value}",
+                        )
+                        for mode, label in _WORKLOAD_MODES
+                    ],
+                    id="q-workload-mode",
+                )
+            with Vertical(classes="question"):
+                yield Static("3  What matters most?", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -110,7 +129,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-priority",
                 )
             with Vertical(classes="question"):
-                yield Static("3  Which languages?", classes="question-title")
+                yield Static("4  Which languages?", classes="question-title")
                 for language in _LANGUAGES:
                     yield Checkbox(
                         language,
@@ -124,7 +143,7 @@ class RequirementsWizardScreen(Screen[None]):
                 )
             with Vertical(classes="question"):
                 yield Static(
-                    "4  How many people will use it at once?",
+                    "5  How many people will use it at once?",
                     classes="question-title",
                 )
                 yield RadioSet(
@@ -141,7 +160,7 @@ class RequirementsWizardScreen(Screen[None]):
             # Only meaningful for document work; hidden otherwise so the wizard
             # never asks a question the answer cannot influence.
             with Vertical(classes="question", id="q-documents-card"):
-                yield Static("5  How much text at a time?", classes="question-title")
+                yield Static("6  How much text at a time?", classes="question-title")
                 yield Static(
                     "Sets the context window — not the size of a document "
                     "collection; retrieval feeds the model a few chunks at a time.",
@@ -160,7 +179,7 @@ class RequirementsWizardScreen(Screen[None]):
                 )
             with Vertical(classes="question"):
                 yield Static(
-                    "6  Must the model allow commercial use?",
+                    "7  Must the model allow commercial use?",
                     classes="question-title",
                 )
                 yield RadioSet(
@@ -240,6 +259,9 @@ class RequirementsWizardScreen(Screen[None]):
         use_case = self._selected_use_case()
         return UserAnswers(
             use_case=use_case,
+            workload_mode=self._selected(
+                "q-workload-mode", "wm-", _WORKLOAD_MODES, WorkloadMode.INTERACTIVE
+            ),
             priority=self._selected(
                 "q-priority", "pr-", _PRIORITIES, RecommendationPriority.BALANCED
             ),

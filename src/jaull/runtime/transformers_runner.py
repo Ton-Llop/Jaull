@@ -8,7 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution import ExecutionRequest, InferenceResult
+from jaull.domain.execution import (
+    ExecutionObservation,
+    ExecutionRequest,
+    ExecutionResult,
+    InferenceResult,
+)
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.execution.errors import (
     ExecutableNotFoundError,
@@ -24,6 +29,16 @@ _DEFAULT_MAX_NEW_TOKENS = 64
 
 class TransformersRunnerError(ExecutionError):
     """Base class for Transformers runner failures."""
+
+    def __init__(
+        self,
+        message: str,
+        observation: ExecutionObservation | None = None,
+        *,
+        result: ExecutionResult | None = None,
+    ) -> None:
+        self.result = result
+        super().__init__(message, observation)
 
 
 class InvalidTransformersArtifactError(TransformersRunnerError):
@@ -93,13 +108,15 @@ class TransformersRunner:
         payload = _parse_worker_payload(result.stdout)
         if payload.get("success") is False:
             error = str(payload.get("error") or "Transformers worker failed.")
-            raise TransformersRunnerError(error, result.observation)
+            raise TransformersRunnerError(error, result.observation, result=result)
         text = str(payload.get("text") or "")
         return InferenceResult(
             text=text.strip(),
             runtime=RuntimeName.TRANSFORMERS.value,
             model_path=Path(model_ref),
             observation=result.observation,
+            raw_stdout=result.stdout,
+            raw_stderr=result.stderr,
         )
 
 
@@ -197,6 +214,7 @@ def _worker_failed_error(exc: ExecutionFailedError) -> TransformersRunnerError:
             return TransformersRunnerError(
                 f"Transformers worker failed: {detail}",
                 exc.observation,
+                result=exc.result,
             )
 
     output_detail = _last_nonempty_line(exc.result.stderr) or _last_nonempty_line(
@@ -206,8 +224,9 @@ def _worker_failed_error(exc: ExecutionFailedError) -> TransformersRunnerError:
         return TransformersRunnerError(
             f"Transformers worker failed: {output_detail}",
             exc.observation,
+            result=exc.result,
         )
-    return TransformersRunnerError(str(exc), exc.observation)
+    return TransformersRunnerError(str(exc), exc.observation, result=exc.result)
 
 
 def _parse_optional_worker_payload(stdout: str) -> dict[str, object] | None:

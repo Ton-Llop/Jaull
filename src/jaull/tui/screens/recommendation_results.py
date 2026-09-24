@@ -16,6 +16,7 @@ from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Input, Static
 
 from jaull.domain.benchmarks import BenchmarkMeasurementKind
+from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.execution_plans import ModelIdentity, model_identity_key
 from jaull.evaluation.benchmark_comparison import (
     BenchmarkComparison,
@@ -109,8 +110,10 @@ class _RecommendationRow(Vertical):
             id=f"rec-evidence-{self._index}",
             classes="rec-evidence status-estimated",
         )
-        if rec.reasons:
+        if rec.reasons and not rec.unknown_reason:
             yield Static(rec.reasons[0], classes="rec-reason -expanded")
+        if rec.unknown_reason:
+            yield Static(rec.unknown_reason, classes="rec-unknown-reason")
         with Horizontal(classes="rec-actions -expanded"):
             action_reason = _runtime_action_reason(rec)
             run = Button(
@@ -216,13 +219,34 @@ class RecommendationResultsScreen(Screen[None]):
 
     def _compose_results(self) -> ComposeResult:
         recommendations = self._state.recommendations
+        confirmed = [
+            (index, rec)
+            for index, rec in enumerate(recommendations)
+            if rec.displayed_status is not CompatibilityStatus.UNKNOWN
+        ]
+        unconfirmed = [
+            (index, rec)
+            for index, rec in enumerate(recommendations)
+            if rec.displayed_status is CompatibilityStatus.UNKNOWN
+        ]
         with Horizontal(classes="rec-list-head"):
-            yield Static("Recommendations", classes="section-title")
+            yield Static(
+                "Confirmed recommendations" if confirmed else "No confirmed recommendations",
+                classes="section-title",
+            )
             yield Static(
                 _list_aside(recommendations),
-                classes=f"rec-list-aside {_tier_class(recommendations[0])}",
+                classes=(
+                    f"rec-list-aside {_tier_class(confirmed[0][1])}"
+                    if confirmed
+                    else "rec-list-aside text-muted-tight"
+                ),
             )
-        for index, rec in enumerate(recommendations):
+        for index, rec in confirmed:
+            yield _RecommendationRow(index, rec, selected=index == 0)
+        if unconfirmed:
+            yield Static("Unconfirmed alternatives", classes="section-title")
+        for index, rec in unconfirmed:
             yield _RecommendationRow(index, rec, selected=index == 0)
 
     def on_mount(self) -> None:
@@ -1046,10 +1070,20 @@ def _list_aside(recommendations: list[ModelRecommendation]) -> str:
     ``choose_tier`` already downgrades "best match" when the evidence is thin;
     the screen used to hard-code the strongest wording regardless.
     """
-    count = len(recommendations)
-    noun = "model" if count == 1 else "models"
-    heading = _tier_heading(recommendations[0])
-    return f"{heading} · {count} {noun}" if heading else f"{count} {noun}"
+    confirmed = [
+        rec for rec in recommendations
+        if rec.displayed_status is not CompatibilityStatus.UNKNOWN
+    ]
+    unconfirmed_count = len(recommendations) - len(confirmed)
+    if not confirmed:
+        noun = "alternative" if unconfirmed_count == 1 else "alternatives"
+        return f"{unconfirmed_count} unconfirmed {noun}"
+    noun = "model" if len(confirmed) == 1 else "models"
+    heading = _tier_heading(confirmed[0])
+    summary = f"{heading} · {len(confirmed)} {noun}" if heading else f"{len(confirmed)} {noun}"
+    if unconfirmed_count:
+        summary += f" · {unconfirmed_count} unconfirmed"
+    return summary
 
 
 def _tier_heading(rec: ModelRecommendation) -> str:
@@ -1168,21 +1202,29 @@ def _configuration_label(rec: ModelRecommendation) -> str:
 
 
 def _memory_label(rec: ModelRecommendation) -> str:
-    estimate = rec.evaluated.memory_estimate
+    estimate = (
+        rec.plan.memory_prediction
+        if rec.plan is not None and rec.plan.memory_prediction is not None
+        else rec.evaluated.memory_estimate
+    )
     if estimate is None:
         return "unknown"
     return format_gib(estimate.total_bytes)
 
 
 def _status_label(rec: ModelRecommendation) -> str:
-    return rec.status.value.replace("_", " ").capitalize()
+    return rec.displayed_status.value.replace("_", " ").capitalize()
 
 
 def _runtime_action_reason(rec: ModelRecommendation) -> str | None:
-    estimate = rec.evaluated.memory_estimate
+    estimate = (
+        rec.plan.memory_prediction
+        if rec.plan is not None and rec.plan.memory_prediction is not None
+        else rec.evaluated.memory_estimate
+    )
     if estimate is None:
         return "No memory estimate is available for this recommendation."
-    runtime = estimate.runtime_recommendation
+    runtime = rec.plan.runtime if rec.plan is not None else estimate.runtime_recommendation
     if runtime is None:
         return "No executable runtime recommendation is available."
     from jaull.domain.runtime import RuntimeName
@@ -1223,7 +1265,7 @@ _FIT_CLASSES = {
 
 
 def _fit_class(rec: ModelRecommendation) -> str:
-    return _FIT_CLASSES.get(rec.status.value, "fit-unknown")
+    return _FIT_CLASSES.get(rec.displayed_status.value, "fit-unknown")
 
 
 def _breakdown_rows(estimate: object) -> list[tuple[str, str]]:

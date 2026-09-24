@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution import InferenceResult
+from jaull.domain.execution import ExecutionResult, InferenceResult
 from jaull.domain.experiments import (
     ExperimentBackendTrace,
     ExperimentEnvironment,
@@ -95,6 +95,7 @@ class ExperimentRunner:
             )
 
         inference: InferenceResult | None = None
+        raw_result: ExecutionResult | None = None
         try:
             inference = artifact_runner.run(
                 artifact=request.artifact,
@@ -106,6 +107,7 @@ class ExperimentRunner:
             if exc.observation is None:
                 raise ExperimentRunnerError(str(exc)) from exc
             observation = exc.observation
+            raw_result = _raw_result_from_error(exc)
 
         record = build_experiment_record(
             hardware=request.hardware,
@@ -131,6 +133,7 @@ class ExperimentRunner:
             notes=request.notes,
         )
         persisted_path = None
+        raw_log_path = None
         if request.persist:
             if self.store is None:
                 raise ExperimentRunnerError(
@@ -139,12 +142,27 @@ class ExperimentRunner:
                 )
             try:
                 persisted_path = self.store.save(record)
+                if request.capture_raw_logs:
+                    stdout = inference.raw_stdout if inference is not None else None
+                    stderr = inference.raw_stderr if inference is not None else None
+                    if raw_result is not None:
+                        stdout, stderr = raw_result.stdout, raw_result.stderr
+                    if stdout is not None or stderr is not None:
+                        raw_log_path = self.store.save_runtime_log(
+                            record.identity.experiment_id,
+                            stdout=stdout or "",
+                            stderr=stderr or "",
+                        )
             except ExperimentStoreError as exc:
                 raise ExperimentPersistenceError(
                     "Experiment completed, but its record could not be persisted.",
                     record=record,
                 ) from exc
-        return ExperimentRunResult(record=record, persisted_path=persisted_path)
+        return ExperimentRunResult(
+            record=record,
+            persisted_path=persisted_path,
+            raw_log_path=raw_log_path,
+        )
 
     def _preflight(
         self,
@@ -237,6 +255,16 @@ def _runtime_requires_bitsandbytes(runtime: RuntimeRecommendation) -> bool:
         flag.name == "quantization" and requires_bitsandbytes(flag.value)
         for flag in runtime.flags
     )
+
+
+def _raw_result_from_error(error: ExecutionError) -> ExecutionResult | None:
+    current: BaseException | None = error
+    while current is not None:
+        result = getattr(current, "result", None)
+        if isinstance(result, ExecutionResult):
+            return result
+        current = current.__cause__
+    return None
 
 
 __all__ = [

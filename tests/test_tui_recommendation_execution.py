@@ -7,7 +7,7 @@ from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
-from textual.widgets import Button, DataTable, Input, Select, Static, TextArea
+from textual.widgets import Button, Checkbox, DataTable, Input, Select, Static, TextArea
 
 from jaull.artifacts.errors import ArtifactDownloadError
 from jaull.domain.artifacts import ModelArtifact
@@ -102,6 +102,7 @@ from jaull.tui.screens.recommendation_results import (
     RecommendationCompareScreen,
     RecommendationDetailsScreen,
     RecommendationResultsScreen,
+    _can_validate,
 )
 from jaull.tui.screens.recommendation_validation import (
     RecommendationValidationScreen,
@@ -241,6 +242,83 @@ def _recommendation(
         license_category=LicenseCategory.COMMERCIAL_ALLOWED,
         reasons=["fixture"],
     )
+
+
+def _with_status(
+    rec: ModelRecommendation,
+    status: CompatibilityStatus,
+    *,
+    executable: bool = True,
+) -> ModelRecommendation:
+    estimate = rec.evaluated.memory_estimate
+    assert estimate is not None
+    assessment = estimate.assessment.model_copy(
+        update={"status": status, "reasons": ["KV cache could not be estimated."]}
+    )
+    estimate = estimate.model_copy(
+        update={
+            "assessment": assessment,
+            "runtime_recommendation": (
+                estimate.runtime_recommendation if executable else None
+            ),
+        }
+    )
+    evaluated = rec.evaluated.model_copy(
+        update={"memory_estimate": estimate, "compatibility": assessment}
+    )
+    return rec.model_copy(update={"evaluated": evaluated, "status": status})
+
+
+def test_unknown_recommendations_are_separate_and_keep_the_assessment_reason() -> None:
+    async def scenario() -> None:
+        recommendations = [
+            _recommendation(rank=index + 1, repo_id=f"org/Known-{index}")
+            for index in range(3)
+        ] + [
+            _with_status(
+                _recommendation(rank=index + 4, repo_id=f"org/Unknown-{index}"),
+                CompatibilityStatus.UNKNOWN,
+                executable=False,
+            )
+            for index in range(2)
+        ]
+        scores = [rec.score for rec in recommendations]
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=recommendations)
+            )
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            assert "Confirmed recommendations" in _visible_text(screen)
+            assert "Unconfirmed alternatives" in _visible_text(screen)
+            assert "KV cache could not be estimated." in _visible_text(screen)
+            assert len(screen.query(".rec-row")) == 5
+            assert screen.query_one("#res-validate-3", Button).disabled
+            assert screen.query_one("#res-run-3", Button).disabled
+            assert screen.query_one("#res-benchmark-3", Button).disabled
+            assert not screen.query_one("#res-details", Button).disabled
+        assert [rec.score for rec in recommendations] == scores
+
+    _run(scenario())
+
+
+def test_only_unknown_still_shows_an_alternative_and_executable_unknown_can_validate() -> None:
+    async def scenario() -> None:
+        rec = _with_status(_recommendation(), CompatibilityStatus.UNKNOWN)
+        assert _can_validate(rec)
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(RecommendationWorkflowState(recommendations=[rec]))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationResultsScreen)
+            assert "No confirmed recommendations" in _visible_text(screen)
+            assert "Unconfirmed alternatives" in _visible_text(screen)
+            assert not screen.query_one("#res-validate-0", Button).disabled
+
+    _run(scenario())
 
 
 def _recommendation_with_plan(
@@ -974,6 +1052,14 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
                 "experiment",
             ]
             assert len(advisor.experiment_requests) == 1
+            request = advisor.experiment_requests[0]
+            assert isinstance(request, ExperimentRequest)
+            assert request.capture_raw_logs is False
+            assert request.workload.profile is not None
+            assert request.workload.profile.min_generation_tps is None
+            assert request.workload.profile.context_length == (
+                request.prediction.inference_configuration.context_length
+            )
             assert len(advisor.experiment_records) == 1
             text = _visible_text(screen)
             assert "Configuration validated" in text
@@ -1001,6 +1087,29 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert advisor.experiment_persisted_path.name in _visible_text(
                 pilot.app.screen
             )
+
+    _run(scenario())
+
+
+def test_validation_can_request_raw_logs_without_changing_the_record(
+    monkeypatch: Any,
+) -> None:
+    async def scenario() -> None:
+        advisor = _FakeAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationValidationScreen(_recommendation()))
+            await pilot.pause()
+            screen = pilot.app.screen
+            assert isinstance(screen, RecommendationValidationScreen)
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+            screen.query_one("#validation-capture-logs", Checkbox).value = True
+            screen.query_one("#validation-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.experiment_requests))
+            request = advisor.experiment_requests[0]
+            assert isinstance(request, ExperimentRequest)
+            assert request.capture_raw_logs is True
+            assert request.workload.profile is not None
 
     _run(scenario())
 
@@ -1328,7 +1437,7 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
             await pilot.pause()
             # The list names the model and how it would execute; the execution
             # paths themselves live on their own screen behind "Paths".
-            assert "Recommendations" in _visible_text(pilot.app.screen)
+            assert "Confirmed recommendations" in _visible_text(pilot.app.screen)
             assert "llama.cpp" in _visible_text(pilot.app.screen)
 
             for _ in range(2):
