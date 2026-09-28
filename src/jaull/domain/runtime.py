@@ -167,6 +167,15 @@ class RuntimeBackendSelection(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+#: The one llama.cpp build whose tensor placement was read from its source and
+#: checked against a real run (B001-R6). Two layers depend on it and they must
+#: not drift: the launch policy refines `--n-gpu-layers` with it, and the
+#: comparison layer uses it to decide whether an executed unit count can be
+#: translated back into transformer blocks. It lives in the domain because it
+#: is a fact about an artifact of the outside world, not a policy of either.
+LLAMA_CPP_VERIFIED_BUILD = "689e227db"
+
+
 class LlamaCppBinaryStatus(StrEnum):
     AVAILABLE = "available"
     MISSING = "missing"

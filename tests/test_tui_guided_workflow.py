@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import Event, Lock
 
-from textual.widgets import Button, Checkbox, DataTable, RadioSet
+from textual.widgets import Button, Checkbox, DataTable, RadioSet, Static
 
 from jaull.domain.requirements import UseCase, WorkloadMode
 from jaull.tui.app import JaullApp
@@ -109,13 +109,26 @@ async def _wait_for(
     *,
     timeout: float = 15.0,
 ) -> None:
-    """Wait for an observable TUI state instead of assuming one tick is enough."""
+    """Wait for an observable TUI state instead of assuming one tick is enough.
+
+    ``pilot.pause()`` with no argument waits for `wait_for_idle`, which calls the
+    process idle when `process_time()` barely advances. That clock counts CPU
+    across *every* thread in the process, so one busy background thread pins each
+    pause at its 1 s ceiling: measured here, a poll goes from 0.085 s to 1.05 s.
+    A 15 s budget then buys about thirteen checks instead of a hundred, and the
+    deadline arrives while the work is still in flight — which is exactly the
+    flake this helper used to produce under the full suite.
+
+    Passing an explicit delay takes `pause`'s other branch: it still flushes the
+    screen's pending messages, which is the part a poll needs, and then plainly
+    yields. The pacing below is what sets the poll rate.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while True:
-        await pilot.pause()
+        await pilot.pause(0)
         if predicate():
-            await pilot.pause()
+            await pilot.pause(0)
             return
         if loop.time() >= deadline:
             button_ids = [
@@ -334,6 +347,72 @@ def test_wizard_collects_task_and_batch_mode_separately() -> None:
             assert answers.use_case is UseCase.CODING
             assert answers.workload_mode is WorkloadMode.BATCH
             assert not screen.query("#uc-batch_processing")
+
+    _run(scenario())
+
+
+def test_wizard_offers_only_the_two_processing_patterns() -> None:
+    """`Service` described deployment, not how requests are processed."""
+
+    async def scenario() -> None:
+        app = JaullApp(services=_services())
+        async with app.run_test() as pilot:
+            app.push_screen(RequirementsWizardScreen())
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
+            screen = pilot.app.screen
+            assert isinstance(screen, RequirementsWizardScreen)
+
+            assert screen.query("#wm-interactive")
+            assert screen.query("#wm-batch")
+            assert not screen.query("#wm-service")
+
+            question = screen.query_one("#q-title-workload-mode", Static)
+            assert "processed" in str(question.render())
+
+    _run(scenario())
+
+
+def test_wizard_question_numbers_never_skip() -> None:
+    """One question is hidden for non-document tasks.
+
+    The ordinals used to be literal strings, so hiding the sixth left the user
+    looking at 1-2-3-4-5-7.
+    """
+
+    async def scenario() -> None:
+        app = JaullApp(services=_services())
+        async with app.run_test() as pilot:
+            app.push_screen(RequirementsWizardScreen())
+            await _wait_for(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RequirementsWizardScreen),
+            )
+            screen = pilot.app.screen
+            assert isinstance(screen, RequirementsWizardScreen)
+
+            def visible_numbers() -> list[int]:
+                numbers = []
+                for widget in screen.query(".question-title"):
+                    if not widget.display or not widget.parent.display:  # type: ignore[union-attr]
+                        continue
+                    text = str(widget.render())
+                    if text.strip():
+                        numbers.append(int(text.split()[0]))
+                return numbers
+
+            # General chat: the text-size question is hidden.
+            chat = visible_numbers()
+            assert chat == list(range(1, len(chat) + 1)), chat
+
+            screen.query_one("#uc-document_qa").value = True  # type: ignore[attr-defined]
+            await pilot.pause()
+
+            documents = visible_numbers()
+            assert documents == list(range(1, len(documents) + 1)), documents
+            assert len(documents) == len(chat) + 1
 
     _run(scenario())
 

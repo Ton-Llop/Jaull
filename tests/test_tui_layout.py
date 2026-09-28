@@ -52,14 +52,19 @@ async def _wait_for(
     *,
     timeout: float = 30.0,
 ) -> None:
-    waited = 0.0
-    while waited < timeout:
-        await pilot.pause()
+    # `pilot.pause(0)`, not `pilot.pause()`: the argument-less form waits for
+    # process-wide CPU idle, so one busy thread anywhere pins every poll at its
+    # 1 s ceiling. See the note in `test_tui_guided_workflow._wait_for`.
+    # The deadline is wall clock too, because counting `waited += 0.05` assumed
+    # an iteration costs only its sleep, and it does not.
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        await pilot.pause(0)
         if predicate():
-            await pilot.pause()
+            await pilot.pause(0)
             return
         await asyncio.sleep(0.05)
-        waited += 0.05
     screen = pilot.app.screen
     recommendations = getattr(getattr(screen, "_state", None), "recommendations", None)
     recommendation_count = (

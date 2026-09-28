@@ -210,3 +210,61 @@ def test_no_gpu_prefers_gguf_and_says_why() -> None:
 def test_concurrency_above_one_records_a_no_throughput_caveat() -> None:
     req = build_requirements(answers(concurrency=ConcurrencyLevel.MEDIUM), hardware())
     assert any("does not model real throughput" in a for a in req.assumptions)
+
+
+def test_workload_mode_is_only_the_processing_pattern() -> None:
+    """New choices describe processing; old service records remain readable.
+
+    A service can be interactive or batch, so it is not offered as a new choice.
+    """
+    assert [WorkloadMode.INTERACTIVE.value, WorkloadMode.BATCH.value] == [
+        "interactive",
+        "batch",
+    ]
+    assert WorkloadMode("service") is WorkloadMode.SERVICE
+
+
+@pytest.mark.parametrize(
+    "use_case",
+    [UseCase.CODING, UseCase.DOCUMENT_QA, UseCase.GENERAL_CHAT, UseCase.REASONING],
+)
+@pytest.mark.parametrize("mode", [WorkloadMode.INTERACTIVE, WorkloadMode.BATCH])
+def test_task_and_workload_mode_are_orthogonal(
+    use_case: UseCase, mode: WorkloadMode
+) -> None:
+    """Every combination is meaningful: coding+batch is offline repo analysis,
+    document_qa+interactive is a chatbot over documents."""
+    req = build_requirements(
+        answers(use_case=use_case).model_copy(update={"workload_mode": mode}),
+        hardware(),
+    )
+
+    assert req.use_case is use_case
+    assert req.workload_mode is mode
+    assert req.workload_profile.mode is mode
+
+
+def test_legacy_service_workload_survives_a_serialization_round_trip() -> None:
+    req = build_requirements(
+        answers().model_copy(update={"workload_mode": WorkloadMode.SERVICE}),
+        hardware(),
+    )
+
+    restored = UserRequirements.model_validate_json(req.model_dump_json())
+
+    assert restored.workload_mode is WorkloadMode.SERVICE
+    assert restored.workload_profile.mode is WorkloadMode.SERVICE
+
+
+@pytest.mark.parametrize("mode", list(WorkloadMode))
+def test_workload_mode_survives_a_serialization_round_trip(
+    mode: WorkloadMode,
+) -> None:
+    req = build_requirements(
+        answers().model_copy(update={"workload_mode": mode}), hardware()
+    )
+
+    restored = UserRequirements.model_validate_json(req.model_dump_json())
+
+    assert restored.workload_mode is mode
+    assert restored.workload_profile.mode is mode

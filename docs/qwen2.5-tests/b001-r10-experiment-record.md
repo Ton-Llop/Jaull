@@ -55,7 +55,10 @@ record remains unchanged and accurately preserves the original `null` value.
 ## Comparison and limits
 
 The VRAM comparison is `methodologically_unavailable`: HFA's block placement
-does not map to this run's llama.cpp offload units in the comparison layer. No
-error percentage should be inferred from the predicted and observed totals. The
-run confirms the persistent observation path and adds one data point; it does
-not calibrate memory estimates, reserves, margins or launch policy.
+does not map to this run's llama.cpp offload units in the comparison layer.
+Independently, HFA bounds the placement of non-block weights rather than
+predicting a device-specific point for them. A layer-unit mapping alone would
+not make the predicted and observed totals comparable. No error percentage
+should be inferred from them. The run confirms the persistent observation path
+and adds one data point; it does not calibrate memory estimates, reserves,
+margins or launch policy.

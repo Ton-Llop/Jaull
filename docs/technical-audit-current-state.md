@@ -3,11 +3,11 @@
 Auditoria original: 2026-09-03, branch `execution-plan`, commit
 `0910967e0768548b5fd84c83427a1754daf5816c`.
 
-**Revisiones: R (2026-09-16, `5bf954b`), S (2026-09-17, `059dac3`), T (2026-09-20) y U (2026-09-24, working tree sobre `1c341c4`).**
+**Revisiones: R (2026-09-16, `5bf954b`), S (2026-09-17, `059dac3`), T (2026-09-20), U (2026-09-24, working tree sobre `1c341c4`) y V (2026-09-28, working tree sobre `faf2137`).**
 
 El cuerpo original (secciones A-L) se conserva tal como se escribio el 03/09: es un
 registro fechado, no un documento vivo. Sus cifras, prioridades y tareas pendientes
-no describen por si solas el estado actual. Las revisiones R, S, T y U anteriores
+no describen por si solas el estado actual. Las revisiones R, S, T, U y V anteriores
 en este archivo documentan los cambios posteriores; para saber si un hallazgo sigue
 abierto hay que leer la revision mas reciente, aunque la seccion original no lleve
 una marca **CERRADO**.
@@ -476,15 +476,114 @@ documentada.
 
 ### U.6 Lo que haria ahora
 
-1. Hacer que la capa de comparacion consuma el mapeo bloque <-> unidad de
-   lanzamiento ya derivado por B001-R6 para `689e227db` + `qwen2` denso. Aplicarlo
-   solo en ese ambito verificado; otros builds/arquitecturas deben seguir sin
-   comparacion hasta tener evidencia propia.
+1. Correccion (2026-09-26): el mapeo bloque <-> unidad de lanzamiento derivado
+   por B001-R6 no basta para habilitar la comparacion de B001-R10. HFA tambien
+   conserva un intervalo para los pesos no-bloque; no predice su ubicacion exacta
+   en el dispositivo. Una comparacion numerica requeriria una prediccion puntual
+   especifica del runtime, con provenance verificable del build y del artefacto,
+   ademas del mapeo. Hasta entonces, `methodologically_unavailable` es correcto.
 2. La decision de producto pendiente sobre el idioma blando que degrada duro.
 
 Lo que **no** haria todavia: calibrar reserve y headroom. R9 mide su coste
 observado, y R10 confirma la captura de buffers, pero ninguno da base para
 moverlos.
+
+## V. Revision del 2026-09-28
+
+### V.1 Gates
+
+| Gate | 24/09 | 28/09 |
+|---|---|---|
+| ruff | clean | clean |
+| mypy | clean, 245 | clean, 245 |
+| pytest | 1705 | **1745 passed** |
+| suite bajo carga | sin medir | **151 s, 0 fallos** (4 hilos quemando CPU) |
+
+### V.2 La suite tenia un fallo intermitente, y no era del codigo de produccion
+
+Dos pasadas completas de la suite el 26/09 dieron resultados distintos:
+`test_results_screen_can_render_a_comparison` agoto sus 15 s esperando a que
+descubrimiento terminara, clavado en `ModelDiscoveryScreen`. Aislado pasaba 5/5.
+
+La causa esta en el helper de espera, no en la pantalla. `pilot.pause()` sin
+argumento espera a `wait_for_idle`, que decide que el proceso esta ocioso
+comparando `process_time()` con el reloj de pared. Ese contador es **CPU de todo
+el proceso, todos los hilos**: con cualquier hilo ocupado nunca baja del umbral y
+cada pausa se va a su techo de 1 s. Medido sobre la pantalla de descubrimiento:
+
+| | media por poll | 12 polls |
+|---|---:|---:|
+| en reposo | 0,085 s | 1,02 s |
+| con dos hilos quemando CPU | **1,049 s** | **12,59 s** |
+
+El presupuesto de 15 s compraba asi unas trece comprobaciones en vez de ciento y
+pico. El timeout se lo gastaba el sondeo, no la tarea — y precisamente bajo la
+condicion en que la tarea tambien tarda mas.
+
+`pilot.pause(0)` toma la otra rama de `pause`: sigue vaciando los mensajes
+pendientes de la pantalla, que es lo que un poll necesita, y luego cede sin
+heuristica. Medido de nuevo: **1,049 s -> 0,054 s**. Aplicado a los tres helpers
+`_wait_for` (`test_tui_guided_workflow`, `test_tui_layout`, `test_tui_patrol`).
+En los dos ultimos se corrigio ademas la contabilidad del tiempo: `waited += 0.05`
+daba por hecho que una iteracion cuesta solo su sleep, asi que su timeout
+declarado de 30 s no eran 30 s; ahora los tres usan reloj de pared.
+
+No se subio ningun timeout.
+
+### V.3 Que ha aterrizado de U.6 #1, y que sigue bloqueando
+
+La correccion del 26/09 es correcta y esta comprobada contra el record real, no
+razonada. Re-evaluando B001-R10 con el mapeo disponible y sin el:
+
+```
+B001-R10 · qwen2 · version: 10357 (689e227db) · 10 bloques predichos
+non_block_placement_bounds.non_block_weight_bytes = 670.300.265
+
+sin evidencia de placement -> methodologically_unavailable
+                              "Non-block weight placement is bounded, not a
+                               device-specific point prediction."
+con evidencia de placement -> identico
+```
+
+El gate de bounds dispara antes que el de placement, de modo que el mapeo no
+mueve R10. Lo que si ha aterrizado, como uno de los tres ingredientes que la
+correccion enumera:
+
+- `evaluation/comparison.py` traduce ya `--n-gpu-layers u` a `max(u-1, 0)`
+  bloques, con tope en el recuento de bloques, y contrasta esa cifra con
+  `gpu_transformer_blocks`. Donde discrepan, el motivo nombra las dos cifras en
+  vez de declarar el mapeo inexistente.
+- El ambito se cierra con `ExecutedPlacementEvidence`: build `689e227db` leido de
+  `preflight.runtime_capability.version_text`, arquitectura `qwen2` densa, backend
+  CUDA seleccionado, una GPU discreta confirmada y un solo dispositivo. Fuera de
+  ese ambito, y sin evidencia, el comportamiento es identico al anterior.
+- `LLAMA_CPP_VERIFIED_BUILD` pasa a `domain/runtime.py`, para que la politica de
+  lanzamiento y la capa de comparacion no puedan discrepar sobre que build se
+  leyo.
+- El motivo generico era **falso** desde que aterrizo B001-R6: decia que Jaull no
+  tenia mapeo validado *todavia*, cuando ya lo tenia para un ambito concreto.
+  Ahora nombra ese ambito.
+
+Sigue bloqueando la comparacion numerica de VRAM el intervalo de pesos no-bloque,
+tal y como dice la correccion. Ese es el siguiente paso, no este.
+
+### V.4 Hallazgos nuevos, sin tocar
+
+- **`runtime_build` no se rellena nunca.** `llama_cpp_runner.py:101` llama a
+  `parse_llama_cpp_allocation(output)` sin pasar el build, asi que
+  `observation.runtime_allocation.runtime_build` es `None` en todos los records
+  existentes, R10 incluido. El log crudo del propio run si lo imprime
+  (`build 10357 (689e227db)`), de modo que el record podria auto-evidenciarse en
+  vez de depender del preflight. Por eso V.3 lee el build del preflight.
+- **`ModelDiscoveryScreen._run` puede morir en silencio.** `self._app()` y
+  `app.hardware_profile` quedan fuera del `try`, y nadie inspecciona nunca
+  `self._future`. Una excepcion ahi deja el spinner girando indefinidamente sin
+  mensaje de error. **No es la causa de V.2**, que esta probada, asi que no se ha
+  tocado por especulacion.
+- La documentacion sigue diciendo "six plain-language questions"
+  (`README.md:95`, `README.md:177`, `docs/recommendation.md:5`) mientras
+  `_QUESTION_TITLES` tiene siete, una condicional: son seis o siete segun si la
+  pregunta de documentos aplica.
 
 ## A. Estado general
 

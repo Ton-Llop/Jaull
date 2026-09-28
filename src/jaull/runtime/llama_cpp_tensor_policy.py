@@ -15,6 +15,7 @@ from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.gguf import GgufTensorIndex
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
+    LLAMA_CPP_VERIFIED_BUILD,
     LlamaCppBackendCapabilityState,
     LlamaCppBinaryStatus,
     LlamaCppRuntimeCapability,
@@ -24,7 +25,9 @@ from jaull.exceptions import GgufHeaderIncompleteError, GgufHeaderInvalidError
 from jaull.metadata.gguf_reader import read_local_tensor_index
 from jaull.runtime.policies import LLAMA_CPP_HEADROOM_BYTES
 
-VERIFIED_BUILD = "689e227db"
+#: Kept as a local name for the readers of this module; the value is shared with
+#: the comparison layer so the two cannot disagree about which build was read.
+VERIFIED_BUILD = LLAMA_CPP_VERIFIED_BUILD
 
 
 @dataclass(frozen=True)

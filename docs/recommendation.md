@@ -24,7 +24,7 @@ Recommendations
 | | Guided mode | Advanced tools |
 |---|---|---|
 | For | Anyone who wants a recommendation | Users who already know the repository |
-| Input | Six plain-language questions | A `repo_id` or URL, plus flags |
+| Input | A handful of plain-language questions | A `repo_id` or URL, plus flags |
 | Output | Up to 5 explained recommendations | Raw analysis / estimate for one model |
 | Screens | Welcome → Hardware → Questions → Search → Results | Scan, Inspect, Estimate, Doctor |
 
@@ -32,22 +32,41 @@ Recommendations
 
 ## The questions the wizard asks
 
-1. **What will you use it for?** — general chat, programming, documents, or writing and
-   translation.
-2. **What matters most?** — best quality, balanced, fast responses, or lowest memory usage.
-3. **Which languages?** — multiple choice, plus free-text codes under "Other".
-4. **How many people at once?** — one, 2–5, 6–20, or more than 20.
-5. **How much text at a time?** — asked **only** for the documents use case. It sets the
+1. **What will you use it for?** — general chat, programming, documents, summarization,
+   reasoning, or writing and translation. This is the *task*: what work the model does.
+2. **How will requests be processed?** — interactive or batch. This is the *workload mode*:
+   whether a caller is waiting for the answer.
+3. **What matters most?** — best quality, balanced, fast responses, or lowest memory usage.
+4. **Which languages?** — multiple choice, plus free-text codes under "Other".
+5. **How many people at once?** — one, 2–5, 6–10, or more than 10.
+6. **How much text at a time?** — asked **only** for the documents use case. It sets the
    model's context window, which is *not* the size of a document collection: a retrieval
    system feeds the model a few chunks at a time.
-6. **Must the model allow commercial use?** — yes / no / not sure, defaulting to yes.
+7. **Must the model allow commercial use?** — yes / no / not sure, defaulting to yes.
+
+The numbers above are what a documents user sees. For every other task the sixth question is
+hidden and the wizard renumbers what remains, so the sequence never skips.
+
+### Task and workload mode are orthogonal
+
+They answer different questions and every combination is valid. `coding` + `batch` is
+analysing many repositories offline; `document_qa` + `interactive` is a chatbot over
+documents; `document_qa` + `batch` is summarising thousands of files. Nothing in the ranking
+restricts one by the other, and workload mode does not enter `task_match`.
+
+The wizard offers only these two modes. *Deployment* — a persistent service, an API server,
+a daemon — is a separate dimension, because a service can be interactive or batch. Jaull
+does not model deployment yet. The old serialized `service` value remains readable for
+existing records but is not offered for new selections.
 
 Answers are normalised into a `UserRequirements` object (`application/requirements.py`, still
 importable as `workflow/requirements.py`) that records every assumption it made, and those
 assumptions appear in the exported report.
 
-This is not a workload model. It captures intent and a concurrency bucket, not throughput,
-latency or time-to-first-token objectives — see the roadmap in the README.
+`WorkloadProfile` carries the requested workload: context, concurrency, mode, expected input
+and output tokens, and optionally `min_generation_tps` and `max_ttft_ms`. Those last two are
+*requested* objectives, not measurements — a benchmark observation is a separate quantity and
+the two are never mixed.
 
 ---
 

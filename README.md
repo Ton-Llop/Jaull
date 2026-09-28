@@ -207,7 +207,7 @@ The sections below describe the intended direction, not a current verdict.
 
 ### Workload-aware qualification
 
-Jaull can record task separately from interactive, batch or service mode, plus context,
+Jaull can record task separately from interactive or batch mode, plus context,
 concurrent users and optional input/output lengths, minimum generation throughput and
 maximum time-to-first-token. These are requested objectives, not measured results or a
 qualification verdict. The wizard only asks for task and mode; SLOs are optional API data.

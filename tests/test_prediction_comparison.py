@@ -26,6 +26,7 @@ from jaull.domain.estimation import (
     KvCacheEstimate,
     MemoryComponent,
     MemoryEstimate,
+    NonBlockPlacementBounds,
     RuntimeOverheadEstimate,
     WeightEstimate,
 )
@@ -38,6 +39,7 @@ from jaull.domain.execution import (
     RuntimeBufferLocation,
     RuntimeReportedAllocation,
 )
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.model import ModelRepositoryInfo
 from jaull.domain.runtime import (
@@ -47,11 +49,14 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.evaluation.comparison import (
+    ExecutedPlacementEvidence,
     PredictionRuntimeMismatchError,
     assert_prediction_runtime_matches,
     compare_prediction,
 )
 from jaull.presentation.comparison_report import render_prediction_comparison
+from tests._execution_fixtures import qwen_hardware
+from tests._tensor_fixtures import cuda_selection, verified_capability
 
 
 def test_ram_exact_error_convention_underestimation() -> None:
@@ -422,9 +427,11 @@ def _estimate(
     target_device: TargetDevice = TargetDevice.AUTO,
     effective_device: TargetDevice = TargetDevice.CPU,
     hardware_fit: HardwareFitResult | None = None,
+    architecture: str | None = None,
 ) -> MemoryEstimate:
     total = _sum_optional([weights, kv, overhead])
     return MemoryEstimate(
+        architecture=architecture,
         hardware_fit=hardware_fit,
         repository=ModelRepositoryInfo(repo_id="org/model"),
         repository_type=RepositoryType.GGUF,
@@ -587,13 +594,18 @@ def _fit(
     )
 
 
-def _gpu_estimate(fit: HardwareFitResult | None) -> MemoryEstimate:
+def _gpu_estimate(
+    fit: HardwareFitResult | None,
+    *,
+    architecture: str | None = None,
+) -> MemoryEstimate:
     return _estimate(
         weights=600,
         kv=300,
         overhead=100,
         effective_device=TargetDevice.GPU,
         hardware_fit=fit,
+        architecture=architecture,
     )
 
 
@@ -1023,6 +1035,46 @@ def test_an_unverified_placement_disables_the_components_too() -> None:
         )
 
 
+def test_bounded_non_block_placement_disables_the_components_too() -> None:
+    fit = _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_transformer_blocks=10,
+        total_transformer_blocks=28,
+        ram_weight=400,
+    ).model_copy(
+        update={
+            "non_block_placement_bounds": NonBlockPlacementBounds(
+                gpu_transformer_block_weight_bytes=300,
+                ram_transformer_block_weight_bytes=400,
+                non_block_weight_bytes=300,
+                gpu_required_min_bytes=1000,
+                ram_required_max_bytes=700,
+                ram_overhead_max_bytes=100,
+                ram_safety_margin_max_bytes=0,
+            )
+        }
+    )
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(fit),
+        observation=_observation_with_allocation(_allocation()),
+        runtime=_runtime(n_gpu_layers=11),
+    )
+
+    assert comparison.vram.availability is (
+        MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    reason = comparison.vram.unavailable_reason
+    assert reason is not None and "bounded" in reason
+    assert comparison.vram_components
+    for component in comparison.vram_components:
+        assert component.semantics is ComparisonSemantics.UNAVAILABLE
+        assert component.semantics_reason == reason
+        assert component.metric.availability is (
+            MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+        )
+        assert component.metric.error_percent is None
+
+
 def test_a_category_the_runtime_did_not_report_stays_unavailable() -> None:
     comparison = compare_prediction(
         estimate=_gpu_estimate(_fit()),
@@ -1047,3 +1099,210 @@ def test_without_a_runtime_report_there_is_no_breakdown() -> None:
 
     assert comparison.vram_components == ()
     assert comparison.vram.source is MemoryObservationSource.NVML_PROCESS_ALLOCATION
+
+
+# ---------------------------------------------------------------------------
+# The block <-> launch-unit mapping, inside the one scope it was verified in
+# ---------------------------------------------------------------------------
+def _verified_evidence() -> ExecutedPlacementEvidence:
+    return ExecutedPlacementEvidence(
+        hardware=qwen_hardware(),
+        runtime_capability=verified_capability(),
+        backend_selection=cuda_selection(),
+    )
+
+
+def _offload_fit(gpu_blocks: int) -> HardwareFitResult:
+    return _fit(
+        mode=HardwareFitMode.GPU_OFFLOAD,
+        gpu_transformer_blocks=gpu_blocks,
+        total_transformer_blocks=32,
+    )
+
+
+def test_a_verified_run_translates_launch_units_into_blocks() -> None:
+    """B001-R6: `u` units put `u - 1` repeating blocks on the GPU.
+
+    With 27 units and a prediction of 26 blocks the two describe the same split,
+    so the VRAM figure finally gets compared instead of being refused.
+    """
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram.predicted_bytes == 1000
+    assert comparison.vram.error_bytes == 0
+
+
+def test_a_verified_run_that_split_it_differently_says_both_numbers() -> None:
+    """A mapping that exists turns "unknowable" into a checkable disagreement."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(10), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    reason = comparison.vram.unavailable_reason or ""
+    assert "--n-gpu-layers 27" in reason
+    assert "26 transformer blocks" in reason
+    assert "prediction placed 10" in reason
+
+
+def test_zero_units_map_to_zero_blocks_not_to_minus_one() -> None:
+    """`max(u - 1, 0)`: no units is no blocks, and the floor is not negative."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(0), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(0),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+
+
+def test_the_block_count_caps_the_mapping() -> None:
+    """More units than blocks still means every block, not more than exist."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(32), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(99),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+
+
+def test_without_evidence_the_mapping_is_not_assumed() -> None:
+    """The default caller passes nothing and must keep getting today's answer."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+    assert "validated mapping only for llama.cpp" in (
+        comparison.vram.unavailable_reason or ""
+    )
+
+
+def test_another_build_gets_no_mapping_even_with_the_same_architecture() -> None:
+    """The placement was read from one commit; a different one is not evidence."""
+
+    capability = verified_capability().model_copy(
+        update={"version_text": "version: 10400 (deadbeef1)\nbuilt with GNU 13.3.0"}
+    )
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=ExecutedPlacementEvidence(
+            hardware=qwen_hardware(),
+            runtime_capability=capability,
+            backend_selection=cuda_selection(),
+        ),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+
+
+def test_another_architecture_gets_no_mapping_on_the_verified_build() -> None:
+    """The rule was read out of qwen2.cpp and belongs to dense qwen2 alone."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="llama"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+
+
+def test_two_gpus_get_no_mapping() -> None:
+    """One confirmed discrete device, or the device the buffers name is a guess."""
+
+    hardware = qwen_hardware()
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=ExecutedPlacementEvidence(
+            hardware=hardware.model_copy(update={"gpus": hardware.gpus * 2}),
+            runtime_capability=verified_capability(),
+            backend_selection=cuda_selection(),
+        ),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+
+
+def test_a_non_cuda_selection_gets_no_mapping() -> None:
+    """The placement read from source is the CUDA one."""
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation(ram=None, vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=ExecutedPlacementEvidence(
+            hardware=qwen_hardware(),
+            runtime_capability=verified_capability(),
+            backend_selection=cuda_selection().model_copy(
+                update={"selected_backend": ComputeBackend.VULKAN}
+            ),
+        ),
+    )
+
+    assert (
+        comparison.vram.availability
+        is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+    )
+
+
+def test_the_component_breakdown_does_not_contradict_the_total() -> None:
+    """Both sides must read the same evidence, or the report argues with itself.
+
+    The total is computed with the placement evidence. The breakdown recomputes
+    the same gate, and when it did so without the evidence the header said the
+    run was comparable while every row under it said no mapping existed.
+    """
+
+    comparison = compare_prediction(
+        estimate=_gpu_estimate(_offload_fit(26), architecture="qwen2"),
+        observation=_observation_with_allocation(_allocation(), vram=1000),
+        runtime=_runtime(27),
+        placement_evidence=_verified_evidence(),
+    )
+
+    assert comparison.vram.availability is MetricComparisonAvailability.AVAILABLE
+    assert comparison.vram_components
+    assert all(
+        component.metric.availability is MetricComparisonAvailability.AVAILABLE
+        for component in comparison.vram_components
+    )

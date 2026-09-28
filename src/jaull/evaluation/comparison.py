@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+
 from jaull.domain.comparison import (
     ComparisonSemantics,
     CompatibilityComparison,
@@ -23,8 +26,36 @@ from jaull.domain.execution import (
     RuntimeBufferCategory,
     RuntimeReportedAllocation,
 )
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import TargetDevice
-from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+from jaull.domain.runtime import (
+    LLAMA_CPP_VERIFIED_BUILD,
+    LlamaCppBackendCapabilityState,
+    LlamaCppBinaryStatus,
+    LlamaCppRuntimeCapability,
+    RuntimeBackendSelection,
+    RuntimeCapability,
+    RuntimeName,
+    RuntimeRecommendation,
+)
+
+
+@dataclass(frozen=True)
+class ExecutedPlacementEvidence:
+    """What a run proves about the machine and binary that produced it.
+
+    The comparison can only translate ``--n-gpu-layers`` back into transformer
+    blocks for the one build whose placement was read from source and checked
+    against a real run. Deciding that needs facts the estimate does not carry:
+    which binary ran, which backend it selected, and whether there was exactly
+    one discrete device for it to select. A caller that holds an experiment
+    record has all three; one that does not passes nothing and gets today's
+    answer, which is that the placement cannot be verified.
+    """
+
+    hardware: HardwareProfile
+    runtime_capability: RuntimeCapability
+    backend_selection: RuntimeBackendSelection | None = None
 
 _RAM_GPU_UNAVAILABLE_REASON = (
     "Peak process RSS does not measure host memory demand under GPU offload: "
@@ -49,7 +80,9 @@ _VRAM_UNVERIFIED_PLACEMENT_REASON = (
 _VRAM_RUNTIME_MAPPING_UNAVAILABLE_REASON = (
     "The Hardware Fit prediction is expressed in runtime-agnostic transformer "
     "blocks, while llama.cpp --n-gpu-layers uses backend-specific offload "
-    "units. Jaull has no validated mapping between the two yet, so this run "
+    f"units. Jaull has a validated mapping only for llama.cpp "
+    f"{LLAMA_CPP_VERIFIED_BUILD} running a dense qwen2 artifact on one "
+    "confirmed discrete CUDA device, and this run is outside that scope, so it "
     "cannot be held to the transformer-block placement."
 )
 
@@ -63,6 +96,7 @@ def compare_prediction(
     estimate: MemoryEstimate,
     observation: ExecutionObservation,
     runtime: RuntimeRecommendation | None = None,
+    placement_evidence: ExecutedPlacementEvidence | None = None,
 ) -> PredictionComparison:
     """Compare Jaull's prediction with a single measured execution.
 
@@ -91,6 +125,7 @@ def compare_prediction(
     vram_predicted, vram_availability, vram_reason = _predicted_vram(
         estimate=estimate,
         runtime=runtime,
+        placement_evidence=placement_evidence,
     )
     vram_measured, vram_source = _observed_vram(observation)
     vram = _metric_comparison(
@@ -125,6 +160,7 @@ def compare_prediction(
             estimate=estimate,
             observation=observation,
             runtime=runtime,
+            placement_evidence=placement_evidence,
         ),
     )
 
@@ -212,6 +248,7 @@ def _vram_components(
     estimate: MemoryEstimate,
     observation: ExecutionObservation,
     runtime: RuntimeRecommendation | None,
+    placement_evidence: ExecutedPlacementEvidence | None = None,
 ) -> tuple[ComponentComparison, ...]:
     """Break the VRAM comparison down by component, when a runtime reported one.
 
@@ -226,10 +263,19 @@ def _vram_components(
     if allocation is None or fit is None or not fit.places_weights_on_gpu:
         return ()
 
-    # The same gate the total uses: comparing a predicted placement against a
-    # run that placed the model differently attributes the difference to the
-    # memory model when it belongs to the placement.
-    mismatch = _placement_mismatch(fit, runtime)
+    # Components cannot be compared when the total lacks a point prediction.
+    # Same evidence as the total, or the two would disagree about whether this
+    # run's placement is knowable.
+    _, availability, reason = _predicted_vram(
+        estimate=estimate,
+        runtime=runtime,
+        placement_evidence=placement_evidence,
+    )
+    mismatch = (
+        reason
+        if availability is MetricComparisonAvailability.METHODOLOGICALLY_UNAVAILABLE
+        else None
+    )
 
     components: list[ComponentComparison] = []
     for field, label, category, semantics, reason in _COMPONENTS:
@@ -401,6 +447,7 @@ def _predicted_vram(
     *,
     estimate: MemoryEstimate,
     runtime: RuntimeRecommendation | None,
+    placement_evidence: ExecutedPlacementEvidence | None = None,
 ) -> tuple[int | None, MetricComparisonAvailability | None, str | None]:
     """The VRAM figure that is comparable with a process-attributed measurement.
 
@@ -449,7 +496,7 @@ def _predicted_vram(
             _VRAM_NO_FIT_REASON,
         )
 
-    mismatch = _placement_mismatch(fit, runtime)
+    mismatch = _placement_mismatch(fit, runtime, estimate, placement_evidence)
     if mismatch is not None:
         return (
             None,
@@ -459,9 +506,75 @@ def _predicted_vram(
     return (predicted, None, None)
 
 
+def _verified_gpu_blocks(
+    requested_units: int,
+    estimate: MemoryEstimate,
+    evidence: ExecutedPlacementEvidence | None,
+) -> int | None:
+    """Repeating blocks that ``requested_units`` put on the GPU, or ``None``.
+
+    B001-R6 read the placement out of llama.cpp ``689e227db`` and checked it
+    against a real run: for that build and a dense ``qwen2`` artifact with
+    separate input and output tensors, ``u`` runtime units keep the token
+    embeddings on the host, move the output tensors to the device once ``u`` is
+    positive, and place the last ``u - 1`` repeating blocks, capped at the block
+    count. That is the whole mapping, and it is the *only* one that exists.
+
+    Everything outside that scope returns ``None``, which leaves the caller
+    saying what it says today. A close-enough build is not a verified build:
+    the placement was read from one source tree at one commit, so the version
+    string has to name that commit and nothing else.
+    """
+
+    if evidence is None or estimate.architecture != "qwen2":
+        return None
+
+    capability = evidence.runtime_capability
+    if (
+        not isinstance(capability, LlamaCppRuntimeCapability)
+        or capability.binary_status is not LlamaCppBinaryStatus.AVAILABLE
+        or not re.search(
+            rf"^version:\s+\d+\s+\({LLAMA_CPP_VERIFIED_BUILD}\)\s*$",
+            capability.version_text or "",
+            re.MULTILINE,
+        )
+    ):
+        return None
+
+    selection = evidence.backend_selection
+    if selection is not None and selection.selected_backend is not ComputeBackend.CUDA:
+        return None
+
+    # One discrete CUDA device, and no shared-memory accelerator that would make
+    # "device memory" mean something else. Same gate the launch policy applies
+    # before it trusts the same rule.
+    hardware = evidence.hardware
+    cuda = [
+        backend
+        for backend in capability.backend_capabilities
+        if backend.backend is ComputeBackend.CUDA
+    ]
+    if (
+        len(hardware.gpus) != 1
+        or any(accelerator.shared_memory for accelerator in hardware.accelerators)
+        or len(cuda) != 1
+        or cuda[0].state is not LlamaCppBackendCapabilityState.CONFIRMED
+        or len(cuda[0].devices) != 1
+        or sum(len(backend.devices) for backend in capability.backend_capabilities) != 1
+    ):
+        return None
+
+    total_blocks = estimate.kv_cache.layers
+    if total_blocks is None or total_blocks <= 0:
+        return None
+    return min(max(requested_units - 1, 0), total_blocks)
+
+
 def _placement_mismatch(
     fit: HardwareFitResult,
     runtime: RuntimeRecommendation | None,
+    estimate: MemoryEstimate,
+    evidence: ExecutedPlacementEvidence | None,
 ) -> str | None:
     """Explain why the run cannot be held to this prediction, or ``None``.
 
@@ -469,10 +582,13 @@ def _placement_mismatch(
     the way the estimate assumed. Hardware Fit expresses offload placement in
     runtime-agnostic transformer blocks. llama.cpp exposes backend-specific
     ``--n-gpu-layers`` units, which the Qwen2.5 validation showed are not the
-    same vocabulary, so partial offload is reported as unverifiable until a
-    backend mapping exists. Transformers decides device placement internally and
-    exposes no equivalent, so there the prediction is also reported as
-    unverifiable rather than compared on trust.
+    same vocabulary. For the single build where that vocabulary has been read
+    from source and checked against a real run,
+    :func:`_verified_gpu_blocks` translates it and the two placements are held
+    to each other; everywhere else partial offload stays unverifiable.
+    Transformers decides device placement internally and exposes no equivalent,
+    so there the prediction is also reported as unverifiable rather than
+    compared on trust.
     """
 
     if runtime is None or runtime.runtime is not RuntimeName.LLAMA_CPP:
@@ -499,7 +615,17 @@ def _placement_mismatch(
             f"it cannot be checked against --n-gpu-layers {requested}."
         )
 
-    return _VRAM_RUNTIME_MAPPING_UNAVAILABLE_REASON
+    executed_blocks = _verified_gpu_blocks(requested, estimate, evidence)
+    if executed_blocks is None:
+        return _VRAM_RUNTIME_MAPPING_UNAVAILABLE_REASON
+    if executed_blocks != fit.gpu_transformer_blocks:
+        return (
+            f"Run requested --n-gpu-layers {requested}, which on llama.cpp "
+            f"{LLAMA_CPP_VERIFIED_BUILD} places {executed_blocks} transformer "
+            f"blocks on the GPU, but the prediction placed "
+            f"{fit.gpu_transformer_blocks}, so the two describe different splits."
+        )
+    return None
 
 
 def _uses_gpu_memory(

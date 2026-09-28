@@ -23,6 +23,7 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.evaluation.comparison import (
+    ExecutedPlacementEvidence,
     assert_prediction_runtime_matches,
     compare_prediction,
 )
@@ -50,10 +51,18 @@ def build_experiment_record(
     """Create an experiment snapshot without running probes or inference."""
 
     assert_prediction_runtime_matches(estimate=prediction, runtime=runtime)
+    # The record already holds what it takes to say whether this run's
+    # --n-gpu-layers can be read back as transformer blocks, so hand it over
+    # instead of making the comparison assume it cannot.
     effective_comparison = comparison or compare_prediction(
         estimate=prediction,
         observation=observation,
         runtime=runtime,
+        placement_evidence=ExecutedPlacementEvidence(
+            hardware=hardware,
+            runtime_capability=runtime_capability,
+            backend_selection=execution_readiness.selection,
+        ),
     )
     return ExperimentRecord.create(
         hardware=hardware,

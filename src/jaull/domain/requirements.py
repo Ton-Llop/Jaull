@@ -31,9 +31,15 @@ class RecommendationPriority(StrEnum):
 
 
 class WorkloadMode(StrEnum):
+    """How requests reach the model, not how the model is deployed.
+
+    New requests use interactive or batch. ``service`` described deployment,
+    not processing, but remains readable so existing records round-trip.
+    """
+
     INTERACTIVE = "interactive"
     BATCH = "batch"
-    SERVICE = "service"
+    SERVICE = "service"  # Legacy serialized value; not offered by the wizard.
 
 
 class WorkloadProfile(BaseModel):

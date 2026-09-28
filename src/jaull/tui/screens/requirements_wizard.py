@@ -42,10 +42,24 @@ _USE_CASES: tuple[tuple[UseCase, str], ...] = (
     (UseCase.WRITING_TRANSLATION, "Writing and translation"),
 )
 
+# Question titles carry no number of their own. One of them is hidden unless
+# the use case is document work, so a literal "6" left the user looking at
+# 1-2-3-4-5-7. `_renumber_questions` assigns the ordinals to whatever is
+# actually on screen.
+_QUESTION_TITLES: tuple[tuple[str, str], ...] = (
+    ("q-title-use-case", "What will you use it for?"),
+    ("q-title-workload-mode", "How will requests be processed?"),
+    ("q-title-priority", "What matters most?"),
+    ("q-title-languages", "Which languages?"),
+    ("q-title-concurrency", "How many people will use it at once?"),
+    ("q-title-documents", "How much text at a time?"),
+    ("q-title-commercial", "Must the model allow commercial use?"),
+)
+
+
 _WORKLOAD_MODES: tuple[tuple[WorkloadMode, str], ...] = (
-    (WorkloadMode.INTERACTIVE, "Interactive use"),
-    (WorkloadMode.BATCH, "Batch processing"),
-    (WorkloadMode.SERVICE, "Service"),
+    (WorkloadMode.INTERACTIVE, "Interactive — someone is waiting for the answer"),
+    (WorkloadMode.BATCH, "Batch processing — jobs run offline or asynchronously"),
 )
 
 _PRIORITIES: tuple[tuple[RecommendationPriority, str], ...] = (
@@ -94,7 +108,7 @@ class RequirementsWizardScreen(Screen[None]):
         # heading and the indent already say where one question ends.
         with VerticalScroll(id="wizard-body"):
             with Vertical(classes="question"):
-                yield Static("1  What will you use it for?", classes="question-title")
+                yield Static(id="q-title-use-case", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(label, value=index == 0, id=f"uc-{case.value}")
@@ -103,7 +117,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-use-case",
                 )
             with Vertical(classes="question"):
-                yield Static("2  How will it be used?", classes="question-title")
+                yield Static(id="q-title-workload-mode", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -116,7 +130,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-workload-mode",
                 )
             with Vertical(classes="question"):
-                yield Static("3  What matters most?", classes="question-title")
+                yield Static(id="q-title-priority", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -129,7 +143,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-priority",
                 )
             with Vertical(classes="question"):
-                yield Static("4  Which languages?", classes="question-title")
+                yield Static(id="q-title-languages", classes="question-title")
                 for language in _LANGUAGES:
                     yield Checkbox(
                         language,
@@ -142,10 +156,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="lang-other-input",
                 )
             with Vertical(classes="question"):
-                yield Static(
-                    "5  How many people will use it at once?",
-                    classes="question-title",
-                )
+                yield Static(id="q-title-concurrency", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -160,7 +171,7 @@ class RequirementsWizardScreen(Screen[None]):
             # Only meaningful for document work; hidden otherwise so the wizard
             # never asks a question the answer cannot influence.
             with Vertical(classes="question", id="q-documents-card"):
-                yield Static("6  How much text at a time?", classes="question-title")
+                yield Static(id="q-title-documents", classes="question-title")
                 yield Static(
                     "Sets the context window — not the size of a document "
                     "collection; retrieval feeds the model a few chunks at a time.",
@@ -178,10 +189,7 @@ class RequirementsWizardScreen(Screen[None]):
                     id="q-documents",
                 )
             with Vertical(classes="question"):
-                yield Static(
-                    "7  Must the model allow commercial use?",
-                    classes="question-title",
-                )
+                yield Static(id="q-title-commercial", classes="question-title")
                 yield RadioSet(
                     *[
                         RadioButton(
@@ -204,9 +212,24 @@ class RequirementsWizardScreen(Screen[None]):
             self._sync_document_question()
 
     def _sync_document_question(self) -> None:
-        """Question 5 exists only for the document use case."""
+        """The text-size question exists only for the document use case."""
         card = self.query_one("#q-documents-card", Vertical)
         card.display = self._selected_use_case() is UseCase.DOCUMENT_QA
+        self._renumber_questions()
+
+    def _renumber_questions(self) -> None:
+        """Number the questions the user can actually see, in order.
+
+        Hiding a question in the middle used to leave a gap in the sequence,
+        because each title carried its ordinal as a literal string.
+        """
+        documents_visible = self.query_one("#q-documents-card", Vertical).display
+        ordinal = 0
+        for widget_id, text in _QUESTION_TITLES:
+            if widget_id == "q-title-documents" and not documents_visible:
+                continue
+            ordinal += 1
+            self.query_one(f"#{widget_id}", Static).update(f"{ordinal}  {text}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id != "wizard-submit":

@@ -32,6 +32,7 @@ from jaull.domain.experiments import (
     ExperimentIdentity,
     ExperimentPredictionInput,
     ExperimentRecord,
+    ExperimentWorkload,
     RequestedComputeBackend,
 )
 from jaull.domain.hardware import (
@@ -52,6 +53,7 @@ from jaull.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
+from jaull.domain.requirements import WorkloadMode, WorkloadProfile
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
     LlamaCppBackendCapability,
@@ -593,3 +595,28 @@ def _observation(
         exit_code=0 if success else 1,
         failure_reason=failure_reason,
     )
+
+
+@pytest.mark.parametrize("mode", list(WorkloadMode))
+def test_the_record_round_trips_the_workload_mode(mode: WorkloadMode) -> None:
+    """The mode is part of what makes a measurement reproducible.
+
+    A batch run and an interactive run of the same model are not the same
+    experiment, so the record has to keep which one it was.
+    """
+    workload = ExperimentWorkload(
+        prompt="Explain briefly what a local language model is.",
+        profile=WorkloadProfile(context_length=4096, mode=mode),
+    )
+
+    restored = ExperimentWorkload.model_validate_json(workload.model_dump_json())
+
+    assert restored.profile is not None
+    assert restored.profile.mode is mode
+
+
+def test_a_record_without_a_profile_still_loads() -> None:
+    """Every stored record predates `WorkloadProfile`; none carries one."""
+    restored = ExperimentWorkload.model_validate({"prompt": "hello"})
+
+    assert restored.profile is None
