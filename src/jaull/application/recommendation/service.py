@@ -8,11 +8,11 @@ from jaull.discovery.grouping import collapse_families
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.licenses import classify_license
 from jaull.domain.requirements import UserRequirements
 from jaull.recommendation import (
     capability,
     explanations,
-    policies,
     ranker,
     requirements_gate,
     scoring,
@@ -72,19 +72,6 @@ def enrich_candidate_features(
             )
         )
     return with_gate
-
-
-def score_all(
-    evaluated: list[EvaluatedCandidate],
-    requirements: UserRequirements,
-    capability_analyzer: capability.CapabilityAnalyzer | None = None,
-) -> list[EvaluatedCandidate]:
-    """Compatibility wrapper for callers that still use the old name."""
-    return enrich_candidate_features(
-        evaluated,
-        requirements,
-        capability_analyzer=capability_analyzer,
-    )
 
 
 def recommend(
@@ -233,7 +220,7 @@ def recommend(
                 ),
                 status=status,
                 confidence=confidence,
-                license_category=policies.classify_license(item.candidate.license),
+                license_category=classify_license(item.candidate.license),
                 tier=rec_tier.value,
                 reasons=explanations.build_reasons(
                     item, requirements, selected_estimate=selected_estimate
@@ -302,4 +289,4 @@ def _sibling_note(label: str, status: CompatibilityStatus) -> str:
     return f"{label} — {words[status]}"
 
 
-__all__ = ["enrich_candidate_features", "recommend", "score_all"]
+__all__ = ["enrich_candidate_features", "recommend"]

@@ -11,6 +11,7 @@ from jaull.domain.estimation import (
     EstimationConfidence,
 )
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation import explanations, policies, ranker, scoring
 from jaull.recommendation.capability import CapabilitySignal
@@ -505,7 +506,7 @@ def test_unknown_license_produces_a_warning() -> None:
 
 def test_custom_license_is_reported_but_not_judged() -> None:
     results = recommend([_evaluated(license_value="llama3.1")], _req())  # type: ignore[arg-type]
-    assert results[0].license_category is policies.LicenseCategory.UNKNOWN
+    assert results[0].license_category is LicenseCategory.UNKNOWN
     assert any("review its terms" in w for w in results[0].warnings)
 
 

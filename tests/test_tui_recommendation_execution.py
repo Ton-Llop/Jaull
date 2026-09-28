@@ -47,6 +47,7 @@ from jaull.domain.experiments import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.recommendation import (
     AssessmentLevel,
     PlanAssessment,
@@ -86,7 +87,6 @@ from jaull.experiments.errors import (
     ExperimentPersistenceError,
 )
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
-from jaull.recommendation.policies import LicenseCategory
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
 from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
 from jaull.tui.app import JaullApp

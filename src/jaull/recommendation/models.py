@@ -11,8 +11,8 @@ from jaull.domain.estimation import (
     EstimationConfidence,
 )
 from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.recommendation import PlanAssessment, RecommendationPosition
-from jaull.recommendation.policies import LicenseCategory
 
 
 class ScoreBreakdown(BaseModel):

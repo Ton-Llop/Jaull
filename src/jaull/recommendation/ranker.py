@@ -9,6 +9,7 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
+from jaull.domain.policies import STATUS_RANK
 from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation import policies
 from jaull.recommendation.actionability import (
@@ -100,7 +101,7 @@ def can_be_primary(evaluated: EvaluatedCandidate) -> bool:
         return False
     if assess_actionability(evaluated) is ActionabilityLevel.BLOCKED:
         return False
-    return policies.STATUS_RANK[status] <= policies.STATUS_RANK[
+    return STATUS_RANK[status] <= STATUS_RANK[
         policies.WORST_PRIMARY_STATUS
     ]
 
@@ -134,7 +135,7 @@ def sort_candidates(
         item, breakdown = pair
         return (
             -round(breakdown.total, 6),
-            policies.STATUS_RANK[status_of(item)],
+            STATUS_RANK[status_of(item)],
             -policies.CONFIDENCE_SCORE[
                 item.compatibility.confidence
                 if item.compatibility is not None

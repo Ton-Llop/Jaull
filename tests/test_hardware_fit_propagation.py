@@ -476,6 +476,11 @@ def test_legacy_hardware_fit_layer_fields_still_load() -> None:
     assert fit.total_transformer_blocks == 28
     assert fit.placement_method is HardwareFitPlacementMethod.TRANSFORMER_BLOCKS
 
+    payload = fit.model_dump_json()
+    assert '"gpu_layers"' not in payload
+    assert '"total_layers"' not in payload
+    assert HardwareFitResult.model_validate_json(payload) == fit
+
 
 def test_reporting_json_says_null_when_there_is_no_placement() -> None:
     """An explicit null distinguishes "no fit" from "this report is older"."""

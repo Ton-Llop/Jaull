@@ -16,8 +16,10 @@ from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
-from jaull.domain.policies import TEXT_GENERATION_PIPELINE
+from jaull.domain.licenses import LicenseCategory, classify_license
+from jaull.domain.policies import STATUS_FIT_SCORE, TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import UseCase, UserRequirements
+from jaull.estimator.policies import THEORETICAL_DTYPES
 from jaull.recommendation import policies
 
 # Keywords that suggest a repository targets a given use case. Matched against
@@ -146,8 +148,8 @@ def memory_fit(assessment: CompatibilityAssessment | None) -> float:
     concurrent sessions (Fase 5), so we do not fold concurrency in again here.
     """
     if assessment is None:
-        return policies.STATUS_FIT_SCORE[CompatibilityStatus.UNKNOWN]
-    return policies.STATUS_FIT_SCORE[assessment.status]
+        return STATUS_FIT_SCORE[CompatibilityStatus.UNKNOWN]
+    return STATUS_FIT_SCORE[assessment.status]
 
 
 def concurrency_fit(
@@ -163,7 +165,7 @@ def concurrency_fit(
     if requirements.concurrent_users <= 1:
         return 1.0
     if assessment is None or assessment.ratio is None:
-        return policies.STATUS_FIT_SCORE[CompatibilityStatus.UNKNOWN]
+        return STATUS_FIT_SCORE[CompatibilityStatus.UNKNOWN]
 
     ratio = assessment.ratio
     if ratio <= 0.75:
@@ -194,26 +196,19 @@ def artifact_realism(evaluated: EvaluatedCandidate) -> float:
         return policies.ARTIFACT_REALISM_SCORES["real_gguf"]
     if tags & policies.REAL_QUANT_TAGS:
         return policies.ARTIFACT_REALISM_SCORES["real_quant_tag"]
-    if config.precision in policies.THEORETICAL_DTYPES:
+    if config.precision in THEORETICAL_DTYPES:
         return policies.ARTIFACT_REALISM_SCORES["theoretical"]
     return policies.ARTIFACT_REALISM_SCORES["native_dtype"]
-
-
-def hardware_fit(
-    assessment: CompatibilityAssessment | None, requirements: UserRequirements
-) -> float:
-    """Legacy single-axis fit: kept for consumers written before the split."""
-    return min(memory_fit(assessment), concurrency_fit(assessment, requirements))
 
 
 def license_score(
     candidate: ModelCandidate, requirements: UserRequirements
 ) -> float:
-    category = policies.classify_license(candidate.license)
+    category = classify_license(candidate.license)
     score = policies.LICENSE_SCORE[category]
     if (
         requirements.commercial_use_required
-        and category is policies.LicenseCategory.UNKNOWN
+        and category is LicenseCategory.UNKNOWN
     ):
         # Kept, but clearly worse than a license we can actually vouch for.
         score *= 0.7
@@ -325,7 +320,6 @@ __all__ = [
     "concurrency_fit",
     "confidence_of",
     "enrich_candidate_features",
-    "hardware_fit",
     "language_match",
     "license_score",
     "max_log_downloads",

@@ -33,6 +33,7 @@ from jaull.domain.execution_plans import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessReason,
@@ -53,7 +54,6 @@ from jaull.evaluation.benchmark_comparison import compare_benchmark_records
 from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
 from jaull.presentation.plan_labels import artifact_display
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
-from jaull.recommendation.policies import LicenseCategory
 from tests._workflow_fixtures import (
     GIB,
     candidate,
