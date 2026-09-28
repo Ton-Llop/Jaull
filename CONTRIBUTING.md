@@ -139,7 +139,7 @@ be asked about in review:
 - `domain/` imports nothing from layers above it; `discovery/` and `recommendation/` never
   import each other or `workflow/`; CLI and TUI never import each other.
 
-[docs/architecture.md](docs/architecture.md) documents the layers and dependency rules in
+[ARCHITECTURE.md](ARCHITECTURE.md) documents the current layers and dependency rules in
 full.
 
 ## Pull requests

@@ -7,7 +7,10 @@ import pytest
 
 from jaull.advisor.service import AdvisorService
 from jaull.analyzers.transformers import _model_config_from_dict
+from jaull.application.recommendation import service as ranking
+from jaull.application.requirements import build_requirements
 from jaull.benchmarks.storage import BenchmarkStore
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
     BenchmarkGpuLayers,
@@ -66,9 +69,6 @@ from jaull.recommendation.engine_v2 import (
     rank_execution_plans,
     ranking_criteria,
 )
-from jaull.workflow import ranking
-from jaull.workflow.container import ServiceContainer
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     candidate,

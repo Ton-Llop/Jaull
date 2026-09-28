@@ -2,7 +2,7 @@
 
 Guided mode answers the question the individual tools cannot: *what should I run on this
 machine?* You never need to know a model name, a quantization, a dtype, a KV cache or a
-runtime flag — six plain questions are enough, and every technical parameter is derived
+runtime flag — six or seven plain questions are enough, and every technical parameter is derived
 from them.
 
 ```text
@@ -59,9 +59,9 @@ a daemon — is a separate dimension, because a service can be interactive or ba
 does not model deployment yet. The old serialized `service` value remains readable for
 existing records but is not offered for new selections.
 
-Answers are normalised into a `UserRequirements` object (`application/requirements.py`, still
-importable as `workflow/requirements.py`) that records every assumption it made, and those
-assumptions appear in the exported report.
+Answers are normalised into a `UserRequirements` object in
+`jaull.application.requirements`, which records every assumption it made; those assumptions
+appear in the exported report.
 
 `WorkloadProfile` carries the requested workload: context, concurrency, mode, expected input
 and output tokens, and optionally `min_generation_tps` and `max_ttft_ms`. Those last two are
@@ -98,8 +98,7 @@ and to do it **without treating RAM and VRAM as a single memory pool**. A parame
 hint parsed from the repository name (`…-7B-…`) only orders this queue; it is never
 presented as a measurement.
 
-Budgets are centralised in `application/recommendation/policies.py`, re-exported by
-`workflow/policies.py`:
+Budgets are centralised in `application/recommendation/policies.py`:
 
 | Budget | Value |
 |---|---|

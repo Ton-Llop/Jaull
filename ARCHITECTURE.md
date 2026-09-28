@@ -1,159 +1,330 @@
-# Jaull Architecture
+# Jaull architecture
 
-Jaull is a modular monolith. The intended dependency direction is:
+This is the canonical architecture reference: it describes Jaull's layers, data flow and
+dependency rules. The dated pipeline walkthrough is archived at
+[`docs/history/workflow-2026-09-28.md`](docs/history/workflow-2026-09-28.md).
 
-```text
-Presentation
-     ↓
-Advisor
-     ↓
-Application
-     ↓
-Domain / Ports
-          ↑
-       Adapters
+Jaull is still a **modular Python monolith** today: no network workers, no Docker, no remote
+executor. Guided recommendation remains metadata-only, but explicit local execution paths
+already exist: `jaull run` resolves, downloads, verifies and executes single-file GGUF
+artifacts with `llama-cli`, and the TUI adds execution of Transformers repositories through
+an isolated Python worker, validation (persisted experiments) and benchmarks (`llama-bench`
+and a Transformers worker). The purpose of this architecture is to keep the house in order
+so that the next cycles (concurrent load, deployment qualification, remote execution) can be
+added without dragging cycles behind them.
+
+## Layer diagram
+
+```
+   ┌──── CLI ────┐                        ┌──── TUI ────┐
+   └──────┬──────┘                        └──────┬──────┘
+          └────────────  AdvisorService  ────────┘
+                               │
+                      ┌────────┴────────┐
+                      │   Application   │   application/  use cases
+                      │                 │   workflow/     guided orchestrator
+                      └────────┬────────┘
+                               │
+              Discovery ───────┼─────── Recommendation
+                               │   (they share contracts through Domain)
+                     ┌─────────┴─────────┐
+                     │  Domain · Ports   │
+                     └─────────┬─────────┘
+                               ▲
+        Adapters and infrastructure, composed by bootstrap/:
+        adapters/ · huggingface/ · analyzers/ · metadata/ · hardware/ ·
+        estimator/ · runtime/ · execution/ · artifacts/ · experiments/ ·
+        benchmarks/ · evaluation/ · observability/
+                               ▲
+        Rendering over already-computed semantics:
+        reporting/ · presentation/ · diagnostics/
 ```
 
-This is enforced by `tests/test_architecture_dependencies.py`, which scans Python
-imports with `ast`. The allowlist is intentionally exact and currently empty.
+The arrows represent permitted imports, not data flows.
 
-## Layers
+`workflow/` contains the guided-run orchestrator, progress/state DTOs and per-run cache.
+Requirements, recommendation policy, budgets, telemetry, variant discovery and service
+composition live in their canonical `application/`, `observability/` and `bootstrap/`
+packages. `execution_plans/` contains logical model identity and pure plan construction;
+application services that need recommendation DTOs or Hub search live under `application/`.
 
-### Domain
+## Packages
 
-`src/jaull/domain/` contains the domain model: hardware profiles, model metadata,
-requirements, execution plans, benchmark and experiment records, recommendation
-assessments, and value objects such as model identity keys.
+`exceptions.py` and `paths.py` are leaf modules used almost everywhere and are omitted from
+the table.
 
-Domain code must not import application, advisor, presentation, TUI, workflow,
-runtime implementations, Hugging Face clients, Textual, PyTorch, or subprocess
-infrastructure.
+| Package | Responsibility | Depends on |
+|---|---|---|
+| `domain/` | Frozen Pydantic models and enums; constant policies; pure heuristics (families, licenses) | — |
+| `ports/` | Boundary protocols, only where infrastructure is genuinely replaceable (`ModelAnalysisCacheProtocol`) | `domain/` |
+| `adapters/` | Concrete implementations of those ports (the persistent model-analysis cache) | `domain/`, `ports/` |
+| `application/` | Use cases: requirements normalisation, model-reference parsing, artifact-variant discovery, recommendation service, budgets and policies, execution-plan assembly | `domain/`, `ports/`, `discovery/`, `recommendation/`, `execution_plans/`, `observability/` |
+| `bootstrap/` | Production composition root; builds the concrete services into a `ServiceContainer` | `adapters/`, `ports/`, `domain/`, `discovery/`, `estimator/`, `hardware/`, `huggingface/`, `metadata/`, `recommendation/` |
+| `observability/` | Performance telemetry for long-running stages | — |
+| `hardware/` | Local detection (psutil, NVML, Vulkan probe) | `domain/` |
+| `huggingface/` | HTTP client against the Hub, repository classification, artifact resolution | `domain/`, `analyzers/`, `estimator/`, `artifacts/` |
+| `analyzers/` | Per-repository-type analyzers behind a Protocol | `domain/`, `huggingface/` |
+| `metadata/` | Reading safetensors and GGUF headers | `domain/`, `analyzers/`, `huggingface/` |
+| `estimator/` | Memory computation, variant selection, compatibility | `domain/`, `metadata/`, `huggingface/`, `runtime/`, `recommendation/` |
+| `runtime/` | Runtime recommendation, runtime discovery, capability probes and local runners | `domain/`, `execution/` |
+| `artifacts/` | Resolution, download, storage and verification of executable artifacts | `domain/`, `huggingface/` |
+| `execution/` | Execution contracts and host backend for launching local processes | `domain/`, `hardware/` |
+| `execution_plans/` | Logical model identity and pure `ExecutionPlan` construction | `domain/` |
+| `experiments/` | Experiment runner and JSON store for `ExperimentRecord` | `domain/`, `evaluation/`, `runtime/`, `execution/` |
+| `benchmarks/` | Benchmark matrix runner and JSON store for `BenchmarkRecord` | `domain/`, `runtime/`, `execution/` |
+| `evaluation/` | Prediction↔observation and benchmark↔benchmark comparison (pure functions) | `domain/` |
+| `discovery/` | Hub queries, filtering, enrichment, grouping into series | `domain/`, `huggingface/`, `estimator/`, `runtime/` |
+| `recommendation/` | Plan assessment, v2 ranking, diversity, tiers, explanations | `domain/`, `estimator/`, `evaluation/`, `execution_plans/` |
+| `workflow/` | Guided-run orchestrator (synchronous, with progress and cancellation), progress/state DTOs, per-run cache | `domain/`, `application/`, `discovery/`, `recommendation/`, `observability/` |
+| `reporting/` | JSON and Markdown serialisation of results | `domain/`, `recommendation/`, `workflow.state` |
+| `diagnostics/` | Environment checks (Python, network, HF, NVML, runtimes, cache) | `domain/`, `hardware/`, `runtime/`, `execution/` |
+| `advisor/` | Application facade wrapping all the services above | `bootstrap/` and everything below it |
+| `presentation/` | Rich rendering (tables, panels) | `domain/`, `reporting/` |
+| `cli/` | Typer subcommands, entry point; `run` also composes the local runner | `advisor/`, `presentation/`, `domain/`, `runtime/`, `execution/` |
+| `tui/` | Textual screens, entry point | `advisor/`, `domain/`, `application/`, `presentation/` |
 
-### Application
+## Dependency rules (hard)
 
-`src/jaull/application/` contains use-case orchestration that is not UI and not
-infrastructure:
+1. **`domain/` never imports anything from a higher layer.** It is the bottom of the stack:
+   no application, adapters, workflow, runtime, presentation, advisor or front-end, and no
+   `textual`, `huggingface_hub`, `torch` or `subprocess`.
+2. **`application/` never imports infrastructure.** No adapters, no `huggingface/`, no
+   `huggingface_hub`, no `textual`, and no presentation, advisor or `workflow/`. It talks to
+   `domain/` and to `ports/`; the concrete implementations are injected by `bootstrap/`.
+3. **`ports/` never imports adapters or presentation.** A port that knows its own
+   implementation is not a port.
+4. **`execution_plans/` never imports `workflow/` or `recommendation/`.** It builds plans out
+   of domain objects; anything that needs recommendation DTOs lives in
+   `application/recommendation/execution_plans.py`.
+5. **`discovery/` and `recommendation/` do not import each other**, and neither imports
+   `workflow/`, the advisor or a front-end. The contracts they need to share (candidates,
+   policies, families, licenses) live in `domain/`.
+6. **`recommendation/` does not import `presentation/`.** Serialisation lives in
+   `reporting/`, Rich rendering lives in `presentation/`, and the ranking logic knows about
+   neither.
+7. **`cli/` and `tui/` do not import each other**, and neither constructs `HfClient()`,
+   `detect_hardware`, `estimate_memory` or `collect_diagnostics` directly. `AdvisorService`
+   is the only entry point they use.
+8. **`presentation/` and `tui/` never import Hugging Face adapters** (`jaull.huggingface`,
+   `huggingface_hub`); `presentation/` additionally stays clear of `adapters/` and
+   `textual`. Both render semantics that were computed elsewhere.
 
-```text
-application/
-├── discovery/artifact_variants.py
-├── recommendation/execution_plans.py
-├── recommendation/policies.py
-├── recommendation/service.py
-└── requirements.py
+Rules 1–4 and 8, plus the `recommendation/` half of rule 5, are checked automatically by
+`tests/test_architecture_dependencies.py`: it walks every module with `ast`, collects the
+import edges and compares them against an exact allowlist that is currently empty. A new
+violation fails the test with the offending file and import named. `discovery/` itself has
+no rule in that test, so the rest stays a convention the greps below protect.
+
+The rest can still be verified with `grep`:
+
+```bash
+# No cross-imports between discovery and recommendation
+grep -rn "from jaull.recommendation" src/jaull/discovery/
+grep -rn "from jaull.discovery"      src/jaull/recommendation/
+
+# Nor workflow from discovery, recommendation or execution_plans
+grep -rn "from jaull.workflow" \
+  src/jaull/discovery/ src/jaull/recommendation/ src/jaull/execution_plans/
+
+# Nor presentation from recommendation
+grep -rn "from jaull.presentation"   src/jaull/recommendation/
+
+# Nor cli from tui
+grep -rn "from jaull.cli"            src/jaull/tui/
 ```
 
-The recommendation application service enriches candidates, invokes the v2 plan
-ranker, applies diversity, and builds `ModelRecommendation` results. The normal
-hardware-aware path ranks `ExecutionPlan` objects through PlanAssessment; legacy
-score construction remains only for compatibility fields on the final result and
-for the explicit no-hardware fallback.
+All of these queries must return zero matches.
 
-### Ports
+## `AdvisorService`
 
-`src/jaull/ports/` contains boundary protocols only when there is a real
-replaceable infrastructure concern. Currently this includes
-`ModelAnalysisCacheProtocol` and its stats DTO.
+`src/jaull/advisor/service.py` holds the facade the CLI and the TUI screens use to reach the
+application services. Its methods cover the main operations:
 
-### Adapters
+Analysis and recommendation:
 
-`src/jaull/adapters/` contains concrete infrastructure implementations. The
-persistent model-analysis cache now lives in `adapters/cache/` and implements the
-cache port.
+- `scan_hardware(on_progress=None)` — local profile, optionally reporting progress per step.
+- `diagnostics()` — a list of `DiagnosticResult`.
+- `inspect_model(repo_id)` — analysis of one repository.
+- `estimate_model(analysis, hardware, inference_cfg, ...)` — full memory estimate.
+- `recommend(answers, hardware=None, on_progress=None, is_cancelled=None)` — end-to-end
+  guided run.
 
-Existing infrastructure packages such as `huggingface/`, `runtime/`, `hardware/`,
-`benchmarks/`, and `experiments/` still contain concrete adapters. They are not
-renamed wholesale because the refactor keeps public imports stable.
+Artifacts and execution:
 
-### Advisor
+- `resolve_artifact(repo_id, quantization=None, revision=None)` — pick an executable GGUF file.
+- `download_artifact(artifact)` — download the artifact into the local layout.
+- `verify_artifact(artifact, full=False)` — check size and SHA-256.
+- `run_artifact(artifact=..., prompt=..., runtime=...)` — execute through the configured runner.
 
-`AdvisorService` remains the public facade used by CLI and TUI. It delegates to
-the guided workflow, runtime services, execution runners, validation, benchmark,
-and experiment helpers. It should stay a facade; new recommendation policy should
-not be added there.
+Execution plans:
 
-### Bootstrap
+- `resolve_model_identity(recommendation)` — the logical model behind a recommendation.
+- `discover_artifact_variants(recommendation=..., ...)` — the artifacts that represent it.
+- `execution_plans_for_recommendation(recommendation, ...)` — one plan per viable variant.
+- `prepare_execution_plan(plan, ...)` — inspect, estimate, resolve/download/verify the
+  artifact, select a backend and evaluate readiness.
 
-`src/jaull/bootstrap/container.py` is the production composition root for the
-guided workflow. It is allowed to know concrete adapters and construct them.
-`workflow.container` is a compatibility shim.
+Runtimes and readiness:
 
-### Presentation
+- `select_runtime_backend(hardware=None)` — preferred compute backend, with its reason.
+- `inspect_llama_cpp_runtime(...)` / `inspect_pytorch_runtime()` — observed capabilities.
+- `evaluate_execution_readiness(...)` / `evaluate_pytorch_execution_readiness(...)` —
+  preflight decision.
 
-Presentation modules render already-computed semantics. TUI screens must not
-import Hugging Face adapters directly. Pure model-reference parsing lives in
-`application.model_reference`; `huggingface.url_parser` remains as an import
-compatibility shim.
+Evidence:
 
-## Recommendation Pipeline
+- `run_experiment(request)` / `build_experiment_record(...)` — run and record an experiment.
+- `save_experiment_record`, `load_experiment_record`, `list_experiment_ids` — the store.
+- `run_benchmark(...)` / `run_benchmark_matrix(...)` — measure one or several configurations.
+- `save_benchmark_record`, `load_benchmark_record`, `list_benchmark_ids`,
+  `benchmark_records_for_model(...)` — the store.
+- `compare_benchmarks(...)` / `compare_saved_benchmarks_for_recommendation(...)` — compare
+  benchmarks as complete execution plans.
 
-The current recommendation pipeline is:
+Two factories:
+
+- `AdvisorService.default()` — production wiring (`ServiceContainer.default()`).
+- `AdvisorService.build(hf_client=..., detect_hardware=..., inspect_model=...,
+  estimate_memory=..., collect_diagnostics=...)` — test wiring, with every service injected
+  as a callable.
+
+TUI screens reach the advisor through `self.app.advisor`; CLI functions accept it as an
+optional parameter (`advisor: AdvisorService | None = None`) and fall back to
+`AdvisorService.default()` when none is passed. `cli/run.py` uses the advisor to
+resolve/download/verify artifacts and instantiates the local runner with the CLI-specific
+options (`--llama-cli`, `--timeout-seconds`, `--ctx-size`, `--n-gpu-layers`).
+
+## Recommendation and workload data flow
+
+The guided recommendation path is:
 
 ```text
-EvaluatedCandidate[]
-    ↓ application.recommendation.service.enrich_candidate_features
-Enriched candidates
-    ↓ recommendation.engine_v2.rank_execution_plans
-RankedPlan[]
-    ↓ recommendation.diversity.diversify_ranked_plans
-DiversifiedRecommendation[]
-    ↓ application.recommendation.service.recommend
-ModelRecommendation[]
+UserAnswers + HardwareProfile
+    -> application.requirements.build_requirements
+    -> workflow.orchestrator.run_workflow
+    -> discovery and estimator
+    -> application.recommendation.service.enrich_candidate_features
+    -> recommendation.engine_v2 rank ExecutionPlans
+    -> recommendation.diversity
+    -> reporting.recommendation
 ```
 
-Inside `recommendation.engine_v2`, the v2 responsibilities are still colocated:
-plan generation, assessment, local evidence matching, ranking key, and ranking
-helpers. This is an intentional residual seam for a later mechanical split; the
-policy was not changed during the architectural refactor.
+`UseCase` describes the model task (such as coding or document QA). `WorkloadMode` describes
+how requests are processed (interactive or batch). `WorkloadProfile` carries context,
+concurrency, optional input/output sizes and optional SLOs; measured benchmark observations
+remain separate from requested objectives. Legacy serialized workload values remain loadable.
 
-## Execution Plans
+## Artifacts and local execution
 
-`execution_plans/service.py` owns logical model identity resolution and pure
-`ExecutionPlan` construction. It no longer imports `workflow` or
-`recommendation.models`.
+The `run` path is deliberately kept separate from the estimator and from the guided
+workflow:
 
-Functions that require recommendation DTOs live in
-`application/recommendation/execution_plans.py`. Variant discovery, which needs
-search, inspection, cache, and telemetry, lives in
-`application/discovery/artifact_variants.py`.
+```text
+cli/run.py
+   ├── normalize_repo_id()
+   ├── AdvisorService.resolve_artifact()
+   ├── AdvisorService.download_artifact()   # only if the file is missing
+   ├── AdvisorService.verify_artifact()
+   └── LlamaCppRunner(HostExecutionBackend).run()
+```
 
-`jaull.execution_plans` reexports the historical public API as a compatibility
-shim.
+`artifacts/` translates an abstract repository into a concrete, verified `ModelArtifact`. In
+this phase it only accepts single-file GGUF; Transformers repositories and multipart GGUF
+are rejected with specific errors.
 
-## Workflow
+`execution/` knows nothing about Hugging Face or about models: it receives an immutable
+`ExecutionRequest` and returns an `ExecutionResult`. That result holds stdout/stderr and an
+`ExecutionObservation`, which records duration, exit status, peak RSS, NVML-attributed VRAM
+when available, and runtime-reported allocation as a separate source. Prediction
+(`MemoryEstimate`) and observation remain separate.
 
-`workflow/` is no longer the home for recommendation policy, requirements
-normalization, budgets, telemetry, container wiring, or variant discovery. It
-still contains the guided workflow orchestrator, progress/state DTOs, run cache,
-and compatibility shims for historical imports.
+`runtime/llama_cpp_runner.py` validates that the artifact is GGUF, downloaded, verified and
+present on disk before building the `llama-cli --single-turn` command.
 
-The remaining workflow package is deliberate compatibility debt, not a target
-for new application logic.
+## Prediction validation
 
-## Persistence And Cache
+`jaull.evaluation.comparison.compare_prediction` compares a Jaull prediction against an
+execution that has already been observed:
 
-Benchmark and experiment stores remain append-only evidence stores. The
-model-analysis cache remains disposable revision-aware cache. The cache location,
-schema invalidation, atomic writes, and failure behavior are unchanged.
+```text
+MemoryEstimate + ExecutionObservation -> PredictionComparison
+```
 
-## Runtime Boundaries
+The comparison does not modify the estimator and does not calibrate any formula.
+`MemoryEstimate` still represents the prediction, `ExecutionObservation` still represents
+measured reality, and `PredictionComparison` is a third, derived piece.
 
-Runtime probing, backend selection, llama.cpp, and Transformers/PyTorch execution
-remain in `runtime/` and `execution/`. The application layer consumes runtime
-capability/readiness through domain DTOs and `AdvisorService` composition.
+There is a single error convention:
 
-## Architecture Tests
+```text
+error_bytes = measured_bytes - predicted_bytes
+error_percent = (measured_bytes - predicted_bytes) / predicted_bytes * 100
+```
 
-The architecture guard prevents:
+A positive error means Jaull underestimated real consumption. A negative error means Jaull
+overestimated it.
 
-- `domain` importing application/adapters/presentation/advisor/workflow/runtime
-  implementations or external infrastructure libraries;
-- `application` importing adapters, presentation, advisor, workflow, Hugging
-  Face adapters, Textual, or `huggingface_hub`;
-- `ports` importing adapters or presentation;
-- `execution_plans` importing workflow or recommendation;
-- TUI and presentation importing Hugging Face adapters.
+The RAM comparison is only computed when the executed configuration is CPU-only or without
+offload. In that case the comparable prediction is the sum of the components that represent
+process consumption (`weights + kv_cache + runtime_overhead`), excluding `device_reserve`
+and `safety_margin`, because those last two are capacity policy and not observed RSS. Under
+GPU offload the comparison is marked `methodologically_unavailable`, and the obstacle is the
+measurement rather than a missing breakdown — `HardwareFitResult` carries the host-side
+components, but `mmap` makes peak RSS track the model file instead of the placement.
 
-If a compatibility exception is ever required, it must be added as an exact
-`(source_file, imported_module)` entry and removed when stale. The current
-allowlist is empty.
+The VRAM comparison produces a number when the estimate carries a hardware fit that places
+weights on the GPU, the non-block weight split is unambiguous, the executed placement can be
+verified, and a measurement exists. A validated `--n-gpu-layers` mapping is limited to
+llama.cpp build `689e227db`, dense qwen2, one confirmed discrete CUDA device. HFA's bounded
+non-block split can still prevent a point comparison in that scope. Other builds,
+architectures and devices remain methodologically unavailable until their placement is
+validated.
+There are two measurement sources: NVML's per-process attribution
+(`driver_confirmed = true`), and, where the driver reports nothing — every consumer GPU in
+WDDM mode — the buffer report llama.cpp prints itself, parsed by
+`runtime/llama_cpp_memory_report.py` into `ExecutionObservation.runtime_allocation`
+(`driver_confirmed = false`). The chosen source travels on `MetricComparison.source`. If
+neither exists, `peak_vram_bytes = null` is not treated as zero.
+
+## Dependency composition
+
+`bootstrap/container.py::ServiceContainer` is the production composition root. It is the one
+place allowed to know concrete adapters — HTTP client, capability analyzer, range client
+factory, persistent model-analysis cache — and to construct them. `AdvisorService`
+**contains** it rather than replacing it, so tests which used to build a fake
+`ServiceContainer` to exercise the guided run keep working unchanged, and tests which now
+build a test `AdvisorService` can use `AdvisorService.build(...)`.
+
+Service wiring belongs in `bootstrap/`; internal imports use that canonical package.
+
+## Reporting and serialisation
+
+`jaull.reporting.estimation.estimate_to_json_dict` is the **only** producer of the JSON
+representation of a `MemoryEstimate`. `presentation/estimation_report.py` renders the value;
+callers import serialization directly from `reporting/`.
+
+`jaull.reporting.recommendation.report_to_json` / `report_to_markdown` are the only functions
+that build the complete guided-run report.
+
+The compatibility contracts are **byte-identical**: `tests/test_reporting_regression.py`
+compares the JSON and Markdown output against `tests/snapshots/report.json` and
+`tests/snapshots/report.md`. Any change that breaks byte-for-byte equality must bump
+`REPORT_SCHEMA_VERSION` explicitly.
+
+## Conventions
+
+- **No bare `except Exception`.** Always catch a specific type from `jaull.exceptions` or
+  from a concrete library (`OSError`, `ImportError`, …).
+- **Python 3.12+**: `X | None`, `list[str]`, generic `type`, no `Union`/`Optional` from
+  `typing`.
+- **Frozen Pydantic v2 models** in `domain/`. No class mutates its state after construction.
+- **No mutable global singletons**: the service container and the advisor are built at the
+  entry point and injected downwards.
+
+## Pending work (outside this cycle)
+
+- Docker / Docker Compose.
+- Download streaming and byte-level progress for large artifacts.
+- Concurrent load experiments and capacity curves.
+- Deployment qualification verdict and reproducible manifest (`jaull.lock`).
+- Internal HTTP between `Advisor` and a remote `Executor`.

@@ -1031,7 +1031,7 @@ def _model_title(rec: ModelRecommendation) -> str:
     format is shown next to it already, and the full path stays in technical
     details.
     """
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         identity = execution_plan_for_recommendation(rec).model_identity
@@ -1041,7 +1041,7 @@ def _model_title(rec: ModelRecommendation) -> str:
 
 
 def _recommendation_identity_key(rec: ModelRecommendation) -> str:
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         identity = execution_plan_for_recommendation(rec).model_identity
@@ -1055,7 +1055,7 @@ def _recommendation_identity_key(rec: ModelRecommendation) -> str:
 
 def _plan_line(rec: ModelRecommendation) -> str:
     """Runtime, artifact and backend — how this would actually execute."""
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         plan = execution_plan_for_recommendation(rec)
@@ -1105,7 +1105,7 @@ def _evidence_for_recommendation(
     rec: ModelRecommendation,
 ) -> tuple[str, str]:
     """The evidence line for a recommendation's default execution plan."""
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         plan = execution_plan_for_recommendation(rec)
@@ -1141,7 +1141,7 @@ def _execution_path_lines(rec: ModelRecommendation) -> list[str]:
 
 
 def _execution_path_detail_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         plan = execution_plan_for_recommendation(rec)
@@ -1188,7 +1188,7 @@ def _execution_path_detail_rows(rec: ModelRecommendation) -> list[tuple[str, str
 
 
 def _configuration_label(rec: ModelRecommendation) -> str:
-    from jaull.execution_plans import execution_plan_for_recommendation
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         artifact = execution_plan_for_recommendation(rec).artifact

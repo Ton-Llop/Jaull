@@ -287,10 +287,12 @@ Remaining limitations:
 - RAM for GPU/offload execution is still methodologically unavailable, because
   `mmap` makes RSS track the model file rather than the placement — not because
   a host/device breakdown is missing. `HardwareFitResult` has one.
-- The per-component breakdown requires a verifiable placement: llama.cpp with a
-  negative `--n-gpu-layers` against a `GPU_RESIDENT` prediction. Partial offload
-  cannot be verified while transformer blocks and `--n-gpu-layers` units remain
-  different vocabularies.
+- The per-component breakdown requires a verifiable placement. A narrow mapping
+  exists for llama.cpp build `689e227db`, dense `qwen2` and one confirmed discrete
+  CUDA device; it translates the runtime units to repeating transformer blocks.
+  Outside that scope placement is not verified. Within it, ambiguous non-block
+  weight bounds can still prevent a total point comparison; the mapping does not
+  remove that separate HFA limitation.
 - The overhead-vs-compute-buffer pair is marked `PROXY`. It must not be used to
   calibrate the overhead heuristic until a driver-attributed figure bounds the
   part the runtime does not report.

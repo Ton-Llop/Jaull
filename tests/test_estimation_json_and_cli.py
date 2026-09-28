@@ -21,7 +21,7 @@ from jaull.domain.model import (
 )
 from jaull.estimator import service as estimator_service
 from jaull.hardware.detector import detect_hardware
-from jaull.presentation.estimation_report import (
+from jaull.reporting.estimation import (
     SCHEMA_VERSION,
     estimate_to_json_dict,
 )

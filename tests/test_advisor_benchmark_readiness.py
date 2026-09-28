@@ -4,6 +4,7 @@ import pytest
 
 from jaull.advisor.service import AdvisorService
 from jaull.benchmarks.errors import BenchmarkUnavailableError
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import BenchmarkGpuLayers, BenchmarkRequest
 from jaull.domain.estimation import EstimationConfidence
@@ -21,7 +22,6 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
-from jaull.workflow.container import ServiceContainer
 
 
 class _NeverRunBenchmark:

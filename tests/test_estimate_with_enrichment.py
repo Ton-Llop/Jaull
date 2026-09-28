@@ -186,7 +186,7 @@ def test_no_resolve_base_model_skips_enrichment() -> None:
 
 
 def test_estimate_json_includes_enrichment_fields() -> None:
-    from jaull.presentation.estimation_report import (
+    from jaull.reporting.estimation import (
         SCHEMA_VERSION,
         estimate_to_json_dict,
     )

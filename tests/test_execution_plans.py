@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jaull.adapters.cache.model_analysis_cache import ModelAnalysisCache
 from jaull.advisor.service import AdvisorService
+from jaull.application.discovery.artifact_variants import discover_artifact_variants
+from jaull.application.recommendation import policies
+from jaull.application.recommendation.execution_plans import (
+    execution_plan_for_recommendation,
+    variant_from_recommendation,
+)
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
     BenchmarkGpuLayers,
@@ -42,19 +50,10 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.evaluation.benchmark_comparison import compare_benchmark_records
-from jaull.execution_plans import (
-    build_execution_plan,
-    discover_artifact_variants,
-    execution_plan_for_recommendation,
-    resolve_model_identity,
-    variant_from_recommendation,
-)
+from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
 from jaull.presentation.plan_labels import artifact_display
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.recommendation.policies import LicenseCategory
-from jaull.workflow import policies
-from jaull.workflow.container import ServiceContainer
-from jaull.workflow.model_analysis_cache import ModelAnalysisCache
 from tests._workflow_fixtures import (
     GIB,
     candidate,

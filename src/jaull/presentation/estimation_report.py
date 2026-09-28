@@ -1,9 +1,4 @@
-"""Rich rendering of the estimation view.
-
-The JSON emitter lives in ``jaull.reporting.estimation``. It is re-exported
-here for backwards compatibility — callers that only need the dict form
-should import from ``jaull.reporting.estimation`` directly.
-"""
+"""Rich rendering of the estimation view."""
 
 from __future__ import annotations
 
@@ -16,12 +11,6 @@ from jaull.domain.estimation import (
     MemoryEstimate,
 )
 from jaull.presentation.console import format_bytes
-
-# Re-export for callers that still import from here.
-from jaull.reporting.estimation import (
-    SCHEMA_VERSION,
-    estimate_to_json_dict,
-)
 
 
 def render_estimate(estimate: MemoryEstimate, console: Console) -> None:
@@ -210,7 +199,5 @@ def _pretty_status(status: CompatibilityStatus) -> str:
 
 
 __all__ = [
-    "SCHEMA_VERSION",
-    "estimate_to_json_dict",
     "render_estimate",
 ]

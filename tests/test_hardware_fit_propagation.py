@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.recommendation.service import recommend
+from jaull.application.requirements import build_requirements
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import (
     CompatibilityStatus,
@@ -43,8 +45,6 @@ from jaull.domain.requirements import RecommendationPriority
 from jaull.estimator import service
 from jaull.estimator.compatibility import assess_components, assess_components_with_fit
 from jaull.reporting.estimation import estimate_to_json_dict
-from jaull.workflow.ranking import recommend
-from jaull.workflow.requirements import build_requirements
 from tests._hardware_fit_scenarios import (
     OBSERVED_FIELDS,
     SCENARIOS,

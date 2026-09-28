@@ -49,8 +49,8 @@ from jaull.domain.runtime import (
     RuntimeRecommendation,
 )
 from jaull.estimator.configuration import select_configuration
-from jaull.execution_plans import build_execution_plan, resolve_model_identity
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
+from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
 from jaull.recommendation.local_evidence import matching_benchmark, matching_experiment
 from jaull.recommendation.policies import (

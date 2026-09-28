@@ -52,7 +52,7 @@ def _redact_timestamp_markdown(text: str) -> str:
 
 
 def test_report_json_is_byte_identical_to_snapshot() -> None:
-    from jaull.recommendation.report import report_to_json
+    from jaull.reporting.recommendation import report_to_json
 
     state = _canonical_state()
     actual = _redact_timestamp_json(report_to_json(state))
@@ -61,7 +61,7 @@ def test_report_json_is_byte_identical_to_snapshot() -> None:
 
 
 def test_report_markdown_is_byte_identical_to_snapshot() -> None:
-    from jaull.recommendation.report import report_to_markdown
+    from jaull.reporting.recommendation import report_to_markdown
 
     state = _canonical_state()
     actual = _redact_timestamp_markdown(report_to_markdown(state))
@@ -70,7 +70,7 @@ def test_report_markdown_is_byte_identical_to_snapshot() -> None:
 
 
 def test_report_separates_unknown_plan_without_changing_rank_or_score() -> None:
-    from jaull.recommendation.report import report_to_dict, report_to_markdown
+    from jaull.reporting.recommendation import report_to_dict, report_to_markdown
 
     state = _canonical_state()
     confirmed = state.recommendations[0]
@@ -111,7 +111,7 @@ def test_report_separates_unknown_plan_without_changing_rank_or_score() -> None:
 
 
 def test_report_json_exposes_technical_latency_separately() -> None:
-    from jaull.recommendation.report import report_to_dict
+    from jaull.reporting.recommendation import report_to_dict
 
     payload = report_to_dict(_canonical_state())
     telemetry = payload["workflow_telemetry"]

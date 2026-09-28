@@ -36,7 +36,7 @@ from _workflow_fixtures import (
     transformers_analysis,
 )
 from jaull.domain.requirements import RecommendationPriority, UseCase
-from jaull.recommendation.report import report_to_dict, report_to_markdown
+from jaull.reporting.recommendation import report_to_dict, report_to_markdown
 from jaull.workflow import orchestrator
 from jaull.workflow.state import RecommendationWorkflowState
 from test_workflow_orchestrator import _container

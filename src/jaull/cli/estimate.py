@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from rich.console import Console
 
 from jaull.advisor.service import AdvisorService
+from jaull.application.model_reference import normalize_repo_id
 from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
@@ -27,12 +28,9 @@ from jaull.exceptions import (
     ModelNotFoundError,
     QuantizationNotFoundError,
 )
-from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
-from jaull.presentation.estimation_report import (
-    estimate_to_json_dict,
-    render_estimate,
-)
+from jaull.presentation.estimation_report import render_estimate
+from jaull.reporting.estimation import estimate_to_json_dict
 
 _DEFAULT_CONTEXT_FALLBACK = 4096
 _GIB = 1024 * 1024 * 1024

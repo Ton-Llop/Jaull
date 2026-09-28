@@ -12,7 +12,7 @@ from jaull.domain.candidates import SearchQuery
 from jaull.domain.requirements import UseCase, UserRequirements
 
 # Default when the caller does not pass a limit. Kept generous — the actual
-# guided run overrides it from ``workflow.policies.SEARCH_RESULTS_PER_QUERY``.
+# guided run overrides it from ``jaull.application.recommendation.policies``.
 DEFAULT_RESULTS_PER_QUERY = 20
 
 # Search phrases per use case. Deliberately plain: the Hub's search is a
@@ -58,7 +58,7 @@ def build_queries(
     """Return the ordered, deduplicated set of queries for these requirements.
 
     ``limit`` is the ``list_models`` page size per query. The guided orchestrator
-    supplies its own value from ``workflow.policies.SEARCH_RESULTS_PER_QUERY``;
+    supplies its own value from ``jaull.application.recommendation.policies``;
     callers that only want to build the queries can omit it.
     """
     queries: list[SearchQuery] = []

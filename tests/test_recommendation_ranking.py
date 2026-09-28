@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.recommendation import policies as workflow_policies
+from jaull.application.recommendation.service import recommend
+from jaull.application.requirements import build_requirements
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
     CompatibilityStatus,
@@ -12,9 +15,6 @@ from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation import explanations, policies, ranker, scoring
 from jaull.recommendation.capability import CapabilitySignal
 from jaull.recommendation.models import ScoreBreakdown
-from jaull.workflow import policies as workflow_policies
-from jaull.workflow.ranking import recommend
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     answers,

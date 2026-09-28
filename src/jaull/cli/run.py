@@ -9,6 +9,7 @@ from rich.console import Console
 
 from jaull.advisor.service import AdvisorService
 from jaull.application.execution import ExecutionOverrides, ExecutionPlanningError
+from jaull.application.model_reference import normalize_repo_id
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution_plans import (
@@ -25,7 +26,6 @@ from jaull.exceptions import (
     QuantizationNotFoundError,
 )
 from jaull.execution.errors import ExecutionError
-from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
 from jaull.presentation.execution_report import (
     render_execution_observation,

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import jaull.runtime.locator as locator_module
 from jaull.advisor.service import AdvisorService
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
@@ -13,7 +14,6 @@ from jaull.domain.runtime import (
     RuntimeSource,
 )
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig, RuntimeRegistry
-from jaull.workflow.container import ServiceContainer
 
 
 def _norm(path: Path) -> str:

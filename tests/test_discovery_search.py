@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 from huggingface_hub.errors import HfHubHTTPError
 
+from jaull.application.recommendation import policies
+from jaull.application.requirements import build_requirements
 from jaull.discovery import query_builder
 from jaull.discovery.candidate_filter import (
     coarse_placement_hint,
@@ -31,8 +33,6 @@ from jaull.domain.estimation import EstimationConfidence, HardwareFitMode
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import CommercialUse, UseCase
 from jaull.exceptions import HuggingFaceUnavailableError
-from jaull.workflow import policies
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import answers, candidate, hardware
 
 

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.requirements import (
+    build_requirements,
+    normalize_language,
+    normalize_languages,
+)
 from jaull.domain import policies
 from jaull.domain.requirements import (
     CommercialUse,
@@ -13,11 +18,6 @@ from jaull.domain.requirements import (
     UserRequirements,
     WorkloadMode,
     WorkloadProfile,
-)
-from jaull.workflow.requirements import (
-    build_requirements,
-    normalize_language,
-    normalize_languages,
 )
 from tests._workflow_fixtures import answers, hardware
 

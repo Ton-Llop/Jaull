@@ -727,7 +727,7 @@ class AdvisorService:
         self,
         recommendation: ModelRecommendation,
     ) -> ModelIdentity:
-        from jaull.execution_plans import resolve_model_identity
+        from jaull.execution_plans.service import resolve_model_identity
 
         return resolve_model_identity(
             candidate=recommendation.evaluated.candidate,
@@ -738,7 +738,9 @@ class AdvisorService:
         self,
         recommendation: ModelRecommendation,
     ) -> ArtifactVariant:
-        from jaull.execution_plans import variant_from_recommendation
+        from jaull.application.recommendation.execution_plans import (
+            variant_from_recommendation,
+        )
 
         return variant_from_recommendation(
             recommendation,
@@ -752,7 +754,9 @@ class AdvisorService:
         include_uncertain: bool = False,
         limit: int = 20,
     ) -> list[ArtifactVariant]:
-        from jaull.execution_plans import discover_artifact_variants
+        from jaull.application.discovery.artifact_variants import (
+            discover_artifact_variants,
+        )
 
         identity = self.resolve_model_identity(recommendation)
         current = self.artifact_variant_for_recommendation(recommendation)
@@ -775,7 +779,9 @@ class AdvisorService:
         runtime_capability: RuntimeCapability | None = None,
         execution_readiness: ExecutionReadiness | None = None,
     ) -> ExecutionPlan:
-        from jaull.execution_plans import execution_plan_for_recommendation
+        from jaull.application.recommendation.execution_plans import (
+            execution_plan_for_recommendation,
+        )
 
         return execution_plan_for_recommendation(
             recommendation,
@@ -792,7 +798,7 @@ class AdvisorService:
         include_uncertain: bool = False,
         limit: int = 20,
     ) -> list[ExecutionPlan]:
-        from jaull.execution_plans import build_execution_plan
+        from jaull.execution_plans.service import build_execution_plan
 
         current = self.execution_plan_for_recommendation(recommendation)
         try:

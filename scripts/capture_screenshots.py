@@ -51,6 +51,7 @@ from _workflow_fixtures import (  # noqa: E402
     size_driven_estimator,
 )
 from jaull.advisor.service import AdvisorService  # noqa: E402
+from jaull.bootstrap.container import ServiceContainer  # noqa: E402
 from jaull.domain.artifacts import ModelArtifact  # noqa: E402
 from jaull.domain.estimation import MemoryEstimate  # noqa: E402
 from jaull.domain.execution import ExecutionObservation, InferenceResult  # noqa: E402
@@ -95,7 +96,6 @@ from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # no
 from jaull.tui.widgets.logo import Logo  # noqa: E402
 from jaull.tui.widgets.ocean import OceanBand  # noqa: E402
 from jaull.tui.widgets.patrol import SearchPatrol  # noqa: E402
-from jaull.workflow.container import ServiceContainer  # noqa: E402
 from jaull.workflow.progress import HARDWARE_STEPS  # noqa: E402
 
 OUTPUT_DIR = ROOT / "docs" / "assets"
