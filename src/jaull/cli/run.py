@@ -121,6 +121,7 @@ def _plan_for_run(
         format=ArtifactVariantFormat.GGUF,
         filename=artifact.filename,
         size_bytes=artifact.size_bytes,
+        file_count=1,
         quantization=artifact.quantization,
         source="cli",
         compatible_runtimes=[RuntimeName.LLAMA_CPP],

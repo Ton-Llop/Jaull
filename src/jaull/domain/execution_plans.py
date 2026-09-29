@@ -152,6 +152,7 @@ class ArtifactVariant(BaseModel):
     format: ArtifactVariantFormat
     filename: str | None = None
     size_bytes: int | None = Field(default=None, ge=0)
+    file_count: int | None = Field(default=None, ge=1)
     quantization: str | None = None
     precision: str | None = None
     source: str = "huggingface"

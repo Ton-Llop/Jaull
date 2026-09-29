@@ -334,7 +334,7 @@ def test_runtime_recommendation_warnings_reach_user_facing_warnings() -> None:
 
     expected = (
         "Running this configuration requires the 'bitsandbytes' package, "
-        "which Jaull does not install."
+        "which is not available in the probed PyTorch environment."
     )
     from jaull.domain.estimation import EstimationConfidence
     from jaull.domain.runtime import RuntimeName, RuntimeRecommendation

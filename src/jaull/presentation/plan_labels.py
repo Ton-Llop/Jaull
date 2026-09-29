@@ -192,15 +192,26 @@ def selected_plan_label(plan: ExecutionPlan) -> str:
 def readiness_label(plan: ExecutionPlan) -> str:
     """Readiness in plain words, without claiming a check that never ran."""
     if plan.execution_readiness is None:
-        return "Ready when prepared"
+        return "Readiness unknown"
     status = plan.execution_readiness.status.value.replace("_", " ").capitalize()
-    return "Ready" if status == "Ready" else status
+    return {"Not ready": "Blocked", "Preparable": "Preparable"}.get(status, status)
+
+
+def readiness_detail(plan: ExecutionPlan) -> str:
+    readiness = plan.execution_readiness
+    if readiness is None:
+        return "Readiness has not been checked."
+    label = readiness_label(plan)
+    if readiness.status is ExecutionReadinessStatus.READY:
+        return label
+    return f"{label} — {readiness.message or readiness.reason.value.replace('_', ' ')}"
 
 
 def is_ready_plan(plan: ExecutionPlan) -> bool:
     return (
         plan.execution_readiness is not None
-        and plan.execution_readiness.status.value == "ready"
+        and plan.execution_readiness.status
+        in {ExecutionReadinessStatus.READY, ExecutionReadinessStatus.PREPARABLE}
     )
 
 
@@ -218,15 +229,15 @@ def runtime_block_reason(plan: ExecutionPlan) -> str | None:
     readiness = plan.execution_readiness
     if readiness is None or readiness.status is not ExecutionReadinessStatus.NOT_READY:
         return None
+    detail = readiness.message or readiness.reason.value.replace("_", " ")
     required = plan.runtime_family.value
     if plan.backend_selection is not None:
         backend = _backend_display(plan.backend_selection.selected_backend.value)
         required += f" with {backend} support"
-    detail = readiness.message or readiness.reason.value.replace("_", " ")
     return (
-        f"This execution plan is not ready on this machine. "
-        f"Required runtime: {required}. Runtime status: {detail}. "
-        "Run `jaull doctor` for runtime setup details."
+        "This execution plan is not ready on this machine. "
+        f"Required runtime: {required}. Execution blocked: {detail} "
+        "Open Paths to inspect or select another plan."
     )
 
 

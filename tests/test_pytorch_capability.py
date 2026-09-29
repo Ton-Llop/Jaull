@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jaull.advisor.service import AdvisorService, _readiness_for_plan_variant
+from jaull.advisor.service import (
+    AdvisorService,
+    _readiness_for_artifact,
+    _readiness_for_plan_variant,
+)
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import (
@@ -13,6 +17,7 @@ from jaull.domain.execution import (
     ExecutionRequest,
     ExecutionResult,
 )
+from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat, ModelIdentity
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     ExecutionReadinessReason,
@@ -31,7 +36,7 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
-from jaull.execution.errors import ExecutionFailedError
+from jaull.execution.errors import ExecutionFailedError, ExecutionTimeoutError
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
 from jaull.runtime.pytorch_capability import (
     evaluate_pytorch_execution_readiness,
@@ -135,6 +140,62 @@ def test_probe_process_failure_yields_probe_failed(tmp_path: Path) -> None:
     )
 
     assert capability.runtime_status is PyTorchRuntimeStatus.PROBE_FAILED
+
+
+def test_probe_timeout_explains_unknown_readiness(tmp_path: Path) -> None:
+    binary = _fake_python(tmp_path)
+    backend = _FakeExecutionBackend(ExecutionTimeoutError("Command timed out after 45s"))
+
+    capability = inspect_pytorch_runtime(backend=backend, python_executable=binary)
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CPU), runtime_capability=capability
+    )
+
+    assert backend.requests[0].timeout_seconds == 45.0
+    assert readiness.status is ExecutionReadinessStatus.UNKNOWN
+    assert readiness.message == "PyTorch capability probe timed out after 45s."
+
+
+def test_bitsandbytes_timeout_keeps_native_transformers_readiness(tmp_path: Path) -> None:
+    binary = _fake_python(tmp_path)
+    base_probe = _probe_json(
+        torch_cuda_version="12.4",
+        cuda_available=True,
+        cuda_device_count=1,
+        devices=[{"index": 0, "name": "NVIDIA RTX 2060"}],
+        bitsandbytes_available=None,
+    )
+    backend = _FakeExecutionBackend(
+        ExecutionTimeoutError(
+            "Command timed out after 45s", _result(stdout=base_probe + "\n")
+        )
+    )
+
+    capability = inspect_pytorch_runtime(backend=backend, python_executable=binary)
+    native = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CUDA), runtime_capability=capability
+    )
+    quantized = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CUDA),
+        runtime_capability=capability,
+        requires_bitsandbytes=True,
+    )
+
+    assert capability.runtime_status is PyTorchRuntimeStatus.AVAILABLE
+    assert capability.bitsandbytes_available is None
+    assert "bitsandbytes probe timed out" in (capability.bitsandbytes_message or "")
+    assert native.status is ExecutionReadinessStatus.READY
+    assert quantized.status is ExecutionReadinessStatus.UNKNOWN
+    assert quantized.reason is ExecutionReadinessReason.QUANTIZATION_DEPENDENCY_UNKNOWN
+
+
+def test_probe_parser_uses_final_dependency_result() -> None:
+    initial = _probe_json(bitsandbytes_available=None)
+    complete = _probe_json(bitsandbytes_available=True)
+
+    capability = parse_pytorch_probe_json(f"{initial}\n{complete}\n")
+
+    assert capability.bitsandbytes_available is True
 
 
 def test_malformed_json_yields_unknown_capability() -> None:
@@ -276,6 +337,54 @@ def test_variant_readiness_is_recomputed_from_its_runtime_flags() -> None:
     assert quantized_readiness.status is ExecutionReadinessStatus.NOT_READY
     assert native_readiness is not None
     assert native_readiness.status is ExecutionReadinessStatus.READY
+
+
+def test_remote_single_file_gguf_is_preparable_but_local_file_is_ready() -> None:
+    capability = parse_pytorch_probe_json(_probe_json())
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CPU),
+        runtime_capability=capability,
+    )
+    artifact = ArtifactVariant(
+        model_identity=ModelIdentity(model_name="Tiny"),
+        repo_id="org/Tiny-GGUF",
+        format=ArtifactVariantFormat.GGUF,
+        filename="tiny-Q4_K_M.gguf",
+        quantization="Q4_K_M",
+        file_count=1,
+    )
+
+    remote = _readiness_for_artifact(readiness, artifact, artifact_downloaded=False)
+    local = _readiness_for_artifact(readiness, artifact, artifact_downloaded=True)
+
+    assert remote is not None
+    assert remote.status is ExecutionReadinessStatus.PREPARABLE
+    assert "downloaded" in (remote.message or "") or "download" in (remote.message or "")
+    assert local is not None
+    assert local.status is ExecutionReadinessStatus.READY
+
+
+def test_multipart_gguf_is_blocked_before_artifact_resolution() -> None:
+    capability = parse_pytorch_probe_json(_probe_json())
+    readiness = evaluate_pytorch_execution_readiness(
+        selection=_selection(ComputeBackend.CPU),
+        runtime_capability=capability,
+    )
+    artifact = ArtifactVariant(
+        model_identity=ModelIdentity(model_name="Coder"),
+        repo_id="org/Coder-GGUF",
+        format=ArtifactVariantFormat.GGUF,
+        filename="coder-Q4_K_M-00001-of-00003.gguf",
+        quantization="Q4_K_M",
+        file_count=3,
+    )
+
+    result = _readiness_for_artifact(readiness, artifact, artifact_downloaded=False)
+
+    assert result is not None
+    assert result.status is ExecutionReadinessStatus.NOT_READY
+    assert result.reason is ExecutionReadinessReason.ARTIFACT_UNSUPPORTED
+    assert "multipart (3 files)" in (result.message or "")
 
 
 def test_quantized_transformers_plan_is_ready_with_bitsandbytes() -> None:
@@ -434,6 +543,25 @@ def test_advisor_service_exposes_pytorch_probe_and_readiness(tmp_path: Path) -> 
 
     assert capability.runtime_status is PyTorchRuntimeStatus.AVAILABLE
     assert readiness.status is ExecutionReadinessStatus.READY
+
+
+def test_advisor_reuses_pytorch_probe_until_explicit_refresh(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    from jaull.execution import host
+
+    backend = _FakeExecutionBackend(_probe_json(bitsandbytes_available=False))
+    monkeypatch.setattr(host, "HostExecutionBackend", lambda: backend)
+    advisor = AdvisorService(services=_services(), python_executable=_fake_python(tmp_path))
+
+    initial = advisor.inspect_pytorch_runtime()
+    backend.outcome = _probe_json(bitsandbytes_available=True)
+    assert advisor.inspect_pytorch_runtime() is initial
+    refreshed = advisor.inspect_pytorch_runtime(refresh=True)
+
+    assert len(backend.requests) == 2
+    assert refreshed.bitsandbytes_available is True
+    assert advisor.inspect_pytorch_runtime() is refreshed
 
 
 def test_llama_cpp_readiness_still_accepts_llama_cpp_capability() -> None:

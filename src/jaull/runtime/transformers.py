@@ -62,8 +62,8 @@ def build(estimate: MemoryEstimate, hardware: HardwareProfile) -> RuntimeRecomme
             ),
         )
         warnings.append(
-            "Running this configuration requires the 'bitsandbytes' package, "
-            "which Jaull does not install."
+            "Running this configuration requires 'bitsandbytes' in the selected "
+            "Transformers Python environment."
         )
         warnings.append(
             "The estimate assumes every weight is quantized. bitsandbytes keeps "

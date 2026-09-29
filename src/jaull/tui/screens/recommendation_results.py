@@ -1061,7 +1061,9 @@ def _plan_line(rec: ModelRecommendation) -> str:
         plan = execution_plan_for_recommendation(rec)
     except ValueError:
         return " · ".join(_recommendation_metadata(rec))
-    return plan_summary_line(plan)
+    from jaull.presentation.plan_labels import readiness_detail
+
+    return f"{plan_summary_line(plan)} · {readiness_detail(plan)}"
 
 
 def _list_aside(recommendations: list[ModelRecommendation]) -> str:

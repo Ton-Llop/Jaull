@@ -300,6 +300,7 @@ def _gguf_plans(
             format=ArtifactVariantFormat.GGUF,
             filename=variant.files[0].path if variant.files else None,
             size_bytes=variant.total_bytes,
+            file_count=len(variant.files),
             quantization=variant.quantization,
             source="analysis",
             compatible_runtimes=[RuntimeName.LLAMA_CPP],
@@ -762,6 +763,8 @@ def _runtime_readiness(plan: ExecutionPlan) -> AssessmentLevel:
         return AssessmentLevel.UNKNOWN
     if plan.execution_readiness.status is ExecutionReadinessStatus.READY:
         return AssessmentLevel.STRONG
+    if plan.execution_readiness.status is ExecutionReadinessStatus.PREPARABLE:
+        return AssessmentLevel.ADEQUATE
     if plan.execution_readiness.status is ExecutionReadinessStatus.NOT_READY:
         return AssessmentLevel.BLOCKED
     return AssessmentLevel.UNKNOWN

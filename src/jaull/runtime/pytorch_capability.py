@@ -42,7 +42,7 @@ import traceback
 
 
 def emit(payload):
-    print(json.dumps(payload, sort_keys=True))
+    print(json.dumps(payload, sort_keys=True), flush=True)
 
 
 def import_module(name):
@@ -77,8 +77,6 @@ if error is not None:
     emit({"runtime_status": status, "message": error["message"]})
     raise SystemExit(0)
 
-bitsandbytes, bitsandbytes_error = import_module("bitsandbytes")
-
 cuda_available = None
 cuda_device_count = None
 cuda_error = None
@@ -111,35 +109,36 @@ if cuda_device_count:
             device["memory_error"] = str(exc)
         devices.append(device)
 
-emit(
-    {
+payload = {
         "runtime_status": "available",
         "torch_version": getattr(torch, "__version__", None),
         "transformers_version": getattr(transformers, "__version__", None),
         "torch_cuda_version": getattr(torch.version, "cuda", None),
         "torch_hip_version": getattr(torch.version, "hip", None),
-        "bitsandbytes_available": (
-            None
-            if bitsandbytes_error is not None
-            and bitsandbytes_error.get("status") == "import_failed"
-            else bitsandbytes is not None
-        ),
-        "bitsandbytes_version": (
-            getattr(bitsandbytes, "__version__", None)
-            if bitsandbytes is not None
-            else None
-        ),
-        "bitsandbytes_message": (
-            bitsandbytes_error.get("message")
-            if bitsandbytes_error is not None
-            else None
-        ),
+        "bitsandbytes_available": None,
+        "bitsandbytes_version": None,
+        "bitsandbytes_message": None,
         "cuda_available": cuda_available,
         "cuda_device_count": cuda_device_count,
         "cuda_error": cuda_error,
         "devices": devices,
     }
+emit(payload)
+
+bitsandbytes, bitsandbytes_error = import_module("bitsandbytes")
+payload["bitsandbytes_available"] = (
+    None
+    if bitsandbytes_error is not None
+    and bitsandbytes_error.get("status") == "import_failed"
+    else bitsandbytes is not None
 )
+payload["bitsandbytes_version"] = (
+    getattr(bitsandbytes, "__version__", None) if bitsandbytes is not None else None
+)
+payload["bitsandbytes_message"] = (
+    bitsandbytes_error.get("message") if bitsandbytes_error is not None else None
+)
+emit(payload)
 """
 
 
@@ -147,7 +146,7 @@ def inspect_pytorch_runtime(
     *,
     backend: ExecutionBackendProtocol,
     python_executable: str | Path | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = 45.0,
 ) -> PyTorchRuntimeCapability:
     """Probe Python, PyTorch and Transformers without loading a model."""
 
@@ -173,7 +172,26 @@ def inspect_pytorch_runtime(
             runtime_status=PyTorchRuntimeStatus.PYTHON_MISSING,
             message=str(exc),
         )
-    except (ExecutionFailedError, ExecutionTimeoutError) as exc:
+    except ExecutionTimeoutError as exc:
+        if exc.result is not None:
+            partial = parse_pytorch_probe_json(
+                exc.result.stdout, python_executable=resolved.path
+            )
+            if partial.runtime_status is PyTorchRuntimeStatus.AVAILABLE:
+                return partial.model_copy(
+                    update={
+                        "bitsandbytes_message": (
+                            f"bitsandbytes probe timed out after {timeout_seconds:g}s."
+                        )
+                    }
+                )
+        return PyTorchRuntimeCapability(
+            python_executable=resolved.path,
+            runtime_status=PyTorchRuntimeStatus.PROBE_FAILED,
+            probe_source=_PROBE_SOURCE,
+            message=f"PyTorch capability probe timed out after {timeout_seconds:g}s.",
+        )
+    except ExecutionFailedError as exc:
         return PyTorchRuntimeCapability(
             python_executable=resolved.path,
             runtime_status=PyTorchRuntimeStatus.PROBE_FAILED,
@@ -210,7 +228,7 @@ def parse_pytorch_probe_json(
     """Parse the structured JSON emitted by the PyTorch runtime probe."""
 
     try:
-        raw = json.loads(stdout.strip())
+        raw = json.loads(stdout.strip().splitlines()[-1] if stdout.strip() else "")
     except json.JSONDecodeError as exc:
         return _unknown_capability(
             python_executable=python_executable,
@@ -296,7 +314,7 @@ def evaluate_pytorch_execution_readiness(
             reason=ExecutionReadinessReason.PROBE_FAILED,
             selection=selection,
             runtime_capability=runtime_capability,
-            message="PyTorch capability probe failed",
+            message=runtime_capability.message or "PyTorch capability probe failed",
         )
     if status is not PyTorchRuntimeStatus.AVAILABLE:
         return _readiness(

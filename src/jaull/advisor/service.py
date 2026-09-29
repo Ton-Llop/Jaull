@@ -73,6 +73,7 @@ from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
 from jaull.domain.runtime import (
     ExecutionReadiness,
+    ExecutionReadinessReason,
     ExecutionReadinessStatus,
     LlamaCppRuntimeCapability,
     PyTorchRuntimeCapability,
@@ -142,12 +143,15 @@ class AdvisorService:
     llama_cli_timeout_seconds: float = field(default=300.0)
     transformers_timeout_seconds: float = field(default=900.0)
     python_executable: str | Path | None = field(default=None)
-    pytorch_probe_timeout_seconds: float = field(default=10.0)
+    pytorch_probe_timeout_seconds: float = field(default=45.0)
     llama_bench_path: str | Path | None = field(default=None)
     llama_bench_timeout_seconds: float = field(default=900.0)
     runtime_locator: RuntimeLocator | None = field(default=None)
     llama_cpp_installation: LlamaCppInstallation | None = field(default=None)
     pytorch_installation: PyTorchInstallation | None = field(default=None)
+    _pytorch_capability_cache: PyTorchRuntimeCapability | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     # ------------------------------------------------------------------
     # Simple pass-throughs — kept as methods so tests can spy on them and
@@ -450,16 +454,28 @@ class AdvisorService:
         self,
         *,
         backend: ExecutionBackendProtocol | None = None,
+        refresh: bool = False,
     ) -> PyTorchRuntimeCapability:
         from jaull.execution.host import HostExecutionBackend
         from jaull.runtime.pytorch_capability import inspect_pytorch_runtime
 
         installation = self._resolved_pytorch_installation()
-        return inspect_pytorch_runtime(
+        cached = self._pytorch_capability_cache
+        if (
+            backend is None
+            and not refresh
+            and cached is not None
+            and cached.python_executable == installation.python_executable
+        ):
+            return cached
+        capability = inspect_pytorch_runtime(
             backend=backend or HostExecutionBackend(),
             python_executable=installation.python_executable,
             timeout_seconds=self.pytorch_probe_timeout_seconds,
         )
+        if backend is None:
+            object.__setattr__(self, "_pytorch_capability_cache", capability)
+        return capability
 
     def evaluate_pytorch_execution_readiness(
         self,
@@ -810,6 +826,19 @@ class AdvisorService:
         except Exception:
             variants = [current.artifact]
 
+        selection = current.backend_selection
+        if selection is None and current.hardware is not None:
+            selection = self.select_runtime_backend(current.hardware)
+        capabilities: dict[RuntimeName, RuntimeCapability] = {}
+        runtime_families = {_runtime_for_variant(variant).runtime for variant in variants}
+        for runtime_family in runtime_families:
+            if runtime_family is RuntimeName.LLAMA_CPP:
+                capabilities[runtime_family] = self.inspect_llama_cpp_runtime(
+                    selection=selection,
+                )
+            elif runtime_family is RuntimeName.TRANSFORMERS:
+                capabilities[runtime_family] = self.inspect_pytorch_runtime()
+
         plans: list[ExecutionPlan] = []
         for variant in variants:
             runtime = (
@@ -818,12 +847,21 @@ class AdvisorService:
                 else _runtime_for_variant(variant)
             )
             memory = current.memory_prediction if variant == current.artifact else None
-            same_runtime = runtime.runtime is current.runtime_family
-            capability = current.runtime_capability if same_runtime else None
+            capability = capabilities.get(runtime.runtime)
             readiness = _readiness_for_plan_variant(
                 runtime=runtime,
-                selection=current.backend_selection,
+                selection=selection,
                 capability=capability,
+            )
+            artifact_downloaded = None
+            if variant.format is ArtifactVariantFormat.GGUF and variant.filename:
+                artifact_downloaded = self._artifacts().is_downloaded(
+                    variant.to_model_artifact()
+                )
+            readiness = _readiness_for_artifact(
+                readiness,
+                variant,
+                artifact_downloaded=artifact_downloaded,
             )
             plans.append(
                 build_execution_plan(
@@ -832,7 +870,7 @@ class AdvisorService:
                     runtime=runtime,
                     memory_prediction=memory,
                     hardware=current.hardware,
-                    backend_selection=current.backend_selection,
+                    backend_selection=selection,
                     runtime_capability=capability,
                     execution_readiness=readiness,
                 )
@@ -1340,7 +1378,7 @@ class AdvisorService:
         llama_cli_timeout_seconds: float = 300.0,
         transformers_timeout_seconds: float = 900.0,
         python_executable: str | Path | None = None,
-        pytorch_probe_timeout_seconds: float = 10.0,
+        pytorch_probe_timeout_seconds: float = 45.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
         runtime_locator: RuntimeLocator | None = None,
@@ -1390,7 +1428,7 @@ class AdvisorService:
         llama_cli_timeout_seconds: float = 300.0,
         transformers_timeout_seconds: float = 900.0,
         python_executable: str | Path | None = None,
-        pytorch_probe_timeout_seconds: float = 10.0,
+        pytorch_probe_timeout_seconds: float = 45.0,
         llama_bench_path: str | Path | None = None,
         llama_bench_timeout_seconds: float = 900.0,
         runtime_locator: RuntimeLocator | None = None,
@@ -1467,6 +1505,42 @@ def _readiness_for_plan_variant(
             runtime_capability=capability,
         )
     return None
+
+
+def _readiness_for_artifact(
+    readiness: ExecutionReadiness | None,
+    artifact: ArtifactVariant,
+    *,
+    artifact_downloaded: bool | None,
+) -> ExecutionReadiness | None:
+    if readiness is None:
+        return None
+    if artifact.format is ArtifactVariantFormat.GGUF and (artifact.file_count or 0) > 1:
+        count = artifact.file_count
+        return readiness.model_copy(
+            update={
+                "status": ExecutionReadinessStatus.NOT_READY,
+                "reason": ExecutionReadinessReason.ARTIFACT_UNSUPPORTED,
+                "message": (
+                    f"GGUF variant {artifact.quantization!r} is multipart ({count} files). "
+                    "Multipart GGUF is not supported."
+                ),
+            }
+        )
+    if readiness.status is not ExecutionReadinessStatus.READY:
+        return readiness
+    if artifact.format is ArtifactVariantFormat.GGUF and artifact_downloaded is True:
+        return readiness
+    return readiness.model_copy(
+        update={
+            "status": ExecutionReadinessStatus.PREPARABLE,
+            "reason": ExecutionReadinessReason.ARTIFACT_PREPARATION_REQUIRED,
+            "message": (
+                "The execution runtime is ready; model files will be reused from "
+                "local storage or downloaded from Hugging Face before execution."
+            ),
+        }
+    )
 
 
 def _selection_for_requested_backend(

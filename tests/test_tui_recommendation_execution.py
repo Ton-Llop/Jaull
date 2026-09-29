@@ -493,6 +493,10 @@ class _FakeAdvisor:
             return self.execution_plans
         return [execution_plan_for_recommendation(recommendation)]
 
+    def inspect_pytorch_runtime(self, *, refresh: bool = False) -> PyTorchRuntimeCapability:
+        self.operations.append("pytorch_refresh" if refresh else "pytorch_probe")
+        return _pytorch_runtime_capability()
+
     def prepare_execution_plan(
         self,
         plan: object,
@@ -977,6 +981,7 @@ def test_results_disable_execution_actions_for_a_not_ready_plan() -> None:
             assert screen.query_one("#res-run-0", Button).disabled is True
             assert screen.query_one("#res-validate-0", Button).disabled is True
             assert screen.query_one("#res-benchmark-0", Button).disabled is True
+            assert screen.query_one("#res-paths-0", Button).disabled is False
             assert "llama.cpp is not installed" in _visible_text(screen)
 
     _run(scenario())
@@ -1020,6 +1025,129 @@ def test_execution_paths_show_why_actions_are_disabled() -> None:
             assert paths.query_one("#paths-run", Button).disabled is True
             assert paths.query_one("#paths-validate", Button).disabled is True
             assert paths.query_one("#paths-benchmark", Button).disabled is True
+
+    _run(scenario())
+
+
+def test_blocked_path_does_not_disable_an_available_alternative() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation()
+        base = execution_plan_for_recommendation(recommendation)
+        blocked = base.model_copy(
+            update={
+                "plan_id": "blocked-q4",
+                "execution_readiness": ExecutionReadiness(
+                    status=ExecutionReadinessStatus.NOT_READY,
+                    reason=ExecutionReadinessReason.RUNTIME_MISSING,
+                    selection=_backend_selection(ComputeBackend.CPU),
+                    runtime_capability=_runtime_capability(ComputeBackend.CPU),
+                    message="llama.cpp is not installed",
+                ),
+            }
+        )
+        available = base.model_copy(
+            update={
+                "plan_id": "available-q5",
+                "artifact": base.artifact.model_copy(
+                    update={"quantization": "Q5_K_M"}
+                ),
+                "execution_readiness": ExecutionReadiness(
+                    status=ExecutionReadinessStatus.READY,
+                    reason=ExecutionReadinessReason.RUNTIME_AVAILABLE,
+                    selection=_backend_selection(ComputeBackend.CPU),
+                    runtime_capability=_runtime_capability(ComputeBackend.CPU),
+                    message="llama.cpp CPU execution is available",
+                ),
+            }
+        )
+        advisor = _FakeAdvisor(execution_plans=[blocked, available])
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.show_recommendations(
+                RecommendationWorkflowState(recommendations=[recommendation])
+            )
+            await pilot.pause()
+            results = pilot.app.screen
+            assert isinstance(results, RecommendationResultsScreen)
+            results.query_one("#res-paths-0", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
+                and bool(pilot.app.screen.query("#paths-quant #label")),
+            )
+            paths = pilot.app.screen
+            assert isinstance(paths, ExecutionPathsScreen)
+            assert paths.query_one("#paths-run", Button).disabled is True
+
+            paths.query_one("#paths-quant", Select).value = "available-q5"
+            await _wait_until(
+                pilot,
+                lambda: not paths.query_one("#paths-run", Button).disabled,
+            )
+            assert paths.query_one("#paths-validate", Button).disabled is False
+            assert paths.query_one("#paths-benchmark", Button).disabled is False
+
+    _run(scenario())
+
+
+def test_paths_can_recheck_runtime_after_installing_a_dependency() -> None:
+    async def scenario() -> None:
+        recommendation = _recommendation_with_plan(
+            repo_id="org/Coder",
+            identity=ModelIdentity(model_name="Coder"),
+            format_=ArtifactVariantFormat.SAFETENSORS,
+            precision="float16",
+            runtime=RuntimeName.TRANSFORMERS,
+        )
+        plan = recommendation.plan
+        assert plan is not None
+        blocked = plan.model_copy(
+            update={
+                "execution_readiness": ExecutionReadiness(
+                    status=ExecutionReadinessStatus.NOT_READY,
+                    reason=ExecutionReadinessReason.RUNTIME_MISSING,
+                    selection=_backend_selection(ComputeBackend.CPU),
+                    runtime_capability=_pytorch_runtime_capability(),
+                    message="bitsandbytes is not installed",
+                )
+            }
+        )
+        assert blocked.execution_readiness is not None
+        ready = blocked.model_copy(
+            update={
+                "execution_readiness": blocked.execution_readiness.model_copy(
+                    update={
+                        "status": ExecutionReadinessStatus.READY,
+                        "reason": ExecutionReadinessReason.RUNTIME_AVAILABLE,
+                        "message": "Transformers runtime is ready",
+                    }
+                )
+            }
+        )
+        advisor = _FakeAdvisor(execution_plans=[blocked])
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(ExecutionPathsScreen(recommendation))
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
+                and "bitsandbytes is not installed" in _visible_text(pilot.app.screen),
+            )
+            paths = pilot.app.screen
+            assert isinstance(paths, ExecutionPathsScreen)
+            assert paths.query_one("#paths-run", Button).disabled is True
+
+            advisor.execution_plans = [ready]
+            paths.query_one("#paths-recheck", Button).press()
+            await _wait_until(
+                pilot,
+                lambda: "pytorch_refresh" in advisor.operations
+                and not paths.query_one("#paths-run", Button).disabled,
+            )
+            assert paths.query_one("#paths-recheck", Button).disabled is False
+            assert "Ready" in _visible_text(paths)
 
     _run(scenario())
 

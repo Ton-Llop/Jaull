@@ -192,7 +192,10 @@ def _plan_warnings(
     warnings = list(runtime.warnings)
     if artifact.identity_match is IdentityMatchStatus.UNCERTAIN:
         warnings.append("Artifact identity match is heuristic and not automatically safe.")
-    if readiness is not None and readiness.status is not ExecutionReadinessStatus.READY:
+    if readiness is not None and readiness.status in {
+        ExecutionReadinessStatus.NOT_READY,
+        ExecutionReadinessStatus.UNKNOWN,
+    }:
         warnings.append(readiness.message or f"Runtime readiness is {readiness.status.value}.")
     return warnings
 

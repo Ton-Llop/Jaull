@@ -409,6 +409,7 @@ def test_gguf_recommendation_variant_lists_all_quantization_metadata() -> None:
 
     assert variant.format is ArtifactVariantFormat.GGUF
     assert variant.filename == "model-Q4_K_M.gguf"
+    assert variant.file_count == 1
     assert variant.quantization == "Q4_K_M"
     assert variant.compatible_runtimes == [RuntimeName.LLAMA_CPP]
 

@@ -57,6 +57,9 @@ class ArtifactService:
         )
         return self._promote_if_present(artifact)
 
+    def is_downloaded(self, artifact: ModelArtifact) -> bool:
+        return self.storage.exists(artifact)
+
     def download(
         self,
         artifact: ModelArtifact,

@@ -22,11 +22,10 @@ taken as its plain ``str`` value, which is what ``WeightPrecision`` serialises t
 anyway. Importing the domain here made the worker die with
 ``ModuleNotFoundError: pydantic`` before it could emit its structured error.
 
-``bitsandbytes`` is deliberately **not** a Jaull dependency: it is CUDA-centric
-and awkward on Windows, and a quantized Transformers plan is already reported as
-a theoretical artifact. So a worker asked for one without the library installed
-fails with an explicit message instead of quietly loading unquantized weights
-and reporting the result as though it were the estimated configuration.
+``bitsandbytes`` is an install dependency, but it must still be available in
+the Python environment selected for Transformers execution. A worker asked for
+one without the library fails explicitly instead of quietly loading
+unquantized weights and reporting the result as though it were estimated.
 
 Even with a real ``BitsAndBytesConfig`` the loaded footprint is not exactly
 ``parameters x 0.5 bytes``: bitsandbytes keeps some modules (embeddings, the
@@ -51,8 +50,8 @@ QUANTIZATION_MODES: dict[str, str] = {
 COMPUTE_DTYPE = "torch.float16"
 
 MISSING_LIBRARY_MESSAGE = (
-    "This configuration needs the 'bitsandbytes' package, which Jaull does not "
-    "install. Install it in the PyTorch environment, or pick a plan whose "
+    "This configuration needs the 'bitsandbytes' package, which is not available "
+    "in the probed PyTorch environment. Install it there, or pick a plan whose "
     "precision loads without on-the-fly quantization. Jaull will not run an "
     "unquantized model in place of a quantized estimate: the measurement would "
     "not describe the configuration that was predicted."

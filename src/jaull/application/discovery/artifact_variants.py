@@ -186,6 +186,7 @@ def _variants_from_candidate(
                     format=ArtifactVariantFormat.GGUF,
                     filename=gguf.files[0].path if gguf.files else None,
                     size_bytes=gguf.total_bytes,
+                    file_count=len(gguf.files),
                     quantization=gguf.quantization,
                     compatible_runtimes=[RuntimeName.LLAMA_CPP],
                     identity_match=match,

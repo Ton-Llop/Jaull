@@ -298,6 +298,7 @@ def _runtime_capability_detail(capability: LlamaCppRuntimeCapability) -> str:
 def _readiness_detail(readiness: ExecutionReadiness) -> str:
     label = {
         ExecutionReadinessStatus.READY: "yes",
+        ExecutionReadinessStatus.PREPARABLE: "preparable",
         ExecutionReadinessStatus.NOT_READY: "no",
         ExecutionReadinessStatus.UNKNOWN: "unknown",
     }[readiness.status]

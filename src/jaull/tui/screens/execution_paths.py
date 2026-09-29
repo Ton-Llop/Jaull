@@ -32,6 +32,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Select, Static
 
 from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.runtime import RuntimeName
 from jaull.presentation.plan_labels import (
     SUGGESTED_QUANTIZATIONS,
     artifact_display,
@@ -40,7 +41,7 @@ from jaull.presentation.plan_labels import (
     is_gguf_plan,
     is_ready_plan,
     model_display_name,
-    readiness_label,
+    readiness_detail,
     runtime_block_reason,
     selected_plan_label,
 )
@@ -116,7 +117,7 @@ class _PathOption(Vertical):
         yield Static(execution_option_label(self._plan), classes="path-option-title")
         yield Static(artifact_display(self._plan), classes="path-option-meta -artifact")
         yield Static(
-            self._evidence.summary(),
+            f"{readiness_detail(self._plan)} · {self._evidence.summary()}",
             classes=f"path-option-meta -evidence {_evidence_class(self._evidence)}",
         )
 
@@ -133,7 +134,7 @@ class _PathOption(Vertical):
         for widget in self.query(".-artifact").results(Static):
             widget.update(artifact_display(plan))
         for widget in self.query(".-evidence").results(Static):
-            widget.update(evidence.summary())
+            widget.update(f"{readiness_detail(plan)} · {evidence.summary()}")
             widget.set_classes(f"path-option-meta -evidence {_evidence_class(evidence)}")
 
     def on_click(self) -> None:
@@ -189,6 +190,7 @@ class ExecutionPathsScreen(Screen[None]):
                 yield Button("Run", id="paths-run", classes="-primary", disabled=True)
                 yield ActionButton("Validate", id="paths-validate", disabled=True)
                 yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
+                yield ActionButton("Recheck runtime", id="paths-recheck", disabled=True)
                 yield ActionButton("Back", id="paths-back")
             yield Static("", id="paths-action-reason", classes="warning-line")
         yield Footer()
@@ -208,8 +210,10 @@ class ExecutionPathsScreen(Screen[None]):
             self._future = None
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _load_worker(self, advisor: AdvisorService) -> None:
+    def _load_worker(self, advisor: AdvisorService, *, refresh: bool = False) -> None:
         try:
+            if refresh:
+                advisor.inspect_pytorch_runtime(refresh=True)
             plans = advisor.execution_plans_for_recommendation(self._recommendation)
         except Exception as exc:
             if not self._paths_closing.is_set():
@@ -234,7 +238,13 @@ class ExecutionPathsScreen(Screen[None]):
             return
         self._plans = message.plans
         self._evidence = message.evidence
-        self._selected_plan_id = self._plans[0].plan_id if self._plans else None
+        if self._selected_plan_id not in {plan.plan_id for plan in self._plans}:
+            self._selected_plan_id = self._plans[0].plan_id if self._plans else None
+        recheck = self.query_one("#paths-recheck", Button)
+        recheck.display = any(
+            plan.runtime_family is RuntimeName.TRANSFORMERS for plan in self._plans
+        )
+        recheck.disabled = not recheck.display
         status = self.query_one("#paths-status", Static)
         status.update("")
         status.display = False
@@ -258,6 +268,8 @@ class ExecutionPathsScreen(Screen[None]):
         error = self.query_one("#paths-error", Static)
         error.update(message.message)
         error.display = True
+        recheck = self.query_one("#paths-recheck", Button)
+        recheck.disabled = not recheck.display
 
     @on(_PathOption.Chosen)
     def _option_chosen(self, message: _PathOption.Chosen) -> None:
@@ -289,6 +301,17 @@ class ExecutionPathsScreen(Screen[None]):
             return
         if button_id == "paths-back":
             self.app.pop_screen()
+            return
+        if button_id == "paths-recheck":
+            self.query_one("#paths-recheck", Button).disabled = True
+            status = self.query_one("#paths-status", Static)
+            status.update("Checking runtime readiness...")
+            status.display = True
+            self.query_one("#paths-error", Static).display = False
+            self._set_actions(enabled=False, reason="Checking runtime readiness.")
+            self._future = self._executor.submit(
+                self._load_worker, self._app().advisor, refresh=True
+            )
             return
         plan = self._selected_plan()
         if plan is None:
@@ -437,7 +460,7 @@ class ExecutionPathsScreen(Screen[None]):
         title.update(f"Selected · {selected_plan_label(selected)}")
         title.display = True
         meta.update(
-            f"{readiness_label(selected)} · {evidence.summary()} · {_memory(selected)}"
+            f"{readiness_detail(selected)} · {evidence.summary()} · {_memory(selected)}"
         )
         meta.display = True
 

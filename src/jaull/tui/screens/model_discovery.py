@@ -69,6 +69,7 @@ class ModelDiscoveryScreen(Screen[None]):
             "Only public metadata is read. No model weights are downloaded.",
         )
         with VerticalScroll(id="discovery-body"):
+            yield Static("Checking local runtimes...", id="discovery-runtime-status")
             yield ProgressStepList(
                 "Searching Hugging Face",
                 initial_progress(DISCOVERY_STEPS),
@@ -90,6 +91,7 @@ class ModelDiscoveryScreen(Screen[None]):
 
     def _start_discovery(self) -> None:
         self._discovery_closing.clear()
+        self.query_one("#discovery-runtime-status", Static).display = True
         self._executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="jaull-discovery",
@@ -154,10 +156,12 @@ class ModelDiscoveryScreen(Screen[None]):
         self._finish(state)
 
     def _update_progress(self, progress: WorkflowProgress) -> None:
+        self.query_one("#discovery-runtime-status", Static).display = False
         self.query_one(ProgressStepList).update_progress(progress)
 
     def _finish(self, state: RecommendationWorkflowState) -> None:
         self._shutdown_discovery_executor()
+        self.query_one("#discovery-runtime-status", Static).display = False
         # Nothing is being searched for any more. Leaving the shark patrolling
         # under a cancellation notice or an error would say the opposite of
         # every other thing on the screen.

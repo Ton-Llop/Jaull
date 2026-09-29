@@ -22,6 +22,7 @@ dependencies = [
     "torch>=2.13.0",
     "transformers>=5.15.0",
     "accelerate>=1.14.0",
+    "bitsandbytes>=0.50.2",
 ]
 
 # Development tooling is a dependency *group*, not an optional feature: it is

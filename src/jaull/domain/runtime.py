@@ -330,6 +330,7 @@ def runtime_capability_version(capability: RuntimeCapability | None) -> str | No
 
 class ExecutionReadinessStatus(StrEnum):
     READY = "ready"
+    PREPARABLE = "preparable"
     NOT_READY = "not_ready"
     UNKNOWN = "unknown"
 
@@ -344,6 +345,8 @@ class ExecutionReadinessReason(StrEnum):
     SELECTED_BACKEND_NOT_EXPOSED = "selected_backend_not_exposed"
     QUANTIZATION_DEPENDENCY_MISSING = "quantization_dependency_missing"
     QUANTIZATION_DEPENDENCY_UNKNOWN = "quantization_dependency_unknown"
+    ARTIFACT_PREPARATION_REQUIRED = "artifact_preparation_required"
+    ARTIFACT_UNSUPPORTED = "artifact_unsupported"
     CAPABILITY_UNKNOWN = "capability_unknown"
 
 
