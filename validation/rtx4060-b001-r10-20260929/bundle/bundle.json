@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-09-29T22:41:38.260444Z",
+  "jaull_version": "0.1.0",
+  "git_commit": "f14b3e9eb8d8c906bad4efb1484727cc86ee47a3",
+  "case_file": {
+    "path": "case.json",
+    "sha256": "2b647e654e319c68480610a0ae6df663d6e04f3264e16061bfe20be159873b4b",
+    "size_bytes": 1453
+  },
+  "experiment_file": {
+    "path": "records/experiment.json",
+    "sha256": "240ac17d54b900c6e2246c8b86ec248d4973f4e0b665723cd69a8a9b3baaeb58",
+    "size_bytes": 42146
+  },
+  "benchmark_files": [
+    {
+      "path": "records/benchmarks/bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "sha256": "022e559dbe217b13f72ec11038ad6d41d5c742a09e409840fa61d3964e1e03b5",
+      "size_bytes": 12531,
+      "benchmark_id": "bench-491757e3-204b-4956-b89e-61d39ce2f76b"
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "evidence/logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "size_bytes": 372493,
+      "reference": {
+        "path": "logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "size_bytes": 1208,
+      "reference": {
+        "path": "logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    }
+  ]
+}

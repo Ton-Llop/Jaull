@@ -1,0 +1,18 @@
+{
+  "automated_check": "credential-pattern scan, not a guarantee of absence",
+  "manual_review": "Fixed validation AI prompt and benign output inspected; benchmark raw output inspected.",
+  "files": [
+    {
+      "path": "logs\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "bytes": 1208,
+      "credential_pattern_matches": 0
+    },
+    {
+      "path": "logs\\exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "bytes": 372493,
+      "credential_pattern_matches": 0
+    }
+  ]
+}

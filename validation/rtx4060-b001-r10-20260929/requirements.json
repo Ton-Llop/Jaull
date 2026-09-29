@@ -1,0 +1,24 @@
+{
+  "use_case": "general_chat",
+  "workload_mode": "interactive",
+  "priority": "balanced",
+  "languages": [
+    "en"
+  ],
+  "concurrent_users": 1,
+  "concurrency_range": "One user",
+  "desired_context": 4096,
+  "expected_input_tokens": null,
+  "expected_output_tokens": null,
+  "min_generation_tps": null,
+  "max_ttft_ms": null,
+  "commercial_use_required": true,
+  "pipeline_tag": "text-generation",
+  "preferred_formats": [
+    "gguf",
+    "safetensors"
+  ],
+  "assumptions": [
+    "8 GiB of VRAM detected; preferring quantized GGUF builds."
+  ]
+}
