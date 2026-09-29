@@ -312,10 +312,6 @@ def _sum_components(values: list[int | None]) -> int | None:
     known = [v for v in values if v is not None]
     if not known:
         return None
-    if any(v is None for v in values):
-        # Missing pieces make the total a lower bound; still return the sum but flag
-        # via caller-side warnings (already added upstream).
-        return sum(known)
     return sum(known)
 
 

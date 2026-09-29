@@ -7,8 +7,10 @@ from textual.binding import Binding
 
 from jaull.advisor.service import AdvisorService
 from jaull.bootstrap.container import ServiceContainer
+from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserAnswers
+from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.doctor import DoctorScreen
 from jaull.tui.screens.estimate import EstimateScreen
@@ -126,38 +128,23 @@ class JaullApp(App[None]):
 
     def run_recommendation(
         self,
-        recommendation: object,
-        execution_plan: object | None = None,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
     ) -> None:
-        from jaull.domain.execution_plans import ExecutionPlan
-        from jaull.recommendation.models import ModelRecommendation
-
-        assert isinstance(recommendation, ModelRecommendation)
-        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
         self.push_screen(RecommendationExecutionScreen(recommendation, execution_plan))
 
     def validate_recommendation(
         self,
-        recommendation: object,
-        execution_plan: object | None = None,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
     ) -> None:
-        from jaull.domain.execution_plans import ExecutionPlan
-        from jaull.recommendation.models import ModelRecommendation
-
-        assert isinstance(recommendation, ModelRecommendation)
-        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
         self.push_screen(RecommendationValidationScreen(recommendation, execution_plan))
 
     def benchmark_recommendation(
         self,
-        recommendation: object,
-        execution_plan: object | None = None,
+        recommendation: ModelRecommendation,
+        execution_plan: ExecutionPlan | None = None,
     ) -> None:
-        from jaull.domain.execution_plans import ExecutionPlan
-        from jaull.recommendation.models import ModelRecommendation
-
-        assert isinstance(recommendation, ModelRecommendation)
-        assert execution_plan is None or isinstance(execution_plan, ExecutionPlan)
         self.push_screen(RecommendationBenchmarkScreen(recommendation, execution_plan))
 
     def restart_workflow(self) -> None:
