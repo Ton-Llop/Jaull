@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jaull.domain.candidates import ModelCandidate
-from jaull.workflow.model_analysis_cache import (
+from jaull.adapters.cache.model_analysis_cache import (
     ANALYSIS_CACHE_SCHEMA_VERSION,
     ModelAnalysisCache,
 )
+from jaull.domain.candidates import ModelCandidate
 from tests._workflow_fixtures import gguf_analysis, transformers_analysis
 
 

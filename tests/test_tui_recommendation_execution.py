@@ -9,7 +9,9 @@ from typing import Any
 
 from textual.widgets import Button, Checkbox, DataTable, Input, Select, Static, TextArea
 
+from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 from jaull.artifacts.errors import ArtifactDownloadError
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
     BenchmarkGpuLayers,
@@ -45,6 +47,7 @@ from jaull.domain.experiments import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.recommendation import (
     AssessmentLevel,
     PlanAssessment,
@@ -79,13 +82,11 @@ from jaull.execution.errors import (
     ExecutionFailedError,
     ExecutionTimeoutError,
 )
-from jaull.execution_plans import execution_plan_for_recommendation
 from jaull.experiments.errors import (
     ExperimentNotReadyError,
     ExperimentPersistenceError,
 )
 from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
-from jaull.recommendation.policies import LicenseCategory
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
 from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
 from jaull.tui.app import JaullApp
@@ -107,7 +108,6 @@ from jaull.tui.screens.recommendation_results import (
 from jaull.tui.screens.recommendation_validation import (
     RecommendationValidationScreen,
 )
-from jaull.workflow.container import ServiceContainer
 from jaull.workflow.state import RecommendationWorkflowState
 from tests._workflow_fixtures import (
     GIB,

@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.recommendation import service as ranking
+from jaull.application.requirements import build_requirements
 from jaull.discovery import enrichment, series
 from jaull.discovery.grouping import collapse_families
 from jaull.domain.artifact_profile import ArtifactConfirmation, ArtifactFormat
@@ -68,8 +70,6 @@ from jaull.recommendation.actionability import (
     assess_actionability,
 )
 from jaull.runtime import service as runtime_service
-from jaull.workflow import ranking
-from jaull.workflow.requirements import build_requirements
 
 GIB = 1024**3
 

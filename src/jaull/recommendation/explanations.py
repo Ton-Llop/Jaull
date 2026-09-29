@@ -19,9 +19,10 @@ from jaull.domain.estimation import (
     MemoryEstimate,
 )
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
+from jaull.domain.licenses import LicenseCategory, classify_license
 from jaull.domain.requirements import UseCase, UserRequirements
 from jaull.domain.runtime import RuntimeExecutability
-from jaull.recommendation import policies
+from jaull.estimator.policies import THEORETICAL_DTYPES
 
 _USE_CASE_LABEL: dict[UseCase, str] = {
     UseCase.GENERAL_CHAT: "general chat and assistant use",
@@ -77,8 +78,8 @@ def build_reasons(
         elif assessment.status is CompatibilityStatus.COMPATIBLE:
             reasons.append("Fits the detected memory with room to spare.")
 
-    category = policies.classify_license(candidate.license)
-    if category is policies.LicenseCategory.COMMERCIAL_ALLOWED and candidate.license:
+    category = classify_license(candidate.license)
+    if category is LicenseCategory.COMMERCIAL_ALLOWED and candidate.license:
         reasons.append(
             f"{candidate.license} license is generally suitable for commercial use."
         )
@@ -161,8 +162,8 @@ def build_warnings(
         ):
             warnings.append(_confidence_warning(evaluated, selected_estimate))
 
-    category = policies.classify_license(candidate.license)
-    if category is policies.LicenseCategory.UNKNOWN:
+    category = classify_license(candidate.license)
+    if category is LicenseCategory.UNKNOWN:
         if candidate.license:
             warnings.append(
                 f"License {candidate.license!r} is a custom or unrecognised license; "
@@ -170,7 +171,7 @@ def build_warnings(
             )
         else:
             warnings.append("No license is declared for this repository.")
-    elif category is policies.LicenseCategory.COMMERCIAL_RESTRICTED:
+    elif category is LicenseCategory.COMMERCIAL_RESTRICTED:
         warnings.append(
             f"License {candidate.license!r} generally restricts commercial use."
         )
@@ -199,7 +200,7 @@ def build_warnings(
         evaluated.analysis is not None
         and evaluated.analysis.classification.primary_type is RepositoryType.TRANSFORMERS
         and evaluated.selected_configuration is not None
-        and evaluated.selected_configuration.precision in policies.THEORETICAL_DTYPES
+        and evaluated.selected_configuration.precision in THEORETICAL_DTYPES
         and (
             evaluated.artifact_profile is None
             or evaluated.artifact_profile.confirmation is ArtifactConfirmation.THEORETICAL

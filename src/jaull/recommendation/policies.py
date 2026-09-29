@@ -6,10 +6,8 @@ package is allowed to hard-code a number.
 
 from __future__ import annotations
 
+from jaull.domain import licenses
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
-
-# Re-export from domain so existing callers keep working without an extra hop.
-from jaull.domain.policies import STATUS_FIT_SCORE, STATUS_RANK
 from jaull.domain.requirements import RecommendationPriority
 
 # --------------------------------------------------------------------------
@@ -78,9 +76,6 @@ REAL_QUANT_TAGS: frozenset[str] = frozenset(
     }
 )
 
-# STATUS_RANK and STATUS_FIT_SCORE now live in ``jaull.domain.policies`` and
-# are re-exported from the top of this module for backwards compatibility.
-
 CONFIDENCE_SCORE: dict[EstimationConfidence, float] = {
     EstimationConfidence.HIGH: 1.0,
     EstimationConfidence.MEDIUM: 0.7,
@@ -131,32 +126,12 @@ def has_confirmed_memory_compatibility(status: CompatibilityStatus) -> bool:
 # widely understood to permit commercial use?" and defaults to `unknown`
 # whenever it is not certain.
 # --------------------------------------------------------------------------
-# License categorisation lives in ``jaull.domain.licenses`` so discovery can
-# reach it without importing recommendation. The names below are re-exported
-# for backwards compatibility with callers that still read them from here.
-from jaull.domain.licenses import (  # noqa: E402
-    CUSTOM_LICENSE_PREFIXES,
-    LEGAL_DISCLAIMER,
-    LicenseCategory,
-    classify_license,
-)
-
-LICENSE_SCORE: dict[LicenseCategory, float] = {
-    LicenseCategory.COMMERCIAL_ALLOWED: 1.0,
-    LicenseCategory.UNKNOWN: 0.45,
-    LicenseCategory.COMMERCIAL_RESTRICTED: 0.1,
+LICENSE_SCORE: dict[licenses.LicenseCategory, float] = {
+    licenses.LicenseCategory.COMMERCIAL_ALLOWED: 1.0,
+    licenses.LicenseCategory.UNKNOWN: 0.45,
+    licenses.LicenseCategory.COMMERCIAL_RESTRICTED: 0.1,
 }
 
-
-# The configuration ladders now live in ``estimator.policies`` (they are
-# used by ``estimator.configuration``). Re-exported here so callers that
-# still read them via ``recommendation.policies`` keep working.
-from jaull.estimator.policies import (  # noqa: E402
-    AGGRESSIVE_QUANTIZATIONS,
-    QUANTIZATION_LADDERS,
-    THEORETICAL_DTYPES,
-    TRANSFORMERS_DTYPE_LADDER,
-)
 
 # --------------------------------------------------------------------------
 # Popularity. Downloads span many orders of magnitude, so the raw number is
@@ -166,24 +141,14 @@ from jaull.estimator.policies import (  # noqa: E402
 POPULARITY_LIKES_WEIGHT = 0.3
 
 __all__ = [
-    "AGGRESSIVE_QUANTIZATIONS",
     "ARTIFACT_REALISM_SCORES",
     "BASE_WEIGHTS",
     "CONFIDENCE_SCORE",
     "CONFIRMED_MEMORY_STATUSES",
-    "CUSTOM_LICENSE_PREFIXES",
-    "LEGAL_DISCLAIMER",
     "LICENSE_SCORE",
     "POPULARITY_LIKES_WEIGHT",
     "PRIORITY_MODIFIERS",
-    "QUANTIZATION_LADDERS",
     "REAL_QUANT_TAGS",
-    "STATUS_FIT_SCORE",
-    "STATUS_RANK",
-    "THEORETICAL_DTYPES",
-    "TRANSFORMERS_DTYPE_LADDER",
     "WORST_PRIMARY_STATUS",
-    "LicenseCategory",
-    "classify_license",
     "has_confirmed_memory_compatibility",
 ]

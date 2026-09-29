@@ -1,5 +1,9 @@
 # Auditoria tecnica del estado actual de Jaull
 
+> Documento de auditoria fechado, conservado como historial. Sus prioridades reflejan las
+> revisiones incluidas hasta el 28/09/2026; consulta [ARCHITECTURE.md](../../ARCHITECTURE.md)
+> para la estructura actual y revisa el historial de commits antes de reutilizar sus hallazgos.
+
 Auditoria original: 2026-09-03, branch `execution-plan`, commit
 `0910967e0768548b5fd84c83427a1754daf5816c`.
 
@@ -304,7 +308,7 @@ overhead PROXY.
 Es lo unico de esta lista que no puede hacerse sin la GPU, y lo que mas valor tiene.
 
 **PARCIALMENTE CERRADO (17/09).** Ejecutado: ver
-[B001-R7](../docs/qwen2.5-tests/b001-r7-observation-contract.md). La re-ejecucion encontro
+[B001-R7](../qwen2.5-tests/b001-r7-observation-contract.md). La re-ejecucion encontro
 primero que **el contrato no llegaba a dispararse nunca**: `llama_cpp_runner.py` pasaba
 `--verbose` solo si un flag de runtime lo pedia, y nada lo pone. Sin el, este build no
 escribe *ninguna* linea a stderr, asi que el parser no tenia lineas de buffer y
@@ -354,7 +358,7 @@ licencia desconocida. La desconocida sigue visible como alternativa y no se
 trata como una incompatibilidad legal confirmada. El score compuesto conserva
 su significado diagnostico y no se modifica para forzar el orden.
 
-La campaña [B001-R8](qwen2.5-tests/b001-r8-2060-context-matrix.md) ejecuto el
+La campaña [B001-R8](../qwen2.5-tests/b001-r8-2060-context-matrix.md) ejecuto el
 artefacto local Q4_K_M en la RTX 2060 con contextos 512, 2048 y 4096, mas una
 repeticion a 4096. Las cuatro ejecuciones arrancaron. La comparacion numerica sigue metodologicamente
 indisponible porque HFA expresa bloques de transformer y llama.cpp expresa
@@ -410,7 +414,7 @@ parecia una perdida de rendimiento de 3–4x.
 politica de lanzamiento emite su propio valor en sus propias unidades, y ese
 valor no se habia medido nunca.
 
-Medido en [B001-R9](qwen2.5-tests/b001-r9-launch-policy-throughput.md), mismo
+Medido en [B001-R9](../qwen2.5-tests/b001-r9-launch-policy-throughput.md), mismo
 artefacto, maquina, build e invocacion que R8, con el nivel tomado de la ruta de
 produccion (`estimate_model` -> `runtime_recommendation`), no elegido a mano:
 
@@ -463,7 +467,7 @@ B001-R7 arreglo el runner para que pida el log siempre, y la fontaneria esta
 probada. R8/R9 no pasaban por `ExperimentRequest`; B001-R10 ya ejecuta el flujo
 con una `ExperimentRequest` persistida. El record exitoso contiene ocho buffers
 del runtime y un total de 2459.61 MiB en `CUDA0`; peak VRAM por NVML sigue siendo
-`null` bajo WDDM. Ver [B001-R10](qwen2.5-tests/b001-r10-experiment-record.md).
+`null` bajo WDDM. Ver [B001-R10](../qwen2.5-tests/b001-r10-experiment-record.md).
 
 El campo separado `backend_trace.observed_backend` quedo `null`, aunque los
 buffers reportados identifican `CUDA0`. Una repeticion diagnostica produjo el
@@ -642,37 +646,37 @@ observation -> comparison -> experiment/benchmark persistence
 ```
 
 El pipeline esta coordinado en
-[`workflow/orchestrator.py`](../src/jaull/workflow/orchestrator.py#L104). La metadata del
+[`workflow/orchestrator.py`](../../src/jaull/workflow/orchestrator.py#L104). La metadata del
 artifact interviene antes del ranking; la descarga fisica ocurre despues, al preparar la
 ejecucion.
 
 La arquitectura es un modular monolith con `domain`, una capa `application` todavia parcial,
-composition root en [`bootstrap/container.py`](../src/jaull/bootstrap/container.py#L26),
+composition root en [`bootstrap/container.py`](../../src/jaull/bootstrap/container.py#L26),
 infraestructura agrupada por feature y presentacion CLI/TUI.
 
 ## C. Lo que esta bien disenado
 
 - `HardwareFitResult` conserva placement, topologia, split GPU/RAM, diagnosticos y
   compatibilidad legacy en un modelo congelado:
-  [`domain/estimation.py`](../src/jaull/domain/estimation.py#L167).
+  [`domain/estimation.py`](../../src/jaull/domain/estimation.py#L167).
 - HFA no suma RAM y VRAM, distingue memoria unificada y permanece runtime-agnostic. Existe
   un guard especifico que impide conectarlo accidentalmente con `--n-gpu-layers`:
-  [`test_architecture_dependencies.py`](../tests/test_architecture_dependencies.py#L125).
+  [`test_architecture_dependencies.py`](../../tests/test_architecture_dependencies.py#L125).
 - Los pesos GGUF usan tamano real del artifact; KV usa arquitectura, contexto, batch y
-  concurrencia: [`estimator/kv_cache.py`](../src/jaull/estimator/kv_cache.py#L85).
+  concurrencia: [`estimator/kv_cache.py`](../../src/jaull/estimator/kv_cache.py#L85).
 - Overhead, reserve, margenes y ladders estan centralizados y documentados en
-  [`estimator/policies.py`](../src/jaull/estimator/policies.py#L43).
+  [`estimator/policies.py`](../../src/jaull/estimator/policies.py#L43).
 - La shortlist coarse ya es barata, determinista, consciente de CPU/GPU/RAM y no persiste
   sus estimaciones como verdad final:
-  [`discovery/candidate_filter.py`](../src/jaull/discovery/candidate_filter.py#L277).
+  [`discovery/candidate_filter.py`](../../src/jaull/discovery/candidate_filter.py#L277).
 - Balanced mantiene el gate de runnability antes de capability sin convertirlo en score:
-  [`recommendation/engine_v2.py`](../src/jaull/recommendation/engine_v2.py#L1068).
+  [`recommendation/engine_v2.py`](../../src/jaull/recommendation/engine_v2.py#L1068).
 - Diversity solo intercambia planes con la misma firma semantica:
-  [`recommendation/diversity.py`](../src/jaull/recommendation/diversity.py#L85).
+  [`recommendation/diversity.py`](../../src/jaull/recommendation/diversity.py#L85).
 - El planner de ejecucion es la autoridad comun de CLI/TUI y todavia no consume HFA:
-  [`application/execution/planner.py`](../src/jaull/application/execution/planner.py#L28).
+  [`application/execution/planner.py`](../../src/jaull/application/execution/planner.py#L28).
 - La re-evaluation usa hardware y metadata congelados, sin detectar el host ni consultar la
-  red: [`experiments/reevaluation.py`](../src/jaull/experiments/reevaluation.py#L115).
+  red: [`experiments/reevaluation.py`](../../src/jaull/experiments/reevaluation.py#L115).
 - Stores de experimentos y benchmarks son atomicos, y artifacts protege traversal y
   checksum.
 
@@ -685,14 +689,14 @@ infraestructura agrupada por feature y presentacion CLI/TUI.
 
 **Problema:** un total parcial puede clasificarse como si fuera completo.
 
-**Donde:** [`_sum_components()`](../src/jaull/estimator/service.py#L301), fallback en
-[`compatibility.py`](../src/jaull/estimator/compatibility.py#L215), y aceptacion de ladder en
-[`configuration.py`](../src/jaull/estimator/configuration.py#L107).
+**Donde:** [`_sum_components()`](../../src/jaull/estimator/service.py#L301), fallback en
+[`compatibility.py`](../../src/jaull/estimator/compatibility.py#L215), y aceptacion de ladder en
+[`configuration.py`](../../src/jaull/estimator/configuration.py#L107).
 
 **Por que ocurre:** si falta KV u overhead, se suma lo conocido y se usa el assessment
 legacy. El servicio baja `confidence` a `UNKNOWN`, pero conserva `status=comfortable`; v2
 traduce ese status a feasibility `STRONG` sin comprobar la confianza:
-[`engine_v2.py`](../src/jaull/recommendation/engine_v2.py#L670).
+[`engine_v2.py`](../../src/jaull/recommendation/engine_v2.py#L670).
 
 **Impacto:** puede detener prematuramente una ladder, recomendar una precision demasiado
 grande o presentar como ejecutable una configuracion cuyo KV es desconocido. Un probe de
@@ -712,14 +716,14 @@ ese resultado como fit confirmado.
 
 **Problema:** un benchmark o experimento diferente puede influir en el ranking actual.
 
-**Donde:** [`_matching_experiment()`](../src/jaull/recommendation/engine_v2.py#L855),
-[`_matching_benchmark()`](../src/jaull/recommendation/engine_v2.py#L869) y
-[`_artifact_matches()`](../src/jaull/recommendation/engine_v2.py#L887).
+**Donde:** [`_matching_experiment()`](../../src/jaull/recommendation/engine_v2.py#L855),
+[`_matching_benchmark()`](../../src/jaull/recommendation/engine_v2.py#L869) y
+[`_artifact_matches()`](../../src/jaull/recommendation/engine_v2.py#L887).
 
 **Por que ocurre:** solo se comparan artifact basico, runtime, maquina y, a veces, backend.
 Se ignoran revision/hash, contexto, token sizes, `n_gpu_layers`, runtime version, metodologia
 y workload. Despues la evidencia recibe confianza `HIGH`, y la memoria observada se reduce a
-`max(RAM, VRAM)`: [`engine_v2.py`](../src/jaull/recommendation/engine_v2.py#L905).
+`max(RAM, VRAM)`: [`engine_v2.py`](../../src/jaull/recommendation/engine_v2.py#L905).
 
 **Impacto:** resultados no comparables pueden alterar performance evidence, confidence y
 orden. Es especialmente peligroso para la calibracion del TFG.
@@ -729,7 +733,7 @@ instalacion sin records.
 
 **Solucion recomendada:** crear una unica clave canonica de comparabilidad reutilizando los
 ejes que ya aplica
-[`evaluation/benchmark_comparison.py`](../src/jaull/evaluation/benchmark_comparison.py#L248),
+[`evaluation/benchmark_comparison.py`](../../src/jaull/evaluation/benchmark_comparison.py#L248),
 y conservar RAM/VRAM como medidas separadas.
 
 ## E. Problemas importantes pero no criticos
@@ -740,7 +744,7 @@ y conservar RAM/VRAM como medidas separadas.
 
 **Problema:** puede devolver `TOO_LARGE` aunque exista un split valido.
 
-**Donde:** [`estimator/hardware_fit.py`](../src/jaull/estimator/hardware_fit.py#L317).
+**Donde:** [`estimator/hardware_fit.py`](../../src/jaull/estimator/hardware_fit.py#L317).
 
 **Por que ocurre:** `_build_offload_result()` devuelve `None` tanto por exceso de GPU como de
 RAM, pero el binary search siempre reduce GPU allocation.
@@ -760,8 +764,8 @@ VRAM, con un regression test RAM-constrained.
 
 **Problema:** HFA sigue calculando `ceil(total_weights / blocks)`.
 
-**Donde:** [`domain/estimation.py`](../src/jaull/domain/estimation.py#L120) y
-[`estimator/hardware_fit.py`](../src/jaull/estimator/hardware_fit.py#L232).
+**Donde:** [`domain/estimation.py`](../../src/jaull/domain/estimation.py#L120) y
+[`estimator/hardware_fit.py`](../../src/jaull/estimator/hardware_fit.py#L232).
 
 **Por que ocurre:** el commit de descomposicion existe en otra punta de branch y no esta
 integrado aqui.
@@ -780,8 +784,8 @@ inicialmente diagnostica y sin asumir placement de non-block weights.
 
 **Problema:** la shortlist usa capacidad fisica, pero HFA usa RAM/VRAM libre instantanea.
 
-**Donde:** [`candidate_filter.py`](../src/jaull/discovery/candidate_filter.py#L303) y
-[`hardware_fit.py`](../src/jaull/estimator/hardware_fit.py#L91).
+**Donde:** [`candidate_filter.py`](../../src/jaull/discovery/candidate_filter.py#L303) y
+[`hardware_fit.py`](../../src/jaull/estimator/hardware_fit.py#L91).
 
 **Impacto:** dos ejecuciones en la misma maquina pueden producir distinta compatibilidad y
 Top 5 por procesos ajenos.
@@ -799,8 +803,8 @@ uso.
 **Problema:** tiene 1305 lineas, muchas dependencias y construye servicios concretos mediante
 memoizacion mutable sobre una dataclass frozen.
 
-**Donde:** [`advisor/service.py`](../src/jaull/advisor/service.py#L110) y
-[`advisor/service.py`](../src/jaull/advisor/service.py#L901).
+**Donde:** [`advisor/service.py`](../../src/jaull/advisor/service.py#L110) y
+[`advisor/service.py`](../../src/jaull/advisor/service.py#L901).
 
 **Impacto:** alto coste de cambio y tests con fakes grandes, aunque el grafo no este roto.
 
@@ -815,7 +819,7 @@ memoizacion mutable sobre una dataclass frozen.
 
 **Problema:** `ExperimentPredictionInput` es opcional y el snapshot productivo se adjunta
 desde la validacion TUI:
-[`recommendation_validation.py`](../src/jaull/tui/screens/recommendation_validation.py#L256).
+[`recommendation_validation.py`](../../src/jaull/tui/screens/recommendation_validation.py#L256).
 
 **Impacto:** callers programaticos pueden persistir records modernos no reproducibles.
 
@@ -832,8 +836,8 @@ cuando los inputs esten disponibles.
 **Problema:** Vulkan detecta AMD/Intel, pero no obtiene memoria; HFA consume `gpus`, poblado
 por NVML.
 
-**Donde:** [`hardware/detector.py`](../src/jaull/hardware/detector.py#L45) y
-[`estimator/hardware_fit.py`](../src/jaull/estimator/hardware_fit.py#L689).
+**Donde:** [`hardware/detector.py`](../../src/jaull/hardware/detector.py#L45) y
+[`estimator/hardware_fit.py`](../../src/jaull/estimator/hardware_fit.py#L689).
 
 **Impacto:** esas maquinas caen a CPU para el memory fit aunque el backend exista.
 
@@ -853,8 +857,8 @@ memoria por vendor.
 - La capa `adapters/ports` es parcial: formaliza cache, mientras runtimes, Hugging Face,
   hardware y stores siguen organizados por feature.
 - La documentacion contiene afirmaciones ya falsas sobre RAM/VRAM y
-  `PredictionComparison`: [`estimation.md`](estimation.md#L79) y
-  [`experimental-protocol-biosfer.md`](experimental-protocol-biosfer.md#L262).
+  `PredictionComparison`: [`estimation.md`](../estimation.md#L79) y
+  [`experimental-protocol-biosfer.md`](../experimental-protocol-biosfer.md#L262).
 - No se encontro un modulo productivo demostrablemente muerto que sea seguro eliminar sin
   revisar compatibilidad publica.
 
@@ -879,7 +883,7 @@ memoria por vendor.
 ## H. Recommendation Engine
 
 El ranking v2 es ordinal y explicito:
-[`engine_v2.py`](../src/jaull/recommendation/engine_v2.py#L958). Hard constraints cubren
+[`engine_v2.py`](../../src/jaull/recommendation/engine_v2.py#L958). Hard constraints cubren
 artifact/runtime, memoria insuficiente, licencia comercial e idioma declarado; runtime
 instalado no altera la recomendacion.
 
@@ -922,8 +926,8 @@ un prior pequeno dentro de capability, no TPS o latency.
 **PREPARADO**, con una precision importante: la v1 **ya esta implementada e integrada**.
 Incluye offload en 8 GiB, amplia escala en 24 GiB, funciona CPU-only, limita imposibles,
 diversifica familias y mantiene `MAX_DEEP_INSPECTION`:
-[`test_discovery_search.py`](../tests/test_discovery_search.py#L444) y
-[`test_workflow_orchestrator.py`](../tests/test_workflow_orchestrator.py#L231).
+[`test_discovery_search.py`](../../tests/test_discovery_search.py#L444) y
+[`test_workflow_orchestrator.py`](../../tests/test_workflow_orchestrator.py#L231).
 
 Antes de considerarla fiable para los experimentos faltan exclusivamente:
 

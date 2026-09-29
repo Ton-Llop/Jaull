@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.recommendation import policies as workflow_policies
+from jaull.application.recommendation.service import recommend
+from jaull.application.requirements import build_requirements
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
 )
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.licenses import LicenseCategory
 from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation import explanations, policies, ranker, scoring
 from jaull.recommendation.capability import CapabilitySignal
 from jaull.recommendation.models import ScoreBreakdown
-from jaull.workflow import policies as workflow_policies
-from jaull.workflow.ranking import recommend
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     answers,
@@ -505,7 +506,7 @@ def test_unknown_license_produces_a_warning() -> None:
 
 def test_custom_license_is_reported_but_not_judged() -> None:
     results = recommend([_evaluated(license_value="llama3.1")], _req())  # type: ignore[arg-type]
-    assert results[0].license_category is policies.LicenseCategory.UNKNOWN
+    assert results[0].license_category is LicenseCategory.UNKNOWN
     assert any("review its terms" in w for w in results[0].warnings)
 
 

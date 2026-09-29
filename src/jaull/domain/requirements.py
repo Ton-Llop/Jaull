@@ -2,7 +2,8 @@
 
 These are the pure-domain enums and Pydantic models. Progress-tracking state
 (WorkflowStep, StepStatus, ProgressStep, WorkflowProgress) lives in
-``workflow/models.py`` because it is orchestration concern, not domain.
+``application/requirements.py`` because normalization is application concern,
+not domain.
 """
 
 from __future__ import annotations

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from jaull.advisor.service import AdvisorService
+from jaull.application.model_reference import normalize_repo_id
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
     InvalidModelReferenceError,
     ModelAccessDeniedError,
     ModelNotFoundError,
 )
-from jaull.huggingface.url_parser import normalize_repo_id
 from jaull.presentation.console import make_console
 from jaull.presentation.model_report import render_model
 

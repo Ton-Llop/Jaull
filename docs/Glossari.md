@@ -1265,7 +1265,7 @@ Aquestes fórmules són aproximacions. El consum real depèn del runtime i del m
 | Concepte | Fitxer principal |
 |---|---|
 | Workflow | `workflow/orchestrator.py` |
-| Preguntes i requisits | `workflow/models.py`, `workflow/requirements.py` |
+| Preguntes i requisits | `application/requirements.py`, `domain/requirements.py` |
 | Cerca de models | `discovery/query_builder.py`, `discovery/search_client.py` |
 | Shortlist | `discovery/candidate_filter.py` |
 | Inspecció d’un model | `huggingface/repository.py` |

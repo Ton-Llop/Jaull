@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pytest import MonkeyPatch
 
+from jaull.application.recommendation import policies
+from jaull.application.recommendation import service as ranking
+from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.execution_plans import (
     ModelIdentity,
@@ -13,7 +16,6 @@ from jaull.domain.inference import WeightPrecision
 from jaull.domain.recommendation import AssessmentLevel, RecommendationPosition
 from jaull.domain.requirements import RecommendationPriority
 from jaull.domain.runtime import RuntimeName
-from jaull.execution_plans import execution_plan_for_recommendation
 from jaull.recommendation.diversity import diversify_ranked_plans
 from jaull.recommendation.engine_v2 import (
     PlanRankingContext,
@@ -21,7 +23,6 @@ from jaull.recommendation.engine_v2 import (
     rank_execution_plans,
 )
 from jaull.recommendation.models import ScoreBreakdown
-from jaull.workflow import policies, ranking
 from tests._workflow_fixtures import GIB, hardware, size_driven_estimator
 from tests.test_recommendation_engine_v2 import (
     _benchmark_record,

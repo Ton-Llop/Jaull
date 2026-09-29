@@ -355,23 +355,6 @@ class HardwareFitResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
     @property
-    def gpu_layers(self) -> int | None:
-        """Deprecated compatibility alias for transformer-block placement.
-
-        llama.cpp and other runtimes may expose their own layer/offload units.
-        This value is the runtime-agnostic Hardware Fit transformer-block
-        estimate and must not be treated as ``--n-gpu-layers``.
-        """
-
-        return self.gpu_transformer_blocks
-
-    @property
-    def total_layers(self) -> int | None:
-        """Deprecated compatibility alias for total transformer blocks."""
-
-        return self.total_transformer_blocks
-
-    @property
     def places_weights_on_gpu(self) -> bool:
         """Whether this placement actually puts model weights in VRAM.
 

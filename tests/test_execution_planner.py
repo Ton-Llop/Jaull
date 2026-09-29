@@ -254,6 +254,7 @@ def test_prepare_execution_plan_routes_through_the_planner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_tensors: bool,
 ) -> None:
     from jaull.advisor.service import AdvisorService
+    from jaull.bootstrap.container import ServiceContainer
     from jaull.domain.artifacts import ModelArtifact
     from jaull.domain.execution_plans import (
         ArtifactVariant,
@@ -271,7 +272,6 @@ def test_prepare_execution_plan_routes_through_the_planner(
         RuntimeBackendSelection,
         RuntimeBackendSelectionReason,
     )
-    from jaull.workflow.container import ServiceContainer
 
     estimate = qwen_ctx4096_estimate(with_runtime_recommendation=True)
     identity = ModelIdentity(model_name="Qwen2.5-7B-Instruct")
@@ -412,12 +412,12 @@ def test_cli_run_hands_the_planner_built_runtime_to_the_runner() -> None:
 def test_cli_and_tui_planner_inputs_yield_identical_llama_cpp_flags() -> None:
     """Same estimate + hardware + no overrides via both AdvisorService entrypoints."""
     from jaull.advisor.service import AdvisorService
+    from jaull.bootstrap.container import ServiceContainer
     from jaull.domain.execution_plans import (
         ArtifactVariant,
         ArtifactVariantFormat,
         ModelIdentity,
     )
-    from jaull.workflow.container import ServiceContainer
 
     estimate = qwen_ctx4096_estimate(with_runtime_recommendation=True)
     services = ServiceContainer(

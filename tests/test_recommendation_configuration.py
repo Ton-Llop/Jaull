@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from jaull.application.requirements import build_requirements
 from jaull.domain.estimation import CompatibilityStatus, MemoryEstimate
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
 from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import RecommendationPriority
 from jaull.estimator.configuration import select_configuration
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import (
     GIB,
     answers,

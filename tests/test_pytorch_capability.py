@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from jaull.advisor.service import AdvisorService, _readiness_for_plan_variant
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import (
     ExecutionFailureReason,
@@ -37,7 +38,6 @@ from jaull.runtime.pytorch_capability import (
     inspect_pytorch_runtime,
     parse_pytorch_probe_json,
 )
-from jaull.workflow.container import ServiceContainer
 
 
 class _FakeExecutionBackend:

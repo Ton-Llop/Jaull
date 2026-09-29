@@ -3,7 +3,7 @@
 Anything about *how the model behaves* or *how the user's answers map to a
 technical requirement* lives here. Things about *how the guided workflow
 budgets its own work* (search page size, deep-inspection cap) stay in
-``workflow/policies.py`` because they are application concerns.
+``application/recommendation/policies.py`` because they are application concerns.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ TEXT_GENERATION_PIPELINE = "text-generation"
 # These describe the *model* context window, which is not the size of a
 # document collection: a RAG system retrieves a handful of chunks that must fit
 # in this window, it does not load the corpus. The wizard copy says so and
-# ``workflow/requirements.py`` records the same caveat as an assumption.
+# ``application/requirements.py`` records the same caveat as an assumption.
 # --------------------------------------------------------------------------
 DOCUMENT_CONTEXT_TOKENS: dict[str, int] = {
     "short": 4096,

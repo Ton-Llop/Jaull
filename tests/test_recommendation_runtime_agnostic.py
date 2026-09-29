@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from jaull.application.recommendation import service as ranking
 from jaull.domain.execution_plans import (
     ArtifactVariantFormat,
     model_identity_key,
@@ -32,7 +33,6 @@ from jaull.recommendation.engine_v2 import (
     assess_plan,
     generate_execution_plans,
 )
-from jaull.workflow import ranking
 
 # Reusing the engine-v2 builders keeps candidate construction in one place; a
 # second copy would drift from the fixtures the rest of the suite ranks against.

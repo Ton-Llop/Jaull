@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from jaull.advisor.service import AdvisorService
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import ExecutionObservation, InferenceResult
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
-from jaull.workflow.container import ServiceContainer
 
 
 def _services() -> ServiceContainer:

@@ -2,7 +2,7 @@
 
 In guided mode the user never chooses a quantization or a dtype. This module
 walks the priority-specific ladder from
-:mod:`jaull.recommendation.policies`, estimates each rung with the
+:mod:`jaull.estimator.policies`, estimates each rung with the
 existing estimator, and keeps the first one that actually fits — recording the
 rungs it rejected so the report can show its work.
 """

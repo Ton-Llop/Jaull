@@ -21,6 +21,7 @@ from huggingface_hub.hf_api import ModelInfo
 from jaull.application import requirements as requirements_service
 from jaull.application.recommendation import policies
 from jaull.application.recommendation import service as recommendation_service
+from jaull.bootstrap.container import ServiceContainer
 from jaull.discovery import candidate_filter, enrichment, query_builder
 from jaull.domain.candidates import (
     EvaluatedCandidate,
@@ -45,7 +46,6 @@ from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.recommendation import explanations
 from jaull.recommendation.engine_v2 import PlanRankingContext
 from jaull.workflow.cache import RunCache
-from jaull.workflow.container import ServiceContainer
 from jaull.workflow.models import WorkflowStep
 from jaull.workflow.progress import (
     DISCOVERY_STEPS,

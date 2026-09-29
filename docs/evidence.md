@@ -226,10 +226,11 @@ for, not the CUDA context or what the allocator took on its own. When neither ex
 `peak_vram_bytes = null` is not treated as zero.
 
 `PredictionComparison.vram_components` breaks the total down per component, but only when
-the executed placement can be verified against the predicted one — today that means
-llama.cpp with a negative `--n-gpu-layers` against a `GPU_RESIDENT` prediction. Partial
-offload stays unavailable because transformer blocks and `--n-gpu-layers` units are not the
-same vocabulary, and Transformers exposes no equivalent flag at all.
+the executed placement can be verified against the predicted one. A mapping exists only for
+llama.cpp build `689e227db`, a dense `qwen2` artifact and one confirmed discrete CUDA device;
+Transformers exposes no equivalent placement flag. Even in the verified llama.cpp scope,
+an ambiguous non-block weight split currently makes the total point comparison
+`methodologically_unavailable`. The mapping does not resolve that separate HFA limitation.
 
 Alongside the metrics, the comparison classifies the compatibility verdict:
 

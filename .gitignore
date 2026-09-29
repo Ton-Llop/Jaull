@@ -155,7 +155,8 @@ benchmarks/results/
 reports/
 *.html.out
 *.gif
-/brag-output/
+/brag-output*
+
 
 # CODECOV
 

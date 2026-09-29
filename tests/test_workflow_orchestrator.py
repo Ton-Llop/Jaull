@@ -6,21 +6,22 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
+from jaull.adapters.cache.model_analysis_cache import ModelAnalysisCache
+from jaull.application.recommendation import policies
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
     ModelNotFoundError,
 )
-from jaull.recommendation.report import (
+from jaull.reporting.recommendation import (
     REPORT_SCHEMA_VERSION,
     report_to_dict,
     report_to_json,
     report_to_markdown,
 )
-from jaull.workflow import orchestrator, policies
-from jaull.workflow.container import ServiceContainer
-from jaull.workflow.model_analysis_cache import ModelAnalysisCache
+from jaull.workflow import orchestrator
 from jaull.workflow.models import StepStatus, WorkflowStep
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (

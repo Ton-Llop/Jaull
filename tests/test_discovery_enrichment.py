@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from jaull.application.requirements import build_requirements
 from jaull.discovery import enrichment
 from jaull.domain.enums import RepositoryType
 from jaull.domain.model import ModelAnalysis, ModelRepositoryInfo, RepositoryClassification
-from jaull.workflow.requirements import build_requirements
 from tests._workflow_fixtures import answers, candidate, hardware
 
 

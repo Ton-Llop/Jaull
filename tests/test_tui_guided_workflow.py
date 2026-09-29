@@ -14,6 +14,7 @@ from threading import Event, Lock
 
 from textual.widgets import Button, Checkbox, DataTable, RadioSet, Static
 
+from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.requirements import UseCase, WorkloadMode
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
@@ -25,7 +26,6 @@ from jaull.tui.screens.recommendation_results import (
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen
 from jaull.tui.screens.welcome import WelcomeScreen
-from jaull.workflow.container import ServiceContainer
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._workflow_fixtures import (
     GIB,

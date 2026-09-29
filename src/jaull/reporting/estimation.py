@@ -1,9 +1,8 @@
 """JSON emitter for :class:`MemoryEstimate`.
 
-The Rich rendering side of the estimation view stays in
-``jaull.presentation.estimation_report`` — this module owns only the JSON
-projection so ``recommendation.report`` (now ``reporting.recommendation``)
-can consume it without depending on ``presentation``.
+The Rich rendering side stays in ``jaull.presentation.estimation_report``. This
+module owns only the JSON projection so recommendation reports can consume it
+without depending on ``presentation``.
 """
 
 from __future__ import annotations

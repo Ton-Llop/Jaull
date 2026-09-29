@@ -7,6 +7,7 @@ import pytest
 
 from jaull.advisor.service import AdvisorService
 from jaull.artifacts.errors import ArtifactDownloadError
+from jaull.bootstrap.container import ServiceContainer
 from jaull.cli import run as cli_run
 from jaull.cli.run import RunOptions, run_model
 from jaull.domain.artifacts import ModelArtifact
@@ -24,7 +25,6 @@ from jaull.exceptions import (
     QuantizationNotFoundError,
 )
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
-from jaull.workflow.container import ServiceContainer
 from tests._execution_fixtures import qwen_ctx4096_estimate, qwen_hardware
 
 
