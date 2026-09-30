@@ -16,6 +16,7 @@ from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
     BenchmarkFailureReason,
     BenchmarkGpuLayers,
+    BenchmarkMeasurementKind,
     BenchmarkObservation,
     BenchmarkRequest,
     LlamaBenchBinaryStatus,
@@ -118,6 +119,30 @@ class LlamaBenchRunner:
             raise
         except Exception as exc:
             raise BenchmarkParseError(str(exc)) from exc
+        observed = {(item.kind, item.tokens) for item in measurements}
+        expected = [
+            *((BenchmarkMeasurementKind.PREFILL, size) for size in request.prefill_sizes),
+            *((BenchmarkMeasurementKind.GENERATION, size) for size in request.generation_sizes),
+        ]
+        missing = [
+            f"{'pp' if kind is BenchmarkMeasurementKind.PREFILL else 'tg'}{size}"
+            for kind, size in expected
+            if (kind, size) not in observed
+        ]
+        if missing:
+            return _failed_observation(
+                command=command,
+                request=request,
+                failure_reason=BenchmarkFailureReason.PARSE_ERROR,
+                message="Incomplete llama-bench output: missing requested measurements: "
+                + ", ".join(missing),
+                stdout=result.stdout,
+                stderr=result.stderr,
+                duration_seconds=result.duration_seconds,
+                exit_code=result.exit_code,
+                peak_ram_bytes=result.observation.peak_ram_bytes,
+                peak_vram_bytes=result.observation.peak_vram_bytes,
+            )
         return BenchmarkObservation(
             success=True,
             measurements=measurements,

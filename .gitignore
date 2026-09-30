@@ -143,6 +143,8 @@ temp/
 # Hardware validation evidence is intentionally reviewable/versionable even
 # though regular application logs stay ignored.
 !validation/**/*.log
+!validation/**/logs/
+!validation/**/*.runtime-log
 
 # =====================================================================
 # Artefactos específicos del TFG (fases futuras)
@@ -163,3 +165,4 @@ reports/
 .coverage
 coverage.xml
 htmlcov/
+night_codex.sh

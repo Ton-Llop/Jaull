@@ -316,7 +316,7 @@ class CaseBundleService:
 def _write_json(root: Path, path: Path, value: BaseModel) -> CaseBundleFile:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = value.model_dump_json(indent=2) + "\n"
-    path.write_text(payload, encoding="utf-8")
+    path.write_text(payload, encoding="utf-8", newline="\n")
     return _bundle_file_for(path, root)
 
 

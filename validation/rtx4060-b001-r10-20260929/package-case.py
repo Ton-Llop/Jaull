@@ -25,7 +25,8 @@ for path in sorted((ROOT / 'logs').glob('*.runtime-log')):
 if not (ROOT / 'log-review.json').exists():
     with (ROOT / 'log-review.json').open('x', encoding='utf-8') as handle:
         json.dump({'automated_check': 'credential-pattern scan, not a guarantee of absence',
-                   'manual_review': 'Fixed validation AI prompt and benign output inspected; benchmark raw output inspected.',
+                   'manual_review': ('Fixed validation AI prompt and benign output inspected; '
+                                     'benchmark raw output inspected.'),
                    'files': review}, handle, indent=2)
 
 os.environ['UV_PROJECT_ENVIRONMENT'] = str(PROJECT / '.venv/rtx4060-py312')
@@ -49,10 +50,12 @@ def run(name: str, arguments: list[str]) -> dict:
     return json.loads(result.stdout)
 
 
+experiment_log = Path(index['experiment_log_path']).name
+benchmark_log = Path(index['benchmarks'][0]['log_path']).name
 created = run('case-create', ['create', '--experiment', index['experiment_id'],
                             '--benchmark', index['benchmarks'][0]['id'],
-                            '--evidence', f"logs/{Path(index['experiment_log_path']).name}:runtime_log",
-                            '--evidence', f"logs/{Path(index['benchmarks'][0]['log_path']).name}:runtime_log",
+                            '--evidence', f"logs/{experiment_log}:runtime_log",
+                            '--evidence', f"logs/{benchmark_log}:runtime_log",
                             '--json'])
 print('CREATE_KEYS', list(created), flush=True)
 case_id = created['case']['identity']['case_id']

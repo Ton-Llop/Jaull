@@ -105,6 +105,7 @@ class BenchmarkMatrixRunner:
             backend=self.execution_backend,
             llama_bench_path=self.llama_bench_path,
             timeout_seconds=self.capability_timeout_seconds,
+            allow_empty_workload_probe=True,
         )
         if capability.binary_status is not LlamaBenchBinaryStatus.AVAILABLE:
             raise BenchmarkUnavailableError(

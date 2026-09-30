@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -122,6 +123,29 @@ def test_export_refuses_missing_evidence_without_publishing_destination(
 
     assert not target.exists()
     assert not list(tmp_path.glob(".bundle.*"))
+
+
+def test_bundle_json_hashes_survive_windows_newline_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_write = Path.write_text
+
+    def windows_write(path: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        kwargs.setdefault("newline", "\r\n")
+        return original_write(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", windows_write)
+    experiment = experiment_record()
+    benchmark = benchmark_record(context_length=4096)
+    service = _service(experiment, (benchmark,))
+    destination = tmp_path / "bundle"
+    service.export(
+        _case(experiment, (benchmark,)), destination=destination, evidence_root=tmp_path,
+    )
+
+    for path in destination.rglob("*.json"):
+        assert b"\r\n" not in path.read_bytes()
+    assert service.load(destination).experiment == experiment
 
 
 def test_export_refuses_evidence_with_a_different_recorded_checksum(

@@ -61,14 +61,14 @@ async def wait_for_screen(pilot: object, screen: object, attribute: str) -> obje
         value = getattr(screen, attribute)
         if value is not None:
             return value
-        future = getattr(screen, '_future')
+        future = screen._future
         if future is not None and future.done():
             await pilot.pause(1)
             value = getattr(screen, attribute)
             if value is not None:
                 return value
             raise RuntimeError(
-                f'UI worker finished without a record: {getattr(screen, "_log_messages")}'
+                f'UI worker finished without a record: {screen._log_messages}'
             )
     raise TimeoutError(f'UI screen exceeded wait deadline for {attribute}')
 

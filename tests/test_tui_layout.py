@@ -122,7 +122,11 @@ def test_guided_flow_stays_usable_at(size: tuple[int, int]) -> None:
 
             app.goto_requirements()
             await _wait_for(
-                pilot, lambda: isinstance(app.screen, RequirementsWizardScreen)
+                pilot,
+                lambda: isinstance(app.screen, RequirementsWizardScreen)
+                and app.screen.is_mounted
+                and bool(app.screen.query("#wizard-submit"))
+                and app.screen.query_one("#wizard-submit").region.height > 0,
             )
             wizard = app.screen
             assert isinstance(wizard, RequirementsWizardScreen)
@@ -130,8 +134,14 @@ def test_guided_flow_stays_usable_at(size: tuple[int, int]) -> None:
             # Six questions legitimately scroll; submitting must still be
             # reachable by scrolling to it.
             submit = wizard.query_one("#wizard-submit", Button)
-            wizard.query_one("#wizard-body").scroll_to_widget(submit, animate=False)
-            await pilot.pause()
+            wizard.query_one("#wizard-body").scroll_to_widget(
+                submit, animate=False, immediate=True
+            )
+            await _wait_for(
+                pilot,
+                lambda: submit.region.y >= 0
+                and submit.region.bottom <= wizard.size.height,
+            )
             _assert_visible(wizard, "#wizard-submit", f"wizard {label}")
 
             answers = wizard.collect_answers()

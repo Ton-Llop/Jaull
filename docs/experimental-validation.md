@@ -55,3 +55,19 @@ calibrate the estimator from one run.
 Repeat the reference case separately on RTX 2060, Windows RTX 4060 and a rented
 Linux NVIDIA GPU. Driver, runtime build and available memory must be recorded for
 each run. No result from one GPU is evidence for another.
+
+When transferring a bundle, validate it again at the destination. Bundle hashes
+cover exact bytes, including line endings. New exports use LF for JSON and Git
+preserves files under `validation/` without text conversion. Include every
+referenced `.runtime-log`; a manifest alone is not the evidence. An archive of
+the original bundle is also suitable for transport. Never repair a historical
+manifest by replacing its hashes with those of altered files.
+
+A completed llama-bench run must contain all requested prefill and generation
+measurements. Exit code zero with missing rows is a failed, incomplete result;
+retain its raw output. The benchmark matrix probes the build before execution,
+including the empty-workload fallback when `--version` is unsupported, so a
+failed benchmark can still preserve runtime provenance.
+
+The RTX 4060 campaign and follow-up investigation are documented in
+[the investigation](qwen2.5-tests/rtx4060-b001-r10-investigation.md).
