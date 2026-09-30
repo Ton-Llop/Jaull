@@ -43,6 +43,9 @@ class ArtifactStorage:
         sidecar.parent.mkdir(parents=True, exist_ok=True)
         sidecar.write_text(hex_digest.strip() + "\n", encoding="ascii")
 
+    def clear_sha256(self, path: Path) -> None:
+        self._sidecar(path).unlink(missing_ok=True)
+
     def load_sha256(self, path: Path) -> str | None:
         sidecar = self._sidecar(path)
         if not sidecar.is_file():

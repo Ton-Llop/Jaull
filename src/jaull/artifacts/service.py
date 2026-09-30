@@ -75,6 +75,8 @@ class ArtifactService:
 
         try:
             self.storage.ensure_parent(target)
+            # A previous digest must not certify bytes replaced by a failed download.
+            self.storage.clear_sha256(target)
             local_str = self.downloader(
                 repo_id=artifact.repo_id,
                 filename=artifact.filename,

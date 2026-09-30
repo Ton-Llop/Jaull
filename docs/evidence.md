@@ -44,6 +44,9 @@ identity, with a deep-inspection budget, and each match is labelled `confirmed`,
 2. **Download** — into `<user data dir>/models/<owner>/<repo>/<filename>`, with path
    traversal and unsafe-filename rejection. A SHA-256 is computed, checked against the
    expected digest when known, and only then written to a sidecar.
+   Any previous sidecar is removed before the downloader can replace the file;
+   a failed or interrupted download cannot leave an old digest certifying new bytes.
+   If sidecar removal fails, the downloader is not called.
 3. **Verify** — file size against the Hub's reported size, and the SHA-256 against the
    sidecar. A sidecar must contain a 64-character hexadecimal digest and must not
    contradict a known artifact digest; hexadecimal letter case is irrelevant.

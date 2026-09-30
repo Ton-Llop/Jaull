@@ -195,13 +195,22 @@ def test_download_writes_file_and_persists_sha(tmp_path: Path, known_digest: boo
 
 
 @pytest.mark.parametrize("existing_sidecar", [False, True])
+@pytest.mark.parametrize("interrupted", [False, True])
 def test_download_rejects_bytes_that_conflict_with_known_digest(
-    tmp_path: Path, existing_sidecar: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_sidecar: bool, interrupted: bool,
 ) -> None:
-    payload = b"unexpected model"
+    payload = b"replaced model"
     expected_digest = hashlib.sha256(b"expected model").hexdigest()
+    assert len(payload) == len(b"expected model")
     client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
-    service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
+
+    def downloader(**kwargs: Any) -> str:
+        result = _stub_downloader(payload)(**kwargs)
+        if interrupted:
+            raise OSError("download interrupted")
+        return str(result)
+
+    service = _make_service(tmp_path, client, downloader=downloader)
     artifact = service.resolve("owner/repo", quantization="Q5_K_M").model_copy(
         update={"sha256": expected_digest}
     )
@@ -209,15 +218,56 @@ def test_download_rejects_bytes_that_conflict_with_known_digest(
     sidecar = path.with_name(path.name + ".sha256")
     if existing_sidecar:
         service.storage.save_sha256(path, expected_digest)
-    original = sidecar.read_bytes() if existing_sidecar else None
+    monkeypatch.setattr(service.resolver, "resolve", lambda *args, **kwargs: artifact)
 
-    with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch"):
+    error_type = ArtifactDownloadError if interrupted else ArtifactVerificationError
+    with pytest.raises(error_type, match="interrupted" if interrupted else "SHA-256 mismatch"):
         service.download(artifact)
 
     assert artifact.sha256 == expected_digest
     assert not artifact.is_downloaded
     assert path.read_bytes() == payload
-    assert (sidecar.read_bytes() if sidecar.exists() else None) == original
+    assert not sidecar.exists()
+    resolved = service.resolve("owner/repo", quantization="Q5_K_M")
+    assert resolved.sha256 == expected_digest
+    assert resolved.is_downloaded
+    assert not resolved.is_verified
+    with pytest.raises(ArtifactVerificationError, match="Missing SHA-256 sidecar"):
+        service.verify(resolved)
+
+
+def test_download_does_not_start_when_sidecar_cannot_be_invalidated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"original model"
+    calls: list[object] = []
+
+    def downloader(**kwargs: Any) -> str:
+        calls.append(kwargs)
+        return str(Path(kwargs["local_dir"]) / kwargs["filename"])
+
+    service = _make_service(
+        tmp_path, _gguf_repo([("m-q5_k_m.gguf", len(payload))]), downloader=downloader,
+    )
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+    path = service.storage.path_for(artifact)
+    service.storage.ensure_parent(path)
+    path.write_bytes(payload)
+    service.storage.save_sha256(path, hashlib.sha256(payload).hexdigest())
+    sidecar = path.with_name(path.name + ".sha256")
+    original = sidecar.read_bytes()
+    error = PermissionError("sidecar removal denied")
+
+    def deny_removal(self: Path, *args: Any, **kwargs: Any) -> None:
+        raise error
+
+    monkeypatch.setattr(Path, "unlink", deny_removal)
+    with pytest.raises(ArtifactDownloadError, match="sidecar removal denied") as caught:
+        service.download(artifact)
+    assert caught.value.__cause__ is error
+    assert calls == []
+    assert path.read_bytes() == payload
+    assert sidecar.read_bytes() == original
 
 
 def test_download_translates_hf_not_found(tmp_path: Path) -> None:
