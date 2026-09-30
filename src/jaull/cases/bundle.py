@@ -87,9 +87,14 @@ class CaseBundleService:
         source_root = evidence_root.expanduser().resolve()
         evidence_sources = self._resolve_evidence(case.evidence_files, source_root)
 
-        temporary = Path(
-            tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent)
-        )
+        try:
+            temporary = Path(
+                tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent)
+            )
+        except OSError as exc:
+            raise CaseBundleError(
+                f"Could not create bundle temporary directory at {target.parent}: {exc}"
+            ) from exc
         try:
             case_file = _write_json(temporary, temporary / _CASE_FILENAME, case)
             experiment_file = _write_json(
@@ -119,6 +124,7 @@ class CaseBundleService:
                 )
                 for reference, source in evidence_sources
             )
+            self._resolve_evidence(case.evidence_files, temporary / _EVIDENCE_DIRECTORY)
             bundle = ExperimentalCaseBundleManifest(
                 exported_at=datetime.now(UTC),
                 jaull_version=__version__,
@@ -284,7 +290,7 @@ class CaseBundleService:
                 )
             if (
                 reference.sha256 is not None
-                and _sha256_file(source) != reference.sha256
+                and _sha256_file(source) != reference.sha256.lower()
             ):
                 raise CaseBundleError(
                     "Evidence file checksum differs from case reference: "
@@ -337,16 +343,19 @@ def _bundle_file_for(path: Path, root: Path) -> CaseBundleFile:
 
 
 def _verify_file(root: Path, file: CaseBundleFile) -> Path:
-    path = (root / file.path).resolve()
     try:
-        path.relative_to(root.resolve())
-    except ValueError as exc:
-        raise CaseBundleError(f"Bundle path escapes root: {file.path}.") from exc
-    if not path.is_file():
-        raise CaseBundleError(f"Bundle file is missing: {file.path}.")
-    if path.stat().st_size != file.size_bytes:
-        raise CaseBundleError(f"Bundle file size differs: {file.path}.")
-    if _sha256_file(path) != file.sha256:
+        path = (root / file.path).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError as exc:
+            raise CaseBundleError(f"Bundle path escapes root: {file.path}.") from exc
+        if not path.is_file():
+            raise CaseBundleError(f"Bundle file is missing: {file.path}.")
+        if path.stat().st_size != file.size_bytes:
+            raise CaseBundleError(f"Bundle file size differs: {file.path}.")
+    except OSError as exc:
+        raise CaseBundleError(f"Could not inspect bundle file {file.path}: {exc}") from exc
+    if _sha256_file(path) != file.sha256.lower():
         raise CaseBundleError(f"Bundle file checksum differs: {file.path}.")
     return path
 

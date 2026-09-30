@@ -228,7 +228,7 @@ class CaseValidationService:
         digests = {experiment.artifact.sha256} | {
             benchmark.artifact.sha256 for benchmark in benchmarks
         }
-        known = {digest for digest in digests if digest is not None}
+        known = {digest.lower() for digest in digests if digest is not None}
         if len(known) > 1:
             reason = "records declare different artifact digests"
             reasons.append(reason)
@@ -465,24 +465,44 @@ class CaseValidationService:
                 detail="none referenced",
             )
 
+        try:
+            root = self.evidence_root.resolve()
+        except OSError:
+            reason = f"Evidence root could not be resolved: {self.evidence_root}"
+            reasons.append(reason)
+            return CaseCheck(
+                name="evidence_files",
+                status=CaseConsistencyStatus.PARTIAL,
+                detail=reason,
+            )
+
         problems: list[str] = []
         for reference in references:
-            path = self.evidence_root / reference.path
-            if not path.is_file():
-                problems.append(f"{reference.path} is missing")
-                continue
-            if (
-                reference.size_bytes is not None
-                and path.stat().st_size != reference.size_bytes
-            ):
-                problems.append(f"{reference.path} does not match its recorded size")
+            try:
+                path = (root / reference.path).resolve()
+                try:
+                    path.relative_to(root)
+                except ValueError:
+                    problems.append(f"{reference.path} escapes its evidence root")
+                    continue
+                if not path.is_file():
+                    problems.append(f"{reference.path} is missing")
+                    continue
+                if (
+                    reference.size_bytes is not None
+                    and path.stat().st_size != reference.size_bytes
+                ):
+                    problems.append(f"{reference.path} does not match its recorded size")
+                    continue
+            except OSError:
+                problems.append(f"{reference.path} could not be read")
                 continue
             if reference.sha256 is None:
                 continue
             actual = _file_digest(path)
             if actual is None:
                 problems.append(f"{reference.path} could not be read")
-            elif actual != reference.sha256:
+            elif actual != reference.sha256.lower():
                 problems.append(f"{reference.path} does not match its recorded digest")
 
         if problems:
