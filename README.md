@@ -227,6 +227,11 @@ Running real load rather than single prompts: concurrency sweeps, throughput and
 load, RAM and VRAM behaviour, degradation curves, and an estimate of the concurrency a
 machine can actually sustain.
 
+The next planned step is small: one loaded llama.cpp server with 1, 2 and 4
+simultaneous users. Loading and warm-up stay separate from request measurements.
+Multiple model processes would measure a different workload. This experiment is
+not implemented yet; see [the current status](STATUS.md).
+
 ### Deployment qualification
 
 Turning the accumulated evidence into an explicit verdict:
@@ -252,8 +257,9 @@ workload it was qualified for — and then exportable as a reproducible deployme
 ```text
 implemented  hardware → requirements → candidates → prediction → artifact → verification
              → runtime/backend readiness → execution → benchmark → prediction vs observation
+             + workload profile and optional SLO data (not measured qualification)
 
-planned      workload profile (SLOs) → load & capacity experiments → sustainable concurrency
+planned      load & capacity experiments → sustainable concurrency
              → deployment qualification → jaull.lock → reproducible deployment
 ```
 
@@ -392,6 +398,10 @@ presented as a Transformers backend.
 
 ## Documentation
 
+Start with [STATUS.md](STATUS.md) for what works and what comes next, or
+[Jaull explained simply](docs/explicaciopatontos.md) for a Spanish introduction.
+The references below describe the current implementation.
+
 | Document | Contents | Language |
 |---|---|---|
 | [docs/cli.md](docs/cli.md) | Command and option reference | English |
@@ -403,13 +413,13 @@ presented as a Transformers backend.
 | [docs/limitations.md](docs/limitations.md) | What Jaull deliberately does not do | English |
 | [docs/ui.md](docs/ui.md) | TUI screen gallery | English |
 | [docs/llamacpp.md](docs/llamacpp.md) | Building and wiring up llama.cpp | English |
-| [docs/history/workflow-2026-09-28.md](docs/history/workflow-2026-09-28.md) | Dated pipeline walkthrough | Catalan |
-| [docs/history/technical-audit-2026-09-28.md](docs/history/technical-audit-2026-09-28.md) | Dated technical audit and findings | Spanish |
 | [validation/README.md](validation/README.md) | Index of retained experimental evidence | English |
 | [scripts/README.md](scripts/README.md) | Manual script catalogue and effects | English |
-| [docs/Glossari.md](docs/Glossari.md) | Glossary of terms | Catalan |
-| [docs/JAULL_DEVLOG.md](docs/JAULL_DEVLOG.md) | TFG development log | Catalan |
-| [docs/explicaciopatontos.md](docs/explicaciopatontos.md) | Informal TFG overview | Spanish |
+
+TFG material is separate from operating instructions:
+[glossary](docs/Glossari.md), [development log](docs/JAULL_DEVLOG.md), and the dated
+[workflow walkthrough](docs/history/workflow-2026-09-28.md) and
+[technical audit](docs/history/technical-audit-2026-09-28.md).
 
 Some documents are in Catalan or Spanish because they belong to the academic project this
 tool grew out of. Everything written for contributors is in English.

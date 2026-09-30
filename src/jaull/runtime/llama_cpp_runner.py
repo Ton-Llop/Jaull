@@ -177,21 +177,6 @@ def _int_flag(
         ) from exc
 
 
-def _bool_flag(runtime: RuntimeRecommendation | None, name: str) -> bool:
-    if runtime is None:
-        return False
-    raw = next((flag.value for flag in runtime.flags if flag.name == name), None)
-    if raw is None:
-        return False
-    if raw.casefold() in {"1", "true", "on", "yes"}:
-        return True
-    if raw.casefold() in {"0", "false", "off", "no"}:
-        return False
-    raise LlamaCppRunnerError(
-        f"Runtime flag {name} must be a boolean, got {raw!r}."
-    )
-
-
 def _str_flag(runtime: RuntimeRecommendation | None, name: str) -> str | None:
     if runtime is None:
         return None

@@ -137,6 +137,26 @@ workflow. The optional raw stdout/stderr sidecar is saved only when selected in
 Validate; it is not part of the immutable record and may contain the prompt or
 model output.
 
+## Offline re-evaluation
+
+`jaull experiments reevaluate EXPERIMENT_ID` uses the inputs frozen in a saved
+experiment to run today's prediction and comparison logic against the recorded
+observation. It does not run the model again, detect the current machine, query
+Hugging Face, download files or edit the original record.
+
+The result keeps the original prediction, observation and comparison separate
+from the current prediction and comparison. It is a derived view, not new
+experimental evidence or calibration.
+
+Missing frozen inputs are reported as `approximate_only` or `not_reproducible`,
+with reasons. External enrichment and old records without `prediction_input`
+can limit reproducibility; current metadata must not fill those gaps silently.
+Prediction reproducibility is separate from artifact identity: a missing SHA
+can leave the prediction reproducible while the exact file remains unverified.
+
+Exact physical replay is not implemented. It would also require the historical
+code, runtime build, driver and external metadata, not just today's estimator.
+
 ## Benchmarks
 
 Two methodologies, both persisted as `BenchmarkRecord` JSON files under

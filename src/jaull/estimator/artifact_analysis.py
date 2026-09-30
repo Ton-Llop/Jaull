@@ -196,17 +196,4 @@ def _detect_from_tags(
     return None
 
 
-def _coerce_int(value: object) -> int | None:
-    if isinstance(value, bool):  # bool is a subclass of int — guard first
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return None
-    return None
-
-
 __all__ = ["analyze_artifact"]

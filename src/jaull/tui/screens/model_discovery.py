@@ -66,7 +66,6 @@ class ModelDiscoveryScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.CANDIDATE_DISCOVERY,
             "Search",
-            "Only public metadata is read. No model weights are downloaded.",
         )
         with VerticalScroll(id="discovery-body"):
             yield Static("Checking local runtimes...", id="discovery-runtime-status")

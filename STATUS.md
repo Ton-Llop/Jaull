@@ -1,51 +1,56 @@
 # Status
 
-Orientation only; the reasoning behind every line is in
-[`docs/history/technical-audit-2026-09-28.md`](docs/history/technical-audit-2026-09-28.md) (revision V).
-Commit `a285acf`, 2026-09-28.
+Updated 2026-09-30. Code checkpoint: `8b128c6` on `master`.
+PR [#25](https://github.com/Ton-Llop/Jaull/pull/25) is merged.
 
-## What works now
+## What works
 
-`predict → acquire → verify → execute → compare`, end to end, through a Typer CLI and a
-Textual TUI over the same services:
+Jaull detects hardware, recommends models and prepares an execution plan.
+It verifies the artifact, runs the model, saves experiments and benchmarks,
+and compares predictions with measurements when the evidence allows it.
 
-- Detects CPU, RAM, storage, NVIDIA GPUs via NVML and others via `vulkaninfo` and DRM sysfs.
-- Classifies a Hugging Face repository and reads the GGUF header over HTTP Range, metadata
-  only, then estimates memory per component, each row carrying its own provenance.
-- Turns six or seven plain questions into a ranking of **execution plans** on separate axes,
-  ordered lexicographically. No global score, and no language model anywhere in it.
-- Resolves one artifact, downloads it, verifies size and SHA-256, runs it through `llama-cli`
-  or an isolated Transformers worker, stores it as an immutable `ExperimentRecord`, then
-  compares the prediction against the observation — or states why it cannot.
+- CLI and TUI use the same services.
+- Recommendations and execution readiness are separate: missing dependencies
+  block execution, not the recommendation.
+- Task and workload mode are separate. Workload requirements and optional
+  throughput/TTFT targets can be recorded; they are not measured results.
+- New llama.cpp plans no longer translate KV sequence batch size into
+  `--batch-size`. Token batching uses runtime defaults; explicit old flags remain.
+- Artifact verification rejects incorrect downloads and removes stale SHA
+  sidecars before replacing files.
 
-## What is validated
+## Checks and evidence
 
-Gates on `a285acf`: **ruff clean · mypy clean (245 files) · 1746 tests · 0 failures**, still
-green with the whole suite under four CPU-saturating threads. Coverage 86 %, from 2026-09-24.
+- [CI for `8b128c6`](https://github.com/Ton-Llop/Jaull/actions/runs/36748809534)
+  completed successfully. CI includes tests, Ruff, mypy, packaging checks and an
+  installed-wheel smoke test.
+- Local cleanup validation: **1,923 tests passed**. Ruff, mypy, compileall and
+  architecture checks also passed.
+- The RTX 4060 campaign has a successful Validate and a complete
+  pp512/tg128 benchmark with three repetitions.
+- [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
+  explains the RTX 2060/4060 results and their limits. Different builds and
+  environments mean this is not a controlled GPU comparison.
+- Public RTX 4060 evidence is anonymized. Original bytes are kept privately;
+  see [the evidence index](validation/README.md). Old failed runs remain failures.
 
-The B001 series, in `docs/qwen2.5-tests/` — RTX 2060, Qwen2.5-7B Q4_K_M, llama.cpp `689e227db`:
+## What is still missing
 
-- **R4** — the first baseline carrying complete provenance.
-- **R6** — tensor placement, read from the source and checked against a real run.
-- **R8 + R9** — the launch policy costs **1.4×–2.1×**, not the 3–4× inferred from R8 alone.
-- **R10** — a persisted record with eight runtime buffers, 2459.61 MiB on `CUDA0`.
+- No real multiuser workload experiment or qualification verdict yet.
+- NVML process VRAM is unavailable on the measured WDDM machines. Runtime
+  buffer comparisons work where the methodology gates allow them, but do not
+  measure every process allocation.
+- Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
+- Memory overhead, reserve and headroom are not calibrated from these runs.
 
-## What is incomplete
+## Next steps
 
-- **The VRAM comparison still yields no number.** HFA bounds non-block weight placement
-  instead of predicting a device-specific point, and that gate fires first. Checked on R10.
-- **`peak_vram_bytes` is `null`** on a GeForce driving a display: under WDDM, NVML cannot
-  attribute memory per process. A platform limit, not a code one.
-- **`runtime_build` is never populated**, although the run's own log prints it.
-- **`reserve` (512 MiB) and `headroom` (256 MiB) were never calibrated** — documented guesses.
-- **`BEST_MATCH` is unreachable**: `overhead.py:39` emits `LOW` unconditionally.
-- **The soft language check degrades hard**: an optional `language:` still costs 0.15 in
-  `requirements_gate.py:118`, enough to force `BEST_EFFORT`.
-- Minor: `advisor/service.py` 1570 lines; `prediction_input` optional; docs say "six questions".
+1. Review this documentation checkpoint. `v0.2.0-alpha` is a proposed release,
+   not a published tag.
+2. Define a small llama.cpp workload experiment: one loaded `llama-server`,
+   then 1, 2 and 4 simultaneous users. Separate loading, warm-up and measurement;
+   record per-request TTFT, generation speed, failures and memory sources.
+3. Only after that, consider evidence-based qualification and `jaull.lock`.
 
-## What comes next
-
-1. **A runtime-specific point prediction for non-block weights** — the one thing between this
-   project and a publishable VRAM error. The block ↔ unit mapping already landed.
-2. **A product decision** on the soft language check. That one is not code.
-3. Repeat R9 with real repetitions before touching `reserve` or `headroom`.
+No HFA, ranking, scoring or calibration changes are part of this checkpoint.
+Historical audits remain in [`docs/history/`](docs/history/).

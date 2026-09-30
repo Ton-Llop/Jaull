@@ -102,7 +102,6 @@ class RequirementsWizardScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.REQUIREMENTS,
             "Your needs",
-            "Answer in plain terms — the technical settings are derived for you.",
         )
         # Numbered questions separated by whitespace, not by six boxes: the
         # heading and the indent already say where one question ends.

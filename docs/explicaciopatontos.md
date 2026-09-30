@@ -1,567 +1,172 @@
-> Notas históricas de diseño, no una guía del estado actual. Validate y Benchmark
-> para Transformers ya están implementados; el protocolo vigente es v3.
-> Consulta [evidence.md](evidence.md), [limitations.md](limitations.md) y
-> [experimental-validation.md](experimental-validation.md) para los contratos actuales.
-> Los ejemplos numéricos de estas notas no constituyen evidencia experimental.
+# Jaull explicado sin complicarse
 
-Jaull analiza tu hardware, busca modelos, estima cuáles encajan, los recomienda, puede descargar un GGUF y ya puede ejecutarlo realmente con llama.cpp.
+Jaull ayuda a responder una pregunta: **¿qué modelo de IA puedo ejecutar en este
+ordenador y cómo compruebo que funciona?**
 
-Aunque tengas 27 carpetas, en realidad son 4 bloques grandes:
+No es un chatbot ni entrena modelos. Mira tu equipo, busca candidatos, estima
+la memoria que necesitan y prepara una forma concreta de ejecutarlos. Después
+puede hacer pruebas reales y guardar lo que ocurrió.
 
-                                             JAULL
-                                             │
-                              ┌──────────────┼───────────────┐
-                              │              │               │
-                              ▼              ▼               ▼
-                         ANALIZAR       RECOMENDAR       EJECUTAR
-     Primero Validate
+El estado actual está en [STATUS.md](../STATUS.md). Esta guía explica las ideas;
+no sustituye a los records ni a los informes experimentales.
 
-Aquí reutilizaría al máximo lo que ya tenemos:
+## 1. El recorrido completo
 
-ExperimentRunner
-      ↓
-runtime_family = pytorch_transformers
-      ↓
-TransformersRunner
-      ↓
-ExecutionObservation
-      ↓
-PredictionComparison
-      ↓
-ExperimentRecord
-
-La idea es que pulsar Validate sobre un modelo Transformers haga una ejecución controlada y guarde evidencia igual que hacemos con llama.cpp:
-
-Runtime       Transformers / PyTorch
-Backend       CPU
-Artifact      safetensors
-Success       yes
-Duration      13.4 s
-Peak RAM      2.5 GiB
-Peak VRAM     unavailable
-
-Y mantener la semántica importante:
-
-READY = no conocemos blockers.
-Validate SUCCESS = lo hemos ejecutado realmente.
-
-Eso ya permitiría comparar predicción vs realidad para Transformers.
-
-2. Después Benchmark
-
-Aquí no intentaría meter Transformers dentro de llama-bench, porque llama-bench pertenece a llama.cpp.
-
-Haría algo como:
-
-BenchmarkRunner
-├── LlamaBenchRunner
-└── TransformersBenchmarkRunner
-
-Pero compartiendo, si nuestro dominio actual lo permite:
-
-BenchmarkRequest
-BenchmarkObservation
-BenchmarkRecord
-BenchmarkStore
-
-El runner de Transformers podría ejecutar un worker PyTorch dedicado.
-
-Métricas que sí me interesan
-
-Para Transformers mediría al menos:
-
-Model load time
-Peak RAM
-Peak VRAM
-
-
-Prompt processing / prefill
-tokens/s
-
-
-Generation
-tokens/s
-
-
-Time to first token
-ms
-
-
-Total generation latency
-s
-
-Y posiblemente warm-up/repeticiones para obtener dispersión.
-
-Hay algo MUY evidente en tu prueba de ahora
-
-Tus ejecuciones fueron aproximadamente:
-
-1ª   127 s
-2ª    15 s
-3ª    13 s
-
-Esto nos está enseñando precisamente por qué no podemos benchmarkear simplemente cronometrando el botón Generate.
-
-Tenemos que separar:
-
-COLD START
-download/cache/model load/init
-
-de:
-
-STEADY-STATE INFERENCE
-modelo ya cargado
-→ prompt
-→ generación
-
-Porque si mezclamos ambos, Jaull podría concluir absurdamente que el modelo genera durante 127 segundos cuando gran parte de ese tiempo probablemente pertenece a preparación/carga inicial.
-
-Yo incluso conservaría ambas métricas:
-
-Startup / model load    110 s
-Warm inference           14 s
-Generation               X tok/s
-
-Eso tiene bastante valor para decidir despliegues.
-
-Y cuidado al comparar con llama.cpp
-
-Quiero que eventualmente podamos ver:
-
-Qwen2.5 0.5B · CPU
-
-
-                     llama.cpp       Transformers
-Prompt processing     XXX tok/s       YYY tok/s
-Generation             XX tok/s        YY tok/s
-Peak RAM               X.X GiB        X.X GiB
-Startup                  X s            Y s
-
-Pero solo cuando la metodología sea comparable.
-
-No asumiría automáticamente:
-
-llama-bench pp512
-==
-Transformers generate benchmark
-
-porque no necesariamente están midiendo exactamente el mismo recorrido.
-
-Primero definimos un protocolo común; luego comparamos. Hasta entonces guardamos methodology/runtime junto con la observación.                         │              │               │
-                         Hardware         Discovery        Artifacts
-                         HF metadata      Ranking          llama.cpp
-                         Estimator        Workflow         subprocess
-                         Runtime
-                              │              │               │
-                              └──────────────┴───────────────┘
-                                             │
-                                        AdvisorService
-                                             │
-                                        ┌──────┴──────┐
-                                        ▼             ▼
-                                   CLI           TUI
-
-Ese es el dibujo que yo tendría siempre en la cabeza.
-
-2. El bloque de análisis
-
-Aquí está todo lo que responde:
-
-“¿Qué máquina tengo y qué necesita este modelo?”
-
-hardware/
-
-Mira tu PC.
-
-hardware/
-├── cpu.py
-├── memory.py
-├── nvidia.py
-├── storage.py
-└── detector.py
-
-Produce un:
-
-HardwareProfile
-
-con CPU, RAM, GPU, VRAM, etc.
-
-huggingface/
-
-Es la conexión con Hugging Face.
-
-huggingface/
-├── client.py
-├── search_client.py
-├── artifact_resolver.py
-├── classifiers.py
-└── ...
-
-Hay una distinción importante:
-
-HfSearchClient
+```text
+Tu ordenador
     ↓
-busca modelos
-
-HfClient
+Lo que necesitas
     ↓
-inspecciona un modelo concreto
-
-HuggingFaceArtifactResolver
+Modelos candidatos
     ↓
-encuentra el GGUF exacto que quieres descargar
-
-Tu .env ya se carga desde ServiceContainer.default(), y HF_TOKEN acaba llegando a estos clientes.
-
-analyzers/
-
-Entiende qué tipo de repo has encontrado.
-
-Transformers
-GGUF
-ONNX
-Diffusers
-Generic
-
-No estima memoria todavía. Primero simplemente entiende:
-
-“¿Qué coño es este repo?”
-
-metadata/
-
-Extrae información más profunda.
-
-Aquí tienes una parte bastante buena de Jaull: para un GGUF puedes leer su header mediante HTTP Range sin descargar varios GB.
-
-Ejemplo:
-
-GGUF
- ↓
-header
- ↓
-architecture
-context size
-attention heads
-KV heads
-etc.
-
-Y además intenta encontrar el modelo base.
-
-3. El estimator
-
-Esta es una de las piezas centrales.
-
-estimator/
-
-Responde:
-
-“¿Cuánta memoria va a necesitar este modelo con esta configuración?”
-
-Conceptualmente:
-
-weights
-   +
-KV cache
-   +
-runtime overhead
-   +
-device reserve
-   +
-safety margin
-────────────
-TOTAL
-
-Después compara eso contra:
-
-RAM
-VRAM
-hardware disponible
-
-y genera algo tipo:
-
-comfortable
-compatible
-tight
-offloading_required
-insufficient
-unknown
-
-Aquí tienes cosas bastante curradas ya:
-
-GGUF real vs cuantización teórica.
-KV cache.
-GQA.
-contexto.
-usuarios concurrentes.
-margen de seguridad.
-reserva de dispositivo.
-provenance/confidence de cada estimación.
-4. runtime/: aquí hay una distinción MUY importante
-
-Esta carpeta puede confundir porque ahora contiene dos conceptos diferentes.
-
-runtime/llama_cpp.py
-
-NO ejecuta llama.cpp.
-
-Hace esto:
-
-MemoryEstimate
-    +
-HardwareProfile
-       ↓
-"te recomiendo llama.cpp
- ctx = 4096
- GPU layers = X"
-
-Es un recomendador de configuración.
-
-Produce:
-
-RuntimeRecommendation
-runtime/llama_cpp_runner.py
-
-Este sí ejecuta.
-
-Ahora mismo hace:
-
-ModelArtifact
-     ↓
-validar GGUF
-     ↓
-construir comando
-     ↓
---model ...
---ctx-size ...
---n-gpu-layers ...
---single-turn
---prompt ...
-     ↓
-ExecutionBackend
-
-Y esto es precisamente lo que acabamos de validar físicamente contra tu llama-cli.
-
-Esta distinción conviene que la tengas clarísima:
-
-llama_cpp.py
-= "cómo debería ejecutarlo"
-
-llama_cpp_runner.py
-= "ejecútalo de verdad"
-5. execution/
-
-Esto es deliberadamente genérico.
-
-execution/
-├── host.py
-├── ports.py
-└── errors.py
-
-HostExecutionBackend no sabe qué es llama.cpp.
-
-Solo sabe hacer:
-
-subprocess.run(
-    command,
-    shell=False,
-    capture_output=True,
-    ...
-)
-
-Es decir:
-
-LlamaCppRunner
-      ↓
-"ejecuta este comando"
-      ↓
-HostExecutionBackend
-      ↓
-Linux / WSL
-
-Esto está bien separado.
-
-Mañana podrías tener:
-
-DockerExecutionBackend
-RemoteExecutionBackend
-SSHExecutionBackend
-
-sin modificar LlamaCppRunner demasiado.
-
-Pero no lo haría todavía.
-
-6. artifacts/
-
-Esta pieza convierte:
-
-“Quiero TinyLlama Q4_K_M”
-
-en:
-
-“Tengo físicamente /home/ton/.../tinyllama....gguf y sé que está correcto.”
-
-El flujo es:
-
-resolve
-  ↓
-ModelArtifact
-  repo
-  revision
-  filename
-  size
-
-download
-  ↓
-archivo local
-  ↓
-SHA-256
-
-verify
-  ↓
-is_verified=True
-
-Y los guarda en:
-
-~/.local/share/jaull/models/
-
-Esto ya lo has probado contra Hugging Face real.
-
-7. Discovery + Recommendation
-
-Aquí está el otro bloque grande.
-
-discovery/
-recommendation/
-workflow/
-discovery/
-
-Responde:
-
-“¿Qué modelos vale la pena mirar?”
-
-No puedes inspeccionar 20.000 repos uno por uno.
-
-Así que haces:
-
-queries HF
+Estimación y recomendaciones
     ↓
-resultados
+Plan de ejecución y comprobaciones
     ↓
-interleave
+Run / Validate / Benchmark
     ↓
-deduplicate
-    ↓
-filter
-    ↓
-shortlist
+Resultados guardados
+```
 
-Actualmente el workflow permite hasta:
+Primero Jaull lee información, no descarga los pesos ni ejecuta el modelo.
+La ejecución empieza cuando la pides. Si falta un GGUF compatible, el flujo
+puede descargarlo antes de ejecutarlo.
 
-40 candidatos únicos
-        ↓
-12 inspecciones profundas
-        ↓
-3 recomendaciones
+## 2. Qué mira del ordenador
 
-Esto es una optimización importante porque la inspección profunda cuesta llamadas a HF.
+Principalmente CPU, RAM, GPU y VRAM disponible.
 
-recommendation/
+- **RAM:** memoria del sistema.
+- **VRAM:** memoria de la tarjeta gráfica.
+- **Offloading:** repartir trabajo y pesos entre GPU y CPU cuando hace falta.
 
-Responde:
+Con una GPU dedicada, RAM y VRAM no son una sola bolsa de memoria. Que tengas
+8 GiB de VRAM y 32 GiB de RAM no significa que un modelo de 40 GiB pueda cargarse
+sin más. Hay que comprobar qué parte necesita cada dispositivo.
 
-“De los modelos que ya he analizado, ¿cuál es mejor para este usuario?”
+## 3. Qué le cuentas tú
 
-Aquí están:
+Hay dos preguntas diferentes:
 
-memory fit
-concurrency fit
-capability
-task match
-language
-license
-metadata quality
-popularity
-artifact realism
-runtime executability
+- **Tarea:** programar, conversar, escribir o responder sobre documentos.
+- **Modo de uso:** interactivo o batch, por ejemplo procesar trabajos en lote.
 
-Luego aplicas gates.
+Un modelo puede servir para programar tanto de forma interactiva como en batch.
+La tarea ayuda a encontrar modelos relevantes; el modo no convierte un modelo
+general en un buen modelo de programación.
 
-Por ejemplo:
+También importan el contexto, los usuarios previstos, los idiomas y la licencia.
+El contexto se mide en tokens: fragmentos de texto que procesa el modelo.
+Más contexto suele necesitar más memoria para la **KV cache**, que conserva
+información de la conversación mientras genera la respuesta.
 
-AWQ + CPU sin CUDA
-        ↓
-BLOCKED
+Jaull puede guardar objetivos opcionales como una velocidad mínima o un TTFT
+máximo. **Pedir un objetivo no demuestra que el equipo lo cumpla.**
+TTFT significa tiempo hasta recibir el primer token.
 
-aunque su score bruto fuese alto.
+## 4. Qué significa una recomendación
 
-Esto fue precisamente para corregir el problema que tenías anteriormente con Qwen AWQ.
+Jaull estima pesos, KV cache y otros costes de ejecución. Añade reserva y margen
+de seguridad para decidir si el plan cabe. Esos márgenes son presupuesto:
+no son bytes que el proceso necesariamente va a ocupar.
 
-8. workflow/
+Puede indicar que un modelo cabe cómodamente, va justo, necesita offloading,
+no cabe o tiene compatibilidad desconocida.
 
-Esta carpeta no calcula prácticamente nada importante por sí misma.
+**Unknown no significa que no funcione.** Significa que Jaull no tiene datos
+suficientes para confirmarlo. Debe explicar el motivo y mostrarlo como alternativa
+no confirmada. Una validación puede ser útil si existe un plan ejecutable.
 
-Coordina.
+La posición se decide por los criterios del motor. El score compuesto que
+aparece en el report es diagnóstico cuando se usa el motor de planes: no es
+el número que ordena esa lista ni una nota medida de calidad del modelo.
 
-UserAnswers
-     ↓
-requirements
-     ↓
-buscar
-     ↓
-filtrar
-     ↓
-inspeccionar
-     ↓
-estimar
-     ↓
-enriquecer
-     ↓
-rankear
-     ↓
-RecommendationWorkflowState
+## 5. Modelo, archivo y runtime no son lo mismo
 
-Piensa en él como el director de orquesta.
+Piensa en estos tres elementos:
 
-WorkflowOrchestrator dice:
+- **Modelo:** por ejemplo Qwen2.5-7B-Instruct.
+- **Artefacto:** los archivos concretos, como un GGUF Q4_K_M.
+- **Runtime:** el programa que los carga, como llama.cpp o Transformers.
 
-“ahora toca esto, luego esto, luego esto.”
+La cuantización reduce la precisión de los pesos para ocupar menos memoria.
+Puede afectar a la calidad; un modelo cuantizado no ocupa lo mismo que su
+versión FP16. En Transformers, int4/int8 requiere un mecanismo de cuantización,
+no basta con cambiar un `torch_dtype`.
 
-pero los cálculos los hacen los servicios inferiores.
+El **plan** reúne artefacto, runtime, backend, contexto y flags. Su readiness
+explica si está listo, si Jaull puede prepararlo o si está bloqueado.
+Un modelo puede ser buena recomendación y tener Run deshabilitado porque falta
+el runtime, una dependencia como bitsandbytes o un artefacto compatible.
+Eso no debería empeorar su posición como recomendación.
 
-9. AdvisorService
+Antes de ejecutar un GGUF, Jaull verifica su tamaño y SHA-256. El SHA es una
+huella del archivo: sirve para comprobar que los bytes son los esperados.
+La verificación completa recalcula esa huella desde el archivo.
 
-Esta es probablemente la clase que más deberías entender de todo el repo.
+## 6. Run, Validate y Benchmark
 
-advisor/service.py
+| Acción | Qué hace |
+|---|---|
+| Run | Ejecuta el modelo con tu prompt. |
+| Validate | Hace una prueba controlada y guarda predicción, observación y comparación. |
+| Benchmark | Mide rendimiento con una metodología y configuración registradas. |
 
-Es la fachada.
+Validate puede guardar un fallo. Eso también aporta información: no hay que
+convertirlo en éxito ni borrarlo porque otra ejecución posterior funcionó.
 
-La idea es que la UI no tenga que conocer:
+Un benchmark con `llama-bench` mide trabajo de prefill y generación. No prueba
+automáticamente cuatro usuarios simultáneos ni el contexto del plan: solo los
+parámetros que se aplicaron de verdad al benchmark.
 
-HfClient
-ArtifactService
-Estimator
-Workflow
-Hardware
-etc.
+La duración total de Validate tampoco es TTFT: puede incluir carga y preparación.
 
-Sino:
+## 7. Predicción frente a observación
 
-advisor.scan_hardware()
-advisor.inspect_model()
-advisor.estimate_model()
-advisor.recommend()
+- **Predicción:** lo que Jaull esperaba antes de ejecutar.
+- **Observación:** lo que se midió o reportó durante la ejecución.
+- **Comparación:** si se pueden contrastar y cuál es la diferencia.
 
-advisor.resolve_artifact()
-advisor.download_artifact()
-advisor.verify_artifact()
-advisor.run_artifact()
+No todo número de memoria mide lo mismo. Los buffers reportados por llama.cpp
+no incluyen necesariamente toda la VRAM del proceso. La medición por proceso
+de NVML puede no estar disponible bajo WDDM. Y la RAM RSS no equivale a los
+pesos que quedaron en CPU: llama.cpp usa archivos mapeados en memoria.
 
-Conceptualmente:
+Por eso a veces verás `methodologically_unavailable`: existen datos, pero
+compararlos como si midieran lo mismo sería engañoso. No significa necesariamente
+que el modelo haya fallado.
 
-               AdvisorService
-              /      |       \
-             /       |        \
-         análisis  recommend  execute
+Los records originales no se cambian. Reevaluar uno significa aplicar el código
+actual a sus entradas guardadas, no volver a ejecutar el modelo ni inventar
+información que faltaba.
 
-Para entender Jaull, empezaría por esta clase antes que por ninguna otra.
+## 8. Qué hemos probado y qué falta
+
+Hay pruebas reales en RTX 2060 y RTX 4060. La campaña final de la 4060 tiene
+Validate y benchmark completos. Puedes leer la
+[comparación entre campañas](qwen2.5-tests/rtx4060-campaign-comparison.md).
+No es una comparación controlada de GPU: cambian también runtime y entorno.
+
+Todavía falta medir servicio concurrente: un único modelo cargado atendiendo
+1, 2 y 4 usuarios. Lanzar cuatro copias del modelo sería otro experimento.
+Qualification y `jaull.lock` son pasos posteriores, no funciones terminadas.
+
+## 9. Cómo empezar y dónde mirar
+
+```bash
+uv run jaull doctor
+uv run jaull ui
+```
+
+Doctor revisa el entorno. La TUI permite seguir el recorrido guiado.
+llama.cpp necesita sus ejecutables correspondientes; no viene instalado
+simplemente por clonar Jaull.
+
+- [CLI](cli.md): comandos y opciones.
+- [Evidencia](evidence.md): qué se guarda y qué se puede comparar.
+- [Limitaciones](limitations.md): qué no podemos afirmar todavía.
+- [Arquitectura](../ARCHITECTURE.md): cómo se organiza el código.
+- [Índice experimental](../validation/README.md): dónde están las pruebas.
+
+**En una frase:** Jaull propone una configuración, explica sus límites y permite
+comprobarla con datos reales; no promete resultados que todavía no ha medido.

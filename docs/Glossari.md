@@ -1275,10 +1275,11 @@ Aquestes fórmules són aproximacions. El consum real depèn del runtime i del m
 | Pesos | `estimator/weights.py` |
 | KV cache | `estimator/kv_cache.py` |
 | Compatibilitat | `estimator/compatibility.py` |
-| Quantització automàtica | `recommendation/configuration.py` |
+| Quantització automàtica | `estimator/configuration.py` |
 | Score | `recommendation/scoring.py` |
 | Pesos del score | `recommendation/policies.py` |
-| Rànquing | `recommendation/ranker.py` |
+| Rànquing de plans | `recommendation/engine_v2.py` |
+| Rànquing sense maquinari | `recommendation/ranker.py` |
 | Explicacions | `recommendation/explanations.py` |
 | Runtime | `runtime/service.py` |
 | TUI | `tui/app.py`, `tui/screens/` |

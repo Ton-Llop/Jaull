@@ -13,14 +13,8 @@ a lookalike).
 
 from __future__ import annotations
 
-import re
-
 from jaull.domain import families
 from jaull.domain.candidates import EvaluatedCandidate
-
-# Anything after the family token that looks like "-<digits>[.<digits>]B"
-# is the size marker; strip it to derive the series key.
-_SIZE_RE = re.compile(r"[-_](\d+(?:\.\d+)?)[bB](?![a-zA-Z])")
 
 
 def series_key(evaluated: EvaluatedCandidate) -> str:

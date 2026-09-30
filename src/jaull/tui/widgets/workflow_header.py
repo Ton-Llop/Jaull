@@ -31,19 +31,14 @@ class WorkflowHeader(Vertical):
     and still never said what hardware the answers applied to. The breadcrumb
     carries the position, so the separate "Step 3 of 4" is redundant, and the
     row it frees goes to the machine.
-
-    The subtitle is accepted and ignored on purpose: the call sites still pass
-    the orientation copy they always did, and dropping it is a presentation
-    decision this widget is entitled to make in one place rather than in six.
     """
 
     DEFAULT_CLASSES = "workflow-header"
 
-    def __init__(self, current: WorkflowStep, title: str, subtitle: str = "") -> None:
+    def __init__(self, current: WorkflowStep, title: str) -> None:
         super().__init__()
         self._current = current
         self._title = title
-        self._subtitle = subtitle
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="context-title-row"):

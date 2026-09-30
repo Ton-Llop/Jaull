@@ -313,8 +313,11 @@ compares the JSON and Markdown output against `tests/snapshots/report.json` and
 
 ## Conventions
 
-- **No bare `except Exception`.** Always catch a specific type from `jaull.exceptions` or
-  from a concrete library (`OSError`, `ImportError`, …).
+- **Prefer specific exceptions** from `jaull.exceptions` or the concrete library.
+  `except Exception` is allowed at workers, TUI callbacks, external probes and
+  optional-evidence boundaries, or for cleanup followed by re-raising. Preserve
+  the cause in logs or a structured error; an unknown or failed operation must
+  not become a successful result. This is a review rule, not an automated ban.
 - **Python 3.12+**: `X | None`, `list[str]`, generic `type`, no `Union`/`Optional` from
   `typing`.
 - **Frozen Pydantic v2 models** in `domain/`. No class mutates its state after construction.

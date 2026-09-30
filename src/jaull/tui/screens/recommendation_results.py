@@ -203,7 +203,6 @@ class RecommendationResultsScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Results",
-            "Best fit first. Technical detail is available when you need it.",
         )
         with VerticalScroll(id="results-body"):
             if not self._state.recommendations:
@@ -377,7 +376,6 @@ class RecommendationCompareScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Compare",
-            "A compact table of the ranked recommendations.",
         )
         with VerticalScroll(id="compare-body"):
             if not self._state.recommendations:
@@ -426,7 +424,6 @@ class ExecutionPathBenchmarkCompareScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Compare execution paths",
-            "Uses saved benchmark records. No benchmark is run from this screen.",
         )
         with VerticalScroll(id="path-compare-body"):
             yield Static(
@@ -543,7 +540,6 @@ class RecommendationDetailsScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Technical details",
-            "Assessment, memory, assumptions and the equivalent CLI command.",
         )
         with VerticalScroll(id="details-body"):
             yield from self._compose_details()
@@ -1134,14 +1130,6 @@ def _recommendation_metadata(rec: ModelRecommendation) -> list[str]:
     return values
 
 
-def _execution_path_lines(rec: ModelRecommendation) -> list[str]:
-    rows = _execution_path_detail_rows(rec)
-    lines = [f"✓ {label} · {value}" for label, value in rows[:1]]
-    for related in rec.related_repositories[:2]:
-        lines.append(f"○ Related artifact repository · {related}")
-    return lines
-
-
 def _execution_path_detail_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
     from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
@@ -1244,14 +1232,6 @@ def _runtime_action_reason(rec: ModelRecommendation) -> str | None:
 
 
 def _can_validate(rec: ModelRecommendation) -> bool:
-    return _runtime_action_reason(rec) is None
-
-
-def _can_benchmark(rec: ModelRecommendation) -> bool:
-    return _runtime_action_reason(rec) is None
-
-
-def _can_run(rec: ModelRecommendation) -> bool:
     return _runtime_action_reason(rec) is None
 
 

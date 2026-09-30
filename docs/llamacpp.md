@@ -233,4 +233,5 @@ Generated text
   PyTorch installation. AWQ/GPTQ/bitsandbytes ROCm support is not claimed here.
 - `--single-turn` is added by `LlamaCppRunner` so executions terminate cleanly.
 - `n_gpu_layers=0` means CPU-only execution.
-- GPU offloading can later be selected automatically by Jaull instead of being manually specified.
+- When `--n-gpu-layers` is omitted from `jaull run`, Jaull selects an automatic
+  launch plan. An explicit value overrides that choice.

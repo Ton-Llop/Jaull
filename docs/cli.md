@@ -161,7 +161,7 @@ is a new derived view, not an edit.
 
 This is how a change to the estimator can be checked against evidence that already exists,
 instead of re-running every measurement. See
-[replay-reevaluation.md](replay-reevaluation.md).
+[offline re-evaluation](evidence.md#offline-re-evaluation).
 
 ## `doctor` — environment health
 

@@ -57,7 +57,6 @@ class HardwareAnalysisScreen(Screen[None]):
         yield WorkflowHeader(
             WorkflowStep.HARDWARE_SCAN,
             "Hardware",
-            "Reading the hardware available for local inference.",
         )
         with VerticalScroll():
             yield Vertical(id="hardware-content")

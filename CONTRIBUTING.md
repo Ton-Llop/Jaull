@@ -132,8 +132,9 @@ be asked about in review:
 - **Prediction and observation stay separate.** `MemoryEstimate` is the prediction,
   `ExecutionObservation` is what happened, `PredictionComparison` is derived from both.
   Measurement never edits a prediction.
-- **No bare `except Exception`.** Catch a specific type from `jaull.exceptions` or from the
-  library involved.
+- **Prefer specific exceptions.** Broad catches are reserved for workers, TUI callbacks,
+  external probes, optional evidence, or cleanup followed by re-raising. Preserve the
+  cause; never turn a failure into success. See the conventions in `ARCHITECTURE.md`.
 - Python 3.12+ syntax: `X | None`, `list[str]`, no `typing.Union` / `Optional`.
 - Domain models are frozen Pydantic v2 models and never mutate after construction.
 - `domain/` imports nothing from layers above it; `discovery/` and `recommendation/` never
