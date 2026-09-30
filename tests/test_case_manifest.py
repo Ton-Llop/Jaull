@@ -336,6 +336,30 @@ def test_complete_provenance_and_equivalent_cli_bench_build_are_valid() -> None:
     assert checks["provenance"] is CaseConsistencyStatus.VALID
 
 
+@pytest.mark.parametrize("different_build", [False, True])
+def test_modern_build_format_ignores_loader_noise_but_preserves_real_difference(
+    different_build: bool,
+) -> None:
+    version = "version: 0.5.0-dev (build 11258, commit ba0ba54d9)"
+    experiment = experiment_record(version_text=version)
+    other_version = version.replace("ba0ba54d9", "abcdef123") if different_build else version
+    benchmark = benchmark_record(version_text=(
+        "ggml_cuda_init: found 1 CUDA devices\n"
+        "load_backend: loaded CUDA backend\n" + other_version + "\n"
+        "built with Clang 20.1.8 for Windows x86_64"
+    ))
+    before = (experiment.model_dump_json(), benchmark.model_dump_json())
+    result = _service(experiment, [benchmark]).validate(_manifest(experiment, [benchmark]))
+    build = next(check for check in result.checks if check.name == "runtime_build")
+    assert build.status is CaseConsistencyStatus.VALID
+    warned = any("different runtime builds" in warning for warning in result.warnings)
+    assert warned == different_build
+    if not different_build:
+        assert version in (build.detail or "")
+        assert "differs between records" not in (build.detail or "")
+    assert (experiment.model_dump_json(), benchmark.model_dump_json()) == before
+
+
 def test_a_different_runtime_family_is_inconsistent() -> None:
     experiment = experiment_record()
     from tests._case_fixtures import runtime as make_runtime

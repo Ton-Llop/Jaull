@@ -41,7 +41,8 @@ from jaull.exceptions import JaullError
 _READ_CHUNK_BYTES = 1024 * 1024
 _LLAMA_CPP_BUILD = re.compile(
     r"(?:version:\s*)?(?P<number>\d+)\s*\((?P<commit>[0-9a-f]+)\)"
-    r"|build:\s*(?P<build_commit>[0-9a-f]+)\s*\((?P<build_number>\d+)\)",
+    r"|build:\s*(?P<build_commit>[0-9a-f]+)\s*\((?P<build_number>\d+)\)"
+    r"|build\s+(?P<version_number>\d+),\s*commit\s+(?P<version_commit>[0-9a-f]+)",
     re.IGNORECASE,
 )
 
@@ -525,8 +526,8 @@ def _runtime_build_key(build: str) -> str:
     match = _LLAMA_CPP_BUILD.search(build)
     if match is None:
         return build
-    number = match.group("number") or match.group("build_number")
-    commit = match.group("commit") or match.group("build_commit")
+    number = match.group("number") or match.group("build_number") or match.group("version_number")
+    commit = match.group("commit") or match.group("build_commit") or match.group("version_commit")
     assert number is not None and commit is not None
     return f"llama.cpp {number} ({commit.casefold()})"
 
