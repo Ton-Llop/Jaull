@@ -1,0 +1,45 @@
+{
+  "source_commit": "55b31d7a2957345a89576d19a14eb30e73d80eac",
+  "initial_git_status": "?? validation/rtx4060-full-offload-benchmark-20260930-164332/",
+  "experiment_id": "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+  "original_record_sha256": "40e1b0b7fac3553688d70c5690f15eaabe599a55f841018839934294b07c0d36",
+  "artifact_sha256_matches": true,
+  "runtime_files_checked": 54,
+  "runtime_files_present_and_matching": 53,
+  "all_runtime_hashes_match": false,
+  "difference_reported_before_execution": "llama-cli.exe missing; attempted exact recovery denied by OS; no controls bypassed; Benchmark does not require llama-cli",
+  "hardware_stable_fields_match": true,
+  "stable_differences": {},
+  "availability_observations": {
+    "ram_available": {
+      "prior": 21055684608,
+      "current": 20171747328
+    },
+    "vram_available": {
+      "prior": 6807072768,
+      "current": 7450460160
+    },
+    "runtime_cuda0_free": null
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4060",
+    "vram_total_bytes": 8585740288,
+    "vram_available_bytes": 7450460160,
+    "driver_version": "616.92",
+    "cuda_version": "13.4"
+  },
+  "runtime": {
+    "root": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin",
+    "cli_build": null,
+    "bench_build": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+    "bench_probe_source": "llama-bench --version",
+    "device": "CUDA0"
+  },
+  "plan": {
+    "context": 4096,
+    "concurrency": 1,
+    "gpu_layers": "-1",
+    "estimator_batch_not_mapped_to_tokens": true
+  },
+  "env": "Python 3.12.14; .venv/rtx4060-py312; locked uv check matched"
+}

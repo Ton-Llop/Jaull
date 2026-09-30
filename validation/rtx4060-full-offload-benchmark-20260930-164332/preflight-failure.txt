@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-benchmark-preflight-20260930-164332.py", line 83, in <module>
+    main()
+  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-benchmark-preflight-20260930-164332.py", line 55, in main
+    save(ROOT / 'runtime-mismatch.json', {'expected_count': len(expected), 'current_count': len(current), 'different_files': diffs})
+  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-benchmark-preflight-20260930-164332.py", line 30, in save
+    with path.open('x', encoding='utf-8', newline='\n') as handle:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PC\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileExistsError: [Errno 17] File exists: 'C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332\\runtime-mismatch.json'

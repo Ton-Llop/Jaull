@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-09-30T14:55:30.826605Z",
+  "jaull_version": "0.1.0",
+  "git_commit": "55b31d7a2957345a89576d19a14eb30e73d80eac",
+  "case_file": {
+    "path": "case.json",
+    "sha256": "dae47f9ebe82fce9f73d4b91a49a33f1e3fa71bce1e6f8dec64bc6008de6cb1c",
+    "size_bytes": 2036
+  },
+  "experiment_file": {
+    "path": "records/experiment.json",
+    "sha256": "ca9617ea45e365a8248c7f3fcc52c12fbe58feda80767cfeca6ec23aed841d29",
+    "size_bytes": 39986
+  },
+  "benchmark_files": [
+    {
+      "path": "records/benchmarks/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.json",
+      "sha256": "870e949be6537f77594c0cde3a925a01b445e6fb5c099bd298791b1e97443fa0",
+      "size_bytes": 12660,
+      "benchmark_id": "bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c"
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "evidence/logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "sha256": "a47176fa966cfbd48fabbd301010d9ade30a0ac2383d88aba40bca18e7d5f5ca",
+      "size_bytes": 748075,
+      "reference": {
+        "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
+      "sha256": "9d39b5d04f81199a62ffd2c88b5e1d16501ecb2f1abec4675d40d18d3d3acb66",
+      "size_bytes": 1306,
+      "reference": {
+        "path": "logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/preflight.json",
+      "sha256": "014f1783c4a4c903ed30a39672c71fd18f03bb10a7b9714b732ffa473d6420fa",
+      "size_bytes": 2303,
+      "reference": {
+        "path": "preflight.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/runtime-hashes.json",
+      "sha256": "e8757ccde17b5a2fff74a3a756c337ca450984546b1b6fcdff4f27507338ac1e",
+      "size_bytes": 14335,
+      "reference": {
+        "path": "runtime-hashes.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    }
+  ]
+}

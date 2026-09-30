@@ -1,0 +1,359 @@
+[
+  {
+    "stage": "case-create",
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "create",
+      "--experiment",
+      "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+      "--benchmark",
+      "bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c",
+      "--evidence",
+      "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log:runtime_log",
+      "--evidence",
+      "logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log:runtime_log",
+      "--evidence",
+      "preflight.json:other",
+      "--evidence",
+      "runtime-hashes.json:other",
+      "--label",
+      "RTX4060 Qwen2.5-7B Q4_K_M CUDA full-offload Validate plus pp512/tg128 r3",
+      "--note",
+      "Existing successful Validate reused unchanged; new Benchmark only; context and concurrency are provenance",
+      "--note",
+      "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "exit_code": 0,
+    "output": {
+      "case": {
+        "schema_version": 1,
+        "identity": {
+          "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+          "created_at": "2026-09-30T14:55:27.537940Z",
+          "label": "RTX4060 Qwen2.5-7B Q4_K_M CUDA full-offload Validate plus pp512/tg128 r3",
+          "machine_fingerprint": [
+            "Windows 11",
+            "10.0.26200",
+            "AMD64",
+            "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+            "8",
+            "16",
+            "34282192896",
+            "NVIDIA GeForce RTX 4060:8585740288",
+            "NVIDIA GeForce RTX 4060:nvidia:dedicated:0x10de:0x2882:00000000:2B:00.0:GPU-bbbc059d-9014-f50c-72d1-511fe91342e6:8585740288:False"
+          ],
+          "artifact": {
+            "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+            "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+            "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+            "format": "gguf",
+            "quantization": "Q4_K_M"
+          },
+          "runtime": "llama.cpp"
+        },
+        "experiment_record_id": "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+        "benchmark_record_ids": [
+          "bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c"
+        ],
+        "evidence_files": [
+          {
+            "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+            "role": "runtime_log",
+            "sha256": null,
+            "size_bytes": null,
+            "description": null
+          },
+          {
+            "path": "logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
+            "role": "runtime_log",
+            "sha256": null,
+            "size_bytes": null,
+            "description": null
+          },
+          {
+            "path": "preflight.json",
+            "role": "other",
+            "sha256": null,
+            "size_bytes": null,
+            "description": null
+          },
+          {
+            "path": "runtime-hashes.json",
+            "role": "other",
+            "sha256": null,
+            "size_bytes": null,
+            "description": null
+          }
+        ],
+        "notes": [
+          "Existing successful Validate reused unchanged; new Benchmark only; context and concurrency are provenance",
+          "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly"
+        ]
+      },
+      "validation": {
+        "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+        "status": "valid",
+        "checks": [
+          {
+            "name": "records_exist",
+            "status": "valid",
+            "detail": "1 experiment, 1 benchmark(s)"
+          },
+          {
+            "name": "machine_identity",
+            "status": "valid",
+            "detail": "verified"
+          },
+          {
+            "name": "artifact_identity",
+            "status": "valid",
+            "detail": "verified"
+          },
+          {
+            "name": "artifact_hash",
+            "status": "valid",
+            "detail": "verified"
+          },
+          {
+            "name": "runtime_family",
+            "status": "valid",
+            "detail": "llama.cpp"
+          },
+          {
+            "name": "runtime_build",
+            "status": "valid",
+            "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+          },
+          {
+            "name": "execution_conditions",
+            "status": "valid",
+            "detail": "2 difference(s), reported as warnings"
+          },
+          {
+            "name": "context",
+            "status": "valid",
+            "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+          },
+          {
+            "name": "provenance",
+            "status": "valid",
+            "detail": "complete"
+          },
+          {
+            "name": "evidence_files",
+            "status": "valid",
+            "detail": "4 file(s) present"
+          }
+        ],
+        "reasons": [],
+        "warnings": [
+          "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available RAM differed at scan time (21055684608 vs 20171747328 bytes)",
+          "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available VRAM on GPU 0 differed at scan time (6807072768 vs 7450460160 bytes)"
+        ]
+      }
+    },
+    "stderr": "",
+    "raw_stdout_on_failure": null
+  },
+  {
+    "stage": "case-validate",
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "validate",
+      "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "exit_code": 0,
+    "output": {
+      "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+      "status": "valid",
+      "checks": [
+        {
+          "name": "records_exist",
+          "status": "valid",
+          "detail": "1 experiment, 1 benchmark(s)"
+        },
+        {
+          "name": "machine_identity",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "artifact_identity",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "artifact_hash",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "runtime_family",
+          "status": "valid",
+          "detail": "llama.cpp"
+        },
+        {
+          "name": "runtime_build",
+          "status": "valid",
+          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+        },
+        {
+          "name": "execution_conditions",
+          "status": "valid",
+          "detail": "2 difference(s), reported as warnings"
+        },
+        {
+          "name": "context",
+          "status": "valid",
+          "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+        },
+        {
+          "name": "provenance",
+          "status": "valid",
+          "detail": "complete"
+        },
+        {
+          "name": "evidence_files",
+          "status": "valid",
+          "detail": "4 file(s) present"
+        }
+      ],
+      "reasons": [],
+      "warnings": [
+        "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available RAM differed at scan time (21055684608 vs 20171747328 bytes)",
+        "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available VRAM on GPU 0 differed at scan time (6807072768 vs 7450460160 bytes)"
+      ]
+    },
+    "stderr": "",
+    "raw_stdout_on_failure": null
+  },
+  {
+    "stage": "case-export",
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "export",
+      "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+      "./bundle",
+      "--evidence-root",
+      ".",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "exit_code": 0,
+    "output": {
+      "schema_version": 1,
+      "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+      "bundle_path": "bundle"
+    },
+    "stderr": "",
+    "raw_stdout_on_failure": null
+  },
+  {
+    "stage": "bundle-validate",
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "bundle",
+      "validate",
+      "./bundle",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "exit_code": 0,
+    "output": {
+      "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+      "status": "valid",
+      "checks": [
+        {
+          "name": "bundle_integrity",
+          "status": "valid",
+          "detail": "all declared files verified"
+        },
+        {
+          "name": "records_exist",
+          "status": "valid",
+          "detail": "1 experiment, 1 benchmark(s)"
+        },
+        {
+          "name": "machine_identity",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "artifact_identity",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "artifact_hash",
+          "status": "valid",
+          "detail": "verified"
+        },
+        {
+          "name": "runtime_family",
+          "status": "valid",
+          "detail": "llama.cpp"
+        },
+        {
+          "name": "runtime_build",
+          "status": "valid",
+          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+        },
+        {
+          "name": "execution_conditions",
+          "status": "valid",
+          "detail": "2 difference(s), reported as warnings"
+        },
+        {
+          "name": "context",
+          "status": "valid",
+          "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+        },
+        {
+          "name": "provenance",
+          "status": "valid",
+          "detail": "complete"
+        },
+        {
+          "name": "evidence_files",
+          "status": "valid",
+          "detail": "4 file(s) present"
+        }
+      ],
+      "reasons": [],
+      "warnings": [
+        "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available RAM differed at scan time (21055684608 vs 20171747328 bytes)",
+        "benchmark bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c: available VRAM on GPU 0 differed at scan time (6807072768 vs 7450460160 bytes)"
+      ]
+    },
+    "stderr": "",
+    "raw_stdout_on_failure": null
+  }
+]

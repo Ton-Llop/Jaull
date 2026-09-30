@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
+    "created_at": "2026-09-30T14:55:27.537940Z",
+    "label": "RTX4060 Qwen2.5-7B Q4_K_M CUDA full-offload Validate plus pp512/tg128 r3",
+    "machine_fingerprint": [
+      "Windows 11",
+      "10.0.26200",
+      "AMD64",
+      "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+      "8",
+      "16",
+      "34282192896",
+      "NVIDIA GeForce RTX 4060:8585740288",
+      "NVIDIA GeForce RTX 4060:nvidia:dedicated:0x10de:0x2882:00000000:2B:00.0:GPU-bbbc059d-9014-f50c-72d1-511fe91342e6:8585740288:False"
+    ],
+    "artifact": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "format": "gguf",
+      "quantization": "Q4_K_M"
+    },
+    "runtime": "llama.cpp"
+  },
+  "experiment_record_id": "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+  "benchmark_record_ids": [
+    "bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c"
+  ],
+  "evidence_files": [
+    {
+      "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "role": "runtime_log",
+      "sha256": null,
+      "size_bytes": null,
+      "description": null
+    },
+    {
+      "path": "logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
+      "role": "runtime_log",
+      "sha256": null,
+      "size_bytes": null,
+      "description": null
+    },
+    {
+      "path": "preflight.json",
+      "role": "other",
+      "sha256": null,
+      "size_bytes": null,
+      "description": null
+    },
+    {
+      "path": "runtime-hashes.json",
+      "role": "other",
+      "sha256": null,
+      "size_bytes": null,
+      "description": null
+    }
+  ],
+  "notes": [
+    "Existing successful Validate reused unchanged; new Benchmark only; context and concurrency are provenance",
+    "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly"
+  ]
+}
