@@ -1,0 +1,38 @@
+{
+  "label": "r3-u1",
+  "users": 1,
+  "requests": [
+    {
+      "slot_requested": 0,
+      "started": 718.704572824,
+      "success": true,
+      "http_status": 200,
+      "ttft_ms": 575.5923649999204,
+      "tokens_predicted": 128,
+      "tokens_evaluated": 512,
+      "tokens_streamed": 128,
+      "slot_observed": 0,
+      "server_timings": {
+        "cache_n": 0,
+        "prompt_n": 512,
+        "prompt_ms": 572.822,
+        "prompt_per_token_ms": 1.11879296875,
+        "prompt_per_second": 893.8204189084917,
+        "predicted_n": 128,
+        "predicted_ms": 7801.223,
+        "predicted_per_token_ms": 60.9470546875,
+        "predicted_per_second": 16.407683769583308
+      },
+      "truncated": false,
+      "client_decode_tps": 16.280329148833808,
+      "ended": 727.08117099,
+      "latency_ms": 8376.598166000007
+    }
+  ],
+  "started": 718.704572824,
+  "ended": 727.08117099,
+  "success": true,
+  "launch_skew_ms": 0.0,
+  "wall_seconds": 8.376598166000008,
+  "aggregate_output_tps": 15.280666144347538
+}

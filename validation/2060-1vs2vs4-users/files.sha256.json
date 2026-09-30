@@ -1,0 +1,190 @@
+{
+  "README.md": {
+    "sha256": "66c130f855f0fcbba91c6a86bf65fa73c3ee10b64988ed49938c48597ac18408",
+    "size_bytes": 4952
+  },
+  "check.py": {
+    "sha256": "a6fa46bed56c078c8da865d49ad8acca52bef65e343982be9bbef56260fda101",
+    "size_bytes": 3357
+  },
+  "groups.json": {
+    "sha256": "0fbea97b48f6c5c85742a21f87a05cacfed51e84a9a7e58046fdb564859170ba",
+    "size_bytes": 20032
+  },
+  "memory-and-slots.json": {
+    "sha256": "7fe3e49b67e902f6ad87cdbf8c61beb0afc626c0ba24411356b737d2fd9197c2",
+    "size_bytes": 502075
+  },
+  "metadata.json": {
+    "sha256": "ff63c76a90e026d3282d45225d754f9f319c06f36ac6e026f4638dee63413935",
+    "size_bytes": 6537
+  },
+  "prompt.json": {
+    "sha256": "24758ce89794a887d84996d7200dafb6a1e201f5a60b9d95ec45e0228f777233",
+    "size_bytes": 11770
+  },
+  "props.json": {
+    "sha256": "f82c9c57f8086c5803d49577ef5a76aa532c745b4a2ab9a3494b8bc6861b2423",
+    "size_bytes": 5093
+  },
+  "r1-u1-slot0.json": {
+    "sha256": "33ddf7ef645e57e8db169f10d6c0fe57226af30a5aae26af4c9fd5fc4918dc95",
+    "size_bytes": 50393
+  },
+  "r1-u1.json": {
+    "sha256": "be69457868c107de2ab68717fbb6a57eac5b1e31d9003ba7031ac38b21aca083",
+    "size_bytes": 1021
+  },
+  "r1-u2-slot0.json": {
+    "sha256": "74d9782a6e7572a3128be450c1b71b165b9955efaeeee901fceba4ff25e3e2e5",
+    "size_bytes": 50393
+  },
+  "r1-u2-slot1.json": {
+    "sha256": "4ae97b779fcd53d32853c3556538dfa120fcf13c3390f08b1ae6cca367a2e033",
+    "size_bytes": 50374
+  },
+  "r1-u2.json": {
+    "sha256": "e2604a4882c2f7d49d97564fdb0629f4167a6d6cca71a36bea1a6b48738c20a1",
+    "size_bytes": 1821
+  },
+  "r1-u4-slot0.json": {
+    "sha256": "0597e3fab7d4e561243c64565f6b2ba44d1b04e1b53be0b68aa997f753984ac1",
+    "size_bytes": 50418
+  },
+  "r1-u4-slot1.json": {
+    "sha256": "6ad4575451a24edf50c06dd2de0a23b1059a66f24bf2848d764f274edfa16784",
+    "size_bytes": 50412
+  },
+  "r1-u4-slot2.json": {
+    "sha256": "addfa2775410ed6166112ee2843dc4cfe7d43cb84cc71442dd6692895cb53c5b",
+    "size_bytes": 50428
+  },
+  "r1-u4-slot3.json": {
+    "sha256": "f5fe8cd5e6ae9887d53dfd96658fdae13e0a1bb5ee51e01187854b90985e2906",
+    "size_bytes": 50428
+  },
+  "r1-u4.json": {
+    "sha256": "294cd504d64472e1171227a22b47bf7f0ecb1b71fb7ebc7860f71e0c768dd44f",
+    "size_bytes": 3398
+  },
+  "r2-u1-slot0.json": {
+    "sha256": "52a8a34ae9b69b585a45d4037adf448d07444764bf0d7fdbf436d31f4a8395c5",
+    "size_bytes": 50408
+  },
+  "r2-u1.json": {
+    "sha256": "ba15d6f08d2ef25719cfe2fa40ddc193dcad08362e323fb7097e4dd2ffc4592e",
+    "size_bytes": 1018
+  },
+  "r2-u2-slot0.json": {
+    "sha256": "be929372ee181aa37459627bf40bb0aca26847ef5a69618fca384d4fb0d5c732",
+    "size_bytes": 50408
+  },
+  "r2-u2-slot1.json": {
+    "sha256": "ad7d70793b9129af8b5787b4a8d6e7f32c05f7dd164db9fdaa178ad16c8f1800",
+    "size_bytes": 50397
+  },
+  "r2-u2.json": {
+    "sha256": "0d0b1ce0a198c28e37cec282f41e52504c523a7c43215b6351c9e16b3490b4ee",
+    "size_bytes": 1828
+  },
+  "r2-u4-slot0.json": {
+    "sha256": "24d5a2c07088b0dbe7b574c3f098f514174092e322abaf83cef86ad693db894f",
+    "size_bytes": 50421
+  },
+  "r2-u4-slot1.json": {
+    "sha256": "b4b9ad91ec81356ff6486c7e6f5d1883dc2b47b492b52980f6f66c487eac4de3",
+    "size_bytes": 50421
+  },
+  "r2-u4-slot2.json": {
+    "sha256": "95e9b7b1582e0ef4b25889c0fd1c28ffba8a38ce9f834eb00b148b20a4f9eacd",
+    "size_bytes": 50415
+  },
+  "r2-u4-slot3.json": {
+    "sha256": "cccfa6ea1c1716fad5b75a576290bd1db77a2989584e8c185794063e2a7cab7b",
+    "size_bytes": 50430
+  },
+  "r2-u4.json": {
+    "sha256": "79eed81236eb703f449120ff0e730276bd65da66f4aa8d31fe02ae77258beaaf",
+    "size_bytes": 3393
+  },
+  "r3-u1-slot0.json": {
+    "sha256": "a246b18159a73eeaee83bcd8353e1fa39e6abcb1aa96f5e38f03722023a572ca",
+    "size_bytes": 50404
+  },
+  "r3-u1.json": {
+    "sha256": "4b0b5281e75771e403b20bd8f105de30956200e53abd3fdaa0d392225d1d605e",
+    "size_bytes": 1020
+  },
+  "r3-u2-slot0.json": {
+    "sha256": "47e1d85d1ee742822012aa728e95de4406e0723ff6c3b5c62d326c320c5b0417",
+    "size_bytes": 50405
+  },
+  "r3-u2-slot1.json": {
+    "sha256": "d6ec10dedf0cc0a84411023a16552109a34797ab8869c790f93fdf629f7a7912",
+    "size_bytes": 50398
+  },
+  "r3-u2.json": {
+    "sha256": "c2b0a582faad09c211f09f9fa30cf44dfab782695487048ab47f3d4652323f4d",
+    "size_bytes": 1829
+  },
+  "r3-u4-slot0.json": {
+    "sha256": "3c0ce27e71aa53e7d86290f090169fe63c4819b9710b882c04048560813531a7",
+    "size_bytes": 50432
+  },
+  "r3-u4-slot1.json": {
+    "sha256": "8ce1b69edd39941db261155a187f2ff209c4d50dfd016ea82938afb2b9015e43",
+    "size_bytes": 50417
+  },
+  "r3-u4-slot2.json": {
+    "sha256": "a6afc378e9d8563d558bc45dce8fc97007e4adcca02abf3ba6d957b7a2401c1e",
+    "size_bytes": 50426
+  },
+  "r3-u4-slot3.json": {
+    "sha256": "1fd7c85a137b7c20800769e3f310387d788947995d6a3d215d5a1fb61410669b",
+    "size_bytes": 50414
+  },
+  "r3-u4.json": {
+    "sha256": "55f4a21fd383402256596f2ee59d5e446dca062e0fe2d8e9b4ef46110677a66d",
+    "size_bytes": 3384
+  },
+  "run.py": {
+    "sha256": "248362a66f7f5082308e571ed7be6b2fe6145702ec1aca9833848515a65544cb",
+    "size_bytes": 14484
+  },
+  "runtime-allocation.json": {
+    "sha256": "38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
+    "size_bytes": 5
+  },
+  "server.log": {
+    "sha256": "1d9b779f864a655e73e07ca6a290e90b2958bac8b841436379f8d123202a52cd",
+    "size_bytes": 23150
+  },
+  "slots-before.json": {
+    "sha256": "63ff110b487b0917820f3ca0068c6bea45f5501c152f41ce61faf0fe46cb451f",
+    "size_bytes": 379
+  },
+  "summary.json": {
+    "sha256": "8b54e219ead1d595a9b3ba7398db94e215575396ba222ffad3e135f2962aee1f",
+    "size_bytes": 26926
+  },
+  "warmup-slot0.json": {
+    "sha256": "fb6c4607dc3bc8263938398016ddf9eff1c61ab658aa60f036c0b0d68850c99f",
+    "size_bytes": 50428
+  },
+  "warmup-slot1.json": {
+    "sha256": "4677dc70185c6adee4fc16ad882f4f9a1c8c5973a6c3b85301997283916fcdd1",
+    "size_bytes": 50424
+  },
+  "warmup-slot2.json": {
+    "sha256": "a9347ef682b0dc079caecd535559e470beb91acc6de8033a0f1542ee9a14d8de",
+    "size_bytes": 50413
+  },
+  "warmup-slot3.json": {
+    "sha256": "05c85af30944d93d6cce003cc348276854a3a45d703d680507ff10ec74035993",
+    "size_bytes": 50435
+  },
+  "warmup.json": {
+    "sha256": "9642d4284c47eef265ae672529e913db404718001cd990cd618e539d9accbd89",
+    "size_bytes": 3392
+  }
+}

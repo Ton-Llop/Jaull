@@ -1,0 +1,185 @@
+{
+  "methodology": "llama_server_concurrency_pilot_v1",
+  "created_at": "2026-09-30T20:28:34.870983+00:00",
+  "source_commit": "34cd7fd48a82520bcccaf7ed5364d7ba82f94628",
+  "source_status": " M validation/README.md\n?? validation/2060-1vs2vs4-users/\n",
+  "collector_sha256": "248362a66f7f5082308e571ed7be6b2fe6145702ec1aca9833848515a65544cb",
+  "runtime_commit": "689e227db485c6b33d061555e74034c93a867649",
+  "runtime_source_status": "",
+  "runtime_sha256": {
+    "libggml-base.so": "2963c55ea248467755c6f7ccf1a665aed3e5ba74a0ddfbb7f401da546859aaa4",
+    "libggml-base.so.0": "2963c55ea248467755c6f7ccf1a665aed3e5ba74a0ddfbb7f401da546859aaa4",
+    "libggml-base.so.0.19.0": "2963c55ea248467755c6f7ccf1a665aed3e5ba74a0ddfbb7f401da546859aaa4",
+    "libggml-cpu.so": "e7a6e813624925d83116caa18fc16b67ec836fde79c72a02f10515b55d14e6b6",
+    "libggml-cpu.so.0": "e7a6e813624925d83116caa18fc16b67ec836fde79c72a02f10515b55d14e6b6",
+    "libggml-cpu.so.0.19.0": "e7a6e813624925d83116caa18fc16b67ec836fde79c72a02f10515b55d14e6b6",
+    "libggml-cuda.so": "cb6580e8f26d62990dbeafdc671c2b5c1a73bb18db6cd3d89dbba2ff98645e14",
+    "libggml-cuda.so.0": "cb6580e8f26d62990dbeafdc671c2b5c1a73bb18db6cd3d89dbba2ff98645e14",
+    "libggml-cuda.so.0.19.0": "cb6580e8f26d62990dbeafdc671c2b5c1a73bb18db6cd3d89dbba2ff98645e14",
+    "libggml.so": "7478e7dc9a865843c3762543aa0746824b4b904f012a53f242c29451c20433bf",
+    "libggml.so.0": "7478e7dc9a865843c3762543aa0746824b4b904f012a53f242c29451c20433bf",
+    "libggml.so.0.19.0": "7478e7dc9a865843c3762543aa0746824b4b904f012a53f242c29451c20433bf",
+    "libllama-bench-impl.so": "3bbac9bbcf1921520a2872ec4c84cabfe194c0e1bce3b974cb3c8f94b3b7c2a1",
+    "libllama-cli-impl.so": "fbe774d37c475cbffa2abb6149abeff932eba2920b45e72fdf38ed038b84b049",
+    "libllama-common.so": "2abfe2526f3d875560b272b840501fe3fc5655b9bffecb5877d821369e8336bb",
+    "libllama-common.so.0": "2abfe2526f3d875560b272b840501fe3fc5655b9bffecb5877d821369e8336bb",
+    "libllama-common.so.0.0.10357": "2abfe2526f3d875560b272b840501fe3fc5655b9bffecb5877d821369e8336bb",
+    "libllama-server-impl.so": "ece7cb787b97dbe588524ffa4e379684e94a667ae6fad348dd45f2987099cfcb",
+    "libllama.so": "9730d0784689265b9f844fe139c3c5971a8c9b1848f79505494209ce0d558bf9",
+    "libllama.so.0": "9730d0784689265b9f844fe139c3c5971a8c9b1848f79505494209ce0d558bf9",
+    "libllama.so.0.0.10357": "9730d0784689265b9f844fe139c3c5971a8c9b1848f79505494209ce0d558bf9",
+    "libmtmd.so": "afc90eecf6f67f797307123465ab490fbeb78ef4ea7ec4847899bb0a067a0d85",
+    "libmtmd.so.0": "afc90eecf6f67f797307123465ab490fbeb78ef4ea7ec4847899bb0a067a0d85",
+    "libmtmd.so.0.0.10357": "afc90eecf6f67f797307123465ab490fbeb78ef4ea7ec4847899bb0a067a0d85",
+    "llama-server": "cdb0749a2cffc6f2fe710a9616263f90e6a016e8ac07a9caa5be160fc2c5d98e"
+  },
+  "artifact": {
+    "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+    "revision": null,
+    "revision_note": "Local historical file; repository revision not inferred"
+  },
+  "hardware": {
+    "os": "Linux 6.18.40.1-microsoft-standard-WSL2",
+    "os_version": "#1 SMP PREEMPT_DYNAMIC Fri Jul 31 22:12:15 UTC 2026",
+    "arch": "x86_64",
+    "cpu": {
+      "model": "AMD Ryzen 5 3600 6-Core Processor",
+      "physical_cores": 6,
+      "logical_cores": 12
+    },
+    "memory": {
+      "total_bytes": 8281112576,
+      "available_bytes": 7209136128
+    },
+    "storage": [
+      {
+        "mountpoint": "/",
+        "total_bytes": 1081101176832,
+        "available_bytes": 971268390912
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vram_total_bytes": 6442450944,
+        "vram_available_bytes": 5021020160,
+        "driver_version": "617.14",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 2060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": null,
+        "pci_bus_id": "00000000:08:00.0",
+        "uuid": "GPU-b0b30138-9936-68f7-c793-cc9b2c4874d5",
+        "dedicated_memory_bytes": 6442450944,
+        "available_memory_bytes": 5021020160,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "617.14",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "Vulkan backend not checked by NVML.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "vulkaninfo is not installed; skipping Vulkan detection."
+    ]
+  },
+  "driver": "NVIDIA GeForce RTX 2060, 617.14",
+  "server_command": [
+    "/home/ton/tools/llama.cpp/build-cuda/bin/llama-server",
+    "--model",
+    "/home/ton/models/qwen2.5-7b/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18086",
+    "--ctx-size",
+    "16384",
+    "--parallel",
+    "4",
+    "--no-kv-unified",
+    "--n-gpu-layers",
+    "24",
+    "--threads",
+    "4",
+    "--threads-batch",
+    "4",
+    "--fit",
+    "off",
+    "--cache-ram",
+    "0",
+    "--no-context-shift",
+    "--slots"
+  ],
+  "workload": {
+    "context_per_slot": 4096,
+    "input_tokens": 512,
+    "output_tokens": 128,
+    "concurrent_users": [
+      1,
+      2,
+      4
+    ],
+    "repetitions": 3,
+    "mode": "service_pilot",
+    "slo": null,
+    "order": [
+      [
+        1,
+        2,
+        4
+      ],
+      [
+        4,
+        1,
+        2
+      ],
+      [
+        2,
+        4,
+        1
+      ]
+    ]
+  }
+}

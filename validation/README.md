@@ -72,6 +72,11 @@ failed-run diagnostics were left intact. Bundle integrity was rechecked afterwar
 
 ## B001: Qwen2.5-7B Q4_K_M on RTX 2060
 
+The [1/2/4 concurrent-request pilot](2060-1vs2vs4-users/README.md) uses one
+llama-server with four fixed context slots. Its native streaming measurements
+are separate from Validate records and llama-bench; they are not qualification
+or calibration evidence.
+
 | Evidence | Contents |
 |---|---|
 | [`b001-r2-qwen2.5-7b-q4km-rtx2060-ctx4096/`](b001-r2-qwen2.5-7b-q4km-rtx2060-ctx4096/) | Initial device-memory observation. |
