@@ -1,3 +1,5 @@
+> Publication note (2026-09-30): this is an anonymized derivative. Statements below about original bytes/hashes describe collection-time evidence, not this public copy. See validation/public-anonymization.json and the campaign PUBLICATION.md.
+
 ﻿# Plan nuevo y Validate — RTX 4060
 
 Resultado: success=true, exit_code=0, duración 5.2630163 segundos. Solo Validate, sin Benchmark adicional.

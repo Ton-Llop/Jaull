@@ -2,7 +2,7 @@
   "validate": [
     "C:\\tools\\llama.cpp\\llama-cli.exe",
     "--model",
-    "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
     "--ctx-size",
     "4096",
     "--n-gpu-layers",
@@ -22,7 +22,7 @@
   "benchmark": [
     "C:\\tools\\llama.cpp\\llama-bench.exe",
     "-m",
-    "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
     "-dev",
     "CUDA0",
     "-ngl",
@@ -73,7 +73,7 @@
         "RTX 4060 c_night Qwen2.5-7B Q4_K_M 4096 interactive",
         "--json"
       ],
-      "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+      "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
       "exit_code": 0
     },
     {
@@ -89,7 +89,7 @@
         "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
         "--json"
       ],
-      "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+      "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
       "exit_code": 0
     },
     {
@@ -108,7 +108,7 @@
         ".",
         "--json"
       ],
-      "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+      "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
       "exit_code": 0
     },
     {
@@ -125,7 +125,7 @@
         "./bundle",
         "--json"
       ],
-      "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+      "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
       "exit_code": 0
     }
   ],

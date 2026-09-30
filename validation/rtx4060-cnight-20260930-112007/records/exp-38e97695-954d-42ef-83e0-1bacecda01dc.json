@@ -118,7 +118,7 @@
       "format": "gguf",
       "quantization": "Q4_K_M",
       "size_bytes": 4683074240,
-      "local_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
       "is_downloaded": true,
       "is_verified": true
@@ -142,7 +142,7 @@
       "executed_command": [
         "C:\\tools\\llama.cpp\\llama-cli.exe",
         "--model",
-        "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
         "--ctx-size",
         "4096",
         "--n-gpu-layers",

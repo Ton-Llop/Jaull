@@ -1,3 +1,5 @@
+> Publication note (2026-09-30): this is an anonymized derivative. Statements below about original bytes/hashes describe collection-time evidence, not this public copy. See validation/public-anonymization.json and the campaign PUBLICATION.md.
+
 # Validación real RTX 4060 — c_night
 
 Campaña local terminada: Validate y Benchmark correctos; case y bundle válidos. Sin staging, commit, push ni cambios de rama. Sin cambios de código, calibraciones, ranking o fórmulas. Evidencia histórica no modificada.
@@ -33,23 +35,23 @@ Validate usa AdvisorService.run_experiment / ExperimentRunner con el prompt de l
 
 Comando Validate real:
 ```text
-C:\tools\llama.cpp\llama-cli.exe --model C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 28 --device CUDA0 --no-display-prompt --color off --no-show-timings --simple-io --single-turn --verbose --prompt "Explain briefly what artificial intelligence is."
+C:\tools\llama.cpp\llama-cli.exe --model C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 28 --device CUDA0 --no-display-prompt --color off --no-show-timings --simple-io --single-turn --verbose --prompt "Explain briefly what artificial intelligence is."
 ```
 
 Comando Benchmark real:
 ```text
-C:\tools\llama.cpp\llama-bench.exe -m C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf -dev CUDA0 -ngl 28 -p 512 -n 128 -r 3
+C:\tools\llama.cpp\llama-bench.exe -m C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf -dev CUDA0 -ngl 28 -p 512 -n 128 -r 3
 ```
 
 El runner Validate omite --batch-size 1 del plan. llama-bench omite --ctx-size y --batch-size: 4096 es contexto de procedencia, no una condición aplicada por su comando. No se corrigió el código para cambiar esto.
 
 ## Resultados y rutas
 
-ExperimentRecord: `exp-38e97695-954d-42ef-83e0-1bacecda01dc`, original `C:\Users\PC\AppData\Local\jaull\experiments\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json`, copia `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json`. Raw log local: `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\logs\exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log`.
+ExperimentRecord: `exp-38e97695-954d-42ef-83e0-1bacecda01dc`, original `C:\Users\USER\AppData\Local\jaull\experiments\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json`, copia `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json`. Raw log local: `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\logs\exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log`.
 
 Validate success=true, exit=0, duración 5.5956059 s; observed_backend=cuda. PredictionComparison.compatibility=correct_success. Esa duración no es TTFT ni una medida de throughput.
 
-BenchmarkRecord: `bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e`, original `C:\Users\PC\AppData\Local\jaull\benchmarks\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json`, copia `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json`. Raw log: `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\logs\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log`.
+BenchmarkRecord: `bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e`, original `C:\Users\USER\AppData\Local\jaull\benchmarks\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json`, copia `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json`. Raw log: `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\logs\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log`.
 
 Benchmark success=true, exit=0, duración del proceso 12.3847817 s; metodología llama_bench_v1, tres repeticiones. pp512: 2408.90 ± 49.77 tokens/s. tg128: 44.22 ± 0.60 tokens/s. TTFT, model_load y warmup no disponibles en el record; no inferidos. Ambas filas requeridas presentes.
 
@@ -63,7 +65,7 @@ RAM: methodologically_unavailable porque RSS incluye páginas del modelo mapeado
 
 ## Case y bundle
 
-Case: `case-a8b66e98-447b-4faa-9d11-ab839d91b3b2`, original `C:\Users\PC\AppData\Local\jaull\cases\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json`, copia `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json`. Bundle: `C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\bundle`.
+Case: `case-a8b66e98-447b-4faa-9d11-ab839d91b3b2`, original `C:\Users\USER\AppData\Local\jaull\cases\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json`, copia `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\records\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json`. Bundle: `C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-cnight-20260930-112007\bundle`.
 
 case create, case validate, case export y case bundle validate ejecutados mediante uv, todos exit 0. Bundle status=valid, todos los archivos declarados verificados, 1 experiment, 1 benchmark, 10 archivos de evidencia. Comandos y salidas originales en case-commands.json y archivos case-*/bundle-validate.*.
 

@@ -30,8 +30,8 @@
     {
       "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
       "role": "runtime_log",
-      "sha256": "a47176fa966cfbd48fabbd301010d9ade30a0ac2383d88aba40bca18e7d5f5ca",
-      "size_bytes": 748075,
+      "sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd",
+      "size_bytes": 748315,
       "description": null
     },
     {
@@ -51,8 +51,8 @@
     {
       "path": "actual-invocation.json",
       "role": "other",
-      "sha256": "8062dded1cac3e9686d411188e0c98ed8eec939ccc6fc8ee5874399489f432fa",
-      "size_bytes": 629,
+      "sha256": "5511d8090a2cbf6a692233ef061d9d81fe6796915b10d33343c5fce7395e43d3",
+      "size_bytes": 633,
       "description": null
     },
     {
@@ -65,8 +65,8 @@
     {
       "path": "execution-plan.json",
       "role": "other",
-      "sha256": "39a66f7304c67f3e45e8c526dbee68b81785149647d7dff9f8c05038db1a5771",
-      "size_bytes": 22330,
+      "sha256": "4eddd6b72cb265a2159ec22199db20e8b66992e22768e269c0dcdded9b8fa22d",
+      "size_bytes": 22334,
       "description": null
     },
     {
@@ -79,8 +79,8 @@
     {
       "path": "REPORT.md",
       "role": "report",
-      "sha256": "784304d933715047d9a9b87ed5d5883651b5906e3543db57464b6e5151f578f9",
-      "size_bytes": 5345,
+      "sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30",
+      "size_bytes": 5589,
       "description": null
     }
   ],
@@ -88,6 +88,7 @@
     "Offline packaging of an existing Windows RTX 4060 measurement; no new execution.",
     "Source commit 1d12f63; llama.cpp b11258; effective token batches 2048/512; 29/29 offload units.",
     "No benchmark attached: prior benchmarks used a different placement.",
-    "Runtime-reported CUDA buffers are not driver-attributed process VRAM; NVML unavailable."
+    "Runtime-reported CUDA buffers are not driver-attributed process VRAM; NVML unavailable.",
+    "Public anonymized derivative: account, hostname and user-directory strings replaced. Measurements, artifact/runtime binary digests, IDs and observation timestamps are unchanged. Original bytes are retained privately; this is not the byte-exact original export."
   ]
 }

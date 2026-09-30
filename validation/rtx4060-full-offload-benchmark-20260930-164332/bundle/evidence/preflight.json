@@ -29,9 +29,9 @@
     "cuda_version": "13.4"
   },
   "runtime": {
-    "root": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin",
+    "root": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin",
     "cli_build": null,
-    "bench_build": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+    "bench_build": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
     "bench_probe_source": "llama-bench --version",
     "device": "CUDA0"
   },

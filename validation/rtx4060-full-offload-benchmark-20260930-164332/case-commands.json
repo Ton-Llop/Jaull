@@ -30,7 +30,7 @@
       "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly",
       "--json"
     ],
-    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
     "exit_code": 0,
     "output": {
       "case": {
@@ -130,7 +130,7 @@
           {
             "name": "runtime_build",
             "status": "valid",
-            "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+            "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
           },
           {
             "name": "execution_conditions",
@@ -177,7 +177,7 @@
       "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
       "--json"
     ],
-    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
     "exit_code": 0,
     "output": {
       "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
@@ -211,7 +211,7 @@
         {
           "name": "runtime_build",
           "status": "valid",
-          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
         },
         {
           "name": "execution_conditions",
@@ -260,7 +260,7 @@
       ".",
       "--json"
     ],
-    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
     "exit_code": 0,
     "output": {
       "schema_version": 1,
@@ -285,7 +285,7 @@
       "./bundle",
       "--json"
     ],
-    "cwd": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-full-offload-benchmark-20260930-164332",
     "exit_code": 0,
     "output": {
       "case_id": "case-671dd8f0-a401-43bc-bb2f-0ae9ebddc0e1",
@@ -324,7 +324,7 @@
         {
           "name": "runtime_build",
           "status": "valid",
-          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+          "detail": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
         },
         {
           "name": "execution_conditions",

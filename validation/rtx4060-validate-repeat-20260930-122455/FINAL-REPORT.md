@@ -1,3 +1,5 @@
+> Publication note (2026-09-30): this is an anonymized derivative. Statements below about original bytes/hashes describe collection-time evidence, not this public copy. See validation/public-anonymization.json and the campaign PUBLICATION.md.
+
 ﻿# Validate repetido después del fix de batch
 
 Resultado: fallo real de llama.cpp, conservado sin modificar. Solo Validate; Benchmark no repetido.

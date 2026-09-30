@@ -1,6 +1,6 @@
 Traceback (most recent call last):
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 110, in <module>
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 110, in <module>
     main()
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 70, in main
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 70, in main
     raise RuntimeError('CUDA runtime not ready; STOP')
 RuntimeError: CUDA runtime not ready; STOP

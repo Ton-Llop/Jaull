@@ -22,59 +22,59 @@
 ........................................................................ [ 82%]
 ........................................................................ [ 86%]
 .....................................................................Capturing welcome...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-welcome.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-welcome.svg
 Capturing hardware analysis...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-loading.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-done.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-done.svg
 Capturing wizard...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-wizard.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-wizard.svg
 Capturing search and results...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-search.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-results.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-search.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-results.svg
 Capturing execution paths...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-paths.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-paths.svg
 Capturing export...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-export.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-export.svg
 Capturing validation...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-running.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-success.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-failure.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-running.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-success.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-failure.svg
 Capturing run...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-empty.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-loading.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-history.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-error.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-empty.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-history.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-error.svg
 Capturing advanced tools...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-home.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-home.svg
 Capturing estimate...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-estimate.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-estimate.svg
 .Capturing welcome...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-welcome.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-welcome.svg
 Capturing hardware analysis...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-loading.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-done.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-done.svg
 Capturing wizard...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-wizard.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-wizard.svg
 Capturing search and results...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-search.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-results.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-search.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-results.svg
 Capturing execution paths...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-paths.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-paths.svg
 Capturing export...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-export.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-export.svg
 Capturing validation...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-running.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-success.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-failure.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-running.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-success.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-failure.svg
 Capturing run...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-empty.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-loading.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-history.svg
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-error.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-empty.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-history.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-error.svg
 Capturing advanced tools...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-home.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-home.svg
 Capturing estimate...
-  -> C:\Users\PC\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-estimate.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-estimate.svg
 .. [ 90%]
 ........................................................................ [ 94%]
 ........................................................................ [ 98%]

@@ -2,15 +2,15 @@
 
 FullName                                                                                                  Length
 --------                                                                                                  ------
-C:\Users\PC\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\cudart-llama-bin-win-cuda-13.3-x64.zip 390970417
-C:\Users\PC\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\llama-b10357-bin-win-cuda-13.3-x64.zip 146694738
-C:\Users\PC\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\bin\llama-cli.exe                           9216
-C:\Users\PC\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-control-b10357\llama-cli.exe                       9216
+C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\cudart-llama-bin-win-cuda-13.3-x64.zip 390970417
+C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\llama-b10357-bin-win-cuda-13.3-x64.zip 146694738
+C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-b10357\bin\llama-cli.exe                           9216
+C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-runtime-control-b10357\llama-cli.exe                       9216
 ROOT: C:/tools
-ROOT: C:/Users/PC/Downloads
-ROOT: C:/Users/PC/tools
+ROOT: C:/Users/USER/Downloads
+ROOT: C:/Users/USER/tools
 ABSENT
-ROOT: C:/Users/PC/llama.cpp
+ROOT: C:/Users/USER/llama.cpp
 ABSENT
 
 

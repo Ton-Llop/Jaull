@@ -60,6 +60,7 @@
   ],
   "notes": [
     "Existing successful Validate reused unchanged; new Benchmark only; context and concurrency are provenance",
-    "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly"
+    "All 54 runtime files checked: 53 matching; llama-cli.exe absent, recovery denied by OS; reported before Benchmark; llama-bench and DLLs match exactly",
+    "Public anonymized derivative: account, hostname and user-directory strings replaced. Measurements, artifact/runtime binary digests, IDs and observation timestamps are unchanged. Original bytes are retained privately; this is not the byte-exact original export."
   ]
 }

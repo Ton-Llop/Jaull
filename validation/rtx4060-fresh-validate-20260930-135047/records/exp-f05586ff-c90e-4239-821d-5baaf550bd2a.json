@@ -118,7 +118,7 @@
       "format": "gguf",
       "quantization": "Q4_K_M",
       "size_bytes": 4683074240,
-      "local_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
       "is_downloaded": true,
       "is_verified": true
@@ -140,9 +140,9 @@
       "observed_backend": "cuda",
       "observed_source": "llama.cpp runtime output",
       "executed_command": [
-        "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+        "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
         "--model",
-        "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
         "--ctx-size",
         "4096",
         "--n-gpu-layers",
@@ -914,7 +914,7 @@
     "preflight": {
       "runtime_capability": {
         "runtime_family": "llama_cpp",
-        "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+        "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
         "binary_status": "available",
         "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
         "backend_capabilities": [
@@ -1038,7 +1038,7 @@
         },
         "runtime_capability": {
           "runtime_family": "llama_cpp",
-          "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+          "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
           "binary_status": "available",
           "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
           "backend_capabilities": [

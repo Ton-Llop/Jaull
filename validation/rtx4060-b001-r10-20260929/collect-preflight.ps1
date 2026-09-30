@@ -24,7 +24,7 @@ Invoke-LoggedCheck 'GPU identity and memory at preflight timestamp' {
     nvidia-smi --query-gpu=name,uuid,memory.total,memory.free,driver_version --format=csv
 }
 Invoke-LoggedCheck 'Reference artifact local SHA-256 and cached download metadata' {
-    $artifactPath = 'C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf'
+    $artifactPath = 'C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf'
     Get-Item -LiteralPath $artifactPath | Format-List FullName,Length
     $artifactHash = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-Output "SHA256: $artifactHash"

@@ -1,8 +1,0 @@
-{
-  "task": "general_chat",
-  "mode": "interactive",
-  "context_length": 4096,
-  "concurrent_users": 1,
-  "min_generation_tps": null,
-  "max_ttft_ms": null
-}

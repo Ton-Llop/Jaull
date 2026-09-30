@@ -5,10 +5,10 @@ En línea: 122 Carácter: 5
 +     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
- 
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 110, in <module>
+
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 110, in <module>
     main()
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 70, in main
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121225.py", line 70, in main
     raise RuntimeError('CUDA runtime not ready; STOP')
 RuntimeError: CUDA runtime not ready; STOP
 EXIT_CODE: 1

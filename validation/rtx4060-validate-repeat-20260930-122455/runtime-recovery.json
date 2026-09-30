@@ -7,7 +7,7 @@
     "digest": "sha256:77c7b50e48aa96f4e5e21432ae83df11cb72eae5a4e38a4b0fbcafbde5458525"
   },
   "archive_sha256": "77c7b50e48aa96f4e5e21432ae83df11cb72eae5a4e38a4b0fbcafbde5458525",
-  "binary_dir": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin",
+  "binary_dir": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin",
   "checks": [
     {
       "name": "cublas64_12.dll",

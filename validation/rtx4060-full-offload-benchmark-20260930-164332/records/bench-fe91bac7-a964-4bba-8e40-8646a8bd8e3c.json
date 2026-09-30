@@ -119,7 +119,7 @@
       "format": "gguf",
       "quantization": "Q4_K_M",
       "size_bytes": 4683074240,
-      "local_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
       "is_downloaded": true,
       "is_verified": true
@@ -178,7 +178,7 @@
         "format": "gguf",
         "quantization": "Q4_K_M",
         "size_bytes": 4683074240,
-        "local_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
         "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
         "is_downloaded": true,
         "is_verified": true
@@ -287,9 +287,9 @@
       "peak_ram_bytes": 4827664384,
       "peak_vram_bytes": null,
       "command": [
-        "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-bench.exe",
+        "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-bench.exe",
         "-m",
-        "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
         "-dev",
         "CUDA0",
         "-ngl",
@@ -305,12 +305,12 @@
       "failure_reason": null,
       "message": null,
       "raw_stdout": "| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |\n| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |\n| qwen2 7B Q4_K - Medium         |   4.36 GiB |     7.62 B | CUDA       |  -1 | CUDA0        |           pp512 |      2555.13 ± 37.53 |\n| qwen2 7B Q4_K - Medium         |   4.36 GiB |     7.62 B | CUDA       |  -1 | CUDA0        |           tg128 |         52.73 ± 0.04 |\n\nbuild: ba0ba54d9 (11258)\n",
-      "raw_stderr": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\n"
+      "raw_stderr": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\n"
     },
     "llama_bench_capability": {
-      "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-bench.exe",
+      "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-bench.exe",
       "binary_status": "available",
-      "version_text": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+      "version_text": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
       "probe_source": "llama-bench --version",
       "message": null
     },

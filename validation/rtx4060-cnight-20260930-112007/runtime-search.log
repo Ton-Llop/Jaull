@@ -1,7 +1,7 @@
 ﻿SEARCH_ROOT: .venv
-SEARCH_ROOT: C:/Users/PC/tools
+SEARCH_ROOT: C:/Users/USER/tools
 ABSENT
-SEARCH_ROOT: C:/Users/PC/llama.cpp
+SEARCH_ROOT: C:/Users/USER/llama.cpp
 ABSENT
 SEARCH_ROOT: C:/tools
 

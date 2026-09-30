@@ -1,6 +1,6 @@
 {
   "runtime_family": "llama_cpp",
-  "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b10357\\bin\\llama-cli.exe",
+  "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b10357\\bin\\llama-cli.exe",
   "binary_status": "available",
   "version_text": "version: 10357 (689e227db)\nbuilt with Clang 20.1.8 for Windows x86_64",
   "backend_capabilities": [

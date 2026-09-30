@@ -1,14 +1,14 @@
 {
   "experiment_id": "exp-54063df9-685d-4b86-a481-acc98e768567",
-  "experiment_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-54063df9-685d-4b86-a481-acc98e768567.json",
-  "experiment_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\records\\exp-54063df9-685d-4b86-a481-acc98e768567.json",
-  "experiment_log_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\logs\\exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+  "experiment_store_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\experiments\\exp-54063df9-685d-4b86-a481-acc98e768567.json",
+  "experiment_copy_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\records\\exp-54063df9-685d-4b86-a481-acc98e768567.json",
+  "experiment_log_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\logs\\exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
   "benchmarks": [
     {
       "id": "bench-491757e3-204b-4956-b89e-61d39ce2f76b",
-      "store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\benchmarks\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
-      "copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\records\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
-      "log_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\logs\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "store_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\benchmarks\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "copy_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\records\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "log_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-b001-r10-20260929\\logs\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
       "success": true
     }
   ],

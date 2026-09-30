@@ -3,7 +3,7 @@
   "branch": "c_night",
   "initial_git_status_before_directory_creation": "",
   "status_at_capture": "",
-  "prior_campaign": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+  "prior_campaign": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
   "scope": "Validate only; no Benchmark; no historical evidence changes",
   "environment": ".venv/rtx4060-py312; Python 3.12.14; uv locked check matched",
   "agents_md": "Absent",

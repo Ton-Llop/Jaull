@@ -466,18 +466,25 @@ def test_evidence_inspection_errors_are_partial_and_do_not_stop_other_checks(
     ))
     before = manifest.model_dump_json()
     original = getattr(Path, operation)
-    calls = 0
+    checking_size = False
+    original_is_file = Path.is_file
+
+    def arm_size_check(path: Path, *args: object, **kwargs: object) -> bool:
+        nonlocal checking_size
+        result = original_is_file(path, *args, **kwargs)
+        if path == report:
+            checking_size = True
+        return result
 
     def fail_inspection(path: Path, *args: object, **kwargs: object) -> object:
-        nonlocal calls
-        if path == report:
-            calls += 1
-            # resolve and is_file stat first; fail the subsequent size check.
-            if operation == "resolve" or calls == 3:
-                code = errno.EACCES if error_type is PermissionError else errno.ENOENT
-                raise error_type(code, "evidence inspection failed")
+        if path == report and (operation == "resolve" or checking_size):
+            code = errno.EACCES if error_type is PermissionError else errno.ENOENT
+            raise error_type(code, "evidence inspection failed")
         return original(path, *args, **kwargs)
 
+    if operation == "stat":
+        # Fail after the real file check, independent of pathlib's internal stats.
+        monkeypatch.setattr(Path, "is_file", arm_size_check)
     monkeypatch.setattr(Path, operation, fail_inspection)
     result = _service(experiment, evidence_root=tmp_path).validate(manifest)
 

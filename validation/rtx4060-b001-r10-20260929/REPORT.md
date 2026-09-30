@@ -1,3 +1,5 @@
+> Publication note (2026-09-30): this is an anonymized derivative. Statements below about original bytes/hashes describe collection-time evidence, not this public copy. See validation/public-anonymization.json and the campaign PUBLICATION.md.
+
 # RTX 4060 — rèplica de referència B001-R10
 
 Campanya iniciada el 29/09/2026; execució Windows local el 30/09/2026 (UTC+02).
@@ -56,7 +58,7 @@ desactivat la verificació TLS. No s'ha requerit administrador ni fet neteja.
 - SHA-256 local recalculat abans de Validate:
   `65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423`.
 - Path real:
-  `C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf`.
+  `C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf`.
 
 Configuració d'inferència copiada del baseline: context 4096, concurrència 1,
 KV float16, batch declarat 1. Anàlisi recalculada amb serveis reals i congelada a

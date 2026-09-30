@@ -74,7 +74,7 @@
   },
   "runtime_capability": {
     "runtime_family": "llama_cpp",
-    "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+    "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
     "binary_status": "available",
     "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
     "backend_capabilities": [

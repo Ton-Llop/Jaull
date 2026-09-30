@@ -100,5 +100,7 @@
       "description": null
     }
   ],
-  "notes": []
+  "notes": [
+    "Public anonymized derivative: account, hostname and user-directory strings replaced. Measurements, artifact/runtime binary digests, IDs and observation timestamps are unchanged. Original bytes are retained privately; this is not the byte-exact original export."
+  ]
 }

@@ -5,27 +5,27 @@
   "git_commit": "55b31d7a2957345a89576d19a14eb30e73d80eac",
   "case_file": {
     "path": "case.json",
-    "sha256": "dae47f9ebe82fce9f73d4b91a49a33f1e3fa71bce1e6f8dec64bc6008de6cb1c",
-    "size_bytes": 2036
+    "sha256": "9f01ae7b4b056e79511ad7ac5e908f08226171758457be6c582c6abb81d31e9e",
+    "size_bytes": 2304
   },
   "experiment_file": {
     "path": "records/experiment.json",
-    "sha256": "ca9617ea45e365a8248c7f3fcc52c12fbe58feda80767cfeca6ec23aed841d29",
-    "size_bytes": 39986
+    "sha256": "18ad36b72e506e2c1030af4a4a36444c50aae354a5c582edeee86f79fdd88dd4",
+    "size_bytes": 39996
   },
   "benchmark_files": [
     {
       "path": "records/benchmarks/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.json",
-      "sha256": "870e949be6537f77594c0cde3a925a01b445e6fb5c099bd298791b1e97443fa0",
-      "size_bytes": 12660,
+      "sha256": "e03505ff6c12bd31d4bad8e777985260da103f37e6c18eeb34b9a530ac581171",
+      "size_bytes": 12682,
       "benchmark_id": "bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c"
     }
   ],
   "evidence_files": [
     {
       "path": "evidence/logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
-      "sha256": "a47176fa966cfbd48fabbd301010d9ade30a0ac2383d88aba40bca18e7d5f5ca",
-      "size_bytes": 748075,
+      "sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd",
+      "size_bytes": 748315,
       "reference": {
         "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
         "role": "runtime_log",
@@ -36,8 +36,8 @@
     },
     {
       "path": "evidence/logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
-      "sha256": "9d39b5d04f81199a62ffd2c88b5e1d16501ecb2f1abec4675d40d18d3d3acb66",
-      "size_bytes": 1306,
+      "sha256": "24eb997dd6abcc08ab09e21b0ce130f8a80eac9b6ceea3c0441ccfa4c911c8a4",
+      "size_bytes": 1312,
       "reference": {
         "path": "logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
         "role": "runtime_log",
@@ -48,8 +48,8 @@
     },
     {
       "path": "evidence/preflight.json",
-      "sha256": "014f1783c4a4c903ed30a39672c71fd18f03bb10a7b9714b732ffa473d6420fa",
-      "size_bytes": 2303,
+      "sha256": "635d9c4bb3cb359c616b49709cb504145e350445494f21f2562f0cf89a928557",
+      "size_bytes": 2311,
       "reference": {
         "path": "preflight.json",
         "role": "other",

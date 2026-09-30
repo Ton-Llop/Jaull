@@ -1,9 +1,0 @@
-{
-  "source_commit": "1d12f6306bfcac2cf13786945bf2b4f22582184c",
-  "branch": "c_night",
-  "initial_git_status": "",
-  "scope": "Fresh plan and Validate only; no prior flags or requests loaded; no Benchmark",
-  "environment": "Python 3.12.14; .venv/rtx4060-py312; uv locked check matched",
-  "agents_md": "Absent",
-  "gates": "Full gates not repeated for this Validate-only task"
-}

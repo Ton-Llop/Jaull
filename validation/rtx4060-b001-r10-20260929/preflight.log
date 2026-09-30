@@ -1,10 +1,10 @@
 ﻿**********************
 Inicio de la transcripción de Windows PowerShell
 Hora de inicio: 20260929232003
-Nombre de usuario: ROGERLLOP\PC
-Usuario RunAs: ROGERLLOP\PC
-Nombre de la configuración: 
-Máquina: ROGERLLOP (Microsoft Windows NT 10.0.26200.0)
+Nombre de usuario: PUBLIC_HOST\USER
+Usuario RunAs: PUBLIC_HOST\USER
+Nombre de la configuración:
+Máquina: PUBLIC_HOST (Microsoft Windows NT 10.0.26200.0)
 Aplicación host: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}
 & .\validation\rtx4060-b001-r10-20260929\collect-preflight.ps1
 Id. de proceso: 12712
@@ -17,7 +17,7 @@ WSManStackVersion: 3.0
 PSRemotingProtocolVersion: 2.3
 SerializationVersion: 1.1.0.1
 **********************
-La transcripción ha comenzado. El archivo de salida es C:\Users\PC\OneDrive\Desktop\Jaull\validation\rtx4060-b001-r10-20260929\preflight.log
+La transcripción ha comenzado. El archivo de salida es C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-b001-r10-20260929\preflight.log
 CHECK: git rev-parse HEAD
 2026-09-29T23:20:03.8911247+02:00
 
@@ -41,14 +41,14 @@ CHECK: Reference artifact local SHA-256 and cached download metadata
 2026-09-29T23:20:04.9453410+02:00
 
 
-FullName : C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf
+FullName : C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf
 Length   : 4683074240
 
 
 
 SHA256: 65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423
 EXPECTED_HASH_MATCH: True
-C:\Users\PC\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\.cache\huggingface\download\Qwen2.5-7B-Instruct-Q4_K_M.gguf.metadata
+C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\.cache\huggingface\download\Qwen2.5-7B-Instruct-Q4_K_M.gguf.metadata
 8911e8a47f92bac19d6f5c64a2e2095bd2f7d031
 65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423
 1790703676.056065

@@ -1,22 +1,22 @@
 Traceback (most recent call last):
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121948.py", line 115, in <module>
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121948.py", line 115, in <module>
     main()
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121948.py", line 92, in main
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\cnight-validate-repeat-20260930-121948.py", line 92, in main
     result = advisor.run_experiment(request)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\src\jaull\advisor\service.py", line 558, in run_experiment
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\src\jaull\advisor\service.py", line 558, in run_experiment
     return self._experiment_runner().run(request)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\src\jaull\experiments\runner.py", line 112, in run
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\src\jaull\experiments\runner.py", line 112, in run
     record = build_experiment_record(
              ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\src\jaull\evaluation\experiments.py", line 67, in build_experiment_record
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\src\jaull\evaluation\experiments.py", line 67, in build_experiment_record
     return ExperimentRecord.create(
            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\src\jaull\domain\experiments.py", line 267, in create
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\src\jaull\domain\experiments.py", line 267, in create
     return cls(
            ^^^^
-  File "C:\Users\PC\OneDrive\Desktop\Jaull\.venv\rtx4060-py312\Lib\site-packages\pydantic\main.py", line 263, in __init__
+  File "C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-py312\Lib\site-packages\pydantic\main.py", line 263, in __init__
     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 pydantic_core._pydantic_core.ValidationError: 1 validation error for ExperimentRecord

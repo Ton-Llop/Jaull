@@ -117,7 +117,7 @@
       "format": "gguf",
       "quantization": "Q4_K_M",
       "size_bytes": 4683074240,
-      "local_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
       "is_downloaded": true,
       "is_verified": true
@@ -906,7 +906,7 @@
     "preflight": {
       "runtime_capability": {
         "runtime_family": "llama_cpp",
-        "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+        "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
         "binary_status": "available",
         "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
         "backend_capabilities": [
@@ -1030,7 +1030,7 @@
         },
         "runtime_capability": {
           "runtime_family": "llama_cpp",
-          "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+          "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
           "binary_status": "available",
           "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
           "backend_capabilities": [
@@ -1152,6 +1152,6 @@
       "Prior experiment remains unchanged: exp-38e97695-954d-42ef-83e0-1bacecda01dc"
     ]
   },
-  "persisted_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
-  "raw_log_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log"
+  "persisted_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+  "raw_log_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log"
 }

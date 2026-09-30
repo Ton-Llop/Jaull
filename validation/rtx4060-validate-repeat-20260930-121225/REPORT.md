@@ -1,3 +1,5 @@
+> Publication note (2026-09-30): this is an anonymized derivative. Statements below about original bytes/hashes describe collection-time evidence, not this public copy. See validation/public-anonymization.json and the campaign PUBLICATION.md.
+
 ﻿# Repetición de Validate detenida antes de ejecutar
 
 Rama c_night; source commit 0af3b4fbdf23607e86de13e394961c422ccb1c24. Fix de --batch-size presente. Git inicialmente limpio; al finalizar solo aparece este directorio de diagnóstico sin seguimiento. Sin staging ni cambios de código.

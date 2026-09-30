@@ -146,17 +146,24 @@ def test_bundle_file_inspection_failure_is_a_domain_error(
     case_file = destination / "case.json"
     original = getattr(Path, operation)
     failure = error_type("bundle inspection failed")
-    calls = 0
+    checking_size = False
+    original_is_file = Path.is_file
+
+    def arm_size_check(path: Path, *args: Any, **kwargs: Any) -> bool:
+        nonlocal checking_size
+        result = original_is_file(path, *args, **kwargs)
+        if path == case_file:
+            checking_size = True
+        return result
 
     def fail_inspection(path: Path, *args: Any, **kwargs: Any) -> Any:
-        nonlocal calls
-        if path == case_file:
-            calls += 1
-            # resolve and is_file stat first; fail the subsequent size check.
-            if operation == "resolve" or calls == 3:
-                raise failure
+        if path == case_file and (operation == "resolve" or checking_size):
+            raise failure
         return original(path, *args, **kwargs)
 
+    if operation == "stat":
+        # Fail after the real file check, independent of pathlib's internal stats.
+        monkeypatch.setattr(Path, "is_file", arm_size_check)
     monkeypatch.setattr(Path, operation, fail_inspection)
     with pytest.raises(CaseBundleError, match=r"Could not inspect.*case\.json") as error:
         service.load(destination)
