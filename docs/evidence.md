@@ -89,6 +89,12 @@ does not become a worse recommendation because a binary has not been installed y
 
 ## Execution
 
+Generated llama.cpp plans do not infer `--batch-size` from the memory estimate's
+sequence batch: these are different concepts. Prompt-token batching uses runtime
+defaults, which may vary by build. Explicit flags in older saved plans are still
+honored for reproducibility; they are not silently rewritten. A record made with
+an explicit token batch is not automatically equivalent to one using defaults.
+
 | Path | Runtime | Artifacts |
 |---|---|---|
 | `jaull run` (CLI) | `llama-cli --single-turn` | single-file GGUF |

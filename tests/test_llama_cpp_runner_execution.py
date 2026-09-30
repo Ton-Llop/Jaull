@@ -180,6 +180,23 @@ def test_runner_applies_planned_batch_size_before_execution(
         assert result.command[result.command.index("--batch-size") + 1] == batch_size
 
 
+def test_generated_launch_leaves_prompt_token_batch_to_runtime(tmp_path: Path) -> None:
+    from tests._execution_fixtures import qwen_ctx4096_estimate
+
+    estimate = qwen_ctx4096_estimate(with_runtime_recommendation=True)
+    assert estimate.inference_configuration.batch_size == 1
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend()
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+    result = runner.run(
+        artifact=_artifact(model_path), prompt="Hello", runtime=estimate.runtime_recommendation,
+    )
+    assert "--batch-size" not in result.command
+    assert "--ubatch-size" not in result.command
+    assert result.command == backend.requests[0].command
+
+
 def test_runner_records_cuda_only_when_llama_cpp_reports_it(tmp_path: Path) -> None:
     model_path = tmp_path / "model.gguf"
     model_path.write_bytes(b"gguf")

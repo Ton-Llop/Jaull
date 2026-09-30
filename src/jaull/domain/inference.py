@@ -27,6 +27,8 @@ class InferenceConfiguration(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     context_length: int = Field(gt=0)
+    # Independent sequences per batch, each retaining its own context/KV cache.
+    # Not llama.cpp's --batch-size (tokens submitted per llama_decode call).
     batch_size: int = Field(default=1, gt=0)
     target_device: TargetDevice = TargetDevice.AUTO
     precision: WeightPrecision | None = None
@@ -36,5 +38,5 @@ class InferenceConfiguration(BaseModel):
     device_reserve_bytes: int = Field(default=0, ge=0)
     # Number of independent inference sessions the estimate should size for. Each
     # session keeps its own KV cache, so N users multiply the KV footprint by N —
-    # this is an orthogonal axis to ``batch_size`` (parallel tokens per session).
+    # this is an orthogonal axis to ``batch_size`` (sequences per batch).
     concurrent_users: int = Field(default=1, ge=1)
