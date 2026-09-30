@@ -100,43 +100,64 @@ class TransformersBenchmarkRunner:
                 peak_vram_bytes=exc.observation.peak_vram_bytes,
             )
 
-        payload = _parse_worker_payload(result.stdout)
         try:
+            payload = _parse_worker_payload(result.stdout)
             measurements = [
                 _measurement_from_payload(item)
                 for item in _list_payload(payload.get("measurements"))
             ]
-        except (TypeError, ValueError) as exc:
-            raise BenchmarkParseError(str(exc)) from exc
-        if not measurements:
-            raise BenchmarkParseError("Transformers benchmark emitted no measurements.")
-        return BenchmarkObservation(
-            success=True,
-            measurements=measurements,
-            repetitions=request.repetitions,
-            duration_seconds=result.duration_seconds,
-            methodology=_str_or_none(payload.get("methodology")),
-            model_load_seconds=_float_or_none(payload.get("model_load_seconds")),
-            warmup_seconds=_float_or_none(payload.get("warmup_seconds")),
-            time_to_first_token_seconds=_float_or_none(
-                payload.get("time_to_first_token_seconds")
-            ),
-            time_to_first_token_stddev_seconds=_float_or_none(
-                payload.get("time_to_first_token_stddev_seconds")
-            ),
-            generation_latency_seconds=_float_or_none(
-                payload.get("generation_latency_seconds")
-            ),
-            generation_latency_stddev_seconds=_float_or_none(
-                payload.get("generation_latency_stddev_seconds")
-            ),
-            peak_ram_bytes=result.observation.peak_ram_bytes,
-            peak_vram_bytes=result.observation.peak_vram_bytes,
-            command=command,
-            exit_code=result.exit_code,
-            raw_stdout=result.stdout,
-            raw_stderr=result.stderr,
-        )
+            if not measurements:
+                raise BenchmarkParseError("Transformers benchmark emitted no measurements.")
+            for kind, sizes in (
+                (BenchmarkMeasurementKind.PREFILL, request.prefill_sizes),
+                (BenchmarkMeasurementKind.GENERATION, request.generation_sizes),
+            ):
+                observed_count = sum(item.kind is kind for item in measurements)
+                if observed_count != len(sizes):
+                    raise BenchmarkParseError(
+                        f"Transformers benchmark workload mismatch: expected {len(sizes)} "
+                        f"{kind.value} measurements, received {observed_count}."
+                    )
+            return BenchmarkObservation(
+                success=True,
+                measurements=measurements,
+                repetitions=request.repetitions,
+                duration_seconds=result.duration_seconds,
+                methodology=_str_or_none(payload.get("methodology")),
+                model_load_seconds=_float_or_none(payload.get("model_load_seconds")),
+                warmup_seconds=_float_or_none(payload.get("warmup_seconds")),
+                time_to_first_token_seconds=_float_or_none(
+                    payload.get("time_to_first_token_seconds")
+                ),
+                time_to_first_token_stddev_seconds=_float_or_none(
+                    payload.get("time_to_first_token_stddev_seconds")
+                ),
+                generation_latency_seconds=_float_or_none(
+                    payload.get("generation_latency_seconds")
+                ),
+                generation_latency_stddev_seconds=_float_or_none(
+                    payload.get("generation_latency_stddev_seconds")
+                ),
+                peak_ram_bytes=result.observation.peak_ram_bytes,
+                peak_vram_bytes=result.observation.peak_vram_bytes,
+                command=command,
+                exit_code=result.exit_code,
+                raw_stdout=result.stdout,
+                raw_stderr=result.stderr,
+            )
+        except (BenchmarkRunnerError, KeyError, TypeError, ValueError) as exc:
+            return _failed_observation(
+                command=command,
+                request=request,
+                failure_reason=BenchmarkFailureReason.PARSE_ERROR,
+                message=str(exc),
+                stdout=result.stdout,
+                stderr=result.stderr,
+                duration_seconds=result.duration_seconds,
+                exit_code=result.exit_code,
+                peak_ram_bytes=result.observation.peak_ram_bytes,
+                peak_vram_bytes=result.observation.peak_vram_bytes,
+            )
 
 
 def build_transformers_benchmark_command(
@@ -245,6 +266,10 @@ def _parse_worker_payload(stdout: str) -> dict[str, object]:
         if isinstance(payload, dict):
             if payload.get("success") is False:
                 raise BenchmarkRunnerError(str(payload.get("error") or "worker failed"))
+            if payload.get("success") is not True:
+                raise BenchmarkParseError(
+                    "Transformers benchmark worker did not emit a successful result."
+                )
             return dict(payload)
     raise BenchmarkParseError("Transformers benchmark worker did not emit JSON output.")
 
@@ -299,7 +324,7 @@ def _failed_observation(
         measurements=[],
         repetitions=request.repetitions,
         duration_seconds=duration_seconds,
-        methodology="transformers_isolated_inference_v2",
+        methodology="transformers_isolated_inference_v3",
         peak_ram_bytes=peak_ram_bytes,
         peak_vram_bytes=peak_vram_bytes,
         command=command,

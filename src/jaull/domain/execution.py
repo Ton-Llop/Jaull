@@ -24,7 +24,7 @@ class ExecutionFailureReason(StrEnum):
 
 
 class ExecutionMeasurementMetadata(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     ram_measurement: str = "process_rss"
     vram_measurement: str = "nvml_process_memory"
@@ -107,7 +107,7 @@ class RuntimeReportedAllocation(BaseModel):
 
 
 class ExecutionObservation(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     success: bool
     duration_seconds: float = Field(ge=0.0)

@@ -76,7 +76,7 @@ class BenchmarkGpuLayers(BaseModel):
 
 
 class BenchmarkMeasurement(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     kind: BenchmarkMeasurementKind
     tokens: int = Field(gt=0)
@@ -92,7 +92,7 @@ class BenchmarkMeasurement(BaseModel):
 
 
 class BenchmarkObservation(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     success: bool
     measurements: list[BenchmarkMeasurement] = Field(default_factory=list)

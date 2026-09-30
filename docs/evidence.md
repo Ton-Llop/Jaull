@@ -137,9 +137,20 @@ itself reported. The matrix runner can run the same artifact on CPU and on the s
 backend, recording each configuration separately and reporting skips and failures instead
 of hiding them.
 
-**`transformers_isolated_inference_v2`** — runs in a separate Python process and reports
-prefill and generation throughput, model load time, time to first token and generation
-latency, each with a standard deviation, plus peak RAM and VRAM.
+**`transformers_isolated_inference_v3`** — runs in a separate Python process and reports
+prefill and generation throughput with standard deviations, model load and warmup
+times, time to first token and generation latency with standard deviations, plus
+peak RAM and VRAM.
+CUDA/HIP work is synchronized on the selected device before and after timed inference;
+prefill is completed before starting the steady-state decode timer. CPU requires no
+accelerator synchronization. These are single-device microbenchmarks, not multi-GPU
+or concurrent service qualification.
+
+Historical `transformers_isolated_inference_v2` records remain readable, but their GPU
+timings did not synchronize asynchronous work. They are not current recommendation
+performance evidence. Default comparisons prefer v3 when available for the same
+configuration; historical-only comparisons remain accessible and mixed methodologies
+retain their warning. No historical observations are rewritten.
 
 A `BenchmarkRecord` stores the request alongside the observation, and validates that the
 artifact, runtime, backend and GPU-layer settings in the record match the request that
@@ -153,6 +164,9 @@ disembodied tokens/second numbers. It keeps the latest record per configuration,
 the current methodology per runtime, and warns when records come from different machines or
 different methodologies rather than quietly ranking them against each other. There is
 deliberately no single "winner" score.
+Failed runs remain stored for diagnostics, but are excluded before selecting the latest
+successful run and comparing throughput. The comparison reports that exclusion explicitly;
+a later failure does not replace earlier successful performance evidence.
 
 ### Eligibility for recommendation ranking
 

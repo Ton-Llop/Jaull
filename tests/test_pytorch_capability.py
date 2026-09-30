@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from jaull.advisor.service import (
     AdvisorService,
     _readiness_for_artifact,
@@ -20,6 +22,7 @@ from jaull.domain.execution import (
 from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat, ModelIdentity
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
+    ExecutionReadiness,
     ExecutionReadinessReason,
     ExecutionReadinessStatus,
     LlamaCppBackendCapability,
@@ -27,6 +30,8 @@ from jaull.domain.runtime import (
     LlamaCppBinaryStatus,
     LlamaCppCapabilityReason,
     LlamaCppRuntimeCapability,
+    LlamaCppRuntimeDevice,
+    PyTorchBackendCapability,
     PyTorchBackendCapabilityState,
     PyTorchRuntimeStatus,
     RuntimeBackendSelection,
@@ -583,6 +588,60 @@ def test_llama_cpp_readiness_still_accepts_llama_cpp_capability() -> None:
 
     assert readiness.status is ExecutionReadinessStatus.READY
     assert readiness.runtime_capability is capability
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("runtime", ["pytorch", "llama_cpp"])
+@pytest.mark.parametrize("backend", [ComputeBackend.CPU, ComputeBackend.CUDA])
+def test_readiness_json_preserves_selected_backend_capability_type(
+    runtime: str,
+    legacy: bool,
+    backend: ComputeBackend,
+) -> None:
+    devices = (
+        [{"index": 0, "name": "Test GPU", "memory_total_bytes": 4096,
+          "memory_free_bytes": 2048}]
+        if backend is ComputeBackend.CUDA else []
+    )
+    if runtime == "pytorch":
+        readiness = evaluate_pytorch_execution_readiness(
+            selection=_selection(backend),
+            runtime_capability=parse_pytorch_probe_json(
+                _probe_json(
+                    cuda_available=bool(devices), cuda_device_count=len(devices), devices=devices,
+                )
+            ),
+        )
+        expected_type = PyTorchBackendCapability
+    else:
+        capability = LlamaCppBackendCapability(
+            backend=backend,
+            state=LlamaCppBackendCapabilityState.CONFIRMED,
+            reason=LlamaCppCapabilityReason.RUNTIME_AVAILABLE,
+            devices=[
+                LlamaCppRuntimeDevice(
+                    backend=backend, runtime_id="CUDA0", name="Test GPU",
+                    memory_total_bytes=4096, memory_free_bytes=2048,
+                )
+            ] if devices else [],
+        )
+        readiness = evaluate_execution_readiness(
+            selection=_selection(backend),
+            runtime_capability=LlamaCppRuntimeCapability(
+                binary_status=LlamaCppBinaryStatus.AVAILABLE,
+                backend_capabilities=[capability],
+            ),
+        )
+        expected_type = LlamaCppBackendCapability
+    payload = json.loads(readiness.model_dump_json())
+    if legacy:
+        payload["runtime_capability"].pop("runtime_family")
+
+    restored = ExecutionReadiness.model_validate_json(json.dumps(payload))
+
+    assert isinstance(restored.selected_backend_capability, expected_type)
+    assert restored == readiness
+    assert restored.model_dump_json() == readiness.model_dump_json()
 
 
 def _probe_json(**updates: object) -> str:

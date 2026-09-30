@@ -13,6 +13,7 @@ import pytest
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
 from jaull.execution.errors import (
     ExecutableNotFoundError,
+    ExecutionError,
     ExecutionFailedError,
     ExecutionTimeoutError,
 )
@@ -123,6 +124,28 @@ def test_host_backend_translates_timeout() -> None:
     assert ctx.value.result.observation.success is False
     assert ctx.value.result.observation.failure_reason is ExecutionFailureReason.TIMEOUT
     assert ctx.value.result.observation.duration_seconds >= 0.01
+
+
+@pytest.mark.parametrize("invalid_part", ["argument", "environment"])
+def test_host_backend_translates_invalid_spawn_inputs(invalid_part: str) -> None:
+    command = (sys.executable, "-c", "pass")
+    environment = {}
+    if invalid_part == "argument":
+        command = (*command, "embedded\x00null")
+    else:
+        environment = {"JAULL_TEST_INVALID": "embedded\x00null"}
+
+    with pytest.raises(ExecutionError) as error:
+        HostExecutionBackend().execute(
+            ExecutionRequest(command=command, environment=environment)
+        )
+
+    assert isinstance(error.value.__cause__, ValueError)
+    observation = error.value.observation
+    assert observation is not None
+    assert not observation.success
+    assert observation.failure_reason is ExecutionFailureReason.SPAWN_ERROR
+    assert observation.exit_code is None
 
 
 def test_host_backend_raises_failed_with_captured_result() -> None:

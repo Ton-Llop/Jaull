@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from jaull.domain.execution import (
     ExecutionFailureReason,
     ExecutionMeasurementMetadata,
@@ -38,6 +41,17 @@ def test_execution_observation_success_serializes_measurement_metadata() -> None
         # above stays the driver's view; this is a separate observation source.
         "runtime_allocation": None,
     }
+    assert ExecutionObservation.model_validate_json(observation.model_dump_json()) == observation
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+@pytest.mark.parametrize("field", ["duration_seconds", "sample_interval_seconds"])
+def test_execution_measurements_reject_nonfinite_time_values(field: str, value: float) -> None:
+    with pytest.raises(ValidationError):
+        if field == "duration_seconds":
+            ExecutionObservation(success=True, duration_seconds=value, exit_code=0)
+        else:
+            ExecutionMeasurementMetadata(sample_interval_seconds=value)
 
 
 def test_execution_observation_failure_allows_missing_metrics() -> None:
