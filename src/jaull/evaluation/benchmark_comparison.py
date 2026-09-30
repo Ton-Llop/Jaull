@@ -16,7 +16,7 @@ from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 
 _PREFERRED_METHODOLOGY_BY_RUNTIME = {
     "llama.cpp": "llama_bench_v1",
-    "transformers": "transformers_isolated_inference_v2",
+    "transformers": "transformers_isolated_inference_v3",
 }
 
 
@@ -102,7 +102,10 @@ def _latest_records_by_configuration(
     if not records:
         return [], {}, []
 
-    filtered, warnings = _prefer_current_methodologies(records)
+    successful = [record for record in records if record.observation.success]
+    filtered, warnings = _prefer_current_methodologies(successful)
+    if len(successful) != len(records):
+        warnings.append("Failed benchmark runs were excluded from performance comparison.")
     grouped: dict[tuple[str, ...], list[BenchmarkRecord]] = {}
     for record in filtered:
         grouped.setdefault(_configuration_key(record), []).append(record)
@@ -165,11 +168,17 @@ def _metric_comparisons(
             candidate_measurement = candidate_map.get(key)
             if candidate_measurement is None:
                 continue
+            if baseline_measurement.mean_tokens_per_second == 0:
+                warning = (
+                    f"Relative throughput unavailable for {key[0].value} {key[1]} tokens: "
+                    "the baseline measured zero throughput."
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+                continue
             relative = (
                 candidate_measurement.mean_tokens_per_second
                 / baseline_measurement.mean_tokens_per_second
-                if baseline_measurement.mean_tokens_per_second > 0
-                else 0.0
             )
             comparisons.append(
                 BenchmarkPlanMetricComparison(
@@ -192,7 +201,7 @@ def _metric_comparisons(
 
 def _warnings(records: list[BenchmarkRecord]) -> list[str]:
     if not records:
-        return ["No benchmark records were provided."]
+        return ["No successful benchmark records were provided."]
     warnings: list[str] = []
     if not _same_machine(records):
         warnings.append("Machine identity differs.")
@@ -300,7 +309,10 @@ def _artifact_format(record: BenchmarkRecord) -> str:
 
 def _quantization_or_precision(record: BenchmarkRecord) -> str | None:
     return record.artifact.quantization or next(
-        (flag.value for flag in record.runtime.flags if flag.name == "torch_dtype"),
+        (
+            flag.value for flag in record.runtime.flags
+            if flag.name in {"quantization", "torch_dtype"}
+        ),
         None,
     )
 

@@ -41,7 +41,8 @@ from jaull.exceptions import JaullError
 _READ_CHUNK_BYTES = 1024 * 1024
 _LLAMA_CPP_BUILD = re.compile(
     r"(?:version:\s*)?(?P<number>\d+)\s*\((?P<commit>[0-9a-f]+)\)"
-    r"|build:\s*(?P<build_commit>[0-9a-f]+)\s*\((?P<build_number>\d+)\)",
+    r"|build:\s*(?P<build_commit>[0-9a-f]+)\s*\((?P<build_number>\d+)\)"
+    r"|build\s+(?P<version_number>\d+),\s*commit\s+(?P<version_commit>[0-9a-f]+)",
     re.IGNORECASE,
 )
 
@@ -228,7 +229,7 @@ class CaseValidationService:
         digests = {experiment.artifact.sha256} | {
             benchmark.artifact.sha256 for benchmark in benchmarks
         }
-        known = {digest for digest in digests if digest is not None}
+        known = {digest.lower() for digest in digests if digest is not None}
         if len(known) > 1:
             reason = "records declare different artifact digests"
             reasons.append(reason)
@@ -465,24 +466,44 @@ class CaseValidationService:
                 detail="none referenced",
             )
 
+        try:
+            root = self.evidence_root.resolve()
+        except OSError:
+            reason = f"Evidence root could not be resolved: {self.evidence_root}"
+            reasons.append(reason)
+            return CaseCheck(
+                name="evidence_files",
+                status=CaseConsistencyStatus.PARTIAL,
+                detail=reason,
+            )
+
         problems: list[str] = []
         for reference in references:
-            path = self.evidence_root / reference.path
-            if not path.is_file():
-                problems.append(f"{reference.path} is missing")
-                continue
-            if (
-                reference.size_bytes is not None
-                and path.stat().st_size != reference.size_bytes
-            ):
-                problems.append(f"{reference.path} does not match its recorded size")
+            try:
+                path = (root / reference.path).resolve()
+                try:
+                    path.relative_to(root)
+                except ValueError:
+                    problems.append(f"{reference.path} escapes its evidence root")
+                    continue
+                if not path.is_file():
+                    problems.append(f"{reference.path} is missing")
+                    continue
+                if (
+                    reference.size_bytes is not None
+                    and path.stat().st_size != reference.size_bytes
+                ):
+                    problems.append(f"{reference.path} does not match its recorded size")
+                    continue
+            except OSError:
+                problems.append(f"{reference.path} could not be read")
                 continue
             if reference.sha256 is None:
                 continue
             actual = _file_digest(path)
             if actual is None:
                 problems.append(f"{reference.path} could not be read")
-            elif actual != reference.sha256:
+            elif actual != reference.sha256.lower():
                 problems.append(f"{reference.path} does not match its recorded digest")
 
         if problems:
@@ -505,8 +526,8 @@ def _runtime_build_key(build: str) -> str:
     match = _LLAMA_CPP_BUILD.search(build)
     if match is None:
         return build
-    number = match.group("number") or match.group("build_number")
-    commit = match.group("commit") or match.group("build_commit")
+    number = match.group("number") or match.group("build_number") or match.group("version_number")
+    commit = match.group("commit") or match.group("build_commit") or match.group("version_commit")
     assert number is not None and commit is not None
     return f"llama.cpp {number} ({commit.casefold()})"
 

@@ -6,8 +6,11 @@ import pytest
 
 from jaull.domain.benchmarks import (
     BenchmarkFailureReason,
+    BenchmarkGpuLayers,
     BenchmarkMeasurementKind,
     BenchmarkObservation,
+    BenchmarkRecord,
+    BenchmarkRequest,
 )
 from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.hardware import ComputeBackend
@@ -97,6 +100,33 @@ def test_runtime_offload_flags_must_match_without_using_hfa_blocks() -> None:
         plan.artifact.to_model_artifact(), runtime, machine=hardware(), tps=50,
     )
     assert matching_benchmark(plan.model_copy(update={"runtime": runtime}), [benchmark]) is None
+
+
+@pytest.mark.parametrize("offload", ["-1", "all", "18", "0"])
+def test_full_offload_benchmark_matches_equivalent_launch_flag(offload: str) -> None:
+    plan = _plan().model_copy(update={"backend_selection": _selection(ComputeBackend.CUDA)})
+    runtime = plan.runtime.model_copy(update={"flags": [RuntimeFlag(
+        name="--n-gpu-layers", value=offload, source=RuntimeFlagSource.HARDWARE,
+        explanation="Requested runtime offload",
+    )]})
+    plan = plan.model_copy(update={"runtime": runtime})
+    base = _benchmark_record(
+        plan.artifact.to_model_artifact(), runtime, machine=hardware(), tps=50,
+    )
+    record = BenchmarkRecord.create(
+        hardware=hardware(),
+        request=BenchmarkRequest(
+            artifact=base.artifact, runtime=runtime, backend=ComputeBackend.CUDA,
+            device="0", gpu_layers=BenchmarkGpuLayers.full(), generation_sizes=(64,),
+        ),
+        observation=base.observation,
+    )
+    before = record.model_dump_json()
+
+    matched = matching_benchmark(plan, [record])
+
+    assert matched is (record if offload in {"-1", "all"} else None)
+    assert record.model_dump_json() == before
 
 
 def test_failed_benchmark_cannot_displace_successful_evidence() -> None:
@@ -230,7 +260,7 @@ def test_a_benchmark_of_another_precision_is_not_evidence(
     record_runtime = _with_precision_flag(plan.runtime, *record_flag)
     record = _benchmark_record(
         plan.artifact.to_model_artifact(), record_runtime,
-        machine=hardware(), tps=50, methodology="transformers_isolated_inference_v2",
+        machine=hardware(), tps=50, methodology="transformers_isolated_inference_v3",
     )
 
     assert matching_benchmark(
@@ -238,15 +268,20 @@ def test_a_benchmark_of_another_precision_is_not_evidence(
     ) is None
 
 
-def test_the_same_precision_still_matches() -> None:
+@pytest.mark.parametrize("methodology,expected_match", [
+    ("transformers_isolated_inference_v3", True),
+    ("transformers_isolated_inference_v2", False),
+])
+def test_the_same_precision_still_matches(
+    methodology: str, expected_match: bool,
+) -> None:
     """The guard must not reject evidence that does describe the plan."""
     plan = _transformers_plan()
     runtime = _with_precision_flag(plan.runtime, "quantization", "4bit")
     record = _benchmark_record(
         plan.artifact.to_model_artifact(), runtime,
-        machine=hardware(), tps=50, methodology="transformers_isolated_inference_v2",
+        machine=hardware(), tps=50, methodology=methodology,
     )
 
-    assert matching_benchmark(
-        plan.model_copy(update={"runtime": runtime}), [record]
-    ) is not None
+    matched = matching_benchmark(plan.model_copy(update={"runtime": runtime}), [record])
+    assert (matched is not None) is expected_match

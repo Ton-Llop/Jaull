@@ -1,0 +1,9 @@
+{
+  "runtime_family": "llama_cpp",
+  "binary_path": "C:\\tools\\llama.cpp\\llama-cli.exe",
+  "binary_status": "missing",
+  "version_text": null,
+  "backend_capabilities": [],
+  "probe_source": null,
+  "message": "Executable not found at C:\\tools\\llama.cpp\\llama-cli.exe."
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "identity": {
+    "case_id": "case-9d1e3d79-d183-4a12-870b-e38ca97f3a47",
+    "created_at": "2026-09-30T14:06:28.756091Z",
+    "label": "RTX 4060 fresh Validate Qwen2.5-7B Q4_K_M ctx4096 full offload",
+    "machine_fingerprint": [
+      "Windows 11",
+      "10.0.26200",
+      "AMD64",
+      "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+      "8",
+      "16",
+      "34282192896",
+      "NVIDIA GeForce RTX 4060:8585740288",
+      "NVIDIA GeForce RTX 4060:nvidia:dedicated:0x10de:0x2882:00000000:2B:00.0:GPU-bbbc059d-9014-f50c-72d1-511fe91342e6:8585740288:False"
+    ],
+    "artifact": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "format": "gguf",
+      "quantization": "Q4_K_M"
+    },
+    "runtime": "llama.cpp"
+  },
+  "experiment_record_id": "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+  "benchmark_record_ids": [],
+  "evidence_files": [
+    {
+      "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "role": "runtime_log",
+      "sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd",
+      "size_bytes": 748315,
+      "description": null
+    },
+    {
+      "path": "runtime-binary-hashes.json",
+      "role": "other",
+      "sha256": "318babde50d816224838979ea3a7b8391e6e93a428cbd393e1bc68a39094dbea",
+      "size_bytes": 4998,
+      "description": null
+    },
+    {
+      "path": "artifact-hash-check.json",
+      "role": "other",
+      "sha256": "acaa97236c1f11ee3ca844b930ba8540552dc08c08ae30513304d52eedbfe928",
+      "size_bytes": 339,
+      "description": null
+    },
+    {
+      "path": "actual-invocation.json",
+      "role": "other",
+      "sha256": "5511d8090a2cbf6a692233ef061d9d81fe6796915b10d33343c5fce7395e43d3",
+      "size_bytes": 633,
+      "description": null
+    },
+    {
+      "path": "observed-runtime-settings.json",
+      "role": "other",
+      "sha256": "a8c5be5caaa94322fd36be728385866ffd1f09500089ff826fc2c9ea152315f7",
+      "size_bytes": 322,
+      "description": null
+    },
+    {
+      "path": "execution-plan.json",
+      "role": "other",
+      "sha256": "4eddd6b72cb265a2159ec22199db20e8b66992e22768e269c0dcdded9b8fa22d",
+      "size_bytes": 22334,
+      "description": null
+    },
+    {
+      "path": "provenance.json",
+      "role": "other",
+      "sha256": "c94399ca4d5dbb9658675b9590789d0ea9f9eccdfa9feffbf9e703b95361dadd",
+      "size_bytes": 381,
+      "description": null
+    },
+    {
+      "path": "REPORT.md",
+      "role": "report",
+      "sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30",
+      "size_bytes": 5589,
+      "description": null
+    }
+  ],
+  "notes": [
+    "Offline packaging of an existing Windows RTX 4060 measurement; no new execution.",
+    "Source commit 1d12f63; llama.cpp b11258; effective token batches 2048/512; 29/29 offload units.",
+    "No benchmark attached: prior benchmarks used a different placement.",
+    "Runtime-reported CUDA buffers are not driver-attributed process VRAM; NVML unavailable.",
+    "Public anonymized derivative: account, hostname and user-directory strings replaced. Measurements, artifact/runtime binary digests, IDs and observation timestamps are unchanged. Original bytes are retained privately; this is not the byte-exact original export."
+  ]
+}

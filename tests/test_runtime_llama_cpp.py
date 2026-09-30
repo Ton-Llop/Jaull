@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
@@ -200,3 +202,26 @@ def test_default_dtype_used_when_precision_missing() -> None:
     rec = llama_cpp.build(estimate, _hardware(vram_gib=24, ram_gib=32))
     assert rec.command_preview is not None
     assert "llama-server" in rec.command_preview
+
+
+@pytest.mark.parametrize("batch_size", [1, 4])
+@pytest.mark.parametrize("concurrent_users", [1, 3])
+def test_sequence_batch_and_concurrency_do_not_become_prompt_token_batch(
+    batch_size: int, concurrent_users: int,
+) -> None:
+    estimate = _gguf_estimate(
+        status=CompatibilityStatus.COMFORTABLE,
+        effective_device=TargetDevice.GPU,
+        weights_bytes=4 * GIB,
+    )
+    cfg = estimate.inference_configuration.model_copy(update={
+        "batch_size": batch_size, "concurrent_users": concurrent_users,
+    })
+    estimate = estimate.model_copy(update={"inference_configuration": cfg})
+    before = estimate.model_dump_json()
+    rec = llama_cpp.build(estimate, _hardware(vram_gib=24, ram_gib=32))
+    assert all(flag.name not in {"--batch-size", "--ubatch-size"} for flag in rec.flags)
+    assert "--batch-size" not in (rec.command_preview or "")
+    assert "--ubatch-size" not in (rec.command_preview or "")
+    assert any("runtime default" in reason for reason in rec.reasons)
+    assert estimate.model_dump_json() == before

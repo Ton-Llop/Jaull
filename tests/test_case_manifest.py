@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 from pathlib import Path
 
@@ -335,6 +336,30 @@ def test_complete_provenance_and_equivalent_cli_bench_build_are_valid() -> None:
     assert checks["provenance"] is CaseConsistencyStatus.VALID
 
 
+@pytest.mark.parametrize("different_build", [False, True])
+def test_modern_build_format_ignores_loader_noise_but_preserves_real_difference(
+    different_build: bool,
+) -> None:
+    version = "version: 0.5.0-dev (build 11258, commit ba0ba54d9)"
+    experiment = experiment_record(version_text=version)
+    other_version = version.replace("ba0ba54d9", "abcdef123") if different_build else version
+    benchmark = benchmark_record(version_text=(
+        "ggml_cuda_init: found 1 CUDA devices\n"
+        "load_backend: loaded CUDA backend\n" + other_version + "\n"
+        "built with Clang 20.1.8 for Windows x86_64"
+    ))
+    before = (experiment.model_dump_json(), benchmark.model_dump_json())
+    result = _service(experiment, [benchmark]).validate(_manifest(experiment, [benchmark]))
+    build = next(check for check in result.checks if check.name == "runtime_build")
+    assert build.status is CaseConsistencyStatus.VALID
+    warned = any("different runtime builds" in warning for warning in result.warnings)
+    assert warned == different_build
+    if not different_build:
+        assert version in (build.detail or "")
+        assert "differs between records" not in (build.detail or "")
+    assert (experiment.model_dump_json(), benchmark.model_dump_json()) == before
+
+
 def test_a_different_runtime_family_is_inconsistent() -> None:
     experiment = experiment_record()
     from tests._case_fixtures import runtime as make_runtime
@@ -381,6 +406,131 @@ def test_evidence_paths_must_stay_relative_and_inside_their_root(path: str) -> N
         EvidenceFileReference(path=path)
 
 
+@pytest.mark.parametrize("outside", [False, True])
+@pytest.mark.parametrize("directory_link", [False, True])
+def test_evidence_symlinks_must_stay_inside_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outside: bool, directory_link: bool,
+) -> None:
+    from jaull.cases import validation
+
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target_dir = tmp_path / "outside" if outside else root / "inside"
+    target_dir.mkdir()
+    target = target_dir / "report.json"
+    target.write_bytes(b"{}")
+    link = root / "linked"
+    link.symlink_to(target_dir if directory_link else target, target_is_directory=directory_link)
+    reference_path = "linked/report.json" if directory_link else "linked"
+    experiment = experiment_record()
+    manifest = _manifest(experiment, evidence=(EvidenceFileReference(
+        path=reference_path, sha256=hashlib.sha256(b"{}").hexdigest(), size_bytes=2,
+    ),))
+    before = manifest.model_dump_json()
+    reads: list[Path] = []
+    original_digest = validation._file_digest
+
+    def track_digest(path: Path) -> str | None:
+        reads.append(path)
+        return original_digest(path)
+
+    monkeypatch.setattr(validation, "_file_digest", track_digest)
+    result = _service(experiment, evidence_root=root).validate(manifest)
+
+    check = next(check for check in result.checks if check.name == "evidence_files")
+    if outside:
+        assert check.status is CaseConsistencyStatus.PARTIAL
+        assert "escapes" in check.detail
+        assert reads == []
+    else:
+        assert check.status is CaseConsistencyStatus.VALID
+        assert [path.resolve() for path in reads] == [target.resolve()]
+    assert target.read_bytes() == b"{}"
+    assert manifest.model_dump_json() == before
+
+
+@pytest.mark.parametrize("operation", ["resolve", "stat"])
+@pytest.mark.parametrize("error_type", [PermissionError, FileNotFoundError])
+def test_evidence_inspection_errors_are_partial_and_do_not_stop_other_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    operation: str, error_type: type[OSError],
+) -> None:
+    report = tmp_path / "report.json"
+    report.write_bytes(b"{}")
+    other = tmp_path / "other.json"
+    other.write_bytes(b"{}")
+    experiment = experiment_record()
+    manifest = _manifest(experiment, evidence=(
+        EvidenceFileReference(path=report.name, size_bytes=2),
+        EvidenceFileReference(path=other.name, sha256="0" * 64),
+    ))
+    before = manifest.model_dump_json()
+    original = getattr(Path, operation)
+    checking_size = False
+    original_is_file = Path.is_file
+
+    def arm_size_check(path: Path, *args: object, **kwargs: object) -> bool:
+        nonlocal checking_size
+        result = original_is_file(path, *args, **kwargs)
+        if path == report:
+            checking_size = True
+        return result
+
+    def fail_inspection(path: Path, *args: object, **kwargs: object) -> object:
+        if path == report and (operation == "resolve" or checking_size):
+            code = errno.EACCES if error_type is PermissionError else errno.ENOENT
+            raise error_type(code, "evidence inspection failed")
+        return original(path, *args, **kwargs)
+
+    if operation == "stat":
+        # Fail after the real file check, independent of pathlib's internal stats.
+        monkeypatch.setattr(Path, "is_file", arm_size_check)
+    monkeypatch.setattr(Path, operation, fail_inspection)
+    result = _service(experiment, evidence_root=tmp_path).validate(manifest)
+
+    check = next(check for check in result.checks if check.name == "evidence_files")
+    assert check.status is CaseConsistencyStatus.PARTIAL
+    assert "report.json could not be read" in check.detail
+    assert "other.json does not match its recorded digest" in check.detail
+    assert manifest.model_dump_json() == before
+    assert report.read_bytes() == b"{}"
+
+
+@pytest.mark.parametrize("error_type", [PermissionError, FileNotFoundError])
+@pytest.mark.parametrize("has_evidence", [False, True])
+def test_unavailable_evidence_root_is_partial_only_when_evidence_is_referenced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    error_type: type[OSError], has_evidence: bool,
+) -> None:
+    experiment = experiment_record()
+    references = (EvidenceFileReference(path="report.json"),) if has_evidence else ()
+    manifest = _manifest(experiment, evidence=references)
+    before = manifest.model_dump_json()
+    original_resolve = Path.resolve
+    attempts: list[Path] = []
+
+    def fail_root(path: Path, *args: object, **kwargs: object) -> Path:
+        if path == tmp_path:
+            attempts.append(path)
+            raise error_type("evidence root unavailable")
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fail_root)
+    result = _service(experiment, evidence_root=tmp_path).validate(manifest)
+
+    check = next(check for check in result.checks if check.name == "evidence_files")
+    if has_evidence:
+        assert check.status is CaseConsistencyStatus.PARTIAL
+        assert "Evidence root could not be resolved" in check.detail
+        assert str(tmp_path) in check.detail
+        assert check.detail in result.reasons
+        assert attempts == [tmp_path]
+    else:
+        assert check.status is CaseConsistencyStatus.VALID
+        assert attempts == []
+    assert manifest.model_dump_json() == before
+
+
 def test_a_missing_evidence_file_is_partial_not_a_crash(tmp_path: Path) -> None:
     experiment = experiment_record()
     manifest = _manifest(
@@ -416,11 +566,14 @@ def test_an_evidence_digest_that_does_not_match_is_reported(tmp_path: Path) -> N
     assert any("does not match its recorded digest" in r for r in result.reasons)
 
 
-def test_a_matching_evidence_digest_passes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("uppercase", [False, True])
+def test_a_matching_evidence_digest_passes(tmp_path: Path, uppercase: bool) -> None:
     (tmp_path / "validation").mkdir()
     report = tmp_path / "validation" / "report.json"
     report.write_bytes(b"{}")
     digest = hashlib.sha256(b"{}").hexdigest()
+    if uppercase:
+        digest = digest.upper()
     experiment = experiment_record()
     manifest = _manifest(
         experiment,
@@ -437,6 +590,8 @@ def test_a_matching_evidence_digest_passes(tmp_path: Path) -> None:
 
     evidence = next(check for check in result.checks if check.name == "evidence_files")
     assert evidence.status is CaseConsistencyStatus.VALID
+    assert report.read_bytes() == b"{}"
+    assert manifest.evidence_files[0].sha256 == digest
 
 
 # ----------------------------------------------------------------------
@@ -466,6 +621,32 @@ def test_artifact_identity_rejects_two_known_and_different_digests() -> None:
     other = known.model_copy(update={"sha256": "b" * 64})
 
     assert not artifact_identity_matches(known, other)
+
+
+def test_artifact_identity_matches_digest_regardless_of_hex_case() -> None:
+    known = artifact()
+    uppercase = known.model_copy(update={"sha256": "A" * 64})
+
+    assert artifact_identity_matches(known, uppercase)
+    assert artifact_identity_matches(uppercase, known)
+
+
+def test_case_accepts_equivalent_digest_without_rewriting_records() -> None:
+    experiment = experiment_record()
+    benchmark = benchmark_record(model_artifact=artifact(sha256="A" * 64))
+    before = (experiment.model_dump_json(), benchmark.model_dump_json())
+
+    result = _service(experiment, [benchmark]).validate(_manifest(experiment, [benchmark]))
+
+    check = next(check for check in result.checks if check.name == "artifact_identity")
+    assert check.status is CaseConsistencyStatus.VALID
+    hash_check = next(check for check in result.checks if check.name == "artifact_hash")
+    assert hash_check.status is CaseConsistencyStatus.VALID
+    lowercase = benchmark.model_copy(update={"artifact": experiment.artifact})
+    baseline = _service(experiment, [lowercase]).validate(_manifest(experiment, [lowercase]))
+    assert result.status is baseline.status
+    assert result.reasons == baseline.reasons
+    assert (experiment.model_dump_json(), benchmark.model_dump_json()) == before
 
 
 def test_artifact_identity_rejects_a_different_quantization() -> None:

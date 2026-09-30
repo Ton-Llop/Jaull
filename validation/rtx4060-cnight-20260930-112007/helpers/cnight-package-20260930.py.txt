@@ -1,0 +1,45 @@
+﻿import json
+import shutil
+import subprocess
+from pathlib import Path
+from jaull.cases.storage import CaseStore
+
+ROOT = Path('validation/rtx4060-cnight-20260930-112007').resolve()
+index = json.loads((ROOT / 'run-index.json').read_text('utf-8'))
+commands = []
+
+def run(name, args):
+    command = ['uv', 'run', '--python', '3.12', 'jaull', 'experiments', 'case', *args]
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, encoding='utf-8', errors='replace', check=False)
+    commands.append({'command': command, 'cwd': str(ROOT), 'exit_code': result.returncode})
+    for suffix, data in [('stdout.json', result.stdout), ('stderr.log', result.stderr)]:
+        with (ROOT / (name + '.' + suffix)).open('x', encoding='utf-8', newline='\n') as handle:
+            handle.write(data)
+    print(name + ': exit=' + str(result.returncode), flush=True)
+    if result.returncode:
+        raise RuntimeError(name + ' failed; diagnostics preserved')
+    return json.loads(result.stdout)
+
+try:
+    args = ['create', '--experiment', index['experiment_id']]
+    for item in index['benchmarks']:
+        args += ['--benchmark', item['id']]
+    logs = [index['experiment_log_path'], *[item['log_path'] for item in index['benchmarks']]]
+    for path in logs:
+        if path:
+            args += ['--evidence', str(Path(path).relative_to(ROOT)).replace('\\', '/') + ':runtime_log']
+    for name, role in [('prediction-before-validation.json', 'prediction'), ('execution-plan.json', 'other'), ('hardware.json', 'other'), ('runtime-capability.json', 'other'), ('benchmark-capability.json', 'other'), ('artifact-hash-check.json', 'other'), ('hub-baseline.json', 'other'), ('workload-intent.json', 'other')]:
+        args += ['--evidence', name + ':' + role]
+    args += ['--label', 'RTX 4060 c_night Qwen2.5-7B Q4_K_M 4096 interactive', '--json']
+    created = run('case-create', args)
+    case_id = created['case']['identity']['case_id']
+    case_path = CaseStore().path_for(case_id)
+    shutil.copy2(case_path, ROOT / 'records' / case_path.name)
+    with (ROOT / 'case-index.json').open('x', encoding='utf-8', newline='\n') as handle:
+        json.dump({'case_id': case_id, 'store_path': str(case_path), 'copy_path': str(ROOT / 'records' / case_path.name), 'bundle_path': str(ROOT / 'bundle')}, handle, indent=2)
+    run('case-validate', ['validate', case_id, '--json'])
+    run('case-export', ['export', case_id, './bundle', '--evidence-root', '.', '--json'])
+    run('bundle-validate', ['bundle', 'validate', './bundle', '--json'])
+finally:
+    with (ROOT / 'case-commands.json').open('x', encoding='utf-8', newline='\n') as handle:
+        json.dump(commands, handle, indent=2)

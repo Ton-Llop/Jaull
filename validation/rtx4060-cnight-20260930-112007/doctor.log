@@ -1,0 +1,29 @@
+﻿                                                         Doctor
++----------------------------------------------------------------------------------------------------------------------+
+| Check                       | Status | Detail                                                                        |
+|-----------------------------+--------+-------------------------------------------------------------------------------|
+| Python version              | OK     | 3.12.14                                                                       |
+| Internet reachable          | OK     | ok                                                                            |
+| Hugging Face API reachable  | OK     | huggingface.co:443                                                            |
+| NVML library                | OK     | installed                                                                     |
+| NVIDIA GPU                  | OK     | NVIDIA GeForce RTX 4060                                                       |
+| Accelerators                | OK     | NVIDIA GeForce RTX 4060 (dedicated; cuda: available, vulkan: unknown, hip:    |
+|                             |        | unknown) | NVIDIA GeForce RTX 4060 (dedicated; cuda: unknown, vulkan:         |
+|                             |        | available, hip: unknown)                                                      |
+| Preferred backend           | OK     | cuda � NVIDIA GeForce RTX 4060                                                |
+| llama.cpp runtime           | WARN   | source=discovered; llama.cpp runtime not found. Configure                     |
+|                             |        | llama-cli/llama-bench, register a local runtime, add it to PATH, or place it  |
+|                             |        | under ~/tools/llama.cpp/build-*/bin or ~/llama.cpp/build-*/bin.               |
+| Execution ready             | WARN   | no � runtime_missing                                                          |
+| Transformers runtime        | OK     | source=current_environment;                                                   |
+|                             |        | python=C:\Users\USER\OneDrive\Desktop\Jaull\.venv\rtx4060-py312\Scripts\python� |
+|                             |        | torch=2.13.0+cpu; transformers=5.15.0                                         |
+| CPU fallback                | OK     | available                                                                     |
+| Cache writable              | OK     | C:\Users\USER\.cache\huggingface                                                |
+| Dependency: typer           | OK     | 0.27.0                                                                        |
+| Dependency: rich            | OK     | unknown                                                                       |
+| Dependency: pydantic        | OK     | 2.13.4                                                                        |
+| Dependency: huggingface_hub | OK     | 1.26.0                                                                        |
+| Dependency: psutil          | OK     | 7.2.2                                                                         |
++----------------------------------------------------------------------------------------------------------------------+
+EXIT_CODE: 0

@@ -105,11 +105,23 @@ class TransformersRunner:
             )
         except ExecutionFailedError as exc:
             raise _worker_failed_error(exc) from exc
-        payload = _parse_worker_payload(result.stdout)
-        if payload.get("success") is False:
-            error = str(payload.get("error") or "Transformers worker failed.")
-            raise TransformersRunnerError(error, result.observation, result=result)
-        text = str(payload.get("text") or "")
+        try:
+            payload = _parse_worker_payload(result.stdout)
+            if payload.get("success") is False:
+                raise TransformersRunnerError(
+                    str(payload.get("error") or "Transformers worker failed.")
+                )
+            if payload.get("success") is not True or not isinstance(payload.get("text"), str):
+                raise TransformersRunnerError(
+                    "Transformers worker did not emit a successful text result."
+                )
+        except TransformersRunnerError as exc:
+            raise TransformersRunnerError(
+                str(exc),
+                result.observation.model_copy(update={"success": False}),
+                result=result,
+            ) from exc
+        text = str(payload["text"])
         return InferenceResult(
             text=text.strip(),
             runtime=RuntimeName.TRANSFORMERS.value,

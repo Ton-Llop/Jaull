@@ -17,6 +17,8 @@ def capture_git_commit() -> str | None:
     """
 
     try:
+        if not (_REPOSITORY_ROOT / ".git").exists():
+            return None
         result = subprocess.run(
             ("git", "rev-parse", "HEAD"),
             cwd=_REPOSITORY_ROOT,

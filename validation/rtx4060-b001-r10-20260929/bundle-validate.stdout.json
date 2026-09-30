@@ -1,0 +1,65 @@
+{
+  "case_id": "case-0e4d5682-34bb-4609-ac99-1936b9988f49",
+  "status": "partial",
+  "checks": [
+    {
+      "name": "bundle_integrity",
+      "status": "valid",
+      "detail": "all declared files verified"
+    },
+    {
+      "name": "records_exist",
+      "status": "valid",
+      "detail": "1 experiment, 1 benchmark(s)"
+    },
+    {
+      "name": "machine_identity",
+      "status": "valid",
+      "detail": "verified"
+    },
+    {
+      "name": "artifact_identity",
+      "status": "valid",
+      "detail": "verified"
+    },
+    {
+      "name": "artifact_hash",
+      "status": "valid",
+      "detail": "verified"
+    },
+    {
+      "name": "runtime_family",
+      "status": "valid",
+      "detail": "llama.cpp"
+    },
+    {
+      "name": "runtime_build",
+      "status": "partial",
+      "detail": "partially unavailable"
+    },
+    {
+      "name": "execution_conditions",
+      "status": "valid",
+      "detail": "identical"
+    },
+    {
+      "name": "context",
+      "status": "valid",
+      "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+    },
+    {
+      "name": "provenance",
+      "status": "valid",
+      "detail": "complete"
+    },
+    {
+      "name": "evidence_files",
+      "status": "valid",
+      "detail": "2 file(s) present"
+    }
+  ],
+  "reasons": [
+    "runtime build is unavailable on at least one record"
+  ],
+  "warnings": []
+}

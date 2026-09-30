@@ -1,0 +1,23 @@
+﻿                           Local hardware                            
+Operating system    Windows 11                                       
+Architecture        AMD64                                            
+CPU                 AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD
+Physical cores      8                                                
+Logical cores       16                                               
+RAM total           31.9 GiB                                         
+RAM available       19.1 GiB                                         
+Storage C:\         132.2 GiB free / 930.5 GiB total                 
+Storage D:\         222.5 GiB free / 223.6 GiB total                 
+Storage E:\         516.8 GiB free / 931.5 GiB total                 
+Storage F:\         814.9 GiB free / 931.5 GiB total                 
+GPU                 NVIDIA GeForce RTX 4060                          
+VRAM total          8.0 GiB                                          
+VRAM available      4.9 GiB                                          
+Driver version      616.92                                           
+CUDA available      Yes (13.4)                                       
+Accelerator         NVIDIA GeForce RTX 4060                          
+Accelerator vendor  nvidia                                           
+Accelerator type    dedicated                                        
+Accelerator memory  8.0 GiB                                          
+Compute backends    cuda: available, vulkan: available, hip: unknown 
+EXIT_CODE: 0

@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from jaull.adapters.cache.model_analysis_cache import ModelAnalysisCache
 from jaull.advisor.service import AdvisorService
 from jaull.application.discovery.artifact_variants import discover_artifact_variants
@@ -12,9 +14,11 @@ from jaull.application.recommendation.execution_plans import (
     execution_plan_for_recommendation,
     variant_from_recommendation,
 )
+from jaull.benchmarks.storage import BenchmarkStore
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
+    BenchmarkFailureReason,
     BenchmarkGpuLayers,
     BenchmarkIdentity,
     BenchmarkMeasurement,
@@ -516,6 +520,85 @@ def test_benchmark_comparison_warns_for_different_artifacts(tmp_path: Path) -> N
     assert comparison.metrics[0].warning is not None
 
 
+@pytest.mark.parametrize("baseline_tps,candidate_tps", [(0.0, 10.0), (0.0, 0.0), (10.0, 0.0)])
+def test_zero_throughput_does_not_fabricate_a_relative_speed(
+    tmp_path: Path, baseline_tps: float, candidate_tps: float,
+) -> None:
+    identity = resolve_model_identity(
+        candidate=candidate("Qwen/Qwen2.5-0.5B-Instruct"),
+        analysis=transformers_analysis("Qwen/Qwen2.5-0.5B-Instruct"),
+    )
+    artifact = ModelArtifact(
+        repo_id=identity.canonical_repo_id, revision="main", filename="model.gguf",
+        format="gguf", quantization="Q4_K_M",
+    )
+    records = [
+        _benchmark_record(
+            tmp_path, artifact=artifact, runtime=_runtime(RuntimeName.LLAMA_CPP),
+            tps=baseline_tps,
+        ),
+        _benchmark_record(
+            tmp_path,
+            artifact=artifact.model_copy(update={"filename": "q5.gguf", "quantization": "Q5_K_M"}),
+            runtime=_runtime(RuntimeName.LLAMA_CPP), tps=candidate_tps,
+        ),
+    ]
+    before = [record.model_dump_json() for record in records]
+
+    comparison = compare_benchmark_records(model_identity=identity, records=records)
+
+    assert len(comparison.plans) == 2
+    if baseline_tps == 0.0:
+        assert comparison.metrics == []
+        assert any("zero throughput" in warning for warning in comparison.warnings)
+    else:
+        assert comparison.metrics[0].relative_throughput == 0.0
+        assert not any("zero throughput" in warning for warning in comparison.warnings)
+    assert [record.model_dump_json() for record in records] == before
+
+
+@pytest.mark.parametrize("include_success", [True, False])
+@pytest.mark.parametrize("keep_partial_measurements", [True, False])
+def test_failed_benchmarks_do_not_replace_performance_evidence(
+    tmp_path: Path, include_success: bool, keep_partial_measurements: bool,
+) -> None:
+    repo_id = "org/coder"
+    identity = resolve_model_identity(
+        candidate=candidate(repo_id), analysis=transformers_analysis(repo_id),
+    )
+    artifact = ModelArtifact(
+        repo_id=repo_id, revision="main", filename="model.safetensors", format="safetensors",
+    )
+    successful = _benchmark_record(
+        tmp_path, artifact=artifact, runtime=_runtime(RuntimeName.TRANSFORMERS),
+        tps=40.0, created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    failed = _benchmark_record(
+        tmp_path, artifact=artifact, runtime=successful.runtime,
+        tps=65.0, created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    observation = BenchmarkObservation.model_validate({
+        **failed.observation.model_dump(),
+        "success": False, "failure_reason": BenchmarkFailureReason.TIMEOUT,
+        "measurements": failed.observation.measurements if keep_partial_measurements else [],
+    })
+    failed = failed.model_copy(update={"observation": observation})
+    original = failed.model_dump_json()
+    records = [successful, failed] if include_success else [failed]
+
+    comparison = compare_benchmark_records(model_identity=identity, records=records)
+
+    assert len(comparison.plans) == int(include_success)
+    assert comparison.metrics == []
+    if include_success:
+        assert comparison.plans[0].benchmark_id == successful.identity.benchmark_id
+        assert comparison.plans[0].compatible_run_count == 1
+    else:
+        assert comparison.same_hardware is False
+    assert any("Failed benchmark runs" in warning for warning in comparison.warnings)
+    assert failed.model_dump_json() == original
+
+
 def test_benchmark_comparison_groups_runs_by_configuration(tmp_path: Path) -> None:
     identity = resolve_model_identity(
         candidate=candidate("Qwen/Qwen2.5-0.5B-Instruct"),
@@ -553,7 +636,12 @@ def test_benchmark_comparison_groups_runs_by_configuration(tmp_path: Path) -> No
     assert comparison.plans[0].compatible_run_count == 2
 
 
-def test_benchmark_comparison_omits_older_transformers_methodology(tmp_path: Path) -> None:
+@pytest.mark.parametrize("legacy_methodology", [
+    "transformers_generate_steady_state_v1", "transformers_isolated_inference_v2",
+])
+def test_benchmark_comparison_omits_older_transformers_methodology(
+    tmp_path: Path, legacy_methodology: str,
+) -> None:
     identity = resolve_model_identity(
         candidate=candidate("Qwen/Qwen2.5-0.5B-Instruct"),
         analysis=transformers_analysis("Qwen/Qwen2.5-0.5B-Instruct"),
@@ -569,7 +657,7 @@ def test_benchmark_comparison_omits_older_transformers_methodology(tmp_path: Pat
         artifact=artifact,
         runtime=_runtime(RuntimeName.TRANSFORMERS),
         tps=12.0,
-        methodology="transformers_generate_steady_state_v1",
+        methodology=legacy_methodology,
         created_at=datetime(2026, 1, 3, tzinfo=UTC),
     )
     current = _benchmark_record(
@@ -577,7 +665,7 @@ def test_benchmark_comparison_omits_older_transformers_methodology(tmp_path: Pat
         artifact=artifact,
         runtime=_runtime(RuntimeName.TRANSFORMERS),
         tps=14.0,
-        methodology="transformers_isolated_inference_v2",
+        methodology="transformers_isolated_inference_v3",
         created_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
 
@@ -587,9 +675,71 @@ def test_benchmark_comparison_omits_older_transformers_methodology(tmp_path: Pat
     )
 
     assert len(comparison.plans) == 1
-    assert comparison.plans[0].methodology == "transformers_isolated_inference_v2"
+    assert comparison.plans[0].methodology == "transformers_isolated_inference_v3"
     assert comparison.plans[0].benchmark_id == current.identity.benchmark_id
     assert any("Older benchmark methodologies" in item for item in comparison.warnings)
+
+
+def test_benchmark_comparison_keeps_quantized_transformers_plans_separate(
+    tmp_path: Path,
+) -> None:
+    repo_id = "org/coder"
+    identity = resolve_model_identity(
+        candidate=candidate(repo_id), analysis=transformers_analysis(repo_id),
+    )
+    artifact = ModelArtifact(
+        repo_id=repo_id, revision="main", filename="model.safetensors", format="safetensors",
+    )
+    records = []
+    for mode, tps, day in (("4bit", 20.0, 1), ("8bit", 10.0, 2)):
+        runtime = RuntimeRecommendation(
+            runtime=RuntimeName.TRANSFORMERS,
+            flags=[RuntimeFlag(
+                name="quantization", value=mode,
+                source=RuntimeFlagSource.ESTIMATE, explanation="test",
+            )],
+            confidence=EstimationConfidence.HIGH,
+        )
+        records.append(_benchmark_record(
+            tmp_path, artifact=artifact, runtime=runtime, tps=tps,
+            created_at=datetime(2026, 1, day, tzinfo=UTC),
+        ))
+
+    comparison = compare_benchmark_records(model_identity=identity, records=records)
+
+    assert len(comparison.plans) == 2
+    assert [plan.quantization_or_precision for plan in comparison.plans] == ["4bit", "8bit"]
+    assert [plan.compatible_run_count for plan in comparison.plans] == [1, 1]
+    assert "4bit" in comparison.plans[0].label
+    assert "8bit" in comparison.plans[1].label
+    assert comparison.metrics[0].relative_throughput == 0.5
+    assert any("Quantization or precision differs" in item for item in comparison.warnings)
+
+
+def test_historical_transformers_benchmark_remains_readable_and_comparable(
+    tmp_path: Path,
+) -> None:
+    repo_id = "org/coder"
+    identity = resolve_model_identity(
+        candidate=candidate(repo_id), analysis=transformers_analysis(repo_id),
+    )
+    record = _benchmark_record(
+        tmp_path,
+        artifact=ModelArtifact(
+            repo_id=repo_id, revision="main", filename="model.safetensors", format="safetensors",
+        ),
+        runtime=_runtime(RuntimeName.TRANSFORMERS), tps=10.0,
+        methodology="transformers_isolated_inference_v2",
+    )
+    store = BenchmarkStore(root=tmp_path / "benchmarks")
+    store.save(record)
+    restored = store.load(record.identity.benchmark_id)
+
+    comparison = compare_benchmark_records(model_identity=identity, records=[restored])
+
+    assert restored == record
+    assert len(comparison.plans) == 1
+    assert comparison.plans[0].methodology == "transformers_isolated_inference_v2"
 
 
 def test_advisor_exposes_identity_variant_plan_and_comparison(tmp_path: Path) -> None:
@@ -841,7 +991,7 @@ def _benchmark_record(
         or (
             "llama_bench_v1"
             if runtime.runtime is RuntimeName.LLAMA_CPP
-            else "transformers_isolated_inference_v2"
+            else "transformers_isolated_inference_v3"
         ),
     )
     identity = None

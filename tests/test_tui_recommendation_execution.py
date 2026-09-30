@@ -1623,9 +1623,19 @@ def test_details_show_plan_assessment_instead_of_legacy_score() -> None:
 
         async with app.run_test(size=(120, 50)) as pilot:
             app.show_recommendations(state)
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationResultsScreen)
+                and pilot.app.screen.is_mounted
+                and bool(pilot.app.screen.query("#res-details")),
+            )
             pilot.app.screen.query_one("#res-details", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen)
+                and pilot.app.screen.is_mounted
+                and "Recommendation assessment" in _visible_text(pilot.app.screen),
+            )
 
             assert isinstance(pilot.app.screen, RecommendationDetailsScreen)
             text = _visible_text(pilot.app.screen)

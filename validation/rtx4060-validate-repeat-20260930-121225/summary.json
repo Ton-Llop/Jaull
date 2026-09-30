@@ -1,0 +1,27 @@
+﻿{
+    "status":  "blocked_before_execution",
+    "source_commit":  "0af3b4fbdf23607e86de13e394961c422ccb1c24",
+    "branch":  "c_night",
+    "initial_git_status":  "clean",
+    "final_git_status":  [
+                             "?? validation/rtx4060-validate-repeat-20260930-121225/"
+                         ],
+    "tracked_diff":  [
+
+                     ],
+    "diff_check":  [
+
+                   ],
+    "reason":  "C:/tools/llama.cpp/llama-cli.exe is missing",
+    "expected_cli_sha256":  "e6f48860add2ff4c133b60a2f3d7ddd835fa8e85a55c3a045f46079614288436",
+    "artifact_sha_verified":  true,
+    "revision":  "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+    "validate_started":  false,
+    "experiment_record":  null,
+    "benchmark_repeated":  false,
+    "existing_local_cli":  "b10357 candidates exist but SHA differs from prior b11258 launcher; not substituted",
+    "download_performed":  false,
+    "source_changes":  false,
+    "historical_records_modified":  false,
+    "permission_needed":  "Authorization to download matching official b11258 package into project-local directory and verify original launcher SHA before rerunning Validate"
+}

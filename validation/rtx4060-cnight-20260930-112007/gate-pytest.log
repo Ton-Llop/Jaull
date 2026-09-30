@@ -1,0 +1,83 @@
+﻿........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+.....................................................................Capturing welcome...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-welcome.svg
+Capturing hardware analysis...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-hardware-done.svg
+Capturing wizard...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-wizard.svg
+Capturing search and results...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-search.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-results.svg
+Capturing execution paths...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-paths.svg
+Capturing export...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-export.svg
+Capturing validation...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-running.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-success.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-validation-failure.svg
+Capturing run...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-empty.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-history.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-run-error.svg
+Capturing advanced tools...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-home.svg
+Capturing estimate...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_capture_script_produces_e0\tui-estimate.svg
+.Capturing welcome...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-welcome.svg
+Capturing hardware analysis...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-hardware-done.svg
+Capturing wizard...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-wizard.svg
+Capturing search and results...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-search.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-results.svg
+Capturing execution paths...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-paths.svg
+Capturing export...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-export.svg
+Capturing validation...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-running.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-success.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-validation-failure.svg
+Capturing run...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-empty.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-loading.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-history.svg
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-run-error.svg
+Capturing advanced tools...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-home.svg
+Capturing estimate...
+  -> C:\Users\USER\AppData\Local\Temp\pytest-of-PC\pytest-3\test_the_two_hardware_states_a0\tui-estimate.svg
+.. [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+.....................................                                    [100%]
+1909 passed in 122.63s (0:02:02)
+EXIT_CODE: 0

@@ -66,6 +66,7 @@ def artifact_identity_matches(left: ModelArtifact, right: ModelArtifact) -> bool
     corroborate: a value known on one side and absent on the other is not a
     mismatch, because absence is common and is not evidence of difference. Two
     *known* and different values are a mismatch — that is a real conflict.
+    Hexadecimal digest letter case does not change the digest.
 
     Matching metadata is not proof of identical file contents. A plan resolved
     from discovery carries no digest, and a mutable revision such as ``main``
@@ -76,7 +77,13 @@ def artifact_identity_matches(left: ModelArtifact, right: ModelArtifact) -> bool
         return False
     return all(
         a is None or b is None or a == b
-        for a, b in ((left.size_bytes, right.size_bytes), (left.sha256, right.sha256))
+        for a, b in (
+            (left.size_bytes, right.size_bytes),
+            (
+                left.sha256.lower() if left.sha256 is not None else None,
+                right.sha256.lower() if right.sha256 is not None else None,
+            ),
+        )
     )
 
 

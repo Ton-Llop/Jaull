@@ -1,0 +1,12 @@
+{
+  "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+  "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+  "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+  "format": "gguf",
+  "quantization": "Q4_K_M",
+  "size_bytes": 4683074240,
+  "local_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+  "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+  "is_downloaded": true,
+  "is_verified": false
+}

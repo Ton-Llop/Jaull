@@ -253,8 +253,54 @@ def test_a_successful_benchmark_reports_the_expected_methodology(
 
     payload = worker._benchmark(_args())
 
-    assert payload["methodology"] == "transformers_isolated_inference_v2"
+    assert payload["methodology"] == "transformers_isolated_inference_v3"
     kinds = {m["kind"] for m in payload["measurements"]}
     assert kinds == {"prefill", "generation"}
     assert payload["model_load_seconds"] is not None
     assert payload["time_to_first_token_seconds"] is not None
+
+
+@pytest.mark.parametrize("operation", ["prefill", "decode", "ttft"])
+@pytest.mark.parametrize("device", ["cpu", "cuda:1"])
+def test_timing_waits_for_selected_gpu_at_both_boundaries(
+    monkeypatch: pytest.MonkeyPatch, operation: str, device: str,
+) -> None:
+    events: list[str] = []
+    clock = iter([10.0, 12.0])
+
+    def perf_counter() -> float:
+        events.append("clock")
+        return next(clock)
+
+    def synchronize(selected: object) -> None:
+        assert selected == device
+        events.append("sync")
+
+    class Model(_FakeModel):
+        def __call__(self, **kwargs: Any) -> _FakeOutputs:
+            events.append("forward")
+            return super().__call__(**kwargs)
+
+    torch = types.SimpleNamespace(
+        inference_mode=contextlib.nullcontext,
+        cuda=types.SimpleNamespace(synchronize=synchronize),
+    )
+    monkeypatch.setattr(worker.time, "perf_counter", perf_counter)
+    kwargs = {
+        "torch": torch, "tokenizer": _FakeTokenizer(), "model": Model(),
+        "prompt": "test", "input_device": device,
+    }
+    if operation == "prefill":
+        duration, tokens = worker._prefill_once(**kwargs)
+        assert tokens == 4
+    elif operation == "decode":
+        duration, tokens = worker._decode_once(**kwargs, max_new_tokens=2)
+        assert tokens == 2
+    else:
+        duration = worker._time_to_first_token(**kwargs)
+
+    boundary = ["sync"] if device.startswith("cuda") else []
+    prefix = ["forward"] if operation == "decode" else []
+    timed_calls = ["forward"] * (2 if operation == "decode" else 1)
+    assert events == prefix + boundary + ["clock"] + timed_calls + boundary + ["clock"]
+    assert duration == 2.0

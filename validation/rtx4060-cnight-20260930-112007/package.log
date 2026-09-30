@@ -1,0 +1,5 @@
+﻿case-create: exit=0
+case-validate: exit=0
+case-export: exit=0
+bundle-validate: exit=0
+EXIT_CODE: 0

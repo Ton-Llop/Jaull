@@ -308,7 +308,7 @@ def _build_config(
 ) -> InferenceConfiguration:
     return InferenceConfiguration(
         context_length=requirements.desired_context,
-        # batch_size stays 1: that is parallel tokens per session. concurrency is
+        # batch_size stays 1: that is sequences per batch. concurrency is
         # a separate axis and multiplies the KV cache directly in the estimate.
         batch_size=1,
         target_device=TargetDevice.AUTO,

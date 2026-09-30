@@ -1,0 +1,694 @@
+{
+  "publication_type": "anonymized_derivative",
+  "created_at": "2026-09-30T16:32:28.034135+00:00",
+  "note": "Public anonymized derivative: account, hostname and user-directory strings replaced. Measurements, artifact/runtime binary digests, IDs and observation timestamps are unchanged. Original bytes are retained privately; this is not the byte-exact original export.",
+  "bundles": [
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle",
+      "original_file_integrity": "invalid",
+      "public_manifest": "historical_not_repaired"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final",
+      "original_file_integrity": "invalid",
+      "public_manifest": "historical_not_repaired"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle",
+      "original_file_integrity": "valid",
+      "public_manifest": "derivative"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle",
+      "original_file_integrity": "valid",
+      "public_manifest": "derivative"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle",
+      "original_file_integrity": "valid",
+      "public_manifest": "derivative"
+    }
+  ],
+  "changed_files": [
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/REPORT.md",
+      "original_sha256": "1b808cf8812bea93812c7d49d88315b3ad8a1bc76cd4e5635267423188ccfbd5",
+      "public_sha256": "3dc762998dc8acdc4c37f5481973978356ea5756f715f886a798b0afb39f786d"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle/evidence/logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "original_sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "public_sha256": "d5ca5ded7d6951b9a0c8f70ceec721a22993fbeef2f83342b674b6b9ea111096"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle/evidence/logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "original_sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "public_sha256": "e26926ad97458418d23e8f08a12852b55f816b46786253b9f30b831a338b8d98"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle/records/benchmarks/bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "original_sha256": "73d7cc92905f31722f4fc7e7a2a7ec5841aa17fcdd9d737178828f0aa1b224f4",
+      "public_sha256": "fde84698e03c9b385a7cc3d84ad720e1ce013a20fda45c02dfe77fb8e7fb5646"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle/records/experiment.json",
+      "original_sha256": "834efad02356b46916094ea0f46c0526f28c8b2703ddbc983a59101e41035c29",
+      "public_sha256": "f071e0e9a9a304ffb493583df1f401d03d09d76f3fed2f557f2b4e1340161eec"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/evidence/logs/bench-12a23300-b538-457f-9091-c5550c132e00.runtime-log",
+      "original_sha256": "4f94e8225140837a4c389d39ad35d5854736d382c4cf24db5ac61a3841cc70c0",
+      "public_sha256": "c1c6630933bd9bc02a3060561c19b94adf52af81ef97859b5a5888107224465e"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/evidence/logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "original_sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "public_sha256": "d5ca5ded7d6951b9a0c8f70ceec721a22993fbeef2f83342b674b6b9ea111096"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/evidence/logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "original_sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "public_sha256": "e26926ad97458418d23e8f08a12852b55f816b46786253b9f30b831a338b8d98"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/records/benchmarks/bench-12a23300-b538-457f-9091-c5550c132e00.json",
+      "original_sha256": "8a53f3673b9b78fb57f2e3458f3548642b857006c533cada0fe92dcc622df7d9",
+      "public_sha256": "1a5b6f9f4e6e63114026d7a6ce6bdc1889e65375f6eb1cac9e1897ece742e7f0"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/records/benchmarks/bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "original_sha256": "73d7cc92905f31722f4fc7e7a2a7ec5841aa17fcdd9d737178828f0aa1b224f4",
+      "public_sha256": "fde84698e03c9b385a7cc3d84ad720e1ce013a20fda45c02dfe77fb8e7fb5646"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/bundle-final/records/experiment.json",
+      "original_sha256": "834efad02356b46916094ea0f46c0526f28c8b2703ddbc983a59101e41035c29",
+      "public_sha256": "f071e0e9a9a304ffb493583df1f401d03d09d76f3fed2f557f2b4e1340161eec"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/collect-preflight.ps1",
+      "original_sha256": "ff8136daea0f9232247f2546371f92e4d52287ecf5f87ade6636727192f6c9f2",
+      "public_sha256": "659e1c2a01cc90442c938a83c652a8a4ff77aa8d080c8def26ed1df9f490b6c6"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/control-benchmark-index.json",
+      "original_sha256": "e2492c39e3fa107a81a90669dfe674163856d42f0bcea494fc81a167d076355a",
+      "public_sha256": "a2a0341a54881004cdbb6461dc1c759b852d08be2a4dec86e50820c91239a58a"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/control-benchmark-ui.log",
+      "original_sha256": "4e29b5968c10cfd873b6851aa7ae9eaa95e2e3501c749f64d7acf2e02e12355c",
+      "public_sha256": "18a212998ea59213ef76f5d06e2e540f57ce394be3f0f97d4d2b1e5d978690ad"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/direct-benchmark-diagnostic.log",
+      "original_sha256": "b9dfddaa67303934c5f71121421ddb590242fb163b864b7ebc04741ec58b27dc",
+      "public_sha256": "1fe6c9a7c5fed3fce8eeb01e69a720083463e756b0e696142df5c6fbbe70fab2"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/direct-benchmark-restored.log",
+      "original_sha256": "fa5db43b8621f445f6c6266ab9c4c5ad8dead20b1317ae29a7653f45518d9590",
+      "public_sha256": "39a32e2013cec0a12f9b9f6e3e85a46e57cade94558f3802763835a664df9f2a"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/doctor-ready.log",
+      "original_sha256": "bf34eae6d35b496996437254774192c28267e62ae0e1ebba5022d03c2b5bca68",
+      "public_sha256": "5b86804c09746b30c4bc187353568a886670041492f4a982448b07b39190983e"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/execution-plan.json",
+      "original_sha256": "a177a6f15536c0ae71836ab56aea129db469af5c866c90840639f98e2b532efd",
+      "public_sha256": "d89127ca2f58a978384d1ab2bd6fde289cce2a1722052742de18e5005e747aab"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/gate-pytest-repeat.log",
+      "original_sha256": "07403211968713a0f5d80794b9afff855a62fabc53ad87254f9e742be6be98d2",
+      "public_sha256": "f66dc6e32651855f516ee85818800aa10658331ac142274ec6b91b91ba3828a1"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/gate-pytest.log",
+      "original_sha256": "8be1b2e1ef62bdee49c79e3ca1c7a2c3138754adab2cc47dddeb924badfeada5",
+      "public_sha256": "21b5ed5fd1eb98aa322578578497df4c03229e6aca50e7b90951a32861a4516a"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/gates-results.json",
+      "original_sha256": "ff25a582146916dfb2d8031b84c98168f8a0a0377b3e3cfc195c9932855a8b56",
+      "public_sha256": "70c6f142c4e917cc0ebaa7a85522d7f5fc5c1e3118c09ac4959945513e938728"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/logs/bench-12a23300-b538-457f-9091-c5550c132e00.runtime-log",
+      "original_sha256": "4f94e8225140837a4c389d39ad35d5854736d382c4cf24db5ac61a3841cc70c0",
+      "public_sha256": "c1c6630933bd9bc02a3060561c19b94adf52af81ef97859b5a5888107224465e"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "original_sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "public_sha256": "d5ca5ded7d6951b9a0c8f70ceec721a22993fbeef2f83342b674b6b9ea111096"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "original_sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "public_sha256": "e26926ad97458418d23e8f08a12852b55f816b46786253b9f30b831a338b8d98"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/preflight.log",
+      "original_sha256": "09f17876f33b643135872ba9bbf82e326baf180c7c99a1291527ef37f7e7021d",
+      "public_sha256": "4bbe2b83a14dcea971ef579ef467fe1f965ad8c672663afab5234be385fd88dd"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/pytest-repeat.xml",
+      "original_sha256": "fa5773ffc07695871753b5e9aa798187b02d985239565fde91b1feb23e032c31",
+      "public_sha256": "f6e42714e0faaf4d7a5ce2aacf01c65e4c2fdc833f982f992d29250f006c0e7c"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/pytest.xml",
+      "original_sha256": "e77dee63a06533f7b2f1f003bca9dd40ddeb3a2f58e3a8e1790161b452dee95f",
+      "public_sha256": "a0969eddc6aeb9a31c6e12406533130b8976796b61045d322a5a7b5539cc22d3"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/records/bench-12a23300-b538-457f-9091-c5550c132e00.json",
+      "original_sha256": "948935a0f71d9ba4e727a47080224cf714ac23bf67bbbee6040b839903dbc799",
+      "public_sha256": "fd202102f3eea1923c73394f1eaa93b7f0b52420e2179ce5e7b503dbea883311"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/records/bench-491757e3-204b-4956-b89e-61d39ce2f76b.json",
+      "original_sha256": "00b2cdc3c7c837e38f1943ff5c8bac45063ab9bff6518ce9867d3eaf1f8f1bc0",
+      "public_sha256": "06627f97c44473c9af030f0d456ca4e9de3a3c75988288d20930e73f7df859f4"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/records/exp-54063df9-685d-4b86-a481-acc98e768567.json",
+      "original_sha256": "b14163447fc85c1ca244fc6975ed30f65d1efe11f809205094eca6dba881d547",
+      "public_sha256": "8d9c47e83cce76ee6c658f618d2762d00b55b5daf60a50c79a14b64a2424fbe1"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/reference-ui.log",
+      "original_sha256": "3b1be4b6936699f2421a028dac20f1655fa147f52c6237285f35f9bcf96c5da4",
+      "public_sha256": "b261601d21ee35d492607dc7cba304e35da81cf72d1480a8dd7bcff709cd92a0"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/run-index.json",
+      "original_sha256": "949f7f1ab62fcaab78715d1827435cbb5c2055082119e34bdb37880b0c097151",
+      "public_sha256": "4f8f1913078dd354c1c0a8fcb828dfbfc6aa3143d552ca14b71f03be72adeb13"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/runtime-capability.json",
+      "original_sha256": "7f707aafc3c7a244684b8cd3d1a4f3e7616ad3b4a73e31e0f7996d80d1a1c93a",
+      "public_sha256": "f85dfec992ea81f40f86aac4a64125b6433923f6be1744ab79ca890d1e4a3735"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/runtime-control-probe.log",
+      "original_sha256": "8bb687681c109844b1614ad05e6938a7223d77933d95dfd8cd08699edf24ec96",
+      "public_sha256": "e754dddd9ff99fb4bc02f6d4dad5084d862ce20b7314f36bf665a01e0eac7852"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/runtime-control-restore.log",
+      "original_sha256": "56b66d36677b4374b599f1c8d4dd9fe2db68306e5f82809b28320e78e3a3997c",
+      "public_sha256": "774533215824c7fffff29551f771a946b9859332b6236652b6cca75eb3ddda5a"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/runtime-probes.log",
+      "original_sha256": "df37c4fea66064777f03d42d8b616db55428523bfde51c6b5df60ce113a32d6a",
+      "public_sha256": "ca7b92046997479354f5386da8f81763333c1039146ff09863d5ecf452957d6f"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/runtime-readiness.json",
+      "original_sha256": "878004e5c0f0b96551e60dc14bf2ff00a8483da6a1dfa4b01d68492f7cdc572b",
+      "public_sha256": "10c30809b1263efc1c06cddd87b449375a4df3eb919ba94737dde7c8c10b9b6c"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/setup-copy-mode.log",
+      "original_sha256": "9862f1d6ed14e31fb670c8b5e5d8c90969ea84739ee0904943960da48d412276",
+      "public_sha256": "9ca30a5495cb2b429f2297efa3657654f989e84f8ffb9f5c90eca3fd409e7e7d"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/setup-retry.log",
+      "original_sha256": "2d58e3497d54f374afe3aa9d527d764190fe555ce2b8aea92f6a933214d58e44",
+      "public_sha256": "186385b98236490ec3c9bf608f00eba6b34e1a97fb6bc9613268e0c0882e9d02"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/setup-system-certificates.log",
+      "original_sha256": "87b46c32cece0f37721165aa49aa8ccbd23fa3648afbf03e34a65df014114650",
+      "public_sha256": "5359f9f7d5dda26711a4e8454f33c1b726ff2a462f6ac5fdeb125575de6d4c2f"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/setup.log",
+      "original_sha256": "9bedd4f76fee117d9b395fd678e07edf236cea3de50ca6b75e4461f11ad8aac4",
+      "public_sha256": "cbcb78c1c58e9417beaaa6b45f9c05f785d9d2aafff5cc3247b575e72382f4c2"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/ui-benchmark-control-result.svg",
+      "original_sha256": "56df17465096fc5e84710c1b5a05898dfc69fd9b2608f7b36e2f29512ab09097",
+      "public_sha256": "90c6fbbbb943051b737ba00c9aceb30bf562e64149d63c7d7a941c0b859893cd"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/verified-artifact.json",
+      "original_sha256": "94c96645ae4e629befafc3ddad13ab8ec4a097b1bb68d33b0965558f2b970445",
+      "public_sha256": "55472a860cd608f126aac112a84cfa591c71317a30ba8491e3f81767365cab30"
+    },
+    {
+      "path": "validation/rtx4060-b001-r10-20260929/windows-trust.log",
+      "original_sha256": "a35055a048f2cc561990cbde5dd48941b8afdccda929fb33109ef7e0123f7f2b",
+      "public_sha256": "62797bc74cc17cb5d1871db9e37a228e32aa698286fe57bbb87bcd158ae53376"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/README.md",
+      "original_sha256": "9cb7d3d40d6c1032a302adf437dac1cdcb63f1e8dce85934cccfb48b1741c54b",
+      "public_sha256": "8061dafbb6efd431a67c9fd3335cdda05b3582c9722ee15c74dbe0a115d8dcb8"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/REPORT.md",
+      "original_sha256": "de7f0a844a2f20c4121e037a59ae8898a7dec8b01d776f958b454023afc814b2",
+      "public_sha256": "4f93c869bac6d32c3bb949901cf4703aa4dc0a13bc7d6f4260ca54073fb49e6f"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/actual-commands.json",
+      "original_sha256": "133308cc80c97cea89209648c2f711646b3a7671d8c1217380f894f5b95705f3",
+      "public_sha256": "b5fedb042d1f0d0ee890fac4348a33f2d299c59efff524bada6377f898dd8502"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/benchmark-matrix-request.json",
+      "original_sha256": "a7aff9cdeb1583afbeff1fa1ddb5a352d08195b76e3c155fbe2707ab05d1d465",
+      "public_sha256": "cd8b23367ac9cdda85efecd7002e8845078957c6548763d0527bc7f1b3eef812"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/benchmark-matrix-result.json",
+      "original_sha256": "a6aee7dccd1e53dffb52a343222c058d9401c6963e3d4d6c81db833621a598a6",
+      "public_sha256": "1651369e2cbc28b6a4efd85fc7dc113e65d985b8947b67220a8c1afc20f070ae"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/bundle.json",
+      "original_sha256": "6c914aeb0aed1346d4b887782727c5bf7a65374d22b83bedfa09a92578ac5e3f",
+      "public_sha256": "9d23fc3bbcf9f582adf436a9cc0571d3a42d33b8d3ecf339b4ca7b43eeb01869"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/case.json",
+      "original_sha256": "e3a5756397a2986593e62cc1f03af84ff853059cc1b337f052bb44db01f12ccc",
+      "public_sha256": "d0253f60ec6241b2069297b5ced97a7ebede4cd680d27564536b08088f935230"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/evidence/artifact-hash-check.json",
+      "original_sha256": "775f795954bcdb8948d4a10dd62f541c81e1b786abf7e94245e959cc0c0b3464",
+      "public_sha256": "a7d6c286d5dc15a0b7c92bac60daeac9abdf34e3ca2de4c408595a072794913c"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/evidence/logs/exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+      "original_sha256": "29a6d3f2cfdc6254123968800f3bdd729cea7eb73ac0e5eb286580738c52d709",
+      "public_sha256": "3536d308ac03ddc814b6fd13eb25ccfdcb2ecbc50fd22f9044e6bd4018943e86"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/records/benchmarks/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+      "original_sha256": "9089bad875709f2255c88dcb2880a6c418c486a94a3660ee91e548ed00337401",
+      "public_sha256": "b348c9a47716675f22d243fb33f9c393bbecf35fca8ed3cb731c6e6ee9d4f8b5"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/bundle/records/experiment.json",
+      "original_sha256": "c16651ab5686d4ca08c1af35dbafa1165a9f6b72c21880f89d3f99c084772ee1",
+      "public_sha256": "161d27d2c203f791a7fd179f7fe67cd5dbb888a98b53340912c352e00dfe1057"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/case-commands.json",
+      "original_sha256": "cd7530c4187785dae355f75ce42505614bb12f91ff42a7f1168f693b62d6ee61",
+      "public_sha256": "be534a332fcb37bd153b491517efeb9921af7c375aa833cc9c7cd26e540754ae"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/case-index.json",
+      "original_sha256": "c458c057f16dfd89d8644a1f4bdf0f8c74be84bb019ad4378a66e86ebdfbb713",
+      "public_sha256": "995a6a139ea5c985a8f2ae999739342f22903d85ea340a6654bab72b41f01f7d"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/doctor-explicit-runtime.log",
+      "original_sha256": "6757f59d9e768baef69c64e60413764edb82386bc98fcdbfda7d6cdd1e48a7f6",
+      "public_sha256": "4f270cdf0660e56ff8e0878e81fc0c6cf1884f7d131a6075e7e78eeec8c167d8"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/doctor.log",
+      "original_sha256": "66a679af9bb465340a3d4860adad8bdccd463a9fec7aafa946e9aabb10705086",
+      "public_sha256": "29c7f1540434041217cbdf3834e16d68d199e816cd768f38d25f85892ec3a56a"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/experiment-request.json",
+      "original_sha256": "c9e6c6097bb8a597061963b2eef3f4bd33dfb8a99ba45c7f5b32581f3110a225",
+      "public_sha256": "c7fa6e5fef71f5fab16402c96f8f143ca6e3c318ac3d8c5fd52ee7e76b424b30"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/experiment-result.json",
+      "original_sha256": "b00d020664f27854ae83c5635043869bc204669899f113cc5c81e4472bdcdb3b",
+      "public_sha256": "808fc535763d7bd0c607a2355fd8d10b025ebe19bc83aa333e18ae32ac82d3dc"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/gate-pytest.log",
+      "original_sha256": "2917556086cfb213f9d3ca3aca37cc1637f038b508ae3dbb17f4169a020d596b",
+      "public_sha256": "cde57dd1522ef76a9f13655b2810d98c41cde3c7690715e975d8c8dd1708d089"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/prepared-execution-plan.json",
+      "original_sha256": "b6327b04d65a169519f49f876995b45bf344c393cee2cdb763b2fdc13285bfc3",
+      "public_sha256": "a36c4936aedb2156cec4880bdb47d7908f9b3726df22aaeb919d361333683fd7"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/pytest.xml",
+      "original_sha256": "a1e2e06d8c328dc3289e175d8648941e20f4c81354372cf43c9e798df148f2ba",
+      "public_sha256": "90eea2d1a70d04e34458633141bc9a08d7a046886b5df3f0194036eb44f23d4c"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/records/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+      "original_sha256": "50d9f74333d85f9aee98efce602ce5e43a23bfe9e711903fcc88303184548fe5",
+      "public_sha256": "bfa8c120131d7fcbf07eaa45799777ab8e549e10180ae3ba5fbed38340761742"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/records/exp-38e97695-954d-42ef-83e0-1bacecda01dc.json",
+      "original_sha256": "1348f133e64d383a8c2fd4e03d0720d9c6a62d5e5138514c18921f178dc16609",
+      "public_sha256": "ae66972870da7bfeb05b2b1f95a977ed48fe8175d9ba2fc95a448d8f5914c325"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/resolved-artifact.json",
+      "original_sha256": "e36ca4a3110e216d65573d5b7caf0846f47304053a4259c2263338813926a7fb",
+      "public_sha256": "acdd2006d5e02a0879bd4ca01e7b7d57a654b452b029fe66f7d5f5eacd32cc30"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/run-index.json",
+      "original_sha256": "b89dea53445d585afbc8bf8e9713245fafeea283787470398d51bde370cc6cd3",
+      "public_sha256": "0f5f08717444dab633ceac13f5370711c3520d78a52daf2273df0f843c6a450c"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/runtime-search.log",
+      "original_sha256": "231758a453471b05cf63410a80ed411f3c58462ab3fd0b732e79e07a1c9b87f1",
+      "public_sha256": "848f033459d75440a6855173429a316c8e4779bfdb741fb3a43e0b2b82ff9b90"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/summary.json",
+      "original_sha256": "3db3dc6626117fb213c77ea7f231de8e3e69a9fb175be7bbcabed5ae6e4f4a69",
+      "public_sha256": "27bd3a7b392368992b39f96901a803ce8736e410fca5f72a85886c70e13f1fc7"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/validate-index.json",
+      "original_sha256": "bba59303c91bc30e8065ed1285083dee55eac8983f95e53d8191fd48b4088052",
+      "public_sha256": "3ecf8e62846848e55e5380f61e9489f676fdcc757ef378669f00fd98dd559823"
+    },
+    {
+      "path": "validation/rtx4060-cnight-20260930-112007/verified-artifact.json",
+      "original_sha256": "94c96645ae4e629befafc3ddad13ab8ec4a097b1bb68d33b0965558f2b970445",
+      "public_sha256": "55472a860cd608f126aac112a84cfa591c71317a30ba8491e3f81767365cab30"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/README.md",
+      "original_sha256": "69fea509d7fc040bb7174a403a375ce016eee9887c471544c8f5738be7fd8e8a",
+      "public_sha256": "7d66f29584de7112c62fff2877df7c8ba41d75d7f1fa190553e12e4c8eb8d706"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/REPORT.md",
+      "original_sha256": "784304d933715047d9a9b87ed5d5883651b5906e3543db57464b6e5151f578f9",
+      "public_sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/bundle.json",
+      "original_sha256": "609e9e44d671703c2194521ed9aca14e333f2c9946be926632e7b79e2d5ac965",
+      "public_sha256": "f77ce04c137ade4d6f24603a1c435c8e5cd078fb4c8fed2487527f32fa3badce"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/case.json",
+      "original_sha256": "e152263ba01177ef3a46a390e02a1385ee0f15b917d8f0f97e921c700fc0c13a",
+      "public_sha256": "7513e1b62f144c8bf30d4cf82ebeef51d95d3fa96df10dd76cc2e72402585adc"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/evidence/REPORT.md",
+      "original_sha256": "784304d933715047d9a9b87ed5d5883651b5906e3543db57464b6e5151f578f9",
+      "public_sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/evidence/actual-invocation.json",
+      "original_sha256": "8062dded1cac3e9686d411188e0c98ed8eec939ccc6fc8ee5874399489f432fa",
+      "public_sha256": "5511d8090a2cbf6a692233ef061d9d81fe6796915b10d33343c5fce7395e43d3"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/evidence/execution-plan.json",
+      "original_sha256": "39a66f7304c67f3e45e8c526dbee68b81785149647d7dff9f8c05038db1a5771",
+      "public_sha256": "4eddd6b72cb265a2159ec22199db20e8b66992e22768e269c0dcdded9b8fa22d"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/evidence/logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "original_sha256": "a47176fa966cfbd48fabbd301010d9ade30a0ac2383d88aba40bca18e7d5f5ca",
+      "public_sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/bundle/records/experiment.json",
+      "original_sha256": "ca9617ea45e365a8248c7f3fcc52c12fbe58feda80767cfeca6ec23aed841d29",
+      "public_sha256": "18ad36b72e506e2c1030af4a4a36444c50aae354a5c582edeee86f79fdd88dd4"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/experiment-request.json",
+      "original_sha256": "208f7c4534d92bb478cd51d34bd96507ac3e91d0e19657f36ae5308115148597",
+      "public_sha256": "e254fae240817ebf1fb26a5c2cc8be3bfe4e2ad71454b607b7e321c981ee73ca"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/logs/invocation.runtime-log",
+      "original_sha256": "2e1f038623d42c3c69881b05d5333393414e565f2e16652c71c12188a7f166ba",
+      "public_sha256": "2d0fa7eb7423aa9551a2d1c8f5acdc294de8d51d6bfd19217f3b611604fdec2d"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/records/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.json",
+      "original_sha256": "40e1b0b7fac3553688d70c5690f15eaabe599a55f841018839934294b07c0d36",
+      "public_sha256": "016210af1cc07e0ec2e8d673d06e3c42936ed4246cc224e3f049e1ff90a1f380"
+    },
+    {
+      "path": "validation/rtx4060-fresh-validate-20260930-135047/summary.json",
+      "original_sha256": "4ee2bb992c89722585e83908068b33aabeabc9212eb032eea0180c3e075562f8",
+      "public_sha256": "f1a73c53f07e0024a29e289da21a37fcc39aa05229f46950a5707f20dbcda088"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/README.md",
+      "original_sha256": "d765e6fd00125244e2be271f71688d6f0544d3d9883dec39a3e5c0ef5af720a8",
+      "public_sha256": "ed6fcf15d845f997559cd4bd77a902385df7eca72d71f70d693595ce238f9db5"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/bundle.json",
+      "original_sha256": "149f534621cbfc3afdd675869002409da8256cc06d23f8437aa268c034ef924b",
+      "public_sha256": "9019bea0b443aa0e04a28859f8faaef2d3b2e075af70d62d0ebc0c174abe97d9"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/case.json",
+      "original_sha256": "dae47f9ebe82fce9f73d4b91a49a33f1e3fa71bce1e6f8dec64bc6008de6cb1c",
+      "public_sha256": "9f01ae7b4b056e79511ad7ac5e908f08226171758457be6c582c6abb81d31e9e"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/evidence/logs/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.runtime-log",
+      "original_sha256": "9d39b5d04f81199a62ffd2c88b5e1d16501ecb2f1abec4675d40d18d3d3acb66",
+      "public_sha256": "24eb997dd6abcc08ab09e21b0ce130f8a80eac9b6ceea3c0441ccfa4c911c8a4"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/evidence/logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "original_sha256": "a47176fa966cfbd48fabbd301010d9ade30a0ac2383d88aba40bca18e7d5f5ca",
+      "public_sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/evidence/preflight.json",
+      "original_sha256": "014f1783c4a4c903ed30a39672c71fd18f03bb10a7b9714b732ffa473d6420fa",
+      "public_sha256": "635d9c4bb3cb359c616b49709cb504145e350445494f21f2562f0cf89a928557"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/records/benchmarks/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.json",
+      "original_sha256": "870e949be6537f77594c0cde3a925a01b445e6fb5c099bd298791b1e97443fa0",
+      "public_sha256": "e03505ff6c12bd31d4bad8e777985260da103f37e6c18eeb34b9a530ac581171"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/bundle/records/experiment.json",
+      "original_sha256": "ca9617ea45e365a8248c7f3fcc52c12fbe58feda80767cfeca6ec23aed841d29",
+      "public_sha256": "18ad36b72e506e2c1030af4a4a36444c50aae354a5c582edeee86f79fdd88dd4"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/case-commands.json",
+      "original_sha256": "6dc326316c4c22a3dfdfda9076dac030c3c1e10172c93b156f8a1ab7ffeb9b27",
+      "public_sha256": "f8dfd4923019e7f8864aee7274a742e0d60fa87657b4b427d1f7bd9f576e8cf9"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/case-index.json",
+      "original_sha256": "b8e00d2bb159595c3fc36d8e8091927376079dd294efe59547d49f07b848559c",
+      "public_sha256": "f32cd6900fced97a2950067846bf9c5f70a2cd9933ce408c6d10de1ec43d0904"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/preflight-failure.txt",
+      "original_sha256": "ef430f740042334a76aefeba4ea3d0bae56b209c4b2887bf5503d8417eb8a58e",
+      "public_sha256": "97b24c96406fb87fc850cad9df3a71b8bf8b7f0e95feaf04195f97aae1e48090"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/records/bench-fe91bac7-a964-4bba-8e40-8646a8bd8e3c.json",
+      "original_sha256": "80129600c480ff738b2c8f260c0f27c64b7701ee96f13cfe8df87ba02e3a8dfd",
+      "public_sha256": "ef39a99f27c08f414e9cec15fdd14cd8e355eae30aa3bb273f95b35aa28a654b"
+    },
+    {
+      "path": "validation/rtx4060-full-offload-benchmark-20260930-164332/run-index.json",
+      "original_sha256": "060d97edcceb1b657c7026d786720319dfa843ac34835efeb81b7aa061373cf3",
+      "public_sha256": "3f2c1257222eb1e8f745afe0c5b2f588d6812dedb12bae3789418f58928b1c4f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/REPORT.md",
+      "original_sha256": "46f16bfd46977132ccd25a1a878496312aafdd5d0c28717c034d1baa8b8945ee",
+      "public_sha256": "45f29b8338f3bddab669f0af99fae4a346133e9b4e50bdc82a352e9d3d85baa0"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/artifact-hash-check.json",
+      "original_sha256": "90319614834a58641160aababaa36fe19284cd48e3d64d57502e235fabdb3b70",
+      "public_sha256": "03c6042465c90e3d983859adebffb2de1d5a7cea6d96fa7ea798914a96f5911f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/failure.txt",
+      "original_sha256": "12a9b8cde63c42427324b39a448b980131ed847cfcac77a8bfb443867fe0fec5",
+      "public_sha256": "4934bea8b6be4ac5f6b0827b9d40c4c708438ee0aa645f483ffcc50398272e64"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/prepare.log",
+      "original_sha256": "a5525f26481c065ea36f9a805a4d3de1ca66ab2d53d98be1407fb0d0a82ca327",
+      "public_sha256": "e25f497178daa39e59c4e553776bc56403dca87ad01ce80fa10f0448317d1710"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/provenance.json",
+      "original_sha256": "e8c146c138f73c67da78cec25e34c88b868b3bae4f9725030893583cdf2acda9",
+      "public_sha256": "4ab678098407dacdc58ccd5748c6696c620c32143739509b7208ed34eb2d6c2b"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/runtime-search.log",
+      "original_sha256": "4a152952b093c51a8d43eb1b11d30f6115a2ab81d01e8a4be63099cd2ce3cdb4",
+      "public_sha256": "bd56489d957fceb7b74709a9697f0cb87608d3aa4a52ac1de5ccb6668763b8ad"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121225/verified-artifact.json",
+      "original_sha256": "94c96645ae4e629befafc3ddad13ab8ec4a097b1bb68d33b0965558f2b970445",
+      "public_sha256": "55472a860cd608f126aac112a84cfa591c71317a30ba8491e3f81767365cab30"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/REPORT.md",
+      "original_sha256": "8e407cabeed4e460bac3be67bc9ecf19c48c34045373af0ba16cd0793f1539b8",
+      "public_sha256": "8677710f6714103afc7864bec2f0d5304eef1afcc1b9000582ed62f1a738c548"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/artifact-hash-check.json",
+      "original_sha256": "90319614834a58641160aababaa36fe19284cd48e3d64d57502e235fabdb3b70",
+      "public_sha256": "03c6042465c90e3d983859adebffb2de1d5a7cea6d96fa7ea798914a96f5911f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/experiment-request.json",
+      "original_sha256": "6f324f7aeef24a9481b5861f605681cb24cfa3688219fa8f852e0321272d432a",
+      "public_sha256": "b1137aff135481291c9fd488154866e4a288aa7a4bf44eb3ccde8fb838e054c4"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/failure.txt",
+      "original_sha256": "1c35a7f96cd1e863abfa44ca7aa710120bb722efb350d25882d4b90ea7df7be8",
+      "public_sha256": "c971957b9492f3ac5323c5f74b9afda1678d2fcdf12ccac0a14b09fb1d4a8259"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/provenance.json",
+      "original_sha256": "d3eab4b94cf3d16159aec4102da1f21575d3856427bf196258f6934408a8bb58",
+      "public_sha256": "3aacbf5bc5be2b65287fa70bbe89750576602e41ee5b0b4f0b5f19043c64e589"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/run.log",
+      "original_sha256": "0e03406e9bd7e219c0b64f03bd8afb0f438caea529df5260f86ff06e6a4022b1",
+      "public_sha256": "e46080fd3d365145c033d1ce62647bb5a113199593883835bf1363807768ef55"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/runtime-binary-hashes.json",
+      "original_sha256": "8d90e9bfeb63f7e9c1dc585addc9f82d093152ccb87999dbab0eccb74fb94d7e",
+      "public_sha256": "ee80309ea0bda26e01e507354c78e084e13d801d38a1f1b208142efbaacfb732"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/runtime-capability.json",
+      "original_sha256": "51b5ec453f6d711144220d154bc473dff121aee3d9f5e6ba586bacac0ab9c2ee",
+      "public_sha256": "4643a4e291ecfc789282767ff1a0ac08ed1805634d92b9af80fcd51916549a2b"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/runtime-readiness.json",
+      "original_sha256": "1ebc6f89983352c0fcb95b5f65262615691d71d3bc2bf813a122cb4873525e47",
+      "public_sha256": "0298e3cb8cc7129163f25a73377adf105c4bd9d60fb6aa3ca46efe62010efb7f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/runtime-recovery.json",
+      "original_sha256": "4a4403d14f9734a38afb79a36911438899389e58363e792a58961bfe696badb2",
+      "public_sha256": "69ebc540c7b539a7347888e528c50dc83335c6928596c58af7512d8407beccc2"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-121948/verified-artifact.json",
+      "original_sha256": "94c96645ae4e629befafc3ddad13ab8ec4a097b1bb68d33b0965558f2b970445",
+      "public_sha256": "55472a860cd608f126aac112a84cfa591c71317a30ba8491e3f81767365cab30"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/FINAL-REPORT.md",
+      "original_sha256": "83916429686722c9a2c700b5115a7ab91939a753b376da52ba537ae5e35988a4",
+      "public_sha256": "641d61e0e20447a2331f8057f894372affeb6a61990d720dd4360f5b7afab6e3"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/REPORT.md",
+      "original_sha256": "bb2dbb20f30943539a8101f6e578d8cc59b31aa5d147b85c7ab533f242c9bd36",
+      "public_sha256": "4ddaeec1d6b9aafc0f9083ef0175f22f7c596d8974eee9c9af42925a4c54f398"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/artifact-hash-check.json",
+      "original_sha256": "90319614834a58641160aababaa36fe19284cd48e3d64d57502e235fabdb3b70",
+      "public_sha256": "03c6042465c90e3d983859adebffb2de1d5a7cea6d96fa7ea798914a96f5911f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/execution-plan.json",
+      "original_sha256": "01a6ef509c8b2681cf21c925dc12b8a8586e1de939c4fdc45e57bc27d8336f44",
+      "public_sha256": "9ddb87dd70315f8a44f0dfac8849b76dea8fb02b0ba03bb16488cede9997a6ce"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/experiment-request.json",
+      "original_sha256": "7538ae027e12fa146c11d0d03dd42ecdddea9864d70e06659921c954e61546ed",
+      "public_sha256": "75874de442afc9ac3b2d613ffa7270eef09d65705685109387a9ba4ecddaa6b1"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/experiment-result.json",
+      "original_sha256": "1c46bff9e26b3a788a970ba14ed1dc728e406d7c42bb416c53bdc480cf5d177a",
+      "public_sha256": "7421ca87d19f00597fa86e2d5f309abc6e33174d8099e3bce06612142ec5b0c4"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/final-summary.json",
+      "original_sha256": "e8b51a003b4f1ab97e68c338d5eb23528f9057c58d231cfa4da20ebaccff3756",
+      "public_sha256": "3c6ae6cc1f5a315ddaedec313006964f2f984f12d46daaee13bbafdb09d1a1ef"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/logs/exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log",
+      "original_sha256": "6415c3c964935969c54ddd50c9ded98fbefcf5c473bcbe561bc6e08ee7e1b2c2",
+      "public_sha256": "fccf76fa48a417ddd0849d943df865f5a829347bf10daee1b85a8a0c91d4417e"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/provenance.json",
+      "original_sha256": "68f959a94214a08b0ff1829eb30889d4b289dd506f857ca9b7f47a32b1698272",
+      "public_sha256": "8190fd7af87f209b67d3d379d79d589f863432cba3c48c8139278aef9b779383"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/records/exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+      "original_sha256": "fc2d828d0ae9a8aa0454429fa38cab2990ad25a9b2d9c6ceeb4c503744a27ce1",
+      "public_sha256": "0c3cc5f17ee1681b09f88da7d67639b32a78569a1fda240cbf33faee2dd734c9"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/runtime-binary-hashes.json",
+      "original_sha256": "8d90e9bfeb63f7e9c1dc585addc9f82d093152ccb87999dbab0eccb74fb94d7e",
+      "public_sha256": "ee80309ea0bda26e01e507354c78e084e13d801d38a1f1b208142efbaacfb732"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/runtime-capability.json",
+      "original_sha256": "51b5ec453f6d711144220d154bc473dff121aee3d9f5e6ba586bacac0ab9c2ee",
+      "public_sha256": "4643a4e291ecfc789282767ff1a0ac08ed1805634d92b9af80fcd51916549a2b"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/runtime-readiness.json",
+      "original_sha256": "1ebc6f89983352c0fcb95b5f65262615691d71d3bc2bf813a122cb4873525e47",
+      "public_sha256": "0298e3cb8cc7129163f25a73377adf105c4bd9d60fb6aa3ca46efe62010efb7f"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/runtime-recovery.json",
+      "original_sha256": "4a4403d14f9734a38afb79a36911438899389e58363e792a58961bfe696badb2",
+      "public_sha256": "69ebc540c7b539a7347888e528c50dc83335c6928596c58af7512d8407beccc2"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/summary.json",
+      "original_sha256": "24282741699d568712728596c0bf3e476c3cf6b7399f124c5bba0e87bf30cbef",
+      "public_sha256": "69a69435dfd06bdcaa733e6cbcd541bd63b31c281590ec87afd33a470956445a"
+    },
+    {
+      "path": "validation/rtx4060-validate-repeat-20260930-122455/verified-artifact.json",
+      "original_sha256": "94c96645ae4e629befafc3ddad13ab8ec4a097b1bb68d33b0965558f2b970445",
+      "public_sha256": "55472a860cd608f126aac112a84cfa591c71317a30ba8491e3f81767365cab30"
+    }
+  ]
+}

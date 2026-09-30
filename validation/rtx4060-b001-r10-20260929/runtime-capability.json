@@ -1,0 +1,50 @@
+{
+  "runtime_family": "llama_cpp",
+  "binary_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b10357\\bin\\llama-cli.exe",
+  "binary_status": "available",
+  "version_text": "version: 10357 (689e227db)\nbuilt with Clang 20.1.8 for Windows x86_64",
+  "backend_capabilities": [
+    {
+      "backend": "cpu",
+      "state": "confirmed",
+      "devices": [],
+      "reason": "runtime_available",
+      "source": "llama-cli --list-devices",
+      "detail": "CPU execution is treated as usable when llama-cli itself successfully responds; CPU may not appear in --list-devices."
+    },
+    {
+      "backend": "cuda",
+      "state": "confirmed",
+      "devices": [
+        {
+          "backend": "cuda",
+          "runtime_id": "CUDA0",
+          "name": "NVIDIA GeForce RTX 4060",
+          "memory_total_bytes": 8584691712,
+          "memory_free_bytes": 7452229632
+        }
+      ],
+      "reason": "backend_exposed",
+      "source": "llama-cli --list-devices",
+      "detail": null
+    },
+    {
+      "backend": "vulkan",
+      "state": "not_observed",
+      "devices": [],
+      "reason": "backend_not_observed",
+      "source": "llama-cli --list-devices",
+      "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+    },
+    {
+      "backend": "hip",
+      "state": "not_observed",
+      "devices": [],
+      "reason": "backend_not_observed",
+      "source": "llama-cli --list-devices",
+      "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+    }
+  ],
+  "probe_source": "llama-cli --list-devices",
+  "message": null
+}

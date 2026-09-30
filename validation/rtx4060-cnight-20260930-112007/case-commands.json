@@ -1,0 +1,95 @@
+[
+  {
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "create",
+      "--experiment",
+      "exp-38e97695-954d-42ef-83e0-1bacecda01dc",
+      "--benchmark",
+      "bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e",
+      "--evidence",
+      "logs/exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log:runtime_log",
+      "--evidence",
+      "logs/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log:runtime_log",
+      "--evidence",
+      "prediction-before-validation.json:prediction",
+      "--evidence",
+      "execution-plan.json:other",
+      "--evidence",
+      "hardware.json:other",
+      "--evidence",
+      "runtime-capability.json:other",
+      "--evidence",
+      "benchmark-capability.json:other",
+      "--evidence",
+      "artifact-hash-check.json:other",
+      "--evidence",
+      "hub-baseline.json:other",
+      "--evidence",
+      "workload-intent.json:other",
+      "--label",
+      "RTX 4060 c_night Qwen2.5-7B Q4_K_M 4096 interactive",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+    "exit_code": 0
+  },
+  {
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "validate",
+      "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+    "exit_code": 0
+  },
+  {
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "export",
+      "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
+      "./bundle",
+      "--evidence-root",
+      ".",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+    "exit_code": 0
+  },
+  {
+    "command": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "jaull",
+      "experiments",
+      "case",
+      "bundle",
+      "validate",
+      "./bundle",
+      "--json"
+    ],
+    "cwd": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007",
+    "exit_code": 0
+  }
+]

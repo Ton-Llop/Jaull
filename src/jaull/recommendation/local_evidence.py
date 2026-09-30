@@ -82,8 +82,10 @@ def matching_benchmark(
                 if record.requested_backend is not ComputeBackend.CPU:
                     continue
                 raw = "0"
-            expected = "all" if record.gpu_layers.full_offload else str(record.gpu_layers.count)
-            if raw != expected:
+            expected = (
+                {"-1", "all"} if record.gpu_layers.full_offload else {str(record.gpu_layers.count)}
+            )
+            if raw not in expected:
                 continue
         elif not _transformers_precision_matches(plan, record):
             continue

@@ -70,7 +70,7 @@ class HostExecutionBackend:
                 f"Executable not found: {executable!r}.",
                 observation,
             ) from exc
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             executable = request.command[0]
             observation = _observation(
                 success=False,

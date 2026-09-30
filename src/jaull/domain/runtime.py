@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.hardware import (
@@ -367,6 +367,18 @@ class ExecutionReadiness(BaseModel):
     runtime_capability: RuntimeCapability
     selected_backend_capability: RuntimeBackendCapability | None = None
     message: str | None = None
+
+    @field_validator("selected_backend_capability", mode="before")
+    @classmethod
+    def _backend_capability_matches_runtime(cls, value: object, info: ValidationInfo) -> object:
+        # The backend schemas overlap; their parent runtime disambiguates JSON.
+        if isinstance(value, dict):
+            runtime = info.data.get("runtime_capability")
+            if isinstance(runtime, PyTorchRuntimeCapability):
+                return PyTorchBackendCapability.model_validate(value)
+            if isinstance(runtime, LlamaCppRuntimeCapability):
+                return LlamaCppBackendCapability.model_validate(value)
+        return value
 
 
 class RuntimeRecommendation(BaseModel):

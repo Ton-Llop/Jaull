@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -54,7 +56,10 @@ def _case(
     )
 
 
-def test_exported_bundle_validates_without_local_record_loaders(tmp_path: Path) -> None:
+@pytest.mark.parametrize("uppercase_digest", [False, True])
+def test_exported_bundle_validates_without_local_record_loaders(
+    tmp_path: Path, uppercase_digest: bool,
+) -> None:
     experiment = experiment_record()
     benchmark = benchmark_record(context_length=4096)
     evidence_root = tmp_path / "evidence-source"
@@ -69,6 +74,7 @@ def test_exported_bundle_validates_without_local_record_loaders(tmp_path: Path) 
             EvidenceFileReference(
                 path="validation/raw.log",
                 role=EvidenceFileRole.RUNTIME_LOG,
+                sha256=hashlib.sha256(raw).hexdigest().upper() if uppercase_digest else None,
             ),
         ),
     )
@@ -102,6 +108,94 @@ def test_exported_bundle_validates_without_local_record_loaders(tmp_path: Path) 
     assert result.checks[0].status is CaseConsistencyStatus.VALID
 
 
+def test_bundle_accepts_uppercase_index_digests_without_rewriting_files(tmp_path: Path) -> None:
+    experiment = experiment_record()
+    benchmark = benchmark_record(context_length=4096)
+    service = _service(experiment, (benchmark,))
+    destination = tmp_path / "bundle"
+    service.export(
+        _case(experiment, (benchmark,)), destination=destination, evidence_root=tmp_path,
+    )
+    index = destination / "bundle.json"
+    payload = json.loads(index.read_text(encoding="utf-8"))
+    for item in [payload["case_file"], payload["experiment_file"], *payload["benchmark_files"]]:
+        item["sha256"] = item["sha256"].upper()
+    index.write_text(json.dumps(payload), encoding="utf-8")
+    before = {path: path.read_bytes() for path in destination.rglob("*.json")}
+
+    loaded = service.load(destination)
+
+    assert loaded.experiment == experiment
+    assert loaded.benchmarks == (benchmark,)
+    assert {path: path.read_bytes() for path in destination.rglob("*.json")} == before
+
+
+@pytest.mark.parametrize("operation", ["resolve", "stat"])
+@pytest.mark.parametrize("error_type", [PermissionError, FileNotFoundError])
+def test_bundle_file_inspection_failure_is_a_domain_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    operation: str, error_type: type[OSError],
+) -> None:
+    experiment = experiment_record()
+    service = _service(experiment, ())
+    destination = tmp_path / "bundle"
+    service.export(
+        _case(experiment, ()), destination=destination, evidence_root=tmp_path,
+    )
+    snapshots = {path: path.read_bytes() for path in destination.rglob("*.json")}
+    case_file = destination / "case.json"
+    original = getattr(Path, operation)
+    failure = error_type("bundle inspection failed")
+    checking_size = False
+    original_is_file = Path.is_file
+
+    def arm_size_check(path: Path, *args: Any, **kwargs: Any) -> bool:
+        nonlocal checking_size
+        result = original_is_file(path, *args, **kwargs)
+        if path == case_file:
+            checking_size = True
+        return result
+
+    def fail_inspection(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == case_file and (operation == "resolve" or checking_size):
+            raise failure
+        return original(path, *args, **kwargs)
+
+    if operation == "stat":
+        # Fail after the real file check, independent of pathlib's internal stats.
+        monkeypatch.setattr(Path, "is_file", arm_size_check)
+    monkeypatch.setattr(Path, operation, fail_inspection)
+    with pytest.raises(CaseBundleError, match=r"Could not inspect.*case\.json") as error:
+        service.load(destination)
+
+    assert error.value.__cause__ is failure
+    assert {path: path.read_bytes() for path in snapshots} == snapshots
+
+
+@pytest.mark.parametrize(
+    "creation_error", [PermissionError("denied"), OSError(errno.ENOSPC, "disk full")],
+)
+def test_bundle_temporary_directory_failure_is_a_domain_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, creation_error: OSError,
+) -> None:
+    experiment = experiment_record()
+    case = _case(experiment, ())
+    before = (experiment.model_dump_json(), case.model_dump_json())
+    target = tmp_path / "bundle"
+
+    def fail_mkdtemp(*args: Any, **kwargs: Any) -> str:
+        raise creation_error
+
+    monkeypatch.setattr("jaull.cases.bundle.tempfile.mkdtemp", fail_mkdtemp)
+    with pytest.raises(CaseBundleError, match="Could not create") as error:
+        _service(experiment, ()).export(case, destination=target, evidence_root=tmp_path)
+
+    assert error.value.__cause__ is creation_error
+    assert not target.exists()
+    assert not list(tmp_path.glob(".bundle.*"))
+    assert (experiment.model_dump_json(), case.model_dump_json()) == before
+
+
 def test_export_refuses_missing_evidence_without_publishing_destination(
     tmp_path: Path,
 ) -> None:
@@ -122,6 +216,29 @@ def test_export_refuses_missing_evidence_without_publishing_destination(
 
     assert not target.exists()
     assert not list(tmp_path.glob(".bundle.*"))
+
+
+def test_bundle_json_hashes_survive_windows_newline_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_write = Path.write_text
+
+    def windows_write(path: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        kwargs.setdefault("newline", "\r\n")
+        return original_write(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", windows_write)
+    experiment = experiment_record()
+    benchmark = benchmark_record(context_length=4096)
+    service = _service(experiment, (benchmark,))
+    destination = tmp_path / "bundle"
+    service.export(
+        _case(experiment, (benchmark,)), destination=destination, evidence_root=tmp_path,
+    )
+
+    for path in destination.rglob("*.json"):
+        assert b"\r\n" not in path.read_bytes()
+    assert service.load(destination).experiment == experiment
 
 
 def test_export_refuses_evidence_with_a_different_recorded_checksum(
@@ -177,6 +294,45 @@ def test_export_refuses_evidence_with_a_different_recorded_size(tmp_path: Path) 
 
     assert not target.exists()
     assert not list(tmp_path.glob(".bundle.*"))
+
+
+@pytest.mark.parametrize("identity_field", ["sha256", "size_bytes"])
+def test_export_rechecks_copied_evidence_against_frozen_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, identity_field: str,
+) -> None:
+    from jaull.cases import bundle
+
+    experiment = experiment_record()
+    source = tmp_path / "source" / "output.log"
+    source.parent.mkdir()
+    raw = b"original"
+    source.write_bytes(raw)
+    reference = EvidenceFileReference(
+        path=source.name,
+        sha256=hashlib.sha256(raw).hexdigest() if identity_field == "sha256" else None,
+        size_bytes=len(raw) if identity_field == "size_bytes" else None,
+    )
+    case = _case(experiment, (), (reference,))
+    before = (experiment.model_dump_json(), case.model_dump_json())
+    original_copy = bundle.shutil.copyfile
+    changed = b"changed!" if identity_field == "sha256" else b"short"
+
+    def copy_changed_source(src: Path, dst: Path) -> Path:
+        src.write_bytes(changed)
+        return original_copy(src, dst)
+
+    monkeypatch.setattr(bundle.shutil, "copyfile", copy_changed_source)
+    target = tmp_path / "bundle"
+
+    with pytest.raises(CaseBundleError, match="differs from case reference"):
+        _service(experiment, ()).export(
+            case, destination=target, evidence_root=source.parent,
+        )
+
+    assert not target.exists()
+    assert not list(tmp_path.glob(".bundle.*"))
+    assert source.read_bytes() == changed
+    assert (experiment.model_dump_json(), case.model_dump_json()) == before
 
 
 def test_bundle_validation_keeps_the_case_evidence_identity(tmp_path: Path) -> None:

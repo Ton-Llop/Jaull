@@ -75,9 +75,9 @@ def _benchmark(args: argparse.Namespace) -> dict[str, object]:
     model = auto_model.from_pretrained(args.model_ref, **model_kwargs)
     if not place_at_load:
         model.to(_load_device(device_map))
-    model_load_seconds = time.perf_counter() - load_start
-
     input_device = _input_device(model)
+    _synchronize(torch, input_device)
+    model_load_seconds = time.perf_counter() - load_start
     warmup_start = time.perf_counter()
     _decode_once(
         torch=torch,
@@ -143,7 +143,7 @@ def _benchmark(args: argparse.Namespace) -> dict[str, object]:
         )
 
     return {
-        "methodology": "transformers_isolated_inference_v2",
+        "methodology": "transformers_isolated_inference_v3",
         "model_load_seconds": model_load_seconds,
         "warmup_seconds": warmup_seconds,
         "time_to_first_token_seconds": (
@@ -167,9 +167,11 @@ def _prefill_once(
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(input_device) for key, value in inputs.items()}
     input_tokens = int(inputs["input_ids"].shape[-1])
+    _synchronize(torch, input_device)
     start = time.perf_counter()
     with torch.inference_mode():
         model(**inputs, use_cache=True)
+    _synchronize(torch, input_device)
     duration = time.perf_counter() - start
     return duration, input_tokens
 
@@ -190,6 +192,7 @@ def _decode_once(
         past_key_values = outputs.past_key_values
         next_token = outputs.logits[:, -1:].argmax(dim=-1)
         generated_tokens = 0
+        _synchronize(torch, input_device)
         start = time.perf_counter()
         for _ in range(max(1, int(max_new_tokens))):
             outputs = model(
@@ -200,6 +203,7 @@ def _decode_once(
             past_key_values = outputs.past_key_values
             next_token = outputs.logits[:, -1:].argmax(dim=-1)
             generated_tokens += 1
+    _synchronize(torch, input_device)
     duration = time.perf_counter() - start
     return duration, generated_tokens
 
@@ -214,11 +218,19 @@ def _time_to_first_token(
 ) -> float:
     inputs = tokenizer(prompt, return_tensors="pt")
     inputs = {key: value.to(input_device) for key, value in inputs.items()}
+    _synchronize(torch, input_device)
     start = time.perf_counter()
     with torch.inference_mode():
         outputs = model(**inputs, use_cache=True)
         outputs.logits[:, -1:].argmax(dim=-1)
+    _synchronize(torch, input_device)
     return time.perf_counter() - start
+
+
+def _synchronize(torch: Any, device: object) -> None:
+    # PyTorch also exposes HIP devices through its CUDA API.
+    if str(device).startswith("cuda"):
+        torch.cuda.synchronize(device)
 
 
 def _prompt_for_token_budget(tokenizer: Any, target_tokens: int) -> str:

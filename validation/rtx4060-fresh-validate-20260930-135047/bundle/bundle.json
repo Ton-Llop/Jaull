@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-09-30T14:06:28.859992Z",
+  "jaull_version": "0.1.0",
+  "git_commit": "3d58eb49e443415b3abb3605e06692eb6bfb1e8e",
+  "case_file": {
+    "path": "case.json",
+    "sha256": "7513e1b62f144c8bf30d4cf82ebeef51d95d3fa96df10dd76cc2e72402585adc",
+    "size_bytes": 3388
+  },
+  "experiment_file": {
+    "path": "records/experiment.json",
+    "sha256": "18ad36b72e506e2c1030af4a4a36444c50aae354a5c582edeee86f79fdd88dd4",
+    "size_bytes": 39996
+  },
+  "benchmark_files": [],
+  "evidence_files": [
+    {
+      "path": "evidence/logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+      "sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd",
+      "size_bytes": 748315,
+      "reference": {
+        "path": "logs/exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+        "role": "runtime_log",
+        "sha256": "5bc29ddd7ff1639cab582cece5fe327a5c24e33ff623106106004ade44d4dbfd",
+        "size_bytes": 748315,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/runtime-binary-hashes.json",
+      "sha256": "318babde50d816224838979ea3a7b8391e6e93a428cbd393e1bc68a39094dbea",
+      "size_bytes": 4998,
+      "reference": {
+        "path": "runtime-binary-hashes.json",
+        "role": "other",
+        "sha256": "318babde50d816224838979ea3a7b8391e6e93a428cbd393e1bc68a39094dbea",
+        "size_bytes": 4998,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/artifact-hash-check.json",
+      "sha256": "acaa97236c1f11ee3ca844b930ba8540552dc08c08ae30513304d52eedbfe928",
+      "size_bytes": 339,
+      "reference": {
+        "path": "artifact-hash-check.json",
+        "role": "other",
+        "sha256": "acaa97236c1f11ee3ca844b930ba8540552dc08c08ae30513304d52eedbfe928",
+        "size_bytes": 339,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/actual-invocation.json",
+      "sha256": "5511d8090a2cbf6a692233ef061d9d81fe6796915b10d33343c5fce7395e43d3",
+      "size_bytes": 633,
+      "reference": {
+        "path": "actual-invocation.json",
+        "role": "other",
+        "sha256": "5511d8090a2cbf6a692233ef061d9d81fe6796915b10d33343c5fce7395e43d3",
+        "size_bytes": 633,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/observed-runtime-settings.json",
+      "sha256": "a8c5be5caaa94322fd36be728385866ffd1f09500089ff826fc2c9ea152315f7",
+      "size_bytes": 322,
+      "reference": {
+        "path": "observed-runtime-settings.json",
+        "role": "other",
+        "sha256": "a8c5be5caaa94322fd36be728385866ffd1f09500089ff826fc2c9ea152315f7",
+        "size_bytes": 322,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/execution-plan.json",
+      "sha256": "4eddd6b72cb265a2159ec22199db20e8b66992e22768e269c0dcdded9b8fa22d",
+      "size_bytes": 22334,
+      "reference": {
+        "path": "execution-plan.json",
+        "role": "other",
+        "sha256": "4eddd6b72cb265a2159ec22199db20e8b66992e22768e269c0dcdded9b8fa22d",
+        "size_bytes": 22334,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/provenance.json",
+      "sha256": "c94399ca4d5dbb9658675b9590789d0ea9f9eccdfa9feffbf9e703b95361dadd",
+      "size_bytes": 381,
+      "reference": {
+        "path": "provenance.json",
+        "role": "other",
+        "sha256": "c94399ca4d5dbb9658675b9590789d0ea9f9eccdfa9feffbf9e703b95361dadd",
+        "size_bytes": 381,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/REPORT.md",
+      "sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30",
+      "size_bytes": 5589,
+      "reference": {
+        "path": "REPORT.md",
+        "role": "report",
+        "sha256": "5f11a9aa5623a1630ba09355496226106d102bde37ee7c98a6e84653ba496b30",
+        "size_bytes": 5589,
+        "description": null
+      }
+    }
+  ]
+}

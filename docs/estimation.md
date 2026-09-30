@@ -163,6 +163,13 @@ Concurrency is modelled here rather than as a scoring nudge: each concurrent ses
 multiplies the cache, on the stated assumption that every session keeps its own full
 context.
 
+`batch_size` counts independent sequences with retained KV contexts, not tokens
+processed in one decoder call. llama.cpp's `--batch-size` and `--ubatch-size` control
+logical and physical token batches instead. Generated llama.cpp plans leave those
+runtime knobs at their defaults; neither the sequence batch nor concurrency is
+translated into a prompt-token batch limit. The KV formula is unchanged, and these
+capacity inputs do not establish that Run/Validate executes a multi-sequence workload.
+
 Non-standard architectures (MoE, MLA / DeepSeek-style, multimodal composites, `auto_map`
 custom code) return `unknown` and a warning instead of a fabricated number.
 

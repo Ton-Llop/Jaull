@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import runpy
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,7 @@ from jaull.benchmarks.matrix import BenchmarkMatrixRequest, BenchmarkMatrixRunne
 from jaull.benchmarks.storage import SCHEMA_VERSION, BenchmarkStore
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
+    BenchmarkFailureReason,
     BenchmarkGpuLayers,
     BenchmarkMeasurementKind,
     BenchmarkObservation,
@@ -276,6 +280,129 @@ def test_runner_failed_process_preserves_argv_exit_code_and_output(
     assert "exit_code: 1" in (observation.message or "")
     assert "stderr: unknown argument: --ctx-size" in (observation.message or "")
     assert "stdout: loading model" in (observation.message or "")
+
+
+@pytest.mark.parametrize("missing_label", ["pp128", "pp512", "pp2048", "tg128"])
+def test_zero_exit_with_missing_requested_measurements_is_not_success(
+    tmp_path: Path, missing_label: str,
+) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    partial_output = "\n".join(
+        line for line in CPU_OUTPUT.splitlines() if missing_label not in line
+    )
+    backend = _FakeExecutionBackend(stdout=partial_output)
+    runner = LlamaBenchRunner(backend=backend, llama_bench_path=_executable(tmp_path))
+
+    observation = runner.run(
+        BenchmarkRequest(
+            artifact=_artifact(model),
+            runtime=_runtime(ngl=0),
+            backend=ComputeBackend.CPU,
+        )
+    )
+
+    assert not observation.success
+    assert observation.failure_reason is BenchmarkFailureReason.PARSE_ERROR
+    assert observation.exit_code == 0
+    assert missing_label in (observation.message or "")
+    assert observation.raw_stdout == partial_output
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "\n".join(line for line in CPU_OUTPUT.splitlines() if "tg128" not in line),
+        "loading model, no table emitted\n",
+        CPU_OUTPUT.replace("62.89", "very fast"),
+    ],
+    ids=["incomplete", "missing-table", "malformed-throughput"],
+)
+def test_unparseable_benchmark_is_persisted_with_build_from_empty_probe(
+    tmp_path: Path, output: str,
+) -> None:
+    class ProbeBackend(_FakeExecutionBackend):
+        def execute(self, request: ExecutionRequest) -> ExecutionResult:
+            if request.command[-1] == "--version":
+                return _FailingExecutionBackend(
+                    stdout="", stderr="unknown argument: --version", exit_code=1,
+                ).execute(request)
+            if "-pg" in request.command:
+                return _FakeExecutionBackend(stdout="build: 689e227db (10357)").execute(request)
+            return super().execute(request)
+
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    backend = ProbeBackend(stdout=output)
+    executable = _executable(tmp_path)
+    store = BenchmarkStore(root=tmp_path / "benchmarks")
+    matrix = BenchmarkMatrixRunner(
+        execution_backend=backend,
+        llama_bench_runner=LlamaBenchRunner(backend=backend, llama_bench_path=executable),
+        store=store,
+        llama_bench_path=executable,
+    )
+    result = matrix.run(
+        BenchmarkMatrixRequest(
+            hardware=_hardware(), artifact=_artifact(model), runtime=_runtime(ngl=0),
+            backend_selection=_selection(ComputeBackend.VULKAN),
+            runtime_capability=_runtime_capability(), include_selected_backend=False,
+        )
+    )
+
+    assert not result.completed
+    assert len(result.failed) == 1
+    record = result.failed[0].record
+    assert record is not None
+    assert record.llama_bench_capability is not None
+    assert record.llama_bench_capability.version_text == "build: 689e227db (10357)"
+    assert record.observation.failure_reason is BenchmarkFailureReason.PARSE_ERROR
+    assert record.observation.success is False
+    assert record.observation.measurements == []
+    assert record.observation.raw_stdout == output
+    assert record.observation.raw_stderr == ""
+    assert record.observation.exit_code == 0
+    assert record.observation.duration_seconds == 0.25
+    assert record.observation.command == backend.requests[-1].command
+    assert "argv:" in (record.observation.message or "")
+    assert store.load(record.identity.benchmark_id) == record
+
+
+def test_4060_diagnostic_preserves_timeout_output_and_refuses_overwrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "validation/rtx4060-b001-r10-20260929/diagnose-benchmark.py"
+    )
+    diagnostic = runpy.run_path(str(script))
+    output = tmp_path / "diagnostic.runtime-log"
+    monkeypatch.setattr(
+        sys, "argv",
+        [str(script), "--llama-bench", sys.executable, "--output", str(output)],
+    )
+    calls = []
+
+    def timeout(command: Any, **kwargs: Any) -> Any:
+        calls.append(command)
+        assert command[-2:] == ["--progress", "-v"]
+        raise subprocess.TimeoutExpired(
+            command, kwargs["timeout"], output=b"partial prefill\n",
+            stderr=b"warmup generation run\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+    diagnostic["main"]()
+    original = output.read_bytes()
+    payload = json.loads(original)
+    assert payload["timed_out"] is True
+    assert payload["stdout"] == "partial prefill\n"
+    assert payload["stderr"] == "warmup generation run\n"
+    assert payload["exit_code"] is None
+    with pytest.raises(SystemExit, match="2"):
+        diagnostic["main"]()
+    assert output.read_bytes() == original
+    assert len(calls) == 1
 
 
 def test_runner_reports_missing_executable(tmp_path: Path) -> None:

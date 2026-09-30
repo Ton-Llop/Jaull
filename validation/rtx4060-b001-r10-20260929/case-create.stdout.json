@@ -1,0 +1,110 @@
+{
+  "case": {
+    "schema_version": 1,
+    "identity": {
+      "case_id": "case-0e4d5682-34bb-4609-ac99-1936b9988f49",
+      "created_at": "2026-09-29T22:41:12.362740Z",
+      "label": null,
+      "machine_fingerprint": [
+        "Windows 11",
+        "10.0.26200",
+        "AMD64",
+        "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+        "8",
+        "16",
+        "34282192896",
+        "NVIDIA GeForce RTX 4060:8585740288",
+        "NVIDIA GeForce RTX 4060:nvidia:dedicated:0x10de:0x2882:00000000:2B:00.0:GPU-bbbc059d-9014-f50c-72d1-511fe91342e6:8585740288:False"
+      ],
+      "artifact": {
+        "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+        "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "format": "gguf",
+        "quantization": "Q4_K_M"
+      },
+      "runtime": "llama.cpp"
+    },
+    "experiment_record_id": "exp-54063df9-685d-4b86-a481-acc98e768567",
+    "benchmark_record_ids": [
+      "bench-491757e3-204b-4956-b89e-61d39ce2f76b"
+    ],
+    "evidence_files": [
+      {
+        "path": "logs/exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "logs/bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    ],
+    "notes": []
+  },
+  "validation": {
+    "case_id": "case-0e4d5682-34bb-4609-ac99-1936b9988f49",
+    "status": "partial",
+    "checks": [
+      {
+        "name": "records_exist",
+        "status": "valid",
+        "detail": "1 experiment, 1 benchmark(s)"
+      },
+      {
+        "name": "machine_identity",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "artifact_identity",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "artifact_hash",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "runtime_family",
+        "status": "valid",
+        "detail": "llama.cpp"
+      },
+      {
+        "name": "runtime_build",
+        "status": "partial",
+        "detail": "partially unavailable"
+      },
+      {
+        "name": "execution_conditions",
+        "status": "valid",
+        "detail": "identical"
+      },
+      {
+        "name": "context",
+        "status": "valid",
+        "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+      },
+      {
+        "name": "provenance",
+        "status": "valid",
+        "detail": "complete"
+      },
+      {
+        "name": "evidence_files",
+        "status": "valid",
+        "detail": "2 file(s) present"
+      }
+    ],
+    "reasons": [
+      "runtime build is unavailable on at least one record"
+    ],
+    "warnings": []
+  }
+}

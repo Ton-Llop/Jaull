@@ -1,0 +1,1353 @@
+{
+  "rank": 1,
+  "evaluated": {
+    "candidate": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "pipeline_tag": null,
+      "library_name": null,
+      "license": null,
+      "languages": [],
+      "tags": [],
+      "downloads": 0,
+      "likes": 0,
+      "gated": false,
+      "private": false,
+      "repository_type": null,
+      "base_model_repo_id": null,
+      "revision_hint": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+      "last_modified": null,
+      "source_queries": [],
+      "metadata_confidence": "medium",
+      "penalties": []
+    },
+    "analysis": {
+      "repo": {
+        "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "author": "bartowski",
+        "private": false,
+        "gated": false,
+        "downloads": 191511,
+        "likes": 77,
+        "last_modified": "2024-09-19T12:54:25Z",
+        "license": "apache-2.0",
+        "tags": [
+          "gguf",
+          "chat",
+          "text-generation",
+          "en",
+          "base_model:Qwen/Qwen2.5-7B-Instruct",
+          "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+          "license:apache-2.0",
+          "endpoints_compatible",
+          "region:us",
+          "conversational"
+        ],
+        "pipeline_tag": "text-generation",
+        "library_name": null
+      },
+      "files": [
+        {
+          "path": ".gitattributes",
+          "size_bytes": 3209,
+          "lfs": false
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-IQ2_M.gguf",
+          "size_bytes": 2780342976,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-IQ3_M.gguf",
+          "size_bytes": 3574012608,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-IQ3_XS.gguf",
+          "size_bytes": 3346256576,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-IQ4_XS.gguf",
+          "size_bytes": 4218473152,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q2_K.gguf",
+          "size_bytes": 3015940800,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q2_K_L.gguf",
+          "size_bytes": 3548164800,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q3_K_L.gguf",
+          "size_bytes": 4088459968,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q3_K_M.gguf",
+          "size_bytes": 3808391872,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q3_K_S.gguf",
+          "size_bytes": 3492369088,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q3_K_XL.gguf",
+          "size_bytes": 4565332672,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_0.gguf",
+          "size_bytes": 4444121792,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_0_4_4.gguf",
+          "size_bytes": 4431391424,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_0_4_8.gguf",
+          "size_bytes": 4431391424,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_0_8_8.gguf",
+          "size_bytes": 4431391424,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_K_L.gguf",
+          "size_bytes": 5087564480,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+          "size_bytes": 4683074240,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q4_K_S.gguf",
+          "size_bytes": 4457769664,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q5_K_L.gguf",
+          "size_bytes": 5781197504,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q5_K_M.gguf",
+          "size_bytes": 5444831936,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q5_K_S.gguf",
+          "size_bytes": 5315177152,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q6_K.gguf",
+          "size_bytes": 6254199488,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q6_K_L.gguf",
+          "size_bytes": 6518182592,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-Q8_0.gguf",
+          "size_bytes": 8098525888,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct-f16.gguf",
+          "size_bytes": 15237853600,
+          "lfs": true
+        },
+        {
+          "path": "Qwen2.5-7B-Instruct.imatrix",
+          "size_bytes": 4536678,
+          "lfs": true
+        },
+        {
+          "path": "README.md",
+          "size_bytes": 10166,
+          "lfs": false
+        }
+      ],
+      "classification": {
+        "primary_type": "gguf",
+        "detected_types": [
+          "gguf"
+        ],
+        "formats": [
+          "gguf"
+        ],
+        "gguf_variants": [
+          {
+            "quantization": "F16",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-f16.gguf",
+                "size_bytes": 15237853600,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 15237853600
+          },
+          {
+            "quantization": "IQ2_M",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-IQ2_M.gguf",
+                "size_bytes": 2780342976,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 2780342976
+          },
+          {
+            "quantization": "IQ3_M",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-IQ3_M.gguf",
+                "size_bytes": 3574012608,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3574012608
+          },
+          {
+            "quantization": "IQ3_XS",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-IQ3_XS.gguf",
+                "size_bytes": 3346256576,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3346256576
+          },
+          {
+            "quantization": "IQ4_XS",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-IQ4_XS.gguf",
+                "size_bytes": 4218473152,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4218473152
+          },
+          {
+            "quantization": "Q2_K",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q2_K.gguf",
+                "size_bytes": 3015940800,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3015940800
+          },
+          {
+            "quantization": "Q2_K_L",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q2_K_L.gguf",
+                "size_bytes": 3548164800,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3548164800
+          },
+          {
+            "quantization": "Q3_K_L",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q3_K_L.gguf",
+                "size_bytes": 4088459968,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4088459968
+          },
+          {
+            "quantization": "Q3_K_M",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q3_K_M.gguf",
+                "size_bytes": 3808391872,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3808391872
+          },
+          {
+            "quantization": "Q3_K_S",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q3_K_S.gguf",
+                "size_bytes": 3492369088,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 3492369088
+          },
+          {
+            "quantization": "Q3_K_XL",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q3_K_XL.gguf",
+                "size_bytes": 4565332672,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4565332672
+          },
+          {
+            "quantization": "Q4_0",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_0.gguf",
+                "size_bytes": 4444121792,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4444121792
+          },
+          {
+            "quantization": "Q4_0_4_4",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_0_4_4.gguf",
+                "size_bytes": 4431391424,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4431391424
+          },
+          {
+            "quantization": "Q4_0_4_8",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_0_4_8.gguf",
+                "size_bytes": 4431391424,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4431391424
+          },
+          {
+            "quantization": "Q4_0_8_8",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_0_8_8.gguf",
+                "size_bytes": 4431391424,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4431391424
+          },
+          {
+            "quantization": "Q4_K_L",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_K_L.gguf",
+                "size_bytes": 5087564480,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 5087564480
+          },
+          {
+            "quantization": "Q4_K_M",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+                "size_bytes": 4683074240,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4683074240
+          },
+          {
+            "quantization": "Q4_K_S",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q4_K_S.gguf",
+                "size_bytes": 4457769664,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 4457769664
+          },
+          {
+            "quantization": "Q5_K_L",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q5_K_L.gguf",
+                "size_bytes": 5781197504,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 5781197504
+          },
+          {
+            "quantization": "Q5_K_M",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q5_K_M.gguf",
+                "size_bytes": 5444831936,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 5444831936
+          },
+          {
+            "quantization": "Q5_K_S",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q5_K_S.gguf",
+                "size_bytes": 5315177152,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 5315177152
+          },
+          {
+            "quantization": "Q6_K",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q6_K.gguf",
+                "size_bytes": 6254199488,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 6254199488
+          },
+          {
+            "quantization": "Q6_K_L",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q6_K_L.gguf",
+                "size_bytes": 6518182592,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 6518182592
+          },
+          {
+            "quantization": "Q8_0",
+            "files": [
+              {
+                "path": "Qwen2.5-7B-Instruct-Q8_0.gguf",
+                "size_bytes": 8098525888,
+                "lfs": true
+              }
+            ],
+            "total_bytes": 8098525888
+          }
+        ]
+      },
+      "config": null,
+      "relevant_files": [
+        "README.md",
+        "Qwen2.5-7B-Instruct-IQ2_M.gguf",
+        "Qwen2.5-7B-Instruct-IQ3_M.gguf",
+        "Qwen2.5-7B-Instruct-IQ3_XS.gguf",
+        "Qwen2.5-7B-Instruct-IQ4_XS.gguf",
+        "Qwen2.5-7B-Instruct-Q2_K.gguf",
+        "Qwen2.5-7B-Instruct-Q2_K_L.gguf",
+        "Qwen2.5-7B-Instruct-Q3_K_L.gguf",
+        "Qwen2.5-7B-Instruct-Q3_K_M.gguf",
+        "Qwen2.5-7B-Instruct-Q3_K_S.gguf",
+        "Qwen2.5-7B-Instruct-Q3_K_XL.gguf",
+        "Qwen2.5-7B-Instruct-Q4_0.gguf",
+        "Qwen2.5-7B-Instruct-Q4_0_4_4.gguf",
+        "Qwen2.5-7B-Instruct-Q4_0_4_8.gguf",
+        "Qwen2.5-7B-Instruct-Q4_0_8_8.gguf",
+        "Qwen2.5-7B-Instruct-Q4_K_L.gguf",
+        "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "Qwen2.5-7B-Instruct-Q4_K_S.gguf",
+        "Qwen2.5-7B-Instruct-Q5_K_L.gguf",
+        "Qwen2.5-7B-Instruct-Q5_K_M.gguf",
+        "Qwen2.5-7B-Instruct-Q5_K_S.gguf",
+        "Qwen2.5-7B-Instruct-Q6_K.gguf",
+        "Qwen2.5-7B-Instruct-Q6_K_L.gguf",
+        "Qwen2.5-7B-Instruct-Q8_0.gguf",
+        "Qwen2.5-7B-Instruct-f16.gguf"
+      ],
+      "total_size_bytes": 121058967173,
+      "warnings": [
+        "Repository contains 24 GGUF quantization variants (F16, IQ2_M, IQ3_M, IQ3_XS, IQ4_XS, Q2_K, Q2_K_L, Q3_K_L, Q3_K_M, Q3_K_S, Q3_K_XL, Q4_0, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, Q4_K_L, Q4_K_M, Q4_K_S, Q5_K_L, Q5_K_M, Q5_K_S, Q6_K, Q6_K_L, Q8_0); only one is loaded at a time."
+      ],
+      "safetensors_summary": null
+    },
+    "selected_configuration": {
+      "context_length": 4096,
+      "batch_size": 1,
+      "target_device": "auto",
+      "precision": null,
+      "quantization": "Q4_K_M",
+      "kv_cache_dtype": "float16",
+      "safety_margin_percent": 10.0,
+      "device_reserve_bytes": 536870912,
+      "concurrent_users": 1
+    },
+    "memory_estimate": {
+      "repository": {
+        "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "author": "bartowski",
+        "private": false,
+        "gated": false,
+        "downloads": 191511,
+        "likes": 77,
+        "last_modified": "2024-09-19T12:54:25Z",
+        "license": "apache-2.0",
+        "tags": [
+          "gguf",
+          "chat",
+          "text-generation",
+          "en",
+          "base_model:Qwen/Qwen2.5-7B-Instruct",
+          "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+          "license:apache-2.0",
+          "endpoints_compatible",
+          "region:us",
+          "conversational"
+        ],
+        "pipeline_tag": "text-generation",
+        "library_name": null
+      },
+      "repository_type": "gguf",
+      "inference_configuration": {
+        "context_length": 4096,
+        "batch_size": 1,
+        "target_device": "auto",
+        "precision": null,
+        "quantization": "Q4_K_M",
+        "kv_cache_dtype": "float16",
+        "safety_margin_percent": 10.0,
+        "device_reserve_bytes": 536870912,
+        "concurrent_users": 1
+      },
+      "weights": {
+        "component": {
+          "name": "Weights",
+          "bytes": 4683074240,
+          "source": "exact",
+          "confidence": "high",
+          "explanation": "Exact remote file size of the Q4_K_M variant."
+        },
+        "num_parameters": null,
+        "bits_per_parameter": null,
+        "precision": null,
+        "gguf_variant": "Q4_K_M",
+        "transformer_block_decomposition": {
+          "total_weight_bytes": 4683074240,
+          "estimated_transformer_block_weight_bytes": 4012773975,
+          "estimated_non_block_weight_bytes": 670300265,
+          "estimated_embedding_weight_bytes": 335150132,
+          "estimated_output_head_weight_bytes": 335150133,
+          "estimated_bytes_per_transformer_block": 143313357,
+          "total_transformer_blocks": 28,
+          "method": "config_parameter_decomposition"
+        }
+      },
+      "kv_cache": {
+        "component": {
+          "name": "KV cache",
+          "bytes": 234881024,
+          "source": "derived",
+          "confidence": "high",
+          "explanation": "28 layers x 4 KV heads x 128 head_dim x 4096 tokens x batch 1 x 2 bytes x 1 sessions x 2."
+        },
+        "layers": 28,
+        "kv_heads": 4,
+        "head_dim": 128,
+        "context_length": 4096,
+        "batch_size": 1,
+        "dtype_bytes": 2,
+        "formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+        "notes": [
+          "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+        ]
+      },
+      "runtime_overhead": {
+        "component": {
+          "name": "Runtime overhead",
+          "bytes": 1005178336,
+          "source": "assumed",
+          "confidence": "low",
+          "explanation": "Base 0.50 GiB + 10% of weights (0.44 GiB)."
+        },
+        "base_bytes": 536870912,
+        "weight_fraction": 0.1,
+        "minimum_bytes": 268435456
+      },
+      "device_reserve": {
+        "name": "Device reserve",
+        "bytes": 536870912,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Configured device reserve of 0.50 GiB."
+      },
+      "safety_margin": {
+        "name": "Safety margin",
+        "bytes": 646000452,
+        "source": "assumed",
+        "confidence": "medium",
+        "explanation": "10% of estimated subtotal."
+      },
+      "total_bytes": 7106004964,
+      "assessment": {
+        "status": "tight",
+        "confidence": "low",
+        "target_device": "auto",
+        "effective_device": "gpu",
+        "available_vram_bytes": 7128145920,
+        "available_ram_bytes": 17455497216,
+        "ratio": 0.9968938688617642,
+        "reasons": [
+          "Weights, KV cache, overhead, reserve, and margin fit in VRAM."
+        ],
+        "warnings": []
+      },
+      "hardware_fit": {
+        "mode": "gpu_resident",
+        "memory_topology": "discrete_memory",
+        "weights_bytes": 4683074240,
+        "kv_cache_bytes": 234881024,
+        "overhead_bytes": 1005178336,
+        "device_reserve_bytes": 536870912,
+        "safety_margin_bytes": 646000452,
+        "available_vram_bytes": 7128145920,
+        "available_ram_bytes": 17455497216,
+        "gpu_required_bytes": 7106004964,
+        "gpu_weight_bytes": 4683074240,
+        "gpu_overhead_bytes": 1005178336,
+        "gpu_safety_margin_bytes": 646000452,
+        "ram_required_bytes": 0,
+        "ram_weight_bytes": 0,
+        "ram_overhead_bytes": 0,
+        "ram_safety_margin_bytes": 0,
+        "gpu_kv_cache_bytes": 234881024,
+        "ram_kv_cache_bytes": 0,
+        "gpu_transformer_blocks": 28,
+        "total_transformer_blocks": 28,
+        "placement_method": "transformer_blocks",
+        "offload_diagnostics": null,
+        "non_block_placement_bounds": null,
+        "reason": "Weights, KV cache, overhead, reserve, and margin fit in VRAM.",
+        "warnings": []
+      },
+      "assumptions": [
+        "Selected explicitly by user: Q4_K_M.",
+        "Base model resolved to Qwen/Qwen2.5-7B-Instruct via model_card_metadata.",
+        "KV cache dtype assumed to be float16."
+      ],
+      "warnings": [
+        "Repository contains 24 GGUF quantization variants (F16, IQ2_M, IQ3_M, IQ3_XS, IQ4_XS, Q2_K, Q2_K_L, Q3_K_L, Q3_K_M, Q3_K_S, Q3_K_XL, Q4_0, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, Q4_K_L, Q4_K_M, Q4_K_S, Q5_K_L, Q5_K_M, Q5_K_S, Q6_K, Q6_K_L, Q8_0); only one is loaded at a time.",
+        "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+      ],
+      "base_model_resolution": {
+        "repo_id": "Qwen/Qwen2.5-7B-Instruct",
+        "source": "model_card_metadata",
+        "confidence": "high",
+        "evidence": [
+          "Model card `base_model: Qwen/Qwen2.5-7B-Instruct`."
+        ],
+        "warnings": [],
+        "candidates": []
+      },
+      "configuration_sources": {
+        "architectures": "gguf_header",
+        "model_type": "gguf_header",
+        "max_position_embeddings": "gguf_header",
+        "hidden_size": "gguf_header",
+        "num_hidden_layers": "gguf_header",
+        "num_attention_heads": "gguf_header",
+        "num_key_value_heads": "gguf_header",
+        "sliding_window": "base_model_config",
+        "use_sliding_window": "base_model_config",
+        "torch_dtype": "base_model_config",
+        "intermediate_size": "base_model_config",
+        "tie_word_embeddings": "base_model_config",
+        "vocab_size": "base_model_config"
+      },
+      "architecture": "qwen2",
+      "runtime_recommendation": {
+        "runtime": "llama.cpp",
+        "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers -1 --batch-size 1",
+        "python_snippet": null,
+        "flags": [
+          {
+            "name": "--model",
+            "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+            "source": "user_input",
+            "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+          },
+          {
+            "name": "--ctx-size",
+            "value": "4096",
+            "source": "estimate",
+            "explanation": "Context length used for the memory estimate."
+          },
+          {
+            "name": "--n-gpu-layers",
+            "value": "-1",
+            "source": "hardware",
+            "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+          },
+          {
+            "name": "--batch-size",
+            "value": "1",
+            "source": "estimate",
+            "explanation": "Prompt batch size (llama.cpp calls this -b)."
+          }
+        ],
+        "reasons": [
+          "Model fits in VRAM (tight); using --n-gpu-layers -1 (all)."
+        ],
+        "warnings": [],
+        "confidence": "high",
+        "alternatives": []
+      }
+    },
+    "compatibility": {
+      "status": "tight",
+      "confidence": "low",
+      "target_device": "auto",
+      "effective_device": "gpu",
+      "available_vram_bytes": 7128145920,
+      "available_ram_bytes": 17455497216,
+      "ratio": 0.9968938688617642,
+      "reasons": [
+        "Weights, KV cache, overhead, reserve, and margin fit in VRAM."
+      ],
+      "warnings": []
+    },
+    "configuration_reason": null,
+    "alternatives_considered": [],
+    "task_match_score": 0.63,
+    "language_match_score": 0.45,
+    "hardware_fit_score": 0.55,
+    "memory_fit_score": 0.55,
+    "concurrency_fit_score": 1.0,
+    "capability_score": 0.7003645535942264,
+    "artifact_realism_score": 1.0,
+    "license_score": 0.315,
+    "metadata_quality_score": 0.55,
+    "popularity_score": 0.0,
+    "warnings": [],
+    "failed": false,
+    "requirement_penalty": 0.51,
+    "unmet_requirement_labels": [
+      "License terms could not be confirmed as permitting commercial use.",
+      "Support for EN not confirmed in metadata."
+    ],
+    "parameter_count_info": null,
+    "artifact_profile": null,
+    "runtime_assessment": null
+  },
+  "score": {
+    "total": 0.16324847903907724,
+    "memory_fit": 0.55,
+    "concurrency_fit": 1.0,
+    "capability": 0.7003645535942264,
+    "task_match": 0.63,
+    "language_match": 0.45,
+    "license": 0.315,
+    "metadata_quality": 0.55,
+    "popularity": 0.0,
+    "hardware_fit": 0.55,
+    "hard_penalty": 0.51,
+    "unmet_requirements": [
+      "License terms could not be confirmed as permitting commercial use.",
+      "Support for EN not confirmed in metadata."
+    ],
+    "weights": {
+      "memory_fit": 0.25,
+      "concurrency_fit": 0.1,
+      "capability": 0.15,
+      "task_match": 0.2,
+      "language_match": 0.12,
+      "license": 0.08,
+      "metadata_quality": 0.07,
+      "popularity": 0.03
+    }
+  },
+  "plan": {
+    "plan_id": "plan-bartowski-qwen2-5-7b-instruct-gguf-qwen2-5-7b-instruct-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "model_identity": {
+      "canonical_repo_id": "bartowski/Qwen2.5-7B-Instruct",
+      "family": "qwen2.5",
+      "model_name": "Qwen2.5-7B-Instruct",
+      "parameter_count": 7000000000,
+      "variant": "instruct",
+      "architecture": null,
+      "confidence": "medium",
+      "evidence": [
+        {
+          "kind": "name_heuristic",
+          "source": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+          "value": "bartowski/Qwen2.5-7B-Instruct",
+          "confidence": "low"
+        },
+        {
+          "kind": "parameter_metadata",
+          "source": "name_inference",
+          "value": "7000000000",
+          "confidence": "low"
+        }
+      ]
+    },
+    "artifact": {
+      "model_identity": {
+        "canonical_repo_id": "bartowski/Qwen2.5-7B-Instruct",
+        "family": "qwen2.5",
+        "model_name": "Qwen2.5-7B-Instruct",
+        "parameter_count": 7000000000,
+        "variant": "instruct",
+        "architecture": null,
+        "confidence": "medium",
+        "evidence": [
+          {
+            "kind": "name_heuristic",
+            "source": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+            "value": "bartowski/Qwen2.5-7B-Instruct",
+            "confidence": "low"
+          },
+          {
+            "kind": "parameter_metadata",
+            "source": "name_inference",
+            "value": "7000000000",
+            "confidence": "low"
+          }
+        ]
+      },
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "main",
+      "format": "gguf",
+      "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "size_bytes": 4683074240,
+      "file_count": 1,
+      "quantization": "Q4_K_M",
+      "precision": null,
+      "source": "analysis",
+      "compatible_runtimes": [
+        "llama.cpp"
+      ],
+      "identity_match": "confirmed",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "kind": "name_heuristic",
+          "source": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+          "value": "bartowski/Qwen2.5-7B-Instruct",
+          "confidence": "low"
+        },
+        {
+          "kind": "parameter_metadata",
+          "source": "name_inference",
+          "value": "7000000000",
+          "confidence": "low"
+        }
+      ]
+    },
+    "runtime": {
+      "runtime": "llama.cpp",
+      "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers -1 --batch-size 1",
+      "python_snippet": null,
+      "flags": [
+        {
+          "name": "--model",
+          "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+          "source": "user_input",
+          "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+        },
+        {
+          "name": "--ctx-size",
+          "value": "4096",
+          "source": "estimate",
+          "explanation": "Context length used for the memory estimate."
+        },
+        {
+          "name": "--n-gpu-layers",
+          "value": "-1",
+          "source": "hardware",
+          "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+        },
+        {
+          "name": "--batch-size",
+          "value": "1",
+          "source": "estimate",
+          "explanation": "Prompt batch size (llama.cpp calls this -b)."
+        }
+      ],
+      "reasons": [
+        "Model fits in VRAM (tight); using --n-gpu-layers -1 (all)."
+      ],
+      "warnings": [],
+      "confidence": "high",
+      "alternatives": []
+    },
+    "runtime_family": "llama.cpp",
+    "backend_selection": null,
+    "runtime_capability": null,
+    "execution_readiness": null,
+    "memory_prediction": {
+      "repository": {
+        "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "author": "bartowski",
+        "private": false,
+        "gated": false,
+        "downloads": 191511,
+        "likes": 77,
+        "last_modified": "2024-09-19T12:54:25Z",
+        "license": "apache-2.0",
+        "tags": [
+          "gguf",
+          "chat",
+          "text-generation",
+          "en",
+          "base_model:Qwen/Qwen2.5-7B-Instruct",
+          "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+          "license:apache-2.0",
+          "endpoints_compatible",
+          "region:us",
+          "conversational"
+        ],
+        "pipeline_tag": "text-generation",
+        "library_name": null
+      },
+      "repository_type": "gguf",
+      "inference_configuration": {
+        "context_length": 4096,
+        "batch_size": 1,
+        "target_device": "auto",
+        "precision": null,
+        "quantization": "Q4_K_M",
+        "kv_cache_dtype": "float16",
+        "safety_margin_percent": 10.0,
+        "device_reserve_bytes": 536870912,
+        "concurrent_users": 1
+      },
+      "weights": {
+        "component": {
+          "name": "Weights",
+          "bytes": 4683074240,
+          "source": "exact",
+          "confidence": "high",
+          "explanation": "Exact remote file size of the Q4_K_M variant."
+        },
+        "num_parameters": null,
+        "bits_per_parameter": null,
+        "precision": null,
+        "gguf_variant": "Q4_K_M",
+        "transformer_block_decomposition": {
+          "total_weight_bytes": 4683074240,
+          "estimated_transformer_block_weight_bytes": 4012773975,
+          "estimated_non_block_weight_bytes": 670300265,
+          "estimated_embedding_weight_bytes": 335150132,
+          "estimated_output_head_weight_bytes": 335150133,
+          "estimated_bytes_per_transformer_block": 143313357,
+          "total_transformer_blocks": 28,
+          "method": "config_parameter_decomposition"
+        }
+      },
+      "kv_cache": {
+        "component": {
+          "name": "KV cache",
+          "bytes": 234881024,
+          "source": "derived",
+          "confidence": "high",
+          "explanation": "28 layers x 4 KV heads x 128 head_dim x 4096 tokens x batch 1 x 2 bytes x 1 sessions x 2."
+        },
+        "layers": 28,
+        "kv_heads": 4,
+        "head_dim": 128,
+        "context_length": 4096,
+        "batch_size": 1,
+        "dtype_bytes": 2,
+        "formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+        "notes": [
+          "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+        ]
+      },
+      "runtime_overhead": {
+        "component": {
+          "name": "Runtime overhead",
+          "bytes": 1005178336,
+          "source": "assumed",
+          "confidence": "low",
+          "explanation": "Base 0.50 GiB + 10% of weights (0.44 GiB)."
+        },
+        "base_bytes": 536870912,
+        "weight_fraction": 0.1,
+        "minimum_bytes": 268435456
+      },
+      "device_reserve": {
+        "name": "Device reserve",
+        "bytes": 536870912,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Configured device reserve of 0.50 GiB."
+      },
+      "safety_margin": {
+        "name": "Safety margin",
+        "bytes": 646000452,
+        "source": "assumed",
+        "confidence": "medium",
+        "explanation": "10% of estimated subtotal."
+      },
+      "total_bytes": 7106004964,
+      "assessment": {
+        "status": "tight",
+        "confidence": "low",
+        "target_device": "auto",
+        "effective_device": "gpu",
+        "available_vram_bytes": 7128145920,
+        "available_ram_bytes": 17455497216,
+        "ratio": 0.9968938688617642,
+        "reasons": [
+          "Weights, KV cache, overhead, reserve, and margin fit in VRAM."
+        ],
+        "warnings": []
+      },
+      "hardware_fit": {
+        "mode": "gpu_resident",
+        "memory_topology": "discrete_memory",
+        "weights_bytes": 4683074240,
+        "kv_cache_bytes": 234881024,
+        "overhead_bytes": 1005178336,
+        "device_reserve_bytes": 536870912,
+        "safety_margin_bytes": 646000452,
+        "available_vram_bytes": 7128145920,
+        "available_ram_bytes": 17455497216,
+        "gpu_required_bytes": 7106004964,
+        "gpu_weight_bytes": 4683074240,
+        "gpu_overhead_bytes": 1005178336,
+        "gpu_safety_margin_bytes": 646000452,
+        "ram_required_bytes": 0,
+        "ram_weight_bytes": 0,
+        "ram_overhead_bytes": 0,
+        "ram_safety_margin_bytes": 0,
+        "gpu_kv_cache_bytes": 234881024,
+        "ram_kv_cache_bytes": 0,
+        "gpu_transformer_blocks": 28,
+        "total_transformer_blocks": 28,
+        "placement_method": "transformer_blocks",
+        "offload_diagnostics": null,
+        "non_block_placement_bounds": null,
+        "reason": "Weights, KV cache, overhead, reserve, and margin fit in VRAM.",
+        "warnings": []
+      },
+      "assumptions": [
+        "Selected explicitly by user: Q4_K_M.",
+        "Base model resolved to Qwen/Qwen2.5-7B-Instruct via model_card_metadata.",
+        "KV cache dtype assumed to be float16."
+      ],
+      "warnings": [
+        "Repository contains 24 GGUF quantization variants (F16, IQ2_M, IQ3_M, IQ3_XS, IQ4_XS, Q2_K, Q2_K_L, Q3_K_L, Q3_K_M, Q3_K_S, Q3_K_XL, Q4_0, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, Q4_K_L, Q4_K_M, Q4_K_S, Q5_K_L, Q5_K_M, Q5_K_S, Q6_K, Q6_K_L, Q8_0); only one is loaded at a time.",
+        "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+      ],
+      "base_model_resolution": {
+        "repo_id": "Qwen/Qwen2.5-7B-Instruct",
+        "source": "model_card_metadata",
+        "confidence": "high",
+        "evidence": [
+          "Model card `base_model: Qwen/Qwen2.5-7B-Instruct`."
+        ],
+        "warnings": [],
+        "candidates": []
+      },
+      "configuration_sources": {
+        "architectures": "gguf_header",
+        "model_type": "gguf_header",
+        "max_position_embeddings": "gguf_header",
+        "hidden_size": "gguf_header",
+        "num_hidden_layers": "gguf_header",
+        "num_attention_heads": "gguf_header",
+        "num_key_value_heads": "gguf_header",
+        "sliding_window": "base_model_config",
+        "use_sliding_window": "base_model_config",
+        "torch_dtype": "base_model_config",
+        "intermediate_size": "base_model_config",
+        "tie_word_embeddings": "base_model_config",
+        "vocab_size": "base_model_config"
+      },
+      "architecture": "qwen2",
+      "runtime_recommendation": {
+        "runtime": "llama.cpp",
+        "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers -1 --batch-size 1",
+        "python_snippet": null,
+        "flags": [
+          {
+            "name": "--model",
+            "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+            "source": "user_input",
+            "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+          },
+          {
+            "name": "--ctx-size",
+            "value": "4096",
+            "source": "estimate",
+            "explanation": "Context length used for the memory estimate."
+          },
+          {
+            "name": "--n-gpu-layers",
+            "value": "-1",
+            "source": "hardware",
+            "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+          },
+          {
+            "name": "--batch-size",
+            "value": "1",
+            "source": "estimate",
+            "explanation": "Prompt batch size (llama.cpp calls this -b)."
+          }
+        ],
+        "reasons": [
+          "Model fits in VRAM (tight); using --n-gpu-layers -1 (all)."
+        ],
+        "warnings": [],
+        "confidence": "high",
+        "alternatives": []
+      }
+    },
+    "hardware": {
+      "os": "Windows 11",
+      "os_version": "10.0.26200",
+      "arch": "AMD64",
+      "cpu": {
+        "model": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+        "physical_cores": 8,
+        "logical_cores": 16
+      },
+      "memory": {
+        "total_bytes": 34282192896,
+        "available_bytes": 17455497216
+      },
+      "storage": [
+        {
+          "mountpoint": "C:\\",
+          "total_bytes": 999134588928,
+          "available_bytes": 185864781824
+        },
+        {
+          "mountpoint": "D:\\",
+          "total_bytes": 240053747712,
+          "available_bytes": 238874632192
+        },
+        {
+          "mountpoint": "E:\\",
+          "total_bytes": 1000202039296,
+          "available_bytes": 554912264192
+        },
+        {
+          "mountpoint": "F:\\",
+          "total_bytes": 1000201220096,
+          "available_bytes": 875027091456
+        }
+      ],
+      "gpus": [
+        {
+          "name": "NVIDIA GeForce RTX 4060",
+          "vram_total_bytes": 8585740288,
+          "vram_available_bytes": 7128145920,
+          "driver_version": "616.92",
+          "cuda_version": "13.4"
+        }
+      ],
+      "accelerators": [
+        {
+          "name": "NVIDIA GeForce RTX 4060",
+          "vendor": "nvidia",
+          "type": "dedicated",
+          "vendor_id": "0x10de",
+          "device_id": "0x2882",
+          "pci_bus_id": "00000000:2B:00.0",
+          "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+          "dedicated_memory_bytes": 8585740288,
+          "available_memory_bytes": 7128145920,
+          "shared_memory": false,
+          "detection_sources": [
+            "nvml",
+            "vulkaninfo"
+          ],
+          "backends": [
+            {
+              "backend": "cuda",
+              "availability": "available",
+              "reason": "probe_available",
+              "source": "nvml",
+              "detail": "CUDA driver reported by NVML.",
+              "api_version": "13.4",
+              "device_name": null,
+              "driver_name": "616.92",
+              "software_renderer": false
+            },
+            {
+              "backend": "vulkan",
+              "availability": "available",
+              "reason": "probe_available",
+              "source": "vulkaninfo",
+              "detail": "Vulkan device exposed by vulkaninfo.",
+              "api_version": "1.4.351",
+              "device_name": "NVIDIA GeForce RTX 4060",
+              "driver_name": "NVIDIA",
+              "software_renderer": false
+            },
+            {
+              "backend": "hip",
+              "availability": "unknown",
+              "reason": "not_checked",
+              "source": "nvml",
+              "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+              "api_version": null,
+              "device_name": null,
+              "driver_name": null,
+              "software_renderer": false
+            }
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    "compatibility": "compatible",
+    "evidence": [
+      "artifact:gguf",
+      "identity_match:confirmed",
+      "quantization:Q4_K_M"
+    ],
+    "warnings": []
+  },
+  "plan_assessment": {
+    "plan_id": "plan-bartowski-qwen2-5-7b-instruct-gguf-qwen2-5-7b-instruct-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "hard_constraints": [],
+    "capability": "adequate",
+    "suitability": "adequate",
+    "execution_fitness": "adequate",
+    "feasibility": "adequate",
+    "executability": "strong",
+    "runtime_readiness": "unknown",
+    "performance_evidence": "unknown",
+    "resource_evidence": "weak",
+    "license_fit": "unknown",
+    "language_fit": "unknown",
+    "confidence": "low",
+    "evidence": [
+      {
+        "category": "identity",
+        "key": "repository",
+        "value": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "source": "search_metadata",
+        "confidence": "medium",
+        "observed": false,
+        "provenance": {
+          "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF"
+        }
+      },
+      {
+        "category": "metadata",
+        "key": "artifact",
+        "value": "gguf Q4_K_M",
+        "source": "model_analysis",
+        "confidence": "medium",
+        "observed": false,
+        "provenance": {
+          "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+          "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+        }
+      },
+      {
+        "category": "hardware",
+        "key": "memory_estimate",
+        "value": "7106004964",
+        "source": "memory_estimator",
+        "confidence": "low",
+        "observed": false,
+        "provenance": {
+          "status": "tight",
+          "context": 4096
+        }
+      },
+      {
+        "category": "metadata",
+        "key": "parameter_count",
+        "value": "7000000000",
+        "source": "model_analysis",
+        "confidence": "medium",
+        "observed": false,
+        "provenance": {}
+      },
+      {
+        "category": "metadata",
+        "key": "model_scale",
+        "value": "higher_capacity",
+        "source": "policy",
+        "confidence": "medium",
+        "observed": false,
+        "provenance": {
+          "parameter_count": 7000000000
+        }
+      },
+      {
+        "category": "metadata",
+        "key": "assistant_tuning",
+        "value": "instruction",
+        "source": "heuristic",
+        "confidence": "low",
+        "observed": false,
+        "provenance": {}
+      }
+    ],
+    "external_evaluations": [],
+    "reasons": [
+      "memory:tight",
+      "use_case:metadata_match",
+      "capability:scale:higher_capacity",
+      "capability:instruction_tuned"
+    ],
+    "trade_offs": [
+      "quantized:Q4_K_M",
+      "external_quality_evidence:incomplete",
+      "runtime_readiness:not_checked"
+    ],
+    "rejection_reasons": [],
+    "measured_memory_bytes": null,
+    "estimated_memory_bytes": 7106004964,
+    "measured_generation_tokens_per_second": null,
+    "local_experiment_id": null,
+    "local_benchmark_id": null
+  },
+  "alternative_plans": [],
+  "alternative_plan_assessments": [],
+  "recommendation_position": "best_overall",
+  "status": "tight",
+  "confidence": "low",
+  "license_category": "unknown",
+  "tier": "best_effort",
+  "series_alternatives": [],
+  "reasons": [
+    "Q4_K_M variant fits with limited memory headroom.",
+    "Suggested context of 4096 tokens."
+  ],
+  "warnings": [
+    "Estimated memory leaves limited free VRAM; other GPU workloads may not fit alongside the model.",
+    "Confidence is low because the estimate rests on runtime overhead. The runtime overhead figure is a documented heuristic, not a measurement.",
+    "No license is declared for this repository.",
+    "Support for EN is not confirmed in the model metadata."
+  ],
+  "related_repositories": [],
+  "alternative_label": null
+}

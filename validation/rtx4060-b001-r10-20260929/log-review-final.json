@@ -1,0 +1,20 @@
+{
+  "review": "Original experiment and both benchmark raw logs manually inspected.",
+  "files": [
+    {
+      "path": "logs\\exp-54063df9-685d-4b86-a481-acc98e768567.runtime-log",
+      "sha256": "e7d71a8498e8022a2bf7675d06ec43ed587bc9f87874cc9a189948c71a9bcc1d",
+      "bytes": 372493
+    },
+    {
+      "path": "logs\\bench-491757e3-204b-4956-b89e-61d39ce2f76b.runtime-log",
+      "sha256": "d29a0fdee5ca8f6395842c184d0601a754779cfc9cd70c02d12d1e7776f05d89",
+      "bytes": 1208
+    },
+    {
+      "path": "logs\\bench-12a23300-b538-457f-9091-c5550c132e00.runtime-log",
+      "sha256": "4f94e8225140837a4c389d39ad35d5854736d382c4cf24db5ac61a3841cc70c0",
+      "bytes": 1215
+    }
+  ]
+}

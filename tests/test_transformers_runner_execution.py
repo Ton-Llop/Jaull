@@ -249,18 +249,31 @@ def test_runner_rejects_non_transformers_runtime(tmp_path: Path) -> None:
         )
 
 
-def test_runner_rejects_malformed_worker_output(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "stdout",
+    ["not json\n", '{"success": true}', '{"text": "hello"}',
+     '{"success": true, "text": {"unexpected": "object"}}'],
+    ids=["missing-json", "missing-text", "missing-status", "invalid-text"],
+)
+def test_runner_rejects_malformed_worker_output(tmp_path: Path, stdout: str) -> None:
     backend = _FakeExecutionBackend(
         ExecutionResult(
-            stdout="not json\n",
-            stderr="",
+            stdout=stdout,
+            stderr="worker diagnostic\n",
             observation=_observation(duration_seconds=0.2),
         )
     )
     runner = TransformersRunner(backend=backend, python_executable=_executable(tmp_path))
 
-    with pytest.raises(TransformersRunnerError):
+    with pytest.raises(TransformersRunnerError) as error:
         runner.run(artifact=_artifact(), prompt="Hello")
+    assert error.value.result == backend.result
+    assert error.value.observation is not None
+    assert error.value.observation.success is False
+    assert error.value.observation.exit_code == 0
+    assert error.value.observation.failure_reason is None
+    assert error.value.observation.duration_seconds == 0.2
+    assert backend.result.observation.success is True
 
 
 def test_runner_rejects_worker_reported_failure(tmp_path: Path) -> None:
@@ -277,6 +290,9 @@ def test_runner_rejects_worker_reported_failure(tmp_path: Path) -> None:
         runner.run(artifact=_artifact(), prompt="Hello")
     assert error.value.result is not None
     assert "model load failed" in error.value.result.stdout
+    assert error.value.observation is not None
+    assert error.value.observation.success is False
+    assert error.value.observation.exit_code == 0
 
 
 def test_runner_surfaces_worker_failure_from_non_zero_exit(tmp_path: Path) -> None:

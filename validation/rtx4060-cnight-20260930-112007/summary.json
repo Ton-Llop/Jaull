@@ -1,0 +1,454 @@
+{
+  "source_commit": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c",
+  "initial_git": {
+    "branch": "c_night",
+    "source_commit": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c",
+    "status": [
+      "?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/",
+      "?? validation/rtx4060-b001-r10-20260929/bundle/evidence/",
+      "?? validation/rtx4060-b001-r10-20260929/logs/"
+    ],
+    "clean": false,
+    "tracked_changes": false,
+    "note": "Observed before creating the evidence directory; preparation.json status was captured after directory creation."
+  },
+  "final_git": {
+    "branch": {
+      "command": [
+        "git",
+        "branch",
+        "--show-current"
+      ],
+      "exit_code": 0,
+      "stdout": "c_night\n",
+      "stderr": ""
+    },
+    "head": {
+      "command": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit_code": 0,
+      "stdout": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c\n",
+      "stderr": ""
+    },
+    "status": {
+      "command": [
+        "git",
+        "status",
+        "--short"
+      ],
+      "exit_code": 0,
+      "stdout": "?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/\n?? validation/rtx4060-b001-r10-20260929/bundle/evidence/\n?? validation/rtx4060-b001-r10-20260929/logs/\n?? validation/rtx4060-cnight-20260930-112007/\n",
+      "stderr": ""
+    },
+    "diff_stat": {
+      "command": [
+        "git",
+        "diff",
+        "--stat"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "diff_check": {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "staged_diff_stat": {
+      "command": [
+        "git",
+        "diff",
+        "--cached",
+        "--stat"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "gates": [
+    {
+      "command": "uv run --python 3.12 pytest --junitxml=validation/rtx4060-cnight-20260930-112007/pytest.xml",
+      "exit_code": 0,
+      "result": "1909 passed in 122.63s"
+    },
+    {
+      "command": "uv run --python 3.12 ruff check .",
+      "exit_code": 0,
+      "result": "All checks passed"
+    },
+    {
+      "command": "uv run --python 3.12 mypy src",
+      "exit_code": 0,
+      "result": "Success: 237 source files"
+    },
+    {
+      "command": "uv run --python 3.12 python -m compileall -q src",
+      "exit_code": 0
+    },
+    {
+      "command": "uv run --python 3.12 pytest tests/test_architecture_dependencies.py",
+      "exit_code": 0,
+      "result": "4 passed in 0.93s"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "baseline": {
+    "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+    "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "lfs": {
+      "size": 4683074240,
+      "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+      "pointer_size": 135
+    },
+    "expected_sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423"
+  },
+  "artifact_hash": {
+    "path": "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+    "expected": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+    "actual": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+    "matches": true
+  },
+  "runtime": {
+    "cli": "C:/tools/llama.cpp/llama-cli.exe",
+    "bench": "C:/tools/llama.cpp/llama-bench.exe",
+    "build": "11258",
+    "commit": "ba0ba54d9",
+    "backend": "cuda"
+  },
+  "records": {
+    "experiment_id": "exp-38e97695-954d-42ef-83e0-1bacecda01dc",
+    "experiment_store_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\experiments\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json",
+    "experiment_copy_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\records\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json",
+    "experiment_log_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\logs\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+    "benchmarks": [
+      {
+        "id": "bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e",
+        "store_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\benchmarks\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+        "copy_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\records\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+        "log_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\logs\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log",
+        "success": true
+      }
+    ]
+  },
+  "case": {
+    "case_id": "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
+    "store_path": "C:\\Users\\USER\\AppData\\Local\\jaull\\cases\\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json",
+    "copy_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\records\\case-a8b66e98-447b-4faa-9d11-ab839d91b3b2.json",
+    "bundle_path": "C:\\Users\\USER\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\bundle"
+  },
+  "bundle_validation": {
+    "case_id": "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
+    "status": "valid",
+    "checks": [
+      {
+        "name": "bundle_integrity",
+        "status": "valid",
+        "detail": "all declared files verified"
+      },
+      {
+        "name": "records_exist",
+        "status": "valid",
+        "detail": "1 experiment, 1 benchmark(s)"
+      },
+      {
+        "name": "machine_identity",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "artifact_identity",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "artifact_hash",
+        "status": "valid",
+        "detail": "verified"
+      },
+      {
+        "name": "runtime_family",
+        "status": "valid",
+        "detail": "llama.cpp"
+      },
+      {
+        "name": "runtime_build",
+        "status": "valid",
+        "detail": "differs between records; see warnings"
+      },
+      {
+        "name": "execution_conditions",
+        "status": "valid",
+        "detail": "identical"
+      },
+      {
+        "name": "context",
+        "status": "valid",
+        "detail": "experiment ran at 4096 tokens; benchmark scenario declares the same context (not runner-enforced)"
+      },
+      {
+        "name": "provenance",
+        "status": "valid",
+        "detail": "complete"
+      },
+      {
+        "name": "evidence_files",
+        "status": "valid",
+        "detail": "10 file(s) present"
+      }
+    ],
+    "reasons": [],
+    "warnings": [
+      "records were produced by different runtime builds: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\tools\\llama.cpp\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\tools\\llama.cpp\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\tools\\llama.cpp\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64; version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64"
+    ]
+  },
+  "validate": {
+    "success": true,
+    "duration_seconds": 5.59560590000001,
+    "observation": {
+      "success": true,
+      "duration_seconds": 5.59560590000001,
+      "peak_ram_bytes": 4852645888,
+      "peak_vram_bytes": null,
+      "exit_code": 0,
+      "failure_reason": null,
+      "measurement": {
+        "ram_measurement": "process_rss",
+        "vram_measurement": "nvml_process_memory",
+        "sample_interval_seconds": 0.05
+      },
+      "runtime_allocation": {
+        "runtime": "llama.cpp",
+        "device": "CUDA0",
+        "runtime_build": null,
+        "buffers": [
+          {
+            "category": "kv",
+            "location": "host",
+            "bytes": 8388608,
+            "raw_label": "CPU kv"
+          },
+          {
+            "category": "model",
+            "location": "host",
+            "bytes": 455669187,
+            "raw_label": "CPU_Mapped model"
+          },
+          {
+            "category": "compute",
+            "location": "device",
+            "bytes": 185010749,
+            "raw_label": "CUDA0 compute"
+          },
+          {
+            "category": "kv",
+            "location": "device",
+            "bytes": 226492416,
+            "raw_label": "CUDA0 kv"
+          },
+          {
+            "category": "model",
+            "location": "device",
+            "bytes": 4221441147,
+            "raw_label": "CUDA0 model"
+          },
+          {
+            "category": "compute",
+            "location": "host",
+            "bytes": 18884854,
+            "raw_label": "CUDA_Host compute"
+          },
+          {
+            "category": "model",
+            "location": "host",
+            "bytes": 0,
+            "raw_label": "CUDA_Host model"
+          },
+          {
+            "category": "output",
+            "location": "host",
+            "bytes": 608174,
+            "raw_label": "CUDA_Host output"
+          }
+        ],
+        "total_device_bytes": 4632944312
+      }
+    },
+    "comparison": {
+      "ram": {
+        "predicted_bytes": null,
+        "measured_bytes": 4852645888,
+        "error_bytes": null,
+        "absolute_error_bytes": null,
+        "error_percent": null,
+        "availability": "methodologically_unavailable",
+        "unavailable_reason": "Peak process RSS does not measure host memory demand under GPU offload: llama.cpp maps the whole model file, and the pages it reads to upload weights to the device stay resident, so RSS reflects the artifact size rather than the host share of the placement.",
+        "source": null,
+        "runtime": null,
+        "driver_confirmed": null
+      },
+      "vram": {
+        "predicted_bytes": null,
+        "measured_bytes": 4632944312,
+        "error_bytes": null,
+        "absolute_error_bytes": null,
+        "error_percent": null,
+        "availability": "methodologically_unavailable",
+        "unavailable_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+        "source": "runtime_reported_allocation",
+        "runtime": "llama.cpp",
+        "driver_confirmed": false
+      },
+      "compatibility": {
+        "predicted_status": "offloading_required",
+        "predicted_runnable": true,
+        "observed_success": true,
+        "outcome": "correct_success",
+        "failure_reason": null
+      },
+      "vram_components": [
+        {
+          "component": "gpu_weight_bytes",
+          "observed_label": "CUDA model buffer",
+          "semantics": "unavailable",
+          "semantics_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+          "metric": {
+            "predicted_bytes": 3679880747,
+            "measured_bytes": 4221441147,
+            "error_bytes": null,
+            "absolute_error_bytes": null,
+            "error_percent": null,
+            "availability": "methodologically_unavailable",
+            "unavailable_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+            "source": "runtime_reported_allocation",
+            "runtime": "llama.cpp",
+            "driver_confirmed": false
+          }
+        },
+        {
+          "component": "gpu_kv_cache_bytes",
+          "observed_label": "CUDA KV buffer",
+          "semantics": "unavailable",
+          "semantics_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+          "metric": {
+            "predicted_bytes": 176160768,
+            "measured_bytes": 226492416,
+            "error_bytes": null,
+            "absolute_error_bytes": null,
+            "error_percent": null,
+            "availability": "methodologically_unavailable",
+            "unavailable_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+            "source": "runtime_reported_allocation",
+            "runtime": "llama.cpp",
+            "driver_confirmed": false
+          }
+        },
+        {
+          "component": "gpu_overhead_bytes",
+          "observed_label": "CUDA compute buffer",
+          "semantics": "unavailable",
+          "semantics_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+          "metric": {
+            "predicted_bytes": 788134334,
+            "measured_bytes": 185010749,
+            "error_bytes": null,
+            "absolute_error_bytes": null,
+            "error_percent": null,
+            "availability": "methodologically_unavailable",
+            "unavailable_reason": "Non-block weight placement is bounded, not a device-specific point prediction.",
+            "source": "runtime_reported_allocation",
+            "runtime": "llama.cpp",
+            "driver_confirmed": false
+          }
+        }
+      ]
+    }
+  },
+  "benchmark": {
+    "success": true,
+    "measurements": [
+      {
+        "kind": "prefill",
+        "tokens": 512,
+        "mean_tokens_per_second": 2408.9,
+        "stddev_tokens_per_second": 49.77,
+        "mean_duration_seconds": null,
+        "stddev_duration_seconds": null,
+        "repetitions": 3,
+        "source_label": "pp512",
+        "raw_backend": "CUDA",
+        "raw_device": "CUDA0",
+        "raw_ngl": "28"
+      },
+      {
+        "kind": "generation",
+        "tokens": 128,
+        "mean_tokens_per_second": 44.22,
+        "stddev_tokens_per_second": 0.6,
+        "mean_duration_seconds": null,
+        "stddev_duration_seconds": null,
+        "repetitions": 3,
+        "source_label": "tg128",
+        "raw_backend": "CUDA",
+        "raw_device": "CUDA0",
+        "raw_ngl": "28"
+      }
+    ],
+    "repetitions": 3,
+    "duration_seconds": 12.384781700000076,
+    "methodology": "llama_bench_v1",
+    "model_load_seconds": null,
+    "warmup_seconds": null,
+    "time_to_first_token_seconds": null,
+    "time_to_first_token_stddev_seconds": null,
+    "generation_latency_seconds": null,
+    "generation_latency_stddev_seconds": null,
+    "peak_ram_bytes": 4828770304,
+    "peak_vram_bytes": null,
+    "command": [
+      "C:\\tools\\llama.cpp\\llama-bench.exe",
+      "-m",
+      "C:\\Users\\USER\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "-dev",
+      "CUDA0",
+      "-ngl",
+      "28",
+      "-p",
+      "512",
+      "-n",
+      "128",
+      "-r",
+      "3"
+    ],
+    "exit_code": 0,
+    "failure_reason": null,
+    "message": null
+  },
+  "warnings": [
+    "AGENTS.md absent in repository and checked ancestors",
+    "Initial sandbox process setup failed; execution used auto-reviewed escalation",
+    "Initial doctor runtime_missing resolved by explicit existing C:/tools/llama.cpp",
+    "Hugging Face unauthenticated request warning",
+    "Local tensor refinement not applied: Runtime build is not verified.",
+    "Validate command omits plan --batch-size 1",
+    "Benchmark command omits --ctx-size and --batch-size; context_length=4096 is provenance only",
+    "Bundle runtime-build warning retained: text differs, both binaries report build 11258 and commit ba0ba54d9",
+    "NVML process VRAM unavailable; no device-wide VRAM substituted",
+    "RAM/VRAM prediction comparisons methodologically unavailable; original reasons and null errors retained"
+  ],
+  "campaign_failures": []
+}

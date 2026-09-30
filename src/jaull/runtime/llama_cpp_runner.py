@@ -64,6 +64,12 @@ class LlamaCppRunner:
         )
         device = _str_flag(runtime, "--device")
         device_flags = ("--device", device) if device is not None else ()
+        batch_flags: tuple[str, ...] = ()
+        if _str_flag(runtime, "--batch-size") is not None:
+            batch_size = _int_flag(runtime, "--batch-size", default=1)
+            if batch_size <= 0:
+                raise LlamaCppRunnerError("Runtime flag --batch-size must be greater than 0.")
+            batch_flags = ("--batch-size", str(batch_size))
         command: tuple[str, ...] = (
             self._llama_cli,
             "--model",
@@ -73,6 +79,7 @@ class LlamaCppRunner:
             "--n-gpu-layers",
             str(n_gpu_layers),
             *device_flags,
+            *batch_flags,
             "--no-display-prompt",
             "--color",
             "off",

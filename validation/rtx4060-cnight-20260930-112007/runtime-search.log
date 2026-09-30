@@ -1,0 +1,14 @@
+﻿SEARCH_ROOT: .venv
+SEARCH_ROOT: C:/Users/USER/tools
+ABSENT
+SEARCH_ROOT: C:/Users/USER/llama.cpp
+ABSENT
+SEARCH_ROOT: C:/tools
+
+FullName                           Length
+--------                           ------
+C:\tools\llama.cpp\llama-bench.exe   9216
+SEARCH_ROOT: D:/llama.cpp
+ABSENT
+
+

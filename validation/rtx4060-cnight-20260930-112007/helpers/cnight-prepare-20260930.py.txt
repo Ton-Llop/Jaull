@@ -1,0 +1,85 @@
+﻿import hashlib
+import json
+import traceback
+from dataclasses import replace
+from pathlib import Path
+from huggingface_hub import HfApi
+from jaull.advisor.service import AdvisorService
+from jaull.domain.hardware import ComputeBackend
+from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat, ModelIdentity
+from jaull.domain.runtime import RuntimeName, ExecutionReadinessStatus
+from jaull.execution.host import HostExecutionBackend
+from jaull.runtime.llama_bench_capability import inspect_llama_bench
+
+ROOT = Path('validation/rtx4060-cnight-20260930-112007').resolve()
+REPO = 'bartowski/Qwen2.5-7B-Instruct-GGUF'
+FILENAME = 'Qwen2.5-7B-Instruct-Q4_K_M.gguf'
+EXPECTED = '65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423'
+
+def save(name, value):
+    data = value.model_dump(mode='json') if hasattr(value, 'model_dump') else value
+    with (ROOT / name).open('x', encoding='utf-8', newline='\n') as handle:
+        json.dump(data, handle, indent=2)
+        handle.write('\n')
+
+def main():
+    advisor = replace(AdvisorService.default(), llama_cli_path=Path('C:/tools/llama.cpp/llama-cli.exe'), llama_bench_path=Path('C:/tools/llama.cpp/llama-bench.exe'))
+    hardware = advisor.scan_hardware()
+    save('hardware.json', hardware)
+    selection = advisor.select_runtime_backend(hardware)
+    save('backend-selection.json', selection)
+    if selection.selected_backend is not ComputeBackend.CUDA:
+        raise RuntimeError('Selected backend is not CUDA; STOP')
+    capability = advisor.inspect_llama_cpp_runtime(selection=selection)
+    save('runtime-capability.json', capability)
+    readiness = advisor.evaluate_execution_readiness(selection=selection, runtime_capability=capability)
+    save('runtime-readiness.json', readiness)
+    bench_capability = inspect_llama_bench(backend=HostExecutionBackend(), llama_bench_path=advisor.llama_bench_path, timeout_seconds=30, allow_empty_workload_probe=True)
+    save('benchmark-capability.json', bench_capability)
+    save('runtime-binary-hashes.json', {str(p): hashlib.file_digest(p.open('rb'), 'sha256').hexdigest() for p in Path('C:/tools/llama.cpp').iterdir() if p.suffix.lower() in {'.dll', '.exe'}})
+    if readiness.status is not ExecutionReadinessStatus.READY:
+        raise RuntimeError('Existing runtime is not ready; STOP')
+    info = HfApi().model_info(REPO, files_metadata=True)
+    revision = info.sha
+    if not revision:
+        raise RuntimeError('Concrete repository revision missing')
+    sibling = next(s for s in info.siblings if s.rfilename == FILENAME)
+    save('hub-baseline.json', {'repo': REPO, 'revision': revision, 'filename': FILENAME, 'lfs': sibling.lfs.__dict__ if sibling.lfs else None, 'expected_sha256': EXPECTED})
+    artifact = advisor.resolve_artifact(REPO, quantization='Q4_K_M', revision=revision)
+    save('resolved-artifact.json', artifact)
+    if artifact.filename != FILENAME:
+        raise RuntimeError('Resolved artifact differs from required file')
+    if not artifact.is_downloaded:
+        artifact = advisor.download_artifact(artifact.model_copy(update={'sha256': EXPECTED}))
+    if artifact.local_path is None:
+        raise RuntimeError('No local file')
+    with artifact.local_path.open('rb') as stream:
+        actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+    save('artifact-hash-check.json', {'path': str(artifact.local_path), 'revision': revision, 'expected': EXPECTED, 'actual': actual, 'matches': actual == EXPECTED})
+    if actual != EXPECTED:
+        raise RuntimeError('SHA256 mismatch; STOP')
+    artifact = advisor.verify_artifact(artifact, full=True)
+    save('verified-artifact.json', artifact)
+    analysis = advisor.inspect_model(REPO)
+    save('analysis.json', analysis)
+    config = InferenceConfiguration(context_length=4096, concurrent_users=1, quantization='Q4_K_M')
+    save('inference-configuration.json', config)
+    save('workload-intent.json', {'task': 'general_chat', 'mode': 'interactive', 'context_length': 4096, 'concurrent_users': 1, 'min_generation_tps': None, 'max_ttft_ms': None})
+    estimate = advisor.estimate_model(analysis, hardware, config, resolve_base_model=True, recommend_runtime=True)
+    save('prediction-before-validation.json', estimate)
+    identity = ModelIdentity(canonical_repo_id=REPO, model_name='Qwen2.5-7B-Instruct')
+    variant = ArtifactVariant(model_identity=identity, repo_id=REPO, revision=revision, format=ArtifactVariantFormat.GGUF, filename=FILENAME, size_bytes=artifact.size_bytes, quantization='Q4_K_M')
+    plan = advisor.plan_execution(model_identity=identity, artifact=variant, runtime=RuntimeName.LLAMA_CPP, estimate=estimate, hardware=hardware, local_artifact=artifact, backend_selection=selection, runtime_capability=capability, execution_readiness=readiness)
+    save('initial-execution-plan.json', plan)
+    prepared = advisor.prepare_execution_plan(plan, hardware=hardware, for_benchmark=True)
+    save('prepared-execution-plan.json', prepared)
+    save('execution-plan.json', prepared.plan)
+    print('Preparation completed; exact artifact verified; plan recorded', flush=True)
+
+try:
+    main()
+except Exception:
+    (ROOT / 'preparation-failure.txt').write_text(traceback.format_exc(), encoding='utf-8')
+    print('Preparation failed; diagnostic preserved locally', flush=True)
+    raise

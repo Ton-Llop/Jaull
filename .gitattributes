@@ -19,3 +19,6 @@
 *.sh    text eol=lf
 
 uv.lock linguist-generated=true
+
+# Experimental evidence is hashed byte-for-byte; never normalize it in Git.
+validation/** -text whitespace=cr-at-eol

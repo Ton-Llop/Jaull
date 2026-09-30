@@ -173,12 +173,17 @@ def _stub_downloader(payload: bytes) -> Any:
     return _do
 
 
-def test_download_writes_file_and_persists_sha(tmp_path: Path) -> None:
+@pytest.mark.parametrize("known_digest", [False, True])
+def test_download_writes_file_and_persists_sha(tmp_path: Path, known_digest: bool) -> None:
     payload = b"synthetic gguf bytes" * 100
     client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
     service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
 
     artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+    if known_digest:
+        artifact = artifact.model_copy(
+            update={"sha256": hashlib.sha256(payload).hexdigest().upper()}
+        )
     downloaded = service.download(artifact)
 
     assert downloaded.is_downloaded is True
@@ -187,6 +192,82 @@ def test_download_writes_file_and_persists_sha(tmp_path: Path) -> None:
     assert downloaded.sha256 == hashlib.sha256(payload).hexdigest()
     sidecar = downloaded.local_path.with_name(downloaded.local_path.name + ".sha256")
     assert sidecar.read_text(encoding="ascii").strip() == downloaded.sha256
+
+
+@pytest.mark.parametrize("existing_sidecar", [False, True])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_download_rejects_bytes_that_conflict_with_known_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_sidecar: bool, interrupted: bool,
+) -> None:
+    payload = b"replaced model"
+    expected_digest = hashlib.sha256(b"expected model").hexdigest()
+    assert len(payload) == len(b"expected model")
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+
+    def downloader(**kwargs: Any) -> str:
+        result = _stub_downloader(payload)(**kwargs)
+        if interrupted:
+            raise OSError("download interrupted")
+        return str(result)
+
+    service = _make_service(tmp_path, client, downloader=downloader)
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M").model_copy(
+        update={"sha256": expected_digest}
+    )
+    path = service.storage.path_for(artifact)
+    sidecar = path.with_name(path.name + ".sha256")
+    if existing_sidecar:
+        service.storage.save_sha256(path, expected_digest)
+    monkeypatch.setattr(service.resolver, "resolve", lambda *args, **kwargs: artifact)
+
+    error_type = ArtifactDownloadError if interrupted else ArtifactVerificationError
+    with pytest.raises(error_type, match="interrupted" if interrupted else "SHA-256 mismatch"):
+        service.download(artifact)
+
+    assert artifact.sha256 == expected_digest
+    assert not artifact.is_downloaded
+    assert path.read_bytes() == payload
+    assert not sidecar.exists()
+    resolved = service.resolve("owner/repo", quantization="Q5_K_M")
+    assert resolved.sha256 == expected_digest
+    assert resolved.is_downloaded
+    assert not resolved.is_verified
+    with pytest.raises(ArtifactVerificationError, match="Missing SHA-256 sidecar"):
+        service.verify(resolved)
+
+
+def test_download_does_not_start_when_sidecar_cannot_be_invalidated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = b"original model"
+    calls: list[object] = []
+
+    def downloader(**kwargs: Any) -> str:
+        calls.append(kwargs)
+        return str(Path(kwargs["local_dir"]) / kwargs["filename"])
+
+    service = _make_service(
+        tmp_path, _gguf_repo([("m-q5_k_m.gguf", len(payload))]), downloader=downloader,
+    )
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+    path = service.storage.path_for(artifact)
+    service.storage.ensure_parent(path)
+    path.write_bytes(payload)
+    service.storage.save_sha256(path, hashlib.sha256(payload).hexdigest())
+    sidecar = path.with_name(path.name + ".sha256")
+    original = sidecar.read_bytes()
+    error = PermissionError("sidecar removal denied")
+
+    def deny_removal(self: Path, *args: Any, **kwargs: Any) -> None:
+        raise error
+
+    monkeypatch.setattr(Path, "unlink", deny_removal)
+    with pytest.raises(ArtifactDownloadError, match="sidecar removal denied") as caught:
+        service.download(artifact)
+    assert caught.value.__cause__ is error
+    assert calls == []
+    assert path.read_bytes() == payload
+    assert sidecar.read_bytes() == original
 
 
 def test_download_translates_hf_not_found(tmp_path: Path) -> None:
@@ -213,6 +294,35 @@ def test_download_translates_oserror(tmp_path: Path) -> None:
         service.download(artifact)
 
 
+@pytest.mark.parametrize("stage", ["directory", "hash", "sidecar"])
+def test_download_translates_local_io_failures(tmp_path: Path, stage: str) -> None:
+    payload = b"content"
+
+    def downloader(**kwargs: Any) -> str:
+        path = Path(kwargs["local_dir"]) / kwargs["filename"]
+        if stage != "hash":
+            path.write_bytes(payload)
+        if stage == "sidecar":
+            path.with_name(path.name + ".sha256").mkdir()
+        return str(path)
+
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+    service = _make_service(tmp_path, client, downloader=downloader)
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+    path = service.storage.path_for(artifact)
+    if stage == "directory":
+        path.parent.parent.mkdir(parents=True)
+        path.parent.write_bytes(b"not a directory")
+
+    with pytest.raises(ArtifactDownloadError, match="I/O error") as error:
+        service.download(artifact)
+
+    assert isinstance(error.value.__cause__, OSError)
+    assert not artifact.is_downloaded
+    if stage == "sidecar":
+        assert path.read_bytes() == payload
+
+
 def test_resolve_promotes_already_downloaded(tmp_path: Path) -> None:
     payload = b"already here"
     client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
@@ -231,15 +341,93 @@ def test_resolve_promotes_already_downloaded(tmp_path: Path) -> None:
     assert second.sha256 == hashlib.sha256(payload).hexdigest()
 
 
-def test_verify_fast_path_ok(tmp_path: Path) -> None:
+@pytest.mark.parametrize("digest_state", ["conflict", "known", "unknown", "uppercase"])
+def test_resolve_preserves_expected_digest_when_promoting_local_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, digest_state: str,
+) -> None:
+    payload = b"local artifact"
+    service = _make_service(tmp_path, _gguf_repo([("m-q5_k_m.gguf", len(payload))]))
+    reference = service.resolve("owner/repo", quantization="Q5_K_M")
+    digest = hashlib.sha256(payload).hexdigest()
+    expected = {
+        "conflict": "a" * 64, "known": digest, "unknown": None, "uppercase": digest.upper(),
+    }[digest_state]
+    reference = reference.model_copy(update={"sha256": expected})
+    monkeypatch.setattr(service.resolver, "resolve", lambda *args, **kwargs: reference)
+    path = service.storage.path_for(reference)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(payload)
+    service.storage.save_sha256(path, digest)
+    sidecar = path.with_name(path.name + ".sha256")
+    before = (reference.model_dump_json(), path.read_bytes(), sidecar.read_bytes())
+
+    if digest_state == "conflict":
+        with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch"):
+            service.resolve("owner/repo", quantization="Q5_K_M")
+    else:
+        resolved = service.resolve("owner/repo", quantization="Q5_K_M")
+        assert resolved.sha256 == digest
+        assert resolved.local_path == path
+        assert resolved.is_downloaded
+        assert not resolved.is_verified
+    assert (reference.model_dump_json(), path.read_bytes(), sidecar.read_bytes()) == before
+
+
+@pytest.mark.parametrize("digest_state", ["known", "unknown", "uppercase"])
+def test_verify_fast_path_ok(tmp_path: Path, digest_state: str) -> None:
     payload = b"content" * 50
     client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
     service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
 
     artifact = service.download(service.resolve("owner/repo", quantization="Q5_K_M"))
+    if digest_state == "unknown":
+        artifact = artifact.model_copy(update={"sha256": None})
+    elif digest_state == "uppercase":
+        assert artifact.sha256 is not None
+        artifact = artifact.model_copy(update={"sha256": artifact.sha256.upper()})
     verified = service.verify(artifact)
 
     assert verified.is_verified is True
+    assert verified.sha256 == hashlib.sha256(payload).hexdigest()
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_verify_preserves_known_artifact_digest(tmp_path: Path, full: bool) -> None:
+    payload = b"original"
+    replacement = b"replaced"
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+    service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
+    artifact = service.download(service.resolve("owner/repo", quantization="Q5_K_M"))
+    assert artifact.local_path is not None
+    artifact.local_path.write_bytes(replacement)
+    replacement_hash = hashlib.sha256(replacement).hexdigest()
+    service.storage.save_sha256(artifact.local_path, replacement_hash)
+
+    with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch"):
+        service.verify(artifact, full=full)
+
+    assert artifact.sha256 == hashlib.sha256(payload).hexdigest()
+    assert artifact.local_path.read_bytes() == replacement
+    assert service.storage.load_sha256(artifact.local_path) == replacement_hash
+
+
+@pytest.mark.parametrize("sidecar_bytes", [b"abcd", b"z" * 64, b"\xff"])
+def test_verify_rejects_invalid_sha256_sidecar(
+    tmp_path: Path, sidecar_bytes: bytes,
+) -> None:
+    payload = b"content"
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+    service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
+    artifact = service.download(service.resolve("owner/repo", quantization="Q5_K_M"))
+    assert artifact.local_path is not None
+    sidecar = artifact.local_path.with_name(artifact.local_path.name + ".sha256")
+    sidecar.write_bytes(sidecar_bytes)
+
+    with pytest.raises(ArtifactVerificationError, match="SHA-256"):
+        service.verify(artifact)
+
+    assert sidecar.read_bytes() == sidecar_bytes
+    assert artifact.local_path.read_bytes() == payload
 
 
 def test_verify_missing_file_raises(tmp_path: Path) -> None:
@@ -249,6 +437,53 @@ def test_verify_missing_file_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ArtifactVerificationError, match="missing"):
         service.verify(artifact)
+
+
+def test_verify_full_accepts_uppercase_sha256_sidecar(tmp_path: Path) -> None:
+    payload = b"content"
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+    service = _make_service(tmp_path, client, downloader=_stub_downloader(payload))
+    artifact = service.download(service.resolve("owner/repo", quantization="Q5_K_M"))
+    assert artifact.local_path is not None
+    assert artifact.sha256 is not None
+    sidecar = artifact.local_path.with_name(artifact.local_path.name + ".sha256")
+    sidecar.write_text(artifact.sha256.upper() + "\n", encoding="ascii")
+
+    verified = service.verify(artifact, full=True)
+
+    assert verified.is_verified
+    assert verified.sha256 == artifact.sha256
+
+
+@pytest.mark.parametrize(
+    "read_error", [PermissionError("read denied"), FileNotFoundError("removed")],
+)
+def test_full_verification_read_failure_is_a_domain_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_error: OSError,
+) -> None:
+    payload = b"model data"
+    service = _make_service(
+        tmp_path, _gguf_repo([("m-q5_k_m.gguf", len(payload))]),
+        downloader=_stub_downloader(payload),
+    )
+    artifact = service.download(service.resolve("owner/repo", quantization="Q5_K_M"))
+    path = artifact.local_path
+    assert path is not None
+    sidecar = path.with_name(path.name + ".sha256")
+    before = (artifact.model_dump_json(), path.read_bytes(), sidecar.read_bytes())
+    original_open = Path.open
+
+    def unreadable_model(self: Path, *args: Any, **kwargs: Any) -> Any:
+        if self == path:
+            raise read_error
+        return original_open(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", unreadable_model)
+        with pytest.raises(ArtifactVerificationError, match="Could not read") as error:
+            service.verify(artifact, full=True)
+        assert error.value.__cause__ is read_error
+    assert (artifact.model_dump_json(), path.read_bytes(), sidecar.read_bytes()) == before
 
 
 def test_verify_size_mismatch_raises(tmp_path: Path) -> None:

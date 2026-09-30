@@ -122,7 +122,8 @@ selection, readiness and memory prediction.
 **Artifact resolution, download and verification.** Resolves a repository plus quantization
 to a single-file GGUF artifact at a concrete revision, downloads it into a per-user
 artifact store with path-traversal protection, and verifies file size and SHA-256 against a
-sidecar (with optional full re-hashing).
+sidecar (with optional full re-hashing). A known expected digest must match the
+downloaded file and cannot be replaced by a conflicting local sidecar.
 
 **Runtime and backend readiness.** Discovers local `llama.cpp` builds (explicit path,
 registry, PATH, conventional build directories) and the PyTorch/Transformers environment,
@@ -147,10 +148,14 @@ A failed execution is still a valid experiment: failures are evidence too.
 generation throughput at several token counts, with repetitions and standard deviations);
 Transformers benchmarks run through an isolated worker; PyTorch ROCm is represented by its
 normal `cuda` device namespace and is accepted only when the runtime probe confirms HIP.
-The worker also reports model load time
-and time to first token. Results are persisted as `BenchmarkRecord` JSON files, and
+The current Transformers methodology is `transformers_isolated_inference_v3`: GPU
+timings synchronize device work, and steady-state decode excludes the initial prefill.
+The worker also reports model load time and time to first token. Historical v2 records
+remain readable but are not current recommendation performance evidence.
+Results are persisted as `BenchmarkRecord` JSON files, and
 benchmarks of the same logical model can be compared as complete execution plans rather
-than as disembodied numbers.
+than as disembodied numbers. Failed runs retain diagnostics but do not replace earlier
+successful performance evidence.
 
 **Prediction vs observation.** `compare_prediction` puts a `MemoryEstimate` next to an
 `ExecutionObservation` and reports the signed error under a single convention

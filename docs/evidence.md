@@ -42,9 +42,15 @@ identity, with a deep-inspection budget, and each match is labelled `confirmed`,
 1. **Resolve** — `repo_id` + optional quantization + optional revision → a single-file GGUF
    `ModelArtifact` at a concrete revision (the commit sha when the Hub reports one).
 2. **Download** — into `<user data dir>/models/<owner>/<repo>/<filename>`, with path
-   traversal and unsafe-filename rejection. A SHA-256 is computed and written to a sidecar.
+   traversal and unsafe-filename rejection. A SHA-256 is computed, checked against the
+   expected digest when known, and only then written to a sidecar.
+   Any previous sidecar is removed before the downloader can replace the file;
+   a failed or interrupted download cannot leave an old digest certifying new bytes.
+   If sidecar removal fails, the downloader is not called.
 3. **Verify** — file size against the Hub's reported size, and the SHA-256 against the
-   sidecar. `--full-verify` recomputes the digest from the file instead of trusting it.
+   sidecar. A sidecar must contain a 64-character hexadecimal digest and must not
+   contradict a known artifact digest; hexadecimal letter case is irrelevant.
+   `--full-verify` recomputes the digest from the file instead of trusting the sidecar.
 
 Multipart GGUF and Transformers repositories are rejected by the resolver with specific
 errors. Transformers execution takes a different route: the repository reference is passed
@@ -82,6 +88,12 @@ does not become a worse recommendation because a binary has not been installed y
 [recommendation.md](recommendation.md).
 
 ## Execution
+
+Generated llama.cpp plans do not infer `--batch-size` from the memory estimate's
+sequence batch: these are different concepts. Prompt-token batching uses runtime
+defaults, which may vary by build. Explicit flags in older saved plans are still
+honored for reproducibility; they are not silently rewritten. A record made with
+an explicit token batch is not automatically equivalent to one using defaults.
 
 | Path | Runtime | Artifacts |
 |---|---|---|
@@ -137,9 +149,20 @@ itself reported. The matrix runner can run the same artifact on CPU and on the s
 backend, recording each configuration separately and reporting skips and failures instead
 of hiding them.
 
-**`transformers_isolated_inference_v2`** — runs in a separate Python process and reports
-prefill and generation throughput, model load time, time to first token and generation
-latency, each with a standard deviation, plus peak RAM and VRAM.
+**`transformers_isolated_inference_v3`** — runs in a separate Python process and reports
+prefill and generation throughput with standard deviations, model load and warmup
+times, time to first token and generation latency with standard deviations, plus
+peak RAM and VRAM.
+CUDA/HIP work is synchronized on the selected device before and after timed inference;
+prefill is completed before starting the steady-state decode timer. CPU requires no
+accelerator synchronization. These are single-device microbenchmarks, not multi-GPU
+or concurrent service qualification.
+
+Historical `transformers_isolated_inference_v2` records remain readable, but their GPU
+timings did not synchronize asynchronous work. They are not current recommendation
+performance evidence. Default comparisons prefer v3 when available for the same
+configuration; historical-only comparisons remain accessible and mixed methodologies
+retain their warning. No historical observations are rewritten.
 
 A `BenchmarkRecord` stores the request alongside the observation, and validates that the
 artifact, runtime, backend and GPU-layer settings in the record match the request that
@@ -153,6 +176,9 @@ disembodied tokens/second numbers. It keeps the latest record per configuration,
 the current methodology per runtime, and warns when records come from different machines or
 different methodologies rather than quietly ranking them against each other. There is
 deliberately no single "winner" score.
+Failed runs remain stored for diagnostics, but are excluded before selecting the latest
+successful run and comparing throughput. The comparison reports that exclusion explicitly;
+a later failure does not replace earlier successful performance evidence.
 
 ### Eligibility for recommendation ranking
 

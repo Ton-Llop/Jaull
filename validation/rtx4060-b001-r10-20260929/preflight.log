@@ -1,0 +1,111 @@
+﻿**********************
+Inicio de la transcripción de Windows PowerShell
+Hora de inicio: 20260929232003
+Nombre de usuario: PUBLIC_HOST\USER
+Usuario RunAs: PUBLIC_HOST\USER
+Nombre de la configuración:
+Máquina: PUBLIC_HOST (Microsoft Windows NT 10.0.26200.0)
+Aplicación host: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}
+& .\validation\rtx4060-b001-r10-20260929\collect-preflight.ps1
+Id. de proceso: 12712
+PSVersion: 5.1.26100.9549
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9549
+BuildVersion: 10.0.26100.9549
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+La transcripción ha comenzado. El archivo de salida es C:\Users\USER\OneDrive\Desktop\Jaull\validation\rtx4060-b001-r10-20260929\preflight.log
+CHECK: git rev-parse HEAD
+2026-09-29T23:20:03.8911247+02:00
+
+EXIT_CODE: 0
+CHECK: git status --short (campaign script already created)
+2026-09-29T23:20:03.9360263+02:00
+
+EXIT_CODE: 0
+CHECK: OS and Python environment
+2026-09-29T23:20:04.0043060+02:00
+
+
+
+
+EXIT_CODE: 0
+CHECK: GPU identity and memory at preflight timestamp
+2026-09-29T23:20:04.8861659+02:00
+
+EXIT_CODE: 0
+CHECK: Reference artifact local SHA-256 and cached download metadata
+2026-09-29T23:20:04.9453410+02:00
+
+
+FullName : C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\Qwen2.5-7B-Instruct-Q4_K_M.gguf
+Length   : 4683074240
+
+
+
+SHA256: 65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423
+EXPECTED_HASH_MATCH: True
+C:\Users\USER\AppData\Local\jaull\models\bartowski\Qwen2.5-7B-Instruct-GGUF\.cache\huggingface\download\Qwen2.5-7B-Instruct-Q4_K_M.gguf.metadata
+8911e8a47f92bac19d6f5c64a2e2095bd2f7d031
+65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423
+1790703676.056065
+EXIT_CODE: 0
+CHECK: uv run jaull scan (existing environment; UV_NO_SYNC=1)
+2026-09-29T23:20:11.3386979+02:00
+
+EXIT_CODE: 0
+CHECK: uv run jaull doctor (existing environment; UV_NO_SYNC=1)
+2026-09-29T23:20:13.5163479+02:00
+
+EXIT_CODE: 0
+CHECK: Jaull native runtime discovery
+2026-09-29T23:20:26.9564744+02:00
+
+EXIT_CODE: 0
+CHECK: uv run --python 3.12 ruff check . (offline; no Python downloads)
+2026-09-29T23:20:27.4648751+02:00
+
+EXIT_CODE: 2
+CHECK: uv run --python 3.12 mypy src (offline; no Python downloads)
+2026-09-29T23:20:28.4388577+02:00
+
+EXIT_CODE: 2
+CHECK: uv run --python 3.12 pytest (offline; no Python downloads)
+2026-09-29T23:20:29.4439927+02:00
+
+EXIT_CODE: 2
+CHECK: python -m compileall -q src (existing Python 3.14.7)
+2026-09-29T23:20:30.3834691+02:00
+
+EXIT_CODE: 0
+CHECK: git diff --check
+2026-09-29T23:20:30.9210453+02:00
+
+EXIT_CODE: 0
+CHECK: Supplementary ruff on existing Python 3.14 environment
+2026-09-29T23:20:31.0429126+02:00
+
+EXIT_CODE: 0
+CHECK: Supplementary mypy on existing Python 3.14 environment
+2026-09-29T23:20:31.4128010+02:00
+
+EXIT_CODE: 0
+CHECK: Supplementary full pytest including architecture tests on existing Python 3.14 environment
+2026-09-29T23:21:21.8710686+02:00
+
+EXIT_CODE: 0
+CHECK: git diff --stat
+2026-09-29T23:23:54.8411387+02:00
+
+EXIT_CODE: 0
+CHECK: git status --short
+2026-09-29T23:23:54.9511067+02:00
+
+EXIT_CODE: 0
+**********************
+Fin de la transcripción de Windows PowerShell
+Hora de finalización: 20260929232355
+**********************

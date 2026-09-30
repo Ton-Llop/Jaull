@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,7 @@ from jaull.experiments.errors import (
 )
 from jaull.experiments.runner import ExperimentRunner
 from jaull.experiments.storage import ExperimentStore
+from jaull.runtime.transformers_runner import TransformersRunner
 
 GIB = 1024**3
 
@@ -272,6 +274,39 @@ def test_failed_execution_still_produces_experiment_record(tmp_path: Path) -> No
 
     assert result.record.observation.success is False
     assert result.record.comparison.compatibility.observed_success is False
+
+
+@pytest.mark.parametrize("output", ["invalid JSON", '{"success": false, "error": "failed"}'])
+def test_invalid_transformers_output_persists_failed_experiment_and_raw_log(
+    tmp_path: Path, output: str,
+) -> None:
+    class WorkerBackend(_FakeExecutionBackend):
+        def execute(self, request: ExecutionRequest) -> ExecutionResult:
+            if "jaull.runtime.transformers_worker" in request.command:
+                return _execution_result(stdout=output)
+            return super().execute(request)
+
+    backend = WorkerBackend({("PYTORCH_PROBE",): _pytorch_probe_json()})
+    store = ExperimentStore(root=tmp_path / "store")
+    runner = ExperimentRunner(
+        execution_backend=backend, llama_cpp_runner=_FakeArtifactRunner(),
+        transformers_runner=TransformersRunner(backend=backend, python_executable=sys.executable),
+        store=store, python_executable=sys.executable,
+    )
+    runtime = _transformers_runtime()
+    request = _request(
+        tmp_path, backend=ComputeBackend.CPU, runtime=runtime,
+        artifact=_transformers_artifact(), prediction=_transformers_estimate(runtime),
+    ).model_copy(update={"capture_raw_logs": True})
+
+    result = runner.run(request)
+
+    assert result.record.observation.success is False
+    assert result.record.observation.exit_code == 0
+    assert result.record.comparison.compatibility.observed_success is False
+    assert store.load(result.record.identity.experiment_id) == result.record
+    assert result.raw_log_path is not None
+    assert json.loads(result.raw_log_path.read_text(encoding="utf-8"))["stdout"] == output
 
 
 def test_transformers_not_ready_does_not_invoke_runner(tmp_path: Path) -> None:

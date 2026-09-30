@@ -1,0 +1,7 @@
+{
+  "binary_path": "C:\\tools\\llama.cpp\\llama-bench.exe",
+  "binary_status": "available",
+  "version_text": "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 8187 MiB):\n  Device 0: NVIDIA GeForce RTX 4060, compute capability 8.9, VMM: yes, VRAM: 8187 MiB\nload_backend: loaded CUDA backend from C:\\tools\\llama.cpp\\ggml-cuda.dll\nload_backend: loaded RPC backend from C:\\tools\\llama.cpp\\ggml-rpc.dll\nload_backend: loaded CPU backend from C:\\tools\\llama.cpp\\ggml-cpu-haswell.dll\nversion: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+  "probe_source": "llama-bench --version",
+  "message": null
+}

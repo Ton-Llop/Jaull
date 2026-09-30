@@ -55,17 +55,11 @@ def build(
                 "llama.cpp offload units requested by the launch policy. -1 means all."
             ),
         ),
-        RuntimeFlag(
-            name="--batch-size",
-            value=str(cfg.batch_size),
-            source=RuntimeFlagSource.ESTIMATE,
-            explanation="Prompt batch size (llama.cpp calls this -b).",
-        ),
     ]
 
     command = (
         f"llama-server --model {file_hint} --ctx-size {cfg.context_length} "
-        f"--n-gpu-layers {n_gpu_layers} --batch-size {cfg.batch_size}"
+        f"--n-gpu-layers {n_gpu_layers}"
     )
 
     return RuntimeRecommendation(
@@ -73,7 +67,10 @@ def build(
         command_preview=command,
         python_snippet=None,
         flags=flags,
-        reasons=reasons,
+        reasons=[*reasons, (
+            "Prompt-token batching uses the llama.cpp runtime default. "
+            "The estimate's sequence batch size is not a --batch-size token limit."
+        )],
         warnings=warnings,
         confidence=confidence,
     )

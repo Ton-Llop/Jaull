@@ -72,15 +72,25 @@ class ArtifactService:
         del progress_callback
 
         target = self.storage.path_for(artifact)
-        self.storage.ensure_parent(target)
 
         try:
+            self.storage.ensure_parent(target)
+            # A previous digest must not certify bytes replaced by a failed download.
+            self.storage.clear_sha256(target)
             local_str = self.downloader(
                 repo_id=artifact.repo_id,
                 filename=artifact.filename,
                 revision=artifact.revision or None,
                 local_dir=str(target.parent),
             )
+            local_path = Path(local_str).resolve()
+            digest = _sha256_of(local_path)
+            if artifact.sha256 is not None and digest != artifact.sha256.lower():
+                raise ArtifactVerificationError(
+                    f"SHA-256 mismatch for {artifact.filename}: "
+                    f"expected {artifact.sha256}, downloaded {digest}."
+                )
+            self.storage.save_sha256(local_path, digest)
         except (EntryNotFoundError, RepositoryNotFoundError) as exc:
             raise ArtifactNotFoundError(
                 f"{artifact.repo_id}/{artifact.filename} not found on Hugging Face."
@@ -101,10 +111,6 @@ class ArtifactService:
             raise ArtifactDownloadError(
                 f"I/O error while downloading {artifact.filename!r}: {exc}"
             ) from exc
-
-        local_path = Path(local_str).resolve()
-        digest = _sha256_of(local_path)
-        self.storage.save_sha256(local_path, digest)
 
         return artifact.model_copy(
             update={
@@ -139,9 +145,17 @@ class ArtifactService:
             raise ArtifactVerificationError(
                 f"Missing SHA-256 sidecar for {artifact.filename}."
             )
+        if artifact.sha256 is not None and stored_hex != artifact.sha256.lower():
+            raise ArtifactVerificationError(
+                f"SHA-256 mismatch for {artifact.filename}: "
+                f"expected {artifact.sha256}, sidecar {stored_hex}."
+            )
 
         if full:
-            fresh = _sha256_of(path)
+            try:
+                fresh = _sha256_of(path)
+            except OSError as exc:
+                raise ArtifactVerificationError(f"Could not read artifact {path}: {exc}") from exc
             if fresh != stored_hex:
                 raise ArtifactVerificationError(
                     f"SHA-256 mismatch for {artifact.filename}: "
@@ -167,6 +181,11 @@ class ArtifactService:
         update: dict[str, Any] = {"local_path": path, "is_downloaded": True}
         stored = self.storage.load_sha256(path)
         if stored is not None:
+            if artifact.sha256 is not None and stored != artifact.sha256.lower():
+                raise ArtifactVerificationError(
+                    f"SHA-256 mismatch for {artifact.filename}: "
+                    f"expected {artifact.sha256}, sidecar {stored}."
+                )
             update["sha256"] = stored
         return artifact.model_copy(update=update)
 

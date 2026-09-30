@@ -1,0 +1,63 @@
+{
+  "branch": {
+    "command": [
+      "git",
+      "branch",
+      "--show-current"
+    ],
+    "exit_code": 0,
+    "stdout": "c_night\n",
+    "stderr": ""
+  },
+  "head": {
+    "command": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit_code": 0,
+    "stdout": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c\n",
+    "stderr": ""
+  },
+  "status": {
+    "command": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout": "?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/\n?? validation/rtx4060-b001-r10-20260929/bundle/evidence/\n?? validation/rtx4060-b001-r10-20260929/logs/\n?? validation/rtx4060-cnight-20260930-112007/\n",
+    "stderr": ""
+  },
+  "diff_stat": {
+    "command": [
+      "git",
+      "diff",
+      "--stat"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "diff_check": {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "staged_diff_stat": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--stat"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+}

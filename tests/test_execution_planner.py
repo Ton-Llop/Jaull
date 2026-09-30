@@ -91,11 +91,8 @@ def test_override_beats_the_automatic_policy_and_keeps_flag_position() -> None:
     assert _flag(rec, "--n-gpu-layers") == "10"  # not 23
     assert _source(rec, "--n-gpu-layers") is RuntimeFlagSource.USER_INPUT
     names = [f.name for f in rec.flags]
-    assert (
-        names.index("--ctx-size")
-        < names.index("--n-gpu-layers")
-        < names.index("--batch-size")
-    )
+    assert names.index("--ctx-size") < names.index("--n-gpu-layers")
+    assert "--batch-size" not in names
 
 
 def test_ctx_override_upgrades_the_estimate_flag_in_place_to_user_input() -> None:
