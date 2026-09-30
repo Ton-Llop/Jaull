@@ -60,7 +60,7 @@ def test_sha256_sidecar_roundtrip(tmp_path: Path) -> None:
     storage = ArtifactStorage(root=tmp_path)
     file_path = tmp_path / "some.gguf"
     file_path.write_bytes(b"payload")
-    digest = "abc" * 20 + "de"
+    digest = "ab" * 32
     storage.save_sha256(file_path, digest)
     assert storage.load_sha256(file_path) == digest
 

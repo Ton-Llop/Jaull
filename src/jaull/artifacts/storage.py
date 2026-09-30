@@ -8,9 +8,10 @@ stay under the root.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from jaull.artifacts.errors import ArtifactError
+from jaull.artifacts.errors import ArtifactError, ArtifactVerificationError
 from jaull.domain.artifacts import ModelArtifact
 from jaull.paths import user_data_dir
 
@@ -46,7 +47,15 @@ class ArtifactStorage:
         sidecar = self._sidecar(path)
         if not sidecar.is_file():
             return None
-        return sidecar.read_text(encoding="ascii").strip() or None
+        try:
+            digest = sidecar.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ArtifactVerificationError(f"Could not read SHA-256 sidecar {sidecar}.") from exc
+        if not digest:
+            return None
+        if re.fullmatch(r"[0-9a-fA-F]{64}", digest) is None:
+            raise ArtifactVerificationError(f"Invalid SHA-256 sidecar {sidecar}.")
+        return digest.lower()
 
     def ensure_parent(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

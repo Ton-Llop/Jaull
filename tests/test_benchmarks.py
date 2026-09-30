@@ -309,8 +309,17 @@ def test_zero_exit_with_missing_requested_measurements_is_not_success(
     assert observation.raw_stdout == partial_output
 
 
-def test_incomplete_benchmark_is_persisted_with_build_from_empty_probe(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "output",
+    [
+        "\n".join(line for line in CPU_OUTPUT.splitlines() if "tg128" not in line),
+        "loading model, no table emitted\n",
+        CPU_OUTPUT.replace("62.89", "very fast"),
+    ],
+    ids=["incomplete", "missing-table", "malformed-throughput"],
+)
+def test_unparseable_benchmark_is_persisted_with_build_from_empty_probe(
+    tmp_path: Path, output: str,
 ) -> None:
     class ProbeBackend(_FakeExecutionBackend):
         def execute(self, request: ExecutionRequest) -> ExecutionResult:
@@ -324,9 +333,7 @@ def test_incomplete_benchmark_is_persisted_with_build_from_empty_probe(
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"gguf")
-    backend = ProbeBackend(
-        stdout="\n".join(line for line in CPU_OUTPUT.splitlines() if "tg128" not in line)
-    )
+    backend = ProbeBackend(stdout=output)
     executable = _executable(tmp_path)
     store = BenchmarkStore(root=tmp_path / "benchmarks")
     matrix = BenchmarkMatrixRunner(
@@ -350,6 +357,14 @@ def test_incomplete_benchmark_is_persisted_with_build_from_empty_probe(
     assert record.llama_bench_capability is not None
     assert record.llama_bench_capability.version_text == "build: 689e227db (10357)"
     assert record.observation.failure_reason is BenchmarkFailureReason.PARSE_ERROR
+    assert record.observation.success is False
+    assert record.observation.measurements == []
+    assert record.observation.raw_stdout == output
+    assert record.observation.raw_stderr == ""
+    assert record.observation.exit_code == 0
+    assert record.observation.duration_seconds == 0.25
+    assert record.observation.command == backend.requests[-1].command
+    assert "argv:" in (record.observation.message or "")
     assert store.load(record.identity.benchmark_id) == record
 
 

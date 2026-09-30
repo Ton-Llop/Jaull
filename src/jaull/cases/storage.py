@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import suppress
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -68,10 +69,10 @@ class CaseStore:
                     f"{manifest.identity.case_id}."
                 )
             return path
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = _to_envelope(manifest).model_dump_json(indent=2)
         temporary = path.with_name(path.name + ".tmp")
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             with temporary.open("w", encoding="utf-8") as handle:
                 handle.write(payload)
                 handle.write("\n")
@@ -79,7 +80,8 @@ class CaseStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
         except OSError as exc:
-            temporary.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
             raise CaseStoreError(f"Could not save case {path}: {exc}") from exc
         return path
 
@@ -89,6 +91,8 @@ class CaseStore:
             raise CaseManifestNotFoundError(f"Case manifest not found: {case_id}.")
         try:
             payload = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise CaseStoreError(f"Case manifest is not UTF-8: {path}.") from exc
         except OSError as exc:
             raise CaseStoreError(f"Could not read case {path}: {exc}") from exc
         try:
@@ -101,6 +105,10 @@ class CaseStore:
             raise CaseStoreError(
                 "Unsupported case schema_version "
                 f"{envelope.schema_version}; expected {SCHEMA_VERSION}."
+            )
+        if envelope.case.identity.case_id != case_id:
+            raise CaseStoreError(
+                f"Case manifest identity does not match requested id {case_id!r}."
             )
         return envelope.case
 

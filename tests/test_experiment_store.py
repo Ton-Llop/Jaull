@@ -172,6 +172,30 @@ def test_unsupported_schema_version_raises_store_error(tmp_path: Path) -> None:
         store.load(record.identity.experiment_id)
 
 
+@pytest.mark.parametrize(
+    "envelope_fields",
+    [
+        {"experiment": None},
+        {"experiment": {}},
+        {"experiment": "invalid record"},
+    ],
+)
+def test_versioned_record_cannot_bypass_validation_as_legacy(
+    tmp_path: Path, envelope_fields: dict[str, Any],
+) -> None:
+    record = _sample_record()
+    store = ExperimentStore(tmp_path)
+    path = store.path_for(record.identity.experiment_id)
+    payload = record.model_dump(mode="json") | envelope_fields
+    original = json.dumps(payload)
+    path.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ExperimentStoreError, match=r"invalid.*envelope"):
+        store.load(record.identity.experiment_id)
+
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_default_root_uses_experiments_subdir(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[tuple[str, ...]] = []
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from contextlib import suppress
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -63,10 +64,10 @@ class ExperimentStore:
                     f"{record.identity.experiment_id}."
                 )
             return path
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = _to_envelope(record).model_dump_json(indent=2)
         temporary = path.with_name(path.name + ".tmp")
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             with temporary.open("w", encoding="utf-8") as handle:
                 handle.write(payload)
                 handle.write("\n")
@@ -74,7 +75,8 @@ class ExperimentStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
         except OSError as exc:
-            temporary.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
             raise ExperimentStoreError(f"Could not save experiment {path}: {exc}") from exc
         return path
 
@@ -89,7 +91,11 @@ class ExperimentStore:
             indent=2,
         ) + "\n"
         if path.exists():
-            if path.read_text(encoding="utf-8") != payload:
+            try:
+                existing = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                raise ExperimentStoreError(f"Could not read runtime log {path}: {exc}") from exc
+            if existing != payload:
                 raise ExperimentStoreError(
                     f"Runtime log already exists with different content: {path}."
                 )
@@ -103,7 +109,8 @@ class ExperimentStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
         except OSError as exc:
-            temporary.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
             raise ExperimentStoreError(f"Could not save runtime log {path}: {exc}") from exc
         return path
 
@@ -122,11 +129,18 @@ class ExperimentStore:
                     "Unsupported experiment schema_version "
                     f"{envelope.schema_version}; expected {SCHEMA_VERSION}."
                 )
-            return envelope.experiment
+            record = envelope.experiment
+        except UnicodeDecodeError as exc:
+            raise ExperimentStoreError(f"Experiment record is not UTF-8: {path}.") from exc
         except OSError as exc:
             raise ExperimentStoreError(f"Could not read experiment {path}: {exc}") from exc
         except ValidationError as exc:
-            return _load_legacy_record(path, exc)
+            record = _load_legacy_record(path, exc)
+        if record.identity.experiment_id != experiment_id:
+            raise ExperimentStoreError(
+                f"Experiment record identity does not match requested id {experiment_id!r}."
+            )
+        return record
 
     def exists(self, experiment_id: str) -> bool:
         return self.path_for(experiment_id).is_file()
@@ -167,9 +181,14 @@ def _load_legacy_record(path: Path, envelope_error: ValidationError) -> Experime
     """Read pre-envelope records created before ``schema_version`` existed."""
 
     try:
-        return ExperimentRecord.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValidationError) as exc:
-        if isinstance(exc, OSError):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and "experiment" in payload:
+            raise ExperimentStoreError(
+                f"Experiment record has an invalid versioned envelope: {path}."
+            ) from envelope_error
+        return ExperimentRecord.model_validate(payload)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
+        if isinstance(exc, OSError | UnicodeDecodeError):
             raise ExperimentStoreError(f"Could not read experiment {path}: {exc}") from exc
         raise ExperimentStoreError(
             f"Experiment record is invalid JSON/domain data: {path}."

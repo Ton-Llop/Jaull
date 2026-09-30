@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import suppress
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -57,10 +58,10 @@ class BenchmarkStore:
                     f"{record.identity.benchmark_id}."
                 )
             return path
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = _to_envelope(record).model_dump_json(indent=2)
         temporary = path.with_name(path.name + ".tmp")
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             with temporary.open("w", encoding="utf-8") as handle:
                 handle.write(payload)
                 handle.write("\n")
@@ -68,7 +69,8 @@ class BenchmarkStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
         except OSError as exc:
-            temporary.unlink(missing_ok=True)
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
             raise BenchmarkStoreError(f"Could not save benchmark {path}: {exc}") from exc
         return path
 
@@ -82,6 +84,8 @@ class BenchmarkStore:
             envelope = _BenchmarkRecordEnvelope.model_validate_json(
                 path.read_text(encoding="utf-8")
             )
+        except UnicodeDecodeError as exc:
+            raise BenchmarkStoreError(f"Benchmark record is not UTF-8: {path}.") from exc
         except OSError as exc:
             raise BenchmarkStoreError(f"Could not read benchmark {path}: {exc}") from exc
         except ValidationError as exc:
@@ -92,6 +96,10 @@ class BenchmarkStore:
             raise BenchmarkStoreError(
                 "Unsupported benchmark schema_version "
                 f"{envelope.schema_version}; expected {SCHEMA_VERSION}."
+            )
+        if envelope.benchmark.identity.benchmark_id != benchmark_id:
+            raise BenchmarkStoreError(
+                f"Benchmark record identity does not match requested id {benchmark_id!r}."
             )
         return envelope.benchmark
 

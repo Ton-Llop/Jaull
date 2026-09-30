@@ -8,7 +8,6 @@ from shlex import join as shell_join
 
 from jaull.benchmarks.errors import (
     BenchmarkConfigurationError,
-    BenchmarkParseError,
     BenchmarkRunnerError,
     BenchmarkUnavailableError,
 )
@@ -115,10 +114,19 @@ class LlamaBenchRunner:
                 raw_output,
                 repetitions=request.repetitions,
             )
-        except BenchmarkParseError:
-            raise
         except Exception as exc:
-            raise BenchmarkParseError(str(exc)) from exc
+            return _failed_observation(
+                command=command,
+                request=request,
+                failure_reason=BenchmarkFailureReason.PARSE_ERROR,
+                message=str(exc),
+                stdout=result.stdout,
+                stderr=result.stderr,
+                duration_seconds=result.duration_seconds,
+                exit_code=result.exit_code,
+                peak_ram_bytes=result.observation.peak_ram_bytes,
+                peak_vram_bytes=result.observation.peak_vram_bytes,
+            )
         observed = {(item.kind, item.tokens) for item in measurements}
         expected = [
             *((BenchmarkMeasurementKind.PREFILL, size) for size in request.prefill_sizes),
