@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "case": {
+    "schema_version": 1,
+    "identity": {
+      "case_id": "case-a8b66e98-447b-4faa-9d11-ab839d91b3b2",
+      "created_at": "2026-09-30T09:34:59.587715Z",
+      "label": "RTX 4060 c_night Qwen2.5-7B Q4_K_M 4096 interactive",
+      "machine_fingerprint": [
+        "Windows 11",
+        "10.0.26200",
+        "AMD64",
+        "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+        "8",
+        "16",
+        "34282192896",
+        "NVIDIA GeForce RTX 4060:8585740288",
+        "NVIDIA GeForce RTX 4060:nvidia:dedicated:0x10de:0x2882:00000000:2B:00.0:GPU-bbbc059d-9014-f50c-72d1-511fe91342e6:8585740288:False"
+      ],
+      "artifact": {
+        "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+        "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "format": "gguf",
+        "quantization": "Q4_K_M"
+      },
+      "runtime": "llama.cpp"
+    },
+    "experiment_record_id": "exp-38e97695-954d-42ef-83e0-1bacecda01dc",
+    "benchmark_record_ids": [
+      "bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e"
+    ],
+    "evidence_files": [
+      {
+        "path": "logs/exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "logs/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "prediction-before-validation.json",
+        "role": "prediction",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "execution-plan.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "hardware.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "runtime-capability.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "benchmark-capability.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "artifact-hash-check.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "hub-baseline.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      },
+      {
+        "path": "workload-intent.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    ],
+    "notes": []
+  }
+}

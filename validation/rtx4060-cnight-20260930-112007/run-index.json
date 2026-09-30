@@ -1,0 +1,15 @@
+{
+  "experiment_id": "exp-38e97695-954d-42ef-83e0-1bacecda01dc",
+  "experiment_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json",
+  "experiment_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\records\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.json",
+  "experiment_log_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\logs\\exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+  "benchmarks": [
+    {
+      "id": "bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e",
+      "store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\benchmarks\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+      "copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\records\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+      "log_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-cnight-20260930-112007\\logs\\bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log",
+      "success": true
+    }
+  ]
+}

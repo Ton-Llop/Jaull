@@ -1,0 +1,121 @@
+﻿import json
+import shutil
+import subprocess
+from pathlib import Path
+
+ROOT = Path('validation/rtx4060-cnight-20260930-112007').resolve()
+PROJECT = ROOT.parent.parent
+
+def load(name):
+    return json.loads((ROOT / name).read_text('utf-8-sig'))
+
+def save(name, data):
+    with (ROOT / name).open('x', encoding='utf-8', newline='\n') as stream:
+        json.dump(data, stream, indent=2)
+        stream.write('\n')
+
+def git(*args):
+    result = subprocess.run(['git', *args], cwd=PROJECT, capture_output=True, text=True, check=False)
+    return {'command': ['git', *args], 'exit_code': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
+
+exp = load('experiment-result.json')['record']
+bench = load('benchmark-matrix-result.json')['completed'][0]['record']
+index = load('run-index.json')
+case = load('case-index.json')
+plan = load('execution-plan.json')
+initial = {'branch': 'c_night', 'source_commit': '8423fd7b1acdd5a51bec6d9d103c564ab3d8033c', 'status': ['?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/', '?? validation/rtx4060-b001-r10-20260929/bundle/evidence/', '?? validation/rtx4060-b001-r10-20260929/logs/'], 'clean': False, 'tracked_changes': False, 'note': 'Observed before creating the evidence directory; preparation.json status was captured after directory creation.'}
+save('initial-git.json', initial)
+final = {'branch': git('branch', '--show-current'), 'head': git('rev-parse', 'HEAD'), 'status': git('status', '--short'), 'diff_stat': git('diff', '--stat'), 'diff_check': git('diff', '--check'), 'staged_diff_stat': git('diff', '--cached', '--stat')}
+save('final-git.json', final)
+gates = [{'command': 'uv run --python 3.12 pytest --junitxml=validation/rtx4060-cnight-20260930-112007/pytest.xml', 'exit_code': 0, 'result': '1909 passed in 122.63s'}, {'command': 'uv run --python 3.12 ruff check .', 'exit_code': 0, 'result': 'All checks passed'}, {'command': 'uv run --python 3.12 mypy src', 'exit_code': 0, 'result': 'Success: 237 source files'}, {'command': 'uv run --python 3.12 python -m compileall -q src', 'exit_code': 0}, {'command': 'uv run --python 3.12 pytest tests/test_architecture_dependencies.py', 'exit_code': 0, 'result': '4 passed in 0.93s'}, {'command': 'git diff --check', 'exit_code': 0}]
+save('gates-results.json', gates)
+commands = {'validate': exp['backend_trace']['executed_command'], 'benchmark': bench['observation']['command'], 'case_commands': load('case-commands.json'), 'plan_flags': plan['runtime']['flags'], 'not_applied': ['Validate command omits plan --batch-size 1', 'Benchmark command omits --ctx-size and --batch-size; context_length=4096 is provenance only']}
+save('actual-commands.json', commands)
+summary = {'source_commit': initial['source_commit'], 'initial_git': initial, 'final_git': final, 'gates': gates, 'baseline': load('hub-baseline.json'), 'artifact_hash': load('artifact-hash-check.json'), 'runtime': {'cli': 'C:/tools/llama.cpp/llama-cli.exe', 'bench': 'C:/tools/llama.cpp/llama-bench.exe', 'build': '11258', 'commit': 'ba0ba54d9', 'backend': 'cuda'}, 'records': index, 'case': case, 'bundle_validation': load('bundle-validate.stdout.json'), 'validate': {'success': exp['observation']['success'], 'duration_seconds': exp['observation']['duration_seconds'], 'observation': exp['observation'], 'comparison': exp['comparison']}, 'benchmark': {key: value for key, value in bench['observation'].items() if key not in {'raw_stdout', 'raw_stderr'}}, 'warnings': ['AGENTS.md absent in repository and checked ancestors', 'Initial sandbox process setup failed; execution used auto-reviewed escalation', 'Initial doctor runtime_missing resolved by explicit existing C:/tools/llama.cpp', 'Hugging Face unauthenticated request warning', *plan['runtime']['warnings'], *commands['not_applied'], 'Bundle runtime-build warning retained: text differs, both binaries report build 11258 and commit ba0ba54d9', 'NVML process VRAM unavailable; no device-wide VRAM substituted', 'RAM/VRAM prediction comparisons methodologically unavailable; original reasons and null errors retained'], 'campaign_failures': []}
+save('summary.json', summary)
+for name in ['prepare', 'run', 'package', 'report']:
+    source = PROJECT / '.venv' / ('cnight-' + name + '-20260930.py')
+    target = ROOT / 'helpers' / (source.name + '.txt')
+    target.parent.mkdir(exist_ok=True)
+    shutil.copy2(source, target)
+lines = [
+'# Validación real RTX 4060 — c_night',
+'',
+'Campaña local terminada: Validate y Benchmark correctos; case y bundle válidos. Sin staging, commit, push ni cambios de rama. Sin cambios de código, calibraciones, ranking o fórmulas. Evidencia histórica no modificada.',
+'',
+'## Fuente y gates',
+'',
+'Commit: `' + initial['source_commit'] + '`. Rama inicial/final: `c_night`. Estado inicial sucio por tres directorios históricos sin seguimiento; sin cambios versionados. Estado final añade solamente esta campaña sin seguimiento; diff normal y staged vacíos. Consultar initial-git.json y final-git.json.',
+'',
+'Python 3.12.14, Windows nativo, entorno `.venv/rtx4060-py312`. `uv sync --locked --python 3.12 --check` confirmó que no eran necesarios cambios. download() llama a clear_sha256(target) antes de self.downloader. AGENTS.md no está presente; se leyó docs/experimental-validation.md.',
+'',
+'| Gate | Resultado |',
+'| --- | --- |',
+'| pytest completo | 1909 passed, 122.63 s, exit 0 |',
+'| ruff check . | pass, exit 0 |',
+'| mypy src | pass, 237 archivos, exit 0 |',
+'| compileall src | pass, exit 0 |',
+'| architecture tests | 4 passed, exit 0 |',
+'| git diff --check | pass, exit 0; repetido al finalizar |',
+'',
+'## Hardware y runtime',
+'',
+'Windows 11 AMD64, RTX 4060. NVML/nvidia-smi: VRAM total 8188 MiB, libre 5063 MiB, usada 2895 MiB al consultar; driver 616.92, API CUDA detectada 13.4. Disponibilidad variable. Fuentes completas: hardware.json, gpu.csv, scan.log y doctor logs locales.',
+'',
+'Runtime existente: `C:/tools/llama.cpp/llama-cli.exe` y `C:/tools/llama.cpp/llama-bench.exe`. Ambos reportan 0.5.0-dev, build 11258, commit ba0ba54d9, Clang 20.1.8 Windows x86_64. CUDA0 confirmado por el probe de Jaull. Hashes de EXEs/DLLs en runtime-binary-hashes.json. No se descargó ni instaló runtime, driver o herramienta global. Se usó inspect_llama_bench con allow_empty_workload_probe=True; este build respondió a --version.',
+'',
+'## Baseline y plan',
+'',
+'Repo: `bartowski/Qwen2.5-7B-Instruct-GGUF`. Revision resuelta: `8911e8a47f92bac19d6f5c64a2e2095bd2f7d031`. Archivo: `Qwen2.5-7B-Instruct-Q4_K_M.gguf`, 4683074240 bytes. SHA256 recalculado y verificado: `65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423`.',
+'',
+'Contexto 4096, concurrencia 1, task general_chat, mode interactive, sin SLOs. Plan calculado por AdvisorService.plan_execution y prepare_execution_plan, sin overrides de GPU. Flags: --model (preview sustituido por archivo verificado en la ejecución), --ctx-size 4096, --n-gpu-layers 28, --batch-size 1, --device CUDA0. Warning: Local tensor refinement not applied: Runtime build is not verified.',
+'',
+'Validate usa AdvisorService.run_experiment / ExperimentRunner con el prompt de la UI y capture_raw_logs=True. Benchmark usa AdvisorService.run_benchmark_matrix, solo backend CUDA, 28 unidades derivadas del mismo plan, pp512, tg128, 3 repeticiones, timeout 900 s. No se ejecutó ninguna configuración alternativa. Las APIs y comandos exactos están en actual-commands.json; helpers temporales en .venv, copias de texto en helpers/.',
+'',
+'Comando Validate real:',
+'```text',
+subprocess.list2cmdline(commands['validate']),
+'```',
+'',
+'Comando Benchmark real:',
+'```text',
+subprocess.list2cmdline(commands['benchmark']),
+'```',
+'',
+'El runner Validate omite --batch-size 1 del plan. llama-bench omite --ctx-size y --batch-size: 4096 es contexto de procedencia, no una condición aplicada por su comando. No se corrigió el código para cambiar esto.',
+'',
+'## Resultados y rutas',
+'',
+'ExperimentRecord: `' + index['experiment_id'] + '`, original `' + index['experiment_store_path'] + '`, copia `' + index['experiment_copy_path'] + '`. Raw log local: `' + index['experiment_log_path'] + '`.',
+'',
+'Validate success=true, exit=0, duración 5.5956059 s; observed_backend=cuda. PredictionComparison.compatibility=correct_success. Esa duración no es TTFT ni una medida de throughput.',
+'',
+'BenchmarkRecord: `' + index['benchmarks'][0]['id'] + '`, original `' + index['benchmarks'][0]['store_path'] + '`, copia `' + index['benchmarks'][0]['copy_path'] + '`. Raw log: `' + index['benchmarks'][0]['log_path'] + '`.',
+'',
+'Benchmark success=true, exit=0, duración del proceso 12.3847817 s; metodología llama_bench_v1, tres repeticiones. pp512: 2408.90 ± 49.77 tokens/s. tg128: 44.22 ± 0.60 tokens/s. TTFT, model_load y warmup no disponibles en el record; no inferidos. Ambas filas requeridas presentes.',
+'',
+'## Memoria y comparaciones',
+'',
+'Validate RAM RSS pico: 4852645888 bytes. Benchmark RAM RSS pico: 4828770304 bytes. NVML process allocation: peak_vram_bytes=null en ambos records. No se atribuye una causa definitiva al null; WDDM puede no aportar memoria por proceso. La memoria total/libre del dispositivo no sustituye esta medición.',
+'',
+'Validate runtime_reported_allocation CUDA0: 4632944312 bytes (modelo 4221441147, KV 226492416, compute 185010749). Esta fuente no está confirmada por el driver y se conserva separada de NVML. runtime_allocation.runtime_build=null; el build se captura aparte en runtime_capability.',
+'',
+'RAM: methodologically_unavailable porque RSS incluye páginas del modelo mapeado y no mide la cuota host bajo offload. VRAM total y todos los componentes: methodologically_unavailable porque la colocación de pesos no pertenecientes a bloques es una cota, no una predicción puntual específica del dispositivo. Se conservan motivos y errores null; no se calculan porcentajes ni se convierten a cero. Compatibility=correct_success es la comparación disponible. No se compara duración de Validate con throughput Benchmark.',
+'',
+'## Case y bundle',
+'',
+'Case: `' + case['case_id'] + '`, original `' + case['store_path'] + '`, copia `' + case['copy_path'] + '`. Bundle: `' + case['bundle_path'] + '`.',
+'',
+'case create, case validate, case export y case bundle validate ejecutados mediante uv, todos exit 0. Bundle status=valid, todos los archivos declarados verificados, 1 experiment, 1 benchmark, 10 archivos de evidencia. Comandos y salidas originales en case-commands.json y archivos case-*/bundle-validate.*.',
+'',
+'Warning de runtime_build preservado: los textos de version difieren por los mensajes del loader CUDA/RPC/CPU capturados en llama-bench; ambos contienen build 11258 y commit ba0ba54d9. No se modificaron los records para normalizar esa diferencia.',
+'',
+'## Fallos, warnings y límites',
+'',
+'Sin fallos en gates, Validate, Benchmark ni case/bundle. Falló el inicio del helper sandbox antes de ejecutar comandos; las ejecuciones posteriores usaron escalación revisada automáticamente. AGENTS.md ausente. El primer doctor dio runtime_missing; la búsqueda encontró la instalación existente y el doctor con PATH local se conservó por separado. Hub avisó de peticiones sin autenticación. Persisten las limitaciones de flags, build no verificado por política y comparaciones de memoria descritas arriba. No se extrapola esta ejecución a otras GPUs o builds ni se afirma cumplimiento de SLOs.',
+'',
+'Los logs quedan locales y pueden contener usuario, rutas, hostname y UUID. No se publicaron ni se añadieron a staging. El bundle se validó localmente; no se transfirió a otro equipo.',
+]
+with (ROOT / 'REPORT.md').open('x', encoding='utf-8', newline='\n') as stream:
+    stream.write('\n'.join(lines) + '\n')
+print('Report written; tracked diff empty=' + str(not final['diff_stat']['stdout'].strip()) + '; staged diff empty=' + str(not final['staged_diff_stat']['stdout'].strip()), flush=True)

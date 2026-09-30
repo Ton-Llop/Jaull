@@ -1,0 +1,73 @@
+﻿import json
+import shutil
+import traceback
+from dataclasses import replace
+from pathlib import Path
+from jaull.advisor.service import AdvisorService
+from jaull.benchmarks.matrix import BenchmarkMatrixRequest
+from jaull.domain.execution_plans import PreparedExecutionPlan
+from jaull.domain.experiments import ExperimentRequest, ExperimentWorkload, ExperimentPredictionInput, RequestedComputeBackend
+from jaull.domain.requirements import WorkloadProfile, WorkloadMode
+from jaull.domain.hardware import ComputeBackend
+from jaull.domain.benchmarks import BenchmarkGpuLayers
+from jaull.tui.screens.recommendation_validation import VALIDATION_PROMPT
+
+ROOT = Path('validation/rtx4060-cnight-20260930-112007').resolve()
+
+def save(name, value):
+    data = value.model_dump(mode='json') if hasattr(value, 'model_dump') else value
+    path = ROOT / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('x', encoding='utf-8', newline='\n') as stream:
+        json.dump(data, stream, indent=2)
+        stream.write('\n')
+
+def copy(source, directory):
+    target = ROOT / directory / source.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise RuntimeError('Refusing to overwrite evidence')
+    shutil.copy2(source, target)
+    return str(target)
+
+def main():
+    advisor = replace(AdvisorService.default(), llama_cli_path=Path('C:/tools/llama.cpp/llama-cli.exe'), llama_bench_path=Path('C:/tools/llama.cpp/llama-bench.exe'))
+    prepared = PreparedExecutionPlan.model_validate_json((ROOT / 'prepared-execution-plan.json').read_text('utf-8'))
+    plan, artifact = prepared.plan, prepared.artifact
+    assert plan.hardware is not None and plan.backend_selection is not None and plan.memory_prediction is not None
+    assert plan.backend_selection.selected_backend is ComputeBackend.CUDA
+    config = plan.memory_prediction.inference_configuration
+    assert config.context_length == 4096 and config.concurrent_users == 1
+    analysis = advisor.inspect_model(artifact.repo_id)
+    request = ExperimentRequest(hardware=plan.hardware, artifact=artifact, runtime=plan.runtime, prediction=plan.memory_prediction, prediction_input=ExperimentPredictionInput(analysis=analysis, inference_configuration=config, resolve_base_model=True, recommend_runtime=True), backend_selection=plan.backend_selection, requested_backend=RequestedComputeBackend.CUDA, workload=ExperimentWorkload(prompt=VALIDATION_PROMPT, profile=WorkloadProfile(context_length=4096, concurrent_users=1, mode=WorkloadMode.INTERACTIVE)), persist=True, capture_raw_logs=True, notes=['task=general_chat; workload_mode=interactive; no requested SLOs', 'Same prepared plan used for Validate and Benchmark'])
+    save('experiment-request.json', request)
+    print('Validate started through AdvisorService.run_experiment', flush=True)
+    result = advisor.run_experiment(request)
+    save('experiment-result.json', result)
+    index = {'experiment_id': result.record.identity.experiment_id, 'experiment_store_path': str(result.persisted_path), 'experiment_copy_path': copy(result.persisted_path, 'records') if result.persisted_path else None, 'experiment_log_path': copy(result.raw_log_path, 'logs') if result.raw_log_path else None, 'benchmarks': []}
+    save('validate-index.json', index)
+    print('Validate finished; success=' + str(result.record.observation.success), flush=True)
+    raw_layers = next(flag.value for flag in plan.runtime.flags if flag.name == '--n-gpu-layers')
+    layers = BenchmarkGpuLayers.full() if raw_layers in {'-1', 'all'} else BenchmarkGpuLayers.count_layers(int(raw_layers))
+    bench = BenchmarkMatrixRequest(hardware=plan.hardware, artifact=artifact, runtime=plan.runtime, backend_selection=plan.backend_selection, runtime_capability=plan.runtime_capability, context_length=4096, prefill_sizes=(512,), generation_sizes=(128,), repetitions=3, timeout_seconds=900, include_cpu=False, include_selected_backend=True, selected_gpu_layers=(layers,), persist=True, notes=['Same prepared plan as Validate; context is provenance, not proof of --ctx-size application', 'task=general_chat; workload_mode=interactive; no requested SLOs'])
+    save('benchmark-matrix-request.json', bench)
+    print('Benchmark started through AdvisorService.run_benchmark_matrix; pp512/tg128/r3; timeout900', flush=True)
+    matrix = advisor.run_benchmark_matrix(bench)
+    save('benchmark-matrix-result.json', matrix)
+    for run in [*matrix.completed, *matrix.failed]:
+        if run.record is None:
+            continue
+        record = run.record
+        copied = copy(run.persisted_path, 'records') if run.persisted_path else None
+        log_name = 'logs/' + record.identity.benchmark_id + '.runtime-log'
+        save(log_name, {'benchmark_id': record.identity.benchmark_id, 'stdout': record.observation.raw_stdout, 'stderr': record.observation.raw_stderr})
+        index['benchmarks'].append({'id': record.identity.benchmark_id, 'store_path': str(run.persisted_path), 'copy_path': copied, 'log_path': str(ROOT / log_name), 'success': record.observation.success})
+    save('run-index.json', index)
+    print('Benchmark finished; completed=' + str(len(matrix.completed)) + '; failed=' + str(len(matrix.failed)), flush=True)
+
+try:
+    main()
+except Exception:
+    (ROOT / 'run-failure.txt').write_text(traceback.format_exc(), encoding='utf-8')
+    print('Execution failure; diagnostic preserved locally', flush=True)
+    raise

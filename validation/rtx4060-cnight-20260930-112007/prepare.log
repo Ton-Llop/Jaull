@@ -1,0 +1,10 @@
+﻿uv : Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate 
+limits and faster downloads.
+En línea: 95 Carácter: 5
++ & { uv run --python 3.12 python $scriptPath; Write-Output "EXIT_CODE: ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: You ar...ster downloads.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Preparation completed; exact artifact verified; plan recorded
+EXIT_CODE: 0

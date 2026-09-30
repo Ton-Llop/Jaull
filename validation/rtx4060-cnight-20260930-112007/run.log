@@ -1,0 +1,5 @@
+﻿Validate started through AdvisorService.run_experiment
+Validate finished; success=True
+Benchmark started through AdvisorService.run_benchmark_matrix; pp512/tg128/r3; timeout900
+Benchmark finished; completed=1; failed=0
+EXIT_CODE: 0

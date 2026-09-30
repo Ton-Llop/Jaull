@@ -1,0 +1,22 @@
+﻿{
+    "source_commit":  "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c",
+    "branch":  "c_night",
+    "status":  [
+                   "?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/",
+                   "?? validation/rtx4060-b001-r10-20260929/bundle/evidence/",
+                   "?? validation/rtx4060-b001-r10-20260929/logs/"
+               ],
+    "recent_commits":  [
+                           "8423fd7 petit fix sidecare",
+                           "530a45e actualitzemdocs",
+                           "7fc8ae7 fix: avoid attributing parent repository commits to Jaull",
+                           "f98595d fix: enforce experimental case and bundle evidence integrity",
+                           "868b80c fix: preserve execution evidence and correct benchmark timing"
+                       ],
+    "os":  "Microsoft Windows NT 10.0.26200.0",
+    "agents_md":  "Absent in repository and checked ancestor directories",
+    "sha_sidecar_order":  "clear_sha256(target) before self.downloader",
+    "environment":  ".venv/rtx4060-py312",
+    "environment_check":  "uv sync --locked --python 3.12 --check: exit 0, would make no changes",
+    "timestamp":  "2026-09-30T11:20:35.7279049+02:00"
+}

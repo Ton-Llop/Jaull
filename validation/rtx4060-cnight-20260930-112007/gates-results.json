@@ -1,0 +1,30 @@
+[
+  {
+    "command": "uv run --python 3.12 pytest --junitxml=validation/rtx4060-cnight-20260930-112007/pytest.xml",
+    "exit_code": 0,
+    "result": "1909 passed in 122.63s"
+  },
+  {
+    "command": "uv run --python 3.12 ruff check .",
+    "exit_code": 0,
+    "result": "All checks passed"
+  },
+  {
+    "command": "uv run --python 3.12 mypy src",
+    "exit_code": 0,
+    "result": "Success: 237 source files"
+  },
+  {
+    "command": "uv run --python 3.12 python -m compileall -q src",
+    "exit_code": 0
+  },
+  {
+    "command": "uv run --python 3.12 pytest tests/test_architecture_dependencies.py",
+    "exit_code": 0,
+    "result": "4 passed in 0.93s"
+  },
+  {
+    "command": "git diff --check",
+    "exit_code": 0
+  }
+]

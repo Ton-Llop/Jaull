@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-09-30T09:35:02.970796Z",
+  "jaull_version": "0.1.0",
+  "git_commit": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c",
+  "case_file": {
+    "path": "case.json",
+    "sha256": "e3a5756397a2986593e62cc1f03af84ff853059cc1b337f052bb44db01f12ccc",
+    "size_bytes": 2657
+  },
+  "experiment_file": {
+    "path": "records/experiment.json",
+    "sha256": "c16651ab5686d4ca08c1af35dbafa1165a9f6b72c21880f89d3f99c084772ee1",
+    "size_bytes": 43696
+  },
+  "benchmark_files": [
+    {
+      "path": "records/benchmarks/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.json",
+      "sha256": "9089bad875709f2255c88dcb2880a6c418c486a94a3660ee91e548ed00337401",
+      "size_bytes": 11960,
+      "benchmark_id": "bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e"
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "evidence/logs/exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+      "sha256": "29a6d3f2cfdc6254123968800f3bdd729cea7eb73ac0e5eb286580738c52d709",
+      "size_bytes": 730017,
+      "reference": {
+        "path": "logs/exp-38e97695-954d-42ef-83e0-1bacecda01dc.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/logs/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log",
+      "sha256": "8fc5a1dabcc84a74160364609cf781a587cbf3cd8b6c4f4cec45cfb719a8d0f1",
+      "size_bytes": 1066,
+      "reference": {
+        "path": "logs/bench-a07438ca-cf57-44ef-9d3d-7183ceb2a66e.runtime-log",
+        "role": "runtime_log",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/prediction-before-validation.json",
+      "sha256": "a86e88b0c43269243d75899f1010eacd5db1d4501f40d5ba30cb57cdebc49fad",
+      "size_bytes": 10256,
+      "reference": {
+        "path": "prediction-before-validation.json",
+        "role": "prediction",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/execution-plan.json",
+      "sha256": "3b67e8001b28f83c7c80a947787d2b84b1707ce7a6a5614b3efa2b98c1bd340c",
+      "size_bytes": 25882,
+      "reference": {
+        "path": "execution-plan.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/hardware.json",
+      "sha256": "38eb5d23cbbaa26cbc70c6995d623624917288962e001fb23a55535a1e88abed",
+      "size_bytes": 2618,
+      "reference": {
+        "path": "hardware.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/runtime-capability.json",
+      "sha256": "eb3fea1756506cdea87957671185e16a2a3f1ad638cca94c3fdb79615d9c9017",
+      "size_bytes": 1648,
+      "reference": {
+        "path": "runtime-capability.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/benchmark-capability.json",
+      "sha256": "1c3f7e49e23a56dfafc78392b2368485f26813a52a5b27c5b60711b2511aa4e2",
+      "size_bytes": 652,
+      "reference": {
+        "path": "benchmark-capability.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/artifact-hash-check.json",
+      "sha256": "775f795954bcdb8948d4a10dd62f541c81e1b786abf7e94245e959cc0c0b3464",
+      "size_bytes": 370,
+      "reference": {
+        "path": "artifact-hash-check.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/hub-baseline.json",
+      "sha256": "f91c5b28c560dc4ba08f9e54e0414ff0418433159e6ffde2572526ad151198cb",
+      "size_bytes": 393,
+      "reference": {
+        "path": "hub-baseline.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    },
+    {
+      "path": "evidence/workload-intent.json",
+      "sha256": "4732f4a9add2b0895b7b63d69096d7c03e0defe02db922b30957f645e34762c5",
+      "size_bytes": 158,
+      "reference": {
+        "path": "workload-intent.json",
+        "role": "other",
+        "sha256": null,
+        "size_bytes": null,
+        "description": null
+      }
+    }
+  ]
+}

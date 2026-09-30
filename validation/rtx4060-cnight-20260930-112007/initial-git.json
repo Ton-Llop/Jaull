@@ -1,0 +1,12 @@
+{
+  "branch": "c_night",
+  "source_commit": "8423fd7b1acdd5a51bec6d9d103c564ab3d8033c",
+  "status": [
+    "?? validation/rtx4060-b001-r10-20260929/bundle-final/evidence/",
+    "?? validation/rtx4060-b001-r10-20260929/bundle/evidence/",
+    "?? validation/rtx4060-b001-r10-20260929/logs/"
+  ],
+  "clean": false,
+  "tracked_changes": false,
+  "note": "Observed before creating the evidence directory; preparation.json status was captured after directory creation."
+}
