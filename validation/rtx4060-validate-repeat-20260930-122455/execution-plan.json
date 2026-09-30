@@ -1,0 +1,687 @@
+{
+  "plan_id": "plan-bartowski-qwen2-5-7b-instruct-gguf-qwen2-5-7b-instruct-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+  "model_identity": {
+    "canonical_repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "family": null,
+    "model_name": "Qwen2.5-7B-Instruct",
+    "parameter_count": null,
+    "variant": null,
+    "architecture": null,
+    "confidence": "unknown",
+    "evidence": []
+  },
+  "artifact": {
+    "model_identity": {
+      "canonical_repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "family": null,
+      "model_name": "Qwen2.5-7B-Instruct",
+      "parameter_count": null,
+      "variant": null,
+      "architecture": null,
+      "confidence": "unknown",
+      "evidence": []
+    },
+    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+    "format": "gguf",
+    "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "size_bytes": 4683074240,
+    "file_count": null,
+    "quantization": "Q4_K_M",
+    "precision": null,
+    "source": "huggingface",
+    "compatible_runtimes": [],
+    "identity_match": "confirmed",
+    "confidence": "unknown",
+    "evidence": []
+  },
+  "runtime": {
+    "runtime": "llama.cpp",
+    "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 28 --batch-size 1 --device CUDA0",
+    "python_snippet": null,
+    "flags": [
+      {
+        "name": "--model",
+        "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+        "source": "user_input",
+        "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+      },
+      {
+        "name": "--ctx-size",
+        "value": "4096",
+        "source": "estimate",
+        "explanation": "Context length used for the memory estimate."
+      },
+      {
+        "name": "--n-gpu-layers",
+        "value": "28",
+        "source": "hardware",
+        "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+      },
+      {
+        "name": "--batch-size",
+        "value": "1",
+        "source": "estimate",
+        "explanation": "Prompt batch size (llama.cpp calls this -b)."
+      },
+      {
+        "name": "--device",
+        "value": "CUDA0",
+        "source": "user_input",
+        "explanation": "Runtime device selected by the confirmed llama.cpp capability probe (cuda)."
+      }
+    ],
+    "reasons": [
+      "Offloading required: requesting 28 llama.cpp GPU units from a conservative 28-transformer-block budget (0.13 GiB/block).",
+      "The 0.62 GiB non-block weight aggregate is charged to GPU as a conservative bound; config-derived embedding/output estimates do not establish llama.cpp placement."
+    ],
+    "warnings": [
+      "Local tensor refinement not applied: Runtime build is not verified."
+    ],
+    "confidence": "medium",
+    "alternatives": []
+  },
+  "runtime_family": "llama.cpp",
+  "backend_selection": {
+    "selected_backend": "cuda",
+    "selected_accelerator": {
+      "name": "NVIDIA GeForce RTX 4060",
+      "vendor": "nvidia",
+      "type": "dedicated",
+      "vendor_id": "0x10de",
+      "device_id": "0x2882",
+      "pci_bus_id": "00000000:2B:00.0",
+      "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+      "dedicated_memory_bytes": 8585740288,
+      "shared_memory": false,
+      "detection_sources": [
+        "nvml",
+        "vulkaninfo"
+      ]
+    },
+    "reason": "native_backend_available",
+    "backend_info": {
+      "backend": "cuda",
+      "availability": "available",
+      "reason": "probe_available",
+      "source": "nvml",
+      "detail": "CUDA driver reported by NVML.",
+      "api_version": "13.4",
+      "device_name": null,
+      "driver_name": "616.92",
+      "software_renderer": false
+    },
+    "alternatives": [
+      {
+        "backend": "vulkan",
+        "accelerator": {
+          "name": "NVIDIA GeForce RTX 4060",
+          "vendor": "nvidia",
+          "type": "dedicated",
+          "vendor_id": "0x10de",
+          "device_id": "0x2882",
+          "pci_bus_id": "00000000:2B:00.0",
+          "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+          "dedicated_memory_bytes": 8585740288,
+          "shared_memory": false,
+          "detection_sources": [
+            "nvml",
+            "vulkaninfo"
+          ]
+        },
+        "backend_info": {
+          "backend": "vulkan",
+          "availability": "available",
+          "reason": "probe_available",
+          "source": "vulkaninfo",
+          "detail": "Vulkan device exposed by vulkaninfo.",
+          "api_version": "1.4.351",
+          "device_name": "NVIDIA GeForce RTX 4060",
+          "driver_name": "NVIDIA",
+          "software_renderer": false
+        },
+        "reason": "vulkan_backend_available"
+      },
+      {
+        "backend": "cpu",
+        "accelerator": null,
+        "backend_info": null,
+        "reason": "cpu_fallback"
+      }
+    ],
+    "notes": [
+      "Backend selection is based on observed hardware/backend availability only; runtime binary support is validated in a later phase."
+    ]
+  },
+  "runtime_capability": {
+    "runtime_family": "llama_cpp",
+    "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+    "binary_status": "available",
+    "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+    "backend_capabilities": [
+      {
+        "backend": "cpu",
+        "state": "confirmed",
+        "devices": [],
+        "reason": "runtime_available",
+        "source": "llama-cli --list-devices",
+        "detail": "CPU execution is treated as usable when llama-cli itself successfully responds; CPU may not appear in --list-devices."
+      },
+      {
+        "backend": "cuda",
+        "state": "confirmed",
+        "devices": [
+          {
+            "backend": "cuda",
+            "runtime_id": "CUDA0",
+            "name": "NVIDIA GeForce RTX 4060",
+            "memory_total_bytes": 8584691712,
+            "memory_free_bytes": 7452229632
+          }
+        ],
+        "reason": "backend_exposed",
+        "source": "llama-cli --list-devices",
+        "detail": null
+      },
+      {
+        "backend": "vulkan",
+        "state": "not_observed",
+        "devices": [],
+        "reason": "backend_not_observed",
+        "source": "llama-cli --list-devices",
+        "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+      },
+      {
+        "backend": "hip",
+        "state": "not_observed",
+        "devices": [],
+        "reason": "backend_not_observed",
+        "source": "llama-cli --list-devices",
+        "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+      }
+    ],
+    "probe_source": "llama-cli --list-devices",
+    "message": null
+  },
+  "execution_readiness": {
+    "status": "ready",
+    "reason": "selected_backend_exposed",
+    "selection": {
+      "selected_backend": "cuda",
+      "selected_accelerator": {
+        "name": "NVIDIA GeForce RTX 4060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": "0x2882",
+        "pci_bus_id": "00000000:2B:00.0",
+        "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+        "dedicated_memory_bytes": 8585740288,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml",
+          "vulkaninfo"
+        ]
+      },
+      "reason": "native_backend_available",
+      "backend_info": {
+        "backend": "cuda",
+        "availability": "available",
+        "reason": "probe_available",
+        "source": "nvml",
+        "detail": "CUDA driver reported by NVML.",
+        "api_version": "13.4",
+        "device_name": null,
+        "driver_name": "616.92",
+        "software_renderer": false
+      },
+      "alternatives": [
+        {
+          "backend": "vulkan",
+          "accelerator": {
+            "name": "NVIDIA GeForce RTX 4060",
+            "vendor": "nvidia",
+            "type": "dedicated",
+            "vendor_id": "0x10de",
+            "device_id": "0x2882",
+            "pci_bus_id": "00000000:2B:00.0",
+            "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+            "dedicated_memory_bytes": 8585740288,
+            "shared_memory": false,
+            "detection_sources": [
+              "nvml",
+              "vulkaninfo"
+            ]
+          },
+          "backend_info": {
+            "backend": "vulkan",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "vulkaninfo",
+            "detail": "Vulkan device exposed by vulkaninfo.",
+            "api_version": "1.4.351",
+            "device_name": "NVIDIA GeForce RTX 4060",
+            "driver_name": "NVIDIA",
+            "software_renderer": false
+          },
+          "reason": "vulkan_backend_available"
+        },
+        {
+          "backend": "cpu",
+          "accelerator": null,
+          "backend_info": null,
+          "reason": "cpu_fallback"
+        }
+      ],
+      "notes": [
+        "Backend selection is based on observed hardware/backend availability only; runtime binary support is validated in a later phase."
+      ]
+    },
+    "runtime_capability": {
+      "runtime_family": "llama_cpp",
+      "binary_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+      "binary_status": "available",
+      "version_text": "version: 0.5.0-dev (build 11258, commit ba0ba54d9)\nbuilt with Clang 20.1.8 for Windows x86_64",
+      "backend_capabilities": [
+        {
+          "backend": "cpu",
+          "state": "confirmed",
+          "devices": [],
+          "reason": "runtime_available",
+          "source": "llama-cli --list-devices",
+          "detail": "CPU execution is treated as usable when llama-cli itself successfully responds; CPU may not appear in --list-devices."
+        },
+        {
+          "backend": "cuda",
+          "state": "confirmed",
+          "devices": [
+            {
+              "backend": "cuda",
+              "runtime_id": "CUDA0",
+              "name": "NVIDIA GeForce RTX 4060",
+              "memory_total_bytes": 8584691712,
+              "memory_free_bytes": 7452229632
+            }
+          ],
+          "reason": "backend_exposed",
+          "source": "llama-cli --list-devices",
+          "detail": null
+        },
+        {
+          "backend": "vulkan",
+          "state": "not_observed",
+          "devices": [],
+          "reason": "backend_not_observed",
+          "source": "llama-cli --list-devices",
+          "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+        },
+        {
+          "backend": "hip",
+          "state": "not_observed",
+          "devices": [],
+          "reason": "backend_not_observed",
+          "source": "llama-cli --list-devices",
+          "detail": "No runtime device for this backend was observed; this is not proof that the binary was compiled without it."
+        }
+      ],
+      "probe_source": "llama-cli --list-devices",
+      "message": null
+    },
+    "selected_backend_capability": {
+      "backend": "cuda",
+      "state": "confirmed",
+      "devices": [
+        {
+          "backend": "cuda",
+          "runtime_id": "CUDA0",
+          "name": "NVIDIA GeForce RTX 4060",
+          "memory_total_bytes": 8584691712,
+          "memory_free_bytes": 7452229632
+        }
+      ],
+      "reason": "backend_exposed",
+      "source": "llama-cli --list-devices",
+      "detail": null
+    },
+    "message": "llama-cli exposes cuda device(s)"
+  },
+  "memory_prediction": {
+    "repository": {
+      "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "author": "bartowski",
+      "private": false,
+      "gated": false,
+      "downloads": 191511,
+      "likes": 77,
+      "last_modified": "2024-09-19T12:54:25Z",
+      "license": "apache-2.0",
+      "tags": [
+        "gguf",
+        "chat",
+        "text-generation",
+        "en",
+        "base_model:Qwen/Qwen2.5-7B-Instruct",
+        "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+        "license:apache-2.0",
+        "endpoints_compatible",
+        "region:us",
+        "conversational"
+      ],
+      "pipeline_tag": "text-generation",
+      "library_name": null
+    },
+    "repository_type": "gguf",
+    "inference_configuration": {
+      "context_length": 4096,
+      "batch_size": 1,
+      "target_device": "auto",
+      "precision": null,
+      "quantization": "Q4_K_M",
+      "kv_cache_dtype": "float16",
+      "safety_margin_percent": 10.0,
+      "device_reserve_bytes": 0,
+      "concurrent_users": 1
+    },
+    "weights": {
+      "component": {
+        "name": "Weights",
+        "bytes": 4683074240,
+        "source": "exact",
+        "confidence": "high",
+        "explanation": "Exact remote file size of the Q4_K_M variant."
+      },
+      "num_parameters": null,
+      "bits_per_parameter": null,
+      "precision": null,
+      "gguf_variant": "Q4_K_M",
+      "transformer_block_decomposition": {
+        "total_weight_bytes": 4683074240,
+        "estimated_transformer_block_weight_bytes": 4012773975,
+        "estimated_non_block_weight_bytes": 670300265,
+        "estimated_embedding_weight_bytes": 335150132,
+        "estimated_output_head_weight_bytes": 335150133,
+        "estimated_bytes_per_transformer_block": 143313357,
+        "total_transformer_blocks": 28,
+        "method": "config_parameter_decomposition"
+      }
+    },
+    "kv_cache": {
+      "component": {
+        "name": "KV cache",
+        "bytes": 234881024,
+        "source": "derived",
+        "confidence": "high",
+        "explanation": "28 layers x 4 KV heads x 128 head_dim x 4096 tokens x batch 1 x 2 bytes x 1 sessions x 2."
+      },
+      "layers": 28,
+      "kv_heads": 4,
+      "head_dim": 128,
+      "context_length": 4096,
+      "batch_size": 1,
+      "dtype_bytes": 2,
+      "formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+      "notes": [
+        "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+      ]
+    },
+    "runtime_overhead": {
+      "component": {
+        "name": "Runtime overhead",
+        "bytes": 1005178336,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Base 0.50 GiB + 10% of weights (0.44 GiB)."
+      },
+      "base_bytes": 536870912,
+      "weight_fraction": 0.1,
+      "minimum_bytes": 268435456
+    },
+    "device_reserve": {
+      "name": "Device reserve",
+      "bytes": 0,
+      "source": "assumed",
+      "confidence": "low",
+      "explanation": "No device reserve configured (--device-reserve-gib 0)."
+    },
+    "safety_margin": {
+      "name": "Safety margin",
+      "bytes": 592313360,
+      "source": "assumed",
+      "confidence": "medium",
+      "explanation": "10% of estimated subtotal."
+    },
+    "total_bytes": 6515446960,
+    "assessment": {
+      "status": "tight",
+      "confidence": "low",
+      "target_device": "auto",
+      "effective_device": "gpu",
+      "available_vram_bytes": 6997635072,
+      "available_ram_bytes": 20781600768,
+      "ratio": 0.9310927038865738,
+      "reasons": [
+        "Weights, KV cache, overhead, reserve, and margin fit in VRAM."
+      ],
+      "warnings": []
+    },
+    "hardware_fit": {
+      "mode": "gpu_resident",
+      "memory_topology": "discrete_memory",
+      "weights_bytes": 4683074240,
+      "kv_cache_bytes": 234881024,
+      "overhead_bytes": 1005178336,
+      "device_reserve_bytes": 0,
+      "safety_margin_bytes": 592313360,
+      "available_vram_bytes": 6997635072,
+      "available_ram_bytes": 20781600768,
+      "gpu_required_bytes": 6515446960,
+      "gpu_weight_bytes": 4683074240,
+      "gpu_overhead_bytes": 1005178336,
+      "gpu_safety_margin_bytes": 592313360,
+      "ram_required_bytes": 0,
+      "ram_weight_bytes": 0,
+      "ram_overhead_bytes": 0,
+      "ram_safety_margin_bytes": 0,
+      "gpu_kv_cache_bytes": 234881024,
+      "ram_kv_cache_bytes": 0,
+      "gpu_transformer_blocks": 28,
+      "total_transformer_blocks": 28,
+      "placement_method": "transformer_blocks",
+      "offload_diagnostics": null,
+      "non_block_placement_bounds": null,
+      "reason": "Weights, KV cache, overhead, reserve, and margin fit in VRAM.",
+      "warnings": []
+    },
+    "assumptions": [
+      "Selected explicitly by user: Q4_K_M.",
+      "Base model resolved to Qwen/Qwen2.5-7B-Instruct via model_card_metadata.",
+      "KV cache dtype assumed to be float16."
+    ],
+    "warnings": [
+      "Repository contains 24 GGUF quantization variants (F16, IQ2_M, IQ3_M, IQ3_XS, IQ4_XS, Q2_K, Q2_K_L, Q3_K_L, Q3_K_M, Q3_K_S, Q3_K_XL, Q4_0, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, Q4_K_L, Q4_K_M, Q4_K_S, Q5_K_L, Q5_K_M, Q5_K_S, Q6_K, Q6_K_L, Q8_0); only one is loaded at a time.",
+      "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+    ],
+    "base_model_resolution": {
+      "repo_id": "Qwen/Qwen2.5-7B-Instruct",
+      "source": "model_card_metadata",
+      "confidence": "high",
+      "evidence": [
+        "Model card `base_model: Qwen/Qwen2.5-7B-Instruct`."
+      ],
+      "warnings": [],
+      "candidates": []
+    },
+    "configuration_sources": {
+      "architectures": "gguf_header",
+      "model_type": "gguf_header",
+      "max_position_embeddings": "gguf_header",
+      "hidden_size": "gguf_header",
+      "num_hidden_layers": "gguf_header",
+      "num_attention_heads": "gguf_header",
+      "num_key_value_heads": "gguf_header",
+      "sliding_window": "base_model_config",
+      "use_sliding_window": "base_model_config",
+      "torch_dtype": "base_model_config",
+      "intermediate_size": "base_model_config",
+      "tie_word_embeddings": "base_model_config",
+      "vocab_size": "base_model_config"
+    },
+    "architecture": "qwen2",
+    "runtime_recommendation": {
+      "runtime": "llama.cpp",
+      "command_preview": "llama-server --model Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf --ctx-size 4096 --n-gpu-layers 28 --batch-size 1 --device CUDA0",
+      "python_snippet": null,
+      "flags": [
+        {
+          "name": "--model",
+          "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+          "source": "user_input",
+          "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+        },
+        {
+          "name": "--ctx-size",
+          "value": "4096",
+          "source": "estimate",
+          "explanation": "Context length used for the memory estimate."
+        },
+        {
+          "name": "--n-gpu-layers",
+          "value": "28",
+          "source": "hardware",
+          "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+        },
+        {
+          "name": "--batch-size",
+          "value": "1",
+          "source": "estimate",
+          "explanation": "Prompt batch size (llama.cpp calls this -b)."
+        },
+        {
+          "name": "--device",
+          "value": "CUDA0",
+          "source": "user_input",
+          "explanation": "Runtime device selected by the confirmed llama.cpp capability probe (cuda)."
+        }
+      ],
+      "reasons": [
+        "Offloading required: requesting 28 llama.cpp GPU units from a conservative 28-transformer-block budget (0.13 GiB/block).",
+        "The 0.62 GiB non-block weight aggregate is charged to GPU as a conservative bound; config-derived embedding/output estimates do not establish llama.cpp placement."
+      ],
+      "warnings": [
+        "Local tensor refinement not applied: Runtime build is not verified."
+      ],
+      "confidence": "medium",
+      "alternatives": []
+    }
+  },
+  "hardware": {
+    "os": "Windows 11",
+    "os_version": "10.0.26200",
+    "arch": "AMD64",
+    "cpu": {
+      "model": "AMD64 Family 25 Model 33 Stepping 0, AuthenticAMD",
+      "physical_cores": 8,
+      "logical_cores": 16
+    },
+    "memory": {
+      "total_bytes": 34282192896,
+      "available_bytes": 20781600768
+    },
+    "storage": [
+      {
+        "mountpoint": "C:\\",
+        "total_bytes": 999134588928,
+        "available_bytes": 179467866112
+      },
+      {
+        "mountpoint": "D:\\",
+        "total_bytes": 240053747712,
+        "available_bytes": 238874632192
+      },
+      {
+        "mountpoint": "E:\\",
+        "total_bytes": 1000202039296,
+        "available_bytes": 554912264192
+      },
+      {
+        "mountpoint": "F:\\",
+        "total_bytes": 1000201220096,
+        "available_bytes": 875027091456
+      }
+    ],
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 4060",
+        "vram_total_bytes": 8585740288,
+        "vram_available_bytes": 6997635072,
+        "driver_version": "616.92",
+        "cuda_version": "13.4"
+      }
+    ],
+    "accelerators": [
+      {
+        "name": "NVIDIA GeForce RTX 4060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": "0x2882",
+        "pci_bus_id": "00000000:2B:00.0",
+        "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+        "dedicated_memory_bytes": 8585740288,
+        "available_memory_bytes": 6997635072,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml",
+          "vulkaninfo"
+        ],
+        "backends": [
+          {
+            "backend": "cuda",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "nvml",
+            "detail": "CUDA driver reported by NVML.",
+            "api_version": "13.4",
+            "device_name": null,
+            "driver_name": "616.92",
+            "software_renderer": false
+          },
+          {
+            "backend": "vulkan",
+            "availability": "available",
+            "reason": "probe_available",
+            "source": "vulkaninfo",
+            "detail": "Vulkan device exposed by vulkaninfo.",
+            "api_version": "1.4.351",
+            "device_name": "NVIDIA GeForce RTX 4060",
+            "driver_name": "NVIDIA",
+            "software_renderer": false
+          },
+          {
+            "backend": "hip",
+            "availability": "unknown",
+            "reason": "not_checked",
+            "source": "nvml",
+            "detail": "HIP can target NVIDIA through translation, but this environment was not checked.",
+            "api_version": null,
+            "device_name": null,
+            "driver_name": null,
+            "software_renderer": false
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "compatibility": "not_compatible",
+  "evidence": [
+    "artifact:gguf",
+    "identity_match:confirmed",
+    "quantization:Q4_K_M",
+    "readiness:ready",
+    "readiness_reason:selected_backend_exposed"
+  ],
+  "warnings": [
+    "Local tensor refinement not applied: Runtime build is not verified."
+  ]
+}

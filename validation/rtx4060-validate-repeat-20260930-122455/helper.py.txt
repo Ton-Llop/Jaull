@@ -1,0 +1,131 @@
+﻿import hashlib
+import json
+import shutil
+import subprocess
+import traceback
+from dataclasses import replace
+from pathlib import Path
+from jaull.advisor.service import AdvisorService
+from jaull.domain.experiments import ExperimentRequest
+from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.hardware import ComputeBackend
+from jaull.domain.runtime import ExecutionReadinessStatus
+
+PROJECT = Path.cwd()
+PRIOR = PROJECT / 'validation/rtx4060-cnight-20260930-112007'
+INITIAL_GIT_STATE = subprocess.run(['git', 'status', '--short'], cwd=PROJECT, capture_output=True, text=True, check=True).stdout.strip()
+RUNTIME_ROOT = PROJECT / '.venv/rtx4060-runtime-b11258-recovery-20260930-121948'
+RECOVERY = json.loads((RUNTIME_ROOT / 'recovery-check.json').read_text('utf-8'))
+RUNTIME_BIN = Path(RECOVERY['binary_dir'])
+ROOT = PROJECT / 'validation/rtx4060-validate-repeat-20260930-122455'
+ROOT.mkdir(exist_ok=False)
+EXPECTED = '65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423'
+
+def save(name, value):
+    data = value.model_dump(mode='json') if hasattr(value, 'model_dump') else value
+    path = ROOT / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('x', encoding='utf-8', newline='\n') as handle:
+        json.dump(data, handle, indent=2)
+        handle.write('\n')
+
+def git(*args):
+    result = subprocess.run(['git', *args], cwd=PROJECT, capture_output=True, text=True, check=False)
+    if result.returncode:
+        raise RuntimeError('Git read failed')
+    return result.stdout.strip()
+
+def copy(source, directory):
+    target = ROOT / directory / source.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise RuntimeError('Refusing to overwrite evidence')
+    shutil.copy2(source, target)
+    return str(target)
+
+def main():
+    source = git('rev-parse', 'HEAD')
+    branch = git('branch', '--show-current')
+    if branch != 'c_night':
+        raise RuntimeError('Unexpected branch; STOP')
+    save('provenance.json', {'source_commit': source, 'branch': branch, 'initial_git_status_before_directory_creation': INITIAL_GIT_STATE, 'status_at_capture': git('status', '--short'), 'prior_campaign': str(PRIOR), 'scope': 'Validate only; no Benchmark; no historical evidence changes', 'environment': '.venv/rtx4060-py312; Python 3.12.14; uv locked check matched', 'agents_md': 'Absent', 'gates': 'Not repeated for this Validate-only rerun'})
+    save('runtime-recovery.json', RECOVERY)
+    advisor = replace(AdvisorService.default(), llama_cli_path=RUNTIME_BIN / 'llama-cli.exe', llama_bench_path=RUNTIME_BIN / 'llama-bench.exe')
+    previous = ExperimentRequest.model_validate_json((PRIOR / 'experiment-request.json').read_text('utf-8'))
+    artifact = previous.artifact
+    if artifact.repo_id != 'bartowski/Qwen2.5-7B-Instruct-GGUF' or artifact.filename != 'Qwen2.5-7B-Instruct-Q4_K_M.gguf' or artifact.revision != '8911e8a47f92bac19d6f5c64a2e2095bd2f7d031':
+        raise RuntimeError('Baseline mismatch; STOP')
+    with artifact.local_path.open('rb') as handle:
+        actual = hashlib.file_digest(handle, 'sha256').hexdigest()
+    save('artifact-hash-check.json', {'repo': artifact.repo_id, 'revision': artifact.revision, 'filename': artifact.filename, 'path': str(artifact.local_path), 'expected': EXPECTED, 'actual': actual, 'matches': actual == EXPECTED})
+    if actual != EXPECTED:
+        raise RuntimeError('SHA mismatch; STOP')
+    artifact = advisor.verify_artifact(artifact, full=True)
+    save('verified-artifact.json', artifact)
+    hardware = advisor.scan_hardware()
+    save('hardware.json', hardware)
+    selection = advisor.select_runtime_backend(hardware)
+    save('backend-selection.json', selection)
+    if selection.selected_backend is not ComputeBackend.CUDA:
+        raise RuntimeError('CUDA not selected; STOP')
+    capability = advisor.inspect_llama_cpp_runtime(selection=selection)
+    save('runtime-capability.json', capability)
+    readiness = advisor.evaluate_execution_readiness(selection=selection, runtime_capability=capability)
+    save('runtime-readiness.json', readiness)
+    if readiness.status is not ExecutionReadinessStatus.READY:
+        raise RuntimeError('CUDA runtime not ready; STOP')
+    old_hashes = json.loads((PRIOR / 'runtime-binary-hashes.json').read_text('utf-8'))
+    new_hashes = {str(p): hashlib.file_digest(p.open('rb'), 'sha256').hexdigest() for p in RUNTIME_BIN.iterdir() if p.suffix.lower() in {'.exe', '.dll'}}
+    save('runtime-binary-hashes.json', new_hashes)
+    if {Path(p).name: h for p, h in new_hashes.items()} != {Path(p).name: h for p, h in old_hashes.items()}:
+        raise RuntimeError('Runtime binary files differ from prior campaign; STOP')
+    frozen = previous.prediction_input
+    if frozen is None:
+        raise RuntimeError('Missing prior prediction input')
+    estimate = advisor.estimate_model(frozen.analysis, hardware, frozen.inference_configuration, resolve_base_model=frozen.resolve_base_model, recommend_runtime=frozen.recommend_runtime)
+    save('estimator-output.json', estimate)
+    seed = ExecutionPlan.model_validate_json((PRIOR / 'execution-plan.json').read_text('utf-8'))
+    plan = advisor.plan_execution(model_identity=seed.model_identity, artifact=seed.artifact, runtime=seed.runtime_family, estimate=estimate, hardware=hardware, launch=previous.runtime, backend_selection=selection, runtime_capability=capability, execution_readiness=readiness)
+    save('execution-plan.json', plan)
+    estimate = plan.memory_prediction
+    if estimate is None or estimate.runtime_recommendation != previous.runtime:
+        raise RuntimeError('Plan and prediction runtime mismatch; STOP before inference')
+    save('prediction-before-validation.json', estimate)
+    request = ExperimentRequest.model_validate(previous.model_copy(update={'hardware': hardware, 'artifact': artifact, 'prediction': estimate, 'backend_selection': selection, 'persist': True, 'capture_raw_logs': True, 'notes': ['Validate-only repeat after batch-size fix; task=general_chat; mode=interactive; no SLOs', 'Prior selected runtime flags preserved exactly; prediction recalculated with current hardware and prior frozen analysis; no GPU layer override', 'Prior experiment remains unchanged: exp-38e97695-954d-42ef-83e0-1bacecda01dc']}).model_dump())
+    if request.prediction.runtime_recommendation != request.runtime:
+        raise RuntimeError('Request runtime mismatch; STOP before inference')
+    save('experiment-request.json', request)
+    flags = {flag.name: flag.value for flag in request.runtime.flags}
+    if flags['--ctx-size'] != '4096' or flags['--n-gpu-layers'] != '28' or flags['--batch-size'] != '1' or flags['--device'] != 'CUDA0':
+        raise RuntimeError('Prior selected flags differ from expected; STOP')
+    print('Validate started through ExperimentRunner; same selected runtime flags', flush=True)
+    result = advisor.run_experiment(request)
+    save('experiment-result.json', result)
+    record_copy = copy(result.persisted_path, 'records') if result.persisted_path else None
+    log_copy = copy(result.raw_log_path, 'logs') if result.raw_log_path else None
+    command = list(result.record.backend_trace.executed_command)
+    batch_applied = '--batch-size' in command and command[command.index('--batch-size') + 1] == '1'
+    summary = {'source_commit': source, 'branch': branch, 'experiment_id': result.record.identity.experiment_id, 'record_store_path': str(result.persisted_path), 'record_copy_path': record_copy, 'raw_log_store_path': str(result.raw_log_path), 'raw_log_copy_path': log_copy, 'executed_command': command, 'batch_size_1_applied': batch_applied, 'same_runtime_binary_hashes': True, 'observation': result.record.observation.model_dump(mode='json'), 'comparison': result.record.comparison.model_dump(mode='json'), 'final_git_status': git('status', '--short'), 'final_git_diff_check': git('diff', '--check'), 'final_git_diff_stat': git('diff', '--stat'), 'final_staged_diff_stat': git('diff', '--cached', '--stat'), 'benchmark_repeated': False}
+    save('summary.json', summary)
+    with (ROOT / 'REPORT.md').open('x', encoding='utf-8', newline='\n') as handle:
+        handle.write('# Repetición de Validate — RTX 4060\n\n')
+        handle.write('Source commit: `' + source + '`, rama `c_night`. Estado inicial con el diagnóstico previo sin seguimiento; final añade este nuevo directorio. La ubicación del runtime cambia a .venv; los 54 EXEs/DLLs coinciden byte por byte con la ejecución anterior. Sin cambios versionados ni staging. No se repitió Benchmark ni se modificó evidencia anterior.\n\n')
+        handle.write('Mismo baseline: bartowski/Qwen2.5-7B-Instruct-GGUF / Qwen2.5-7B-Instruct-Q4_K_M.gguf, revision 8911e8a47f92bac19d6f5c64a2e2095bd2f7d031. SHA recalculado correcto: ' + actual + '. Mismos binarios/DLLs del runtime, verificados por SHA.\n\n')
+        handle.write('Contexto 4096, concurrencia 1, task general_chat, interactive, sin SLOs; flags del runtime seleccionado anterior preservados. Hardware medido de nuevo; predicción recalculada con los inputs congelados previos y hardware actual.\n\n')
+        handle.write('Comando real mediante ExperimentRunner:\n```text\n' + subprocess.list2cmdline(command) + '\n```\n\n')
+        handle.write('success=' + str(result.record.observation.success) + '; exit=' + str(result.record.observation.exit_code) + '; duration_seconds=' + str(result.record.observation.duration_seconds) + '; --batch-size 1 aplicado=' + str(batch_applied) + '.\n\n')
+        handle.write('ID: `' + summary['experiment_id'] + '`. Original: `' + summary['record_store_path'] + '`. Copia: `' + str(record_copy) + '`. Raw log local: `' + str(log_copy) + '`.\n\n')
+        handle.write('Observación y PredictionComparison originales conservados en experiment-result.json y summary.json, sin convertir indisponibilidad a porcentaje ni cero. runtime_reported_allocation y NVML process allocation se mantienen separados.\n\n')
+        handle.write('Gates completos no repetidos: alcance solicitado solo Validate. AGENTS.md sigue ausente. No se crearon case/bundle nuevos. Logs locales, no publicados.\n')
+    print('Validate finished: success=' + str(result.record.observation.success) + '; batch_size_1_applied=' + str(batch_applied) + '; duration_seconds=' + str(result.record.observation.duration_seconds), flush=True)
+    if result.record.observation.success and not batch_applied:
+        raise RuntimeError('Batch fix not applied; evidence preserved')
+
+try:
+    main()
+except Exception:
+    (ROOT / 'failure.txt').write_text(traceback.format_exc(), encoding='utf-8')
+    print('Validate-only run failed; local diagnostics preserved', flush=True)
+    raise
+
+

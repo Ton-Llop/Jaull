@@ -1,0 +1,65 @@
+{
+  "source_commit": "0af3b4fbdf23607e86de13e394961c422ccb1c24",
+  "branch": "c_night",
+  "experiment_id": "exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e",
+  "record_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+  "record_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-validate-repeat-20260930-122455\\records\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+  "raw_log_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log",
+  "raw_log_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-validate-repeat-20260930-122455\\logs\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log",
+  "executed_command": [],
+  "batch_size_1_applied": false,
+  "same_runtime_binary_hashes": true,
+  "observation": {
+    "success": false,
+    "duration_seconds": 6.912453200000527,
+    "peak_ram_bytes": 4883828736,
+    "peak_vram_bytes": null,
+    "exit_code": 3221226505,
+    "failure_reason": "non_zero_exit",
+    "measurement": {
+      "ram_measurement": "process_rss",
+      "vram_measurement": "nvml_process_memory",
+      "sample_interval_seconds": 0.05
+    },
+    "runtime_allocation": null
+  },
+  "comparison": {
+    "ram": {
+      "predicted_bytes": null,
+      "measured_bytes": 4883828736,
+      "error_bytes": null,
+      "absolute_error_bytes": null,
+      "error_percent": null,
+      "availability": "methodologically_unavailable",
+      "unavailable_reason": "Peak process RSS does not measure host memory demand under GPU offload: llama.cpp maps the whole model file, and the pages it reads to upload weights to the device stay resident, so RSS reflects the artifact size rather than the host share of the placement.",
+      "source": null,
+      "runtime": null,
+      "driver_confirmed": null
+    },
+    "vram": {
+      "predicted_bytes": null,
+      "measured_bytes": null,
+      "error_bytes": null,
+      "absolute_error_bytes": null,
+      "error_percent": null,
+      "availability": "methodologically_unavailable",
+      "unavailable_reason": "The Hardware Fit prediction is expressed in runtime-agnostic transformer blocks, while llama.cpp --n-gpu-layers uses backend-specific offload units. Jaull has a validated mapping only for llama.cpp 689e227db running a dense qwen2 artifact on one confirmed discrete CUDA device, and this run is outside that scope, so it cannot be held to the transformer-block placement.",
+      "source": null,
+      "runtime": null,
+      "driver_confirmed": null
+    },
+    "compatibility": {
+      "predicted_status": "tight",
+      "predicted_runnable": true,
+      "observed_success": false,
+      "outcome": "false_positive",
+      "failure_reason": "non_zero_exit"
+    },
+    "vram_components": []
+  },
+  "final_git_status": "?? validation/rtx4060-validate-repeat-20260930-121225/\n?? validation/rtx4060-validate-repeat-20260930-121948/\n?? validation/rtx4060-validate-repeat-20260930-122455/",
+  "final_git_diff_check": "",
+  "final_git_diff_stat": "",
+  "final_staged_diff_stat": "",
+  "benchmark_repeated": false
+}

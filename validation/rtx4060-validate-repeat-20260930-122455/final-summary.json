@@ -1,0 +1,72 @@
+﻿{
+    "source_commit":  "0af3b4fbdf23607e86de13e394961c422ccb1c24",
+    "branch":  "c_night",
+    "experiment_id":  "exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e",
+    "success":  false,
+    "runtime_exit_code":  3221226505,
+    "duration_seconds":  6.912453200000527,
+    "record_copy_path":  "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-validate-repeat-20260930-122455\\records\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+    "record_store_path":  "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.json",
+    "raw_log_copy_path":  "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-validate-repeat-20260930-122455\\logs\\exp-cf9bda77-e4cb-4f74-b48d-5a2cb4b1a39e.runtime-log",
+    "runtime_build":  "11258",
+    "runtime_commit":  "ba0ba54d9",
+    "original_binary_hashes_verified":  54,
+    "runtime_local_path":  ".venv/rtx4060-runtime-b11258-recovery-20260930-121948/bin",
+    "runtime_reported_batch_1":  true,
+    "runtime_reported_ubatch_1":  true,
+    "diagnostic":  "add: failed to add token 0 to the batch (error -1, n_tokens = 1)",
+    "diagnostic_found":  true,
+    "record_command_trace_available":  false,
+    "helper_summary_batch_false_means":  "helper computed false from empty failed-run backend_trace; raw log proves batch=1; do not interpret it as batch omission",
+    "nvml_process_allocation":  null,
+    "runtime_allocation_in_record":  null,
+    "comparison":  {
+                       "ram":  {
+                                   "predicted_bytes":  null,
+                                   "measured_bytes":  4883828736,
+                                   "error_bytes":  null,
+                                   "absolute_error_bytes":  null,
+                                   "error_percent":  null,
+                                   "availability":  "methodologically_unavailable",
+                                   "unavailable_reason":  "Peak process RSS does not measure host memory demand under GPU offload: llama.cpp maps the whole model file, and the pages it reads to upload weights to the device stay resident, so RSS reflects the artifact size rather than the host share of the placement.",
+                                   "source":  null,
+                                   "runtime":  null,
+                                   "driver_confirmed":  null
+                               },
+                       "vram":  {
+                                    "predicted_bytes":  null,
+                                    "measured_bytes":  null,
+                                    "error_bytes":  null,
+                                    "absolute_error_bytes":  null,
+                                    "error_percent":  null,
+                                    "availability":  "methodologically_unavailable",
+                                    "unavailable_reason":  "The Hardware Fit prediction is expressed in runtime-agnostic transformer blocks, while llama.cpp --n-gpu-layers uses backend-specific offload units. Jaull has a validated mapping only for llama.cpp 689e227db running a dense qwen2 artifact on one confirmed discrete CUDA device, and this run is outside that scope, so it cannot be held to the transformer-block placement.",
+                                    "source":  null,
+                                    "runtime":  null,
+                                    "driver_confirmed":  null
+                                },
+                       "compatibility":  {
+                                             "predicted_status":  "tight",
+                                             "predicted_runnable":  true,
+                                             "observed_success":  false,
+                                             "outcome":  "false_positive",
+                                             "failure_reason":  "non_zero_exit"
+                                         },
+                       "vram_components":  [
+
+                                           ]
+                   },
+    "benchmark_repeated":  false,
+    "prior_failed_attempt":  "validation/rtx4060-validate-repeat-20260930-121948: helper runtime/prediction mismatch prevented record persistence; diagnostic retained, original raw output unavailable",
+    "final_git_status":  [
+                             "?? validation/rtx4060-validate-repeat-20260930-121225/",
+                             "?? validation/rtx4060-validate-repeat-20260930-121948/",
+                             "?? validation/rtx4060-validate-repeat-20260930-122455/"
+                         ],
+    "tracked_diff":  [
+
+                     ],
+    "diff_check":  [
+
+                   ]
+}
