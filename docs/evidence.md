@@ -42,9 +42,12 @@ identity, with a deep-inspection budget, and each match is labelled `confirmed`,
 1. **Resolve** — `repo_id` + optional quantization + optional revision → a single-file GGUF
    `ModelArtifact` at a concrete revision (the commit sha when the Hub reports one).
 2. **Download** — into `<user data dir>/models/<owner>/<repo>/<filename>`, with path
-   traversal and unsafe-filename rejection. A SHA-256 is computed and written to a sidecar.
+   traversal and unsafe-filename rejection. A SHA-256 is computed, checked against the
+   expected digest when known, and only then written to a sidecar.
 3. **Verify** — file size against the Hub's reported size, and the SHA-256 against the
-   sidecar. `--full-verify` recomputes the digest from the file instead of trusting it.
+   sidecar. A sidecar must contain a 64-character hexadecimal digest and must not
+   contradict a known artifact digest; hexadecimal letter case is irrelevant.
+   `--full-verify` recomputes the digest from the file instead of trusting the sidecar.
 
 Multipart GGUF and Transformers repositories are rejected by the resolver with specific
 errors. Transformers execution takes a different route: the repository reference is passed

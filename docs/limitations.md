@@ -146,6 +146,14 @@ README roadmap says so.
 
 ## Measurement and comparison
 
+- Current Transformers benchmarks use `transformers_isolated_inference_v3`, with
+  synchronized GPU timings and initial prefill excluded from steady-state decode.
+  Historical v2 records remain readable, but their unsynchronized GPU timings are
+  not current recommendation performance evidence. This is a single-device
+  microbenchmark, not a multi-GPU timing protocol.
+- Failed benchmarks remain diagnostic records, not throughput evidence. A zero-throughput
+  baseline has no defined relative throughput ratio; comparison reports the limitation
+  rather than assigning a zero ratio.
 - Benchmarks measure single-process throughput. There is no load generator, no concurrency
   sweep, no capacity curve and no sustainable-concurrency estimate.
 - VRAM prediction vs observation is compared only when the estimate carries a hardware fit

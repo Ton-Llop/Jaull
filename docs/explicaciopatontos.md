@@ -1,3 +1,9 @@
+> Notas históricas de diseño, no una guía del estado actual. Validate y Benchmark
+> para Transformers ya están implementados; el protocolo vigente es v3.
+> Consulta [evidence.md](evidence.md), [limitations.md](limitations.md) y
+> [experimental-validation.md](experimental-validation.md) para los contratos actuales.
+> Los ejemplos numéricos de estas notas no constituyen evidencia experimental.
+
 Jaull analiza tu hardware, busca modelos, estima cuáles encajan, los recomienda, puede descargar un GGUF y ya puede ejecutarlo realmente con llama.cpp.
 
 Aunque tengas 27 carpetas, en realidad son 4 bloques grandes:

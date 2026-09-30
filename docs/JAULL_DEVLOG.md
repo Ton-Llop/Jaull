@@ -154,12 +154,16 @@ Executo el mateix model a 512, 2048 i 4096 de context per veure si l'estimador e
 
 La matriu anterior mesurava que tot arrencava però no a quina velocitat, i llegida així semblava que Jaull regalava 3–4x de rendiment. No és cert: el recompte de blocs de l'HFA no és el que Jaull llança. Mesuro el nivell que emet la política de debò i el cost real és **1,4x–2,1x**. El que compra a canvi és marge — amb tot a GPU la targeta es queda amb 196 MiB lliures de 6144, per sota del que ja hi ha ocupat de base. No toco cap constant: tres mesures d'una sola repetició en una màquina no són base per moure un marge de seguretat.
 
+## 30/09 — Endurir l'evidència
+
+Tanco errors que podien perdre un intent fallit o acceptar evidència incorrecta: els runners conserven les sortides malformades, els stores rebutgen IDs contradictoris i els SHA coneguts no es poden substituir per un sidecar. Els bundles tornen a verificar els fitxers després de copiar-los i les referències no poden escapar de l'arrel per un symlink.
+
+Corregeixo el timing GPU de Transformers sincronitzant el treball i separant prefill de decode: metodologia v3, sense reescriure els records v2. Els benchmarks fallits ja no desplacen els exitosos i Jaull no atribueix el commit d'un repositori pare. 1906 tests, Ruff i mypy verds; cap canvi a l'HFA, al ranking ni a les constants de memòria.
+
 ---
 
 ## Ara mateix
 
-La política de llançament ja no és el problema: mesurada, costa 1,4x–2,1x i el que compra és marge, i moure'l demanaria una campanya de calibratge amb repeticions i més d'una màquina.
+El contracte ja conserva l'assignació que reporta llama.cpp, separada de NVML, i la comparació aplica els seus gates metodològics. El RSS amb `mmap` no prova la memòria host del placement, i NVML per procés continua bloquejat pel WDDM local.
 
-El que bloqueja de debò és la traducció entre els blocs de transformer que compta l'HFA i les unitats de `--n-gpu-layers` que fa servir llama.cpp. Sense això la comparació per component no es pot publicar, encara que ja tingui les dues meitats: la predicció i, des del 17/09, la mesura.
-
-I una cosa pendent que és meva: la fontaneria del contracte d'observació està provada i no l'ha fet servir cap campanya. Les mesures del 20 i el 24 es munten els seus propis JSON en comptes de passar per `ExperimentRequest`, així que encara no hi ha ni un sol record amb la mesura a dins. Convertir això en evidència és el següent pas.
+Toca revisar els quatre commits i l'evidència existent de la 4060 abans de repetir proves. Els benchmarks Transformers v2 no compten com a evidència vigent de rendiment; cal repetir-los amb v3 si els volem utilitzar. No ajusto marges ni overhead sense una campanya reproduïble en més d'una màquina.

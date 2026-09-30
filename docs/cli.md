@@ -116,8 +116,8 @@ uv run jaull run \
 1. normalises the Hugging Face reference;
 2. resolves a single-file GGUF variant;
 3. downloads it into Jaull's artifact storage when missing;
-4. verifies file size and the SHA-256 sidecar, with optional full re-hashing via
-   `--full-verify`;
+4. verifies file size and the SHA-256 sidecar without replacing a known expected
+   digest; `--full-verify` additionally re-hashes the file;
 5. executes `llama-cli --single-turn` through the local host backend.
 
 Each execution also produces an `ExecutionObservation`, kept separate from the
