@@ -1,0 +1,217 @@
+{
+  "source_commit": "1d12f6306bfcac2cf13786945bf2b4f22582184c",
+  "experiment_id": "exp-f05586ff-c90e-4239-821d-5baaf550bd2a",
+  "record_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-f05586ff-c90e-4239-821d-5baaf550bd2a.json",
+  "record_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-fresh-validate-20260930-135047\\records\\exp-f05586ff-c90e-4239-821d-5baaf550bd2a.json",
+  "raw_log_store_path": "C:\\Users\\PC\\AppData\\Local\\jaull\\experiments\\exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+  "raw_log_copy_path": "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\validation\\rtx4060-fresh-validate-20260930-135047\\logs\\exp-f05586ff-c90e-4239-821d-5baaf550bd2a.runtime-log",
+  "success": true,
+  "exit_code": 0,
+  "duration_seconds": 5.263016299999435,
+  "command": [
+    "C:\\Users\\PC\\OneDrive\\Desktop\\Jaull\\.venv\\rtx4060-runtime-b11258-recovery-20260930-121948\\bin\\llama-cli.exe",
+    "--model",
+    "C:\\Users\\PC\\AppData\\Local\\jaull\\models\\bartowski\\Qwen2.5-7B-Instruct-GGUF\\Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+    "--ctx-size",
+    "4096",
+    "--n-gpu-layers",
+    "-1",
+    "--device",
+    "CUDA0",
+    "--no-display-prompt",
+    "--color",
+    "off",
+    "--no-show-timings",
+    "--simple-io",
+    "--single-turn",
+    "--verbose",
+    "--prompt",
+    "Explain briefly what artificial intelligence is."
+  ],
+  "observation": {
+    "success": true,
+    "duration_seconds": 5.263016299999435,
+    "peak_ram_bytes": 4842053632,
+    "peak_vram_bytes": null,
+    "exit_code": 0,
+    "failure_reason": null,
+    "measurement": {
+      "ram_measurement": "process_rss",
+      "vram_measurement": "nvml_process_memory",
+      "sample_interval_seconds": 0.05
+    },
+    "runtime_allocation": {
+      "runtime": "llama.cpp",
+      "device": "CUDA0",
+      "runtime_build": null,
+      "buffers": [
+        {
+          "category": "model",
+          "location": "host",
+          "bytes": 306561679,
+          "raw_label": "CPU_Mapped model"
+        },
+        {
+          "category": "compute",
+          "location": "device",
+          "bytes": 142616822,
+          "raw_label": "CUDA0 compute"
+        },
+        {
+          "category": "kv",
+          "location": "device",
+          "bytes": 234881024,
+          "raw_label": "CUDA0 kv"
+        },
+        {
+          "category": "model",
+          "location": "device",
+          "bytes": 4370559140,
+          "raw_label": "CUDA0 model"
+        },
+        {
+          "category": "compute",
+          "location": "host",
+          "bytes": 18884854,
+          "raw_label": "CUDA_Host compute"
+        },
+        {
+          "category": "model",
+          "location": "host",
+          "bytes": 0,
+          "raw_label": "CUDA_Host model"
+        },
+        {
+          "category": "output",
+          "location": "host",
+          "bytes": 608174,
+          "raw_label": "CUDA_Host output"
+        }
+      ],
+      "total_device_bytes": 4748056986
+    }
+  },
+  "comparison": {
+    "ram": {
+      "predicted_bytes": null,
+      "measured_bytes": 4842053632,
+      "error_bytes": null,
+      "absolute_error_bytes": null,
+      "error_percent": null,
+      "availability": "methodologically_unavailable",
+      "unavailable_reason": "Peak process RSS does not measure host memory demand under GPU offload: llama.cpp maps the whole model file, and the pages it reads to upload weights to the device stay resident, so RSS reflects the artifact size rather than the host share of the placement.",
+      "source": null,
+      "runtime": null,
+      "driver_confirmed": null
+    },
+    "vram": {
+      "predicted_bytes": 5923133600,
+      "measured_bytes": 4748056986,
+      "error_bytes": -1175076614,
+      "absolute_error_bytes": 1175076614,
+      "error_percent": -19.838765986976895,
+      "availability": "available",
+      "unavailable_reason": null,
+      "source": "runtime_reported_allocation",
+      "runtime": "llama.cpp",
+      "driver_confirmed": false
+    },
+    "compatibility": {
+      "predicted_status": "tight",
+      "predicted_runnable": true,
+      "observed_success": true,
+      "outcome": "correct_success",
+      "failure_reason": null
+    },
+    "vram_components": [
+      {
+        "component": "gpu_weight_bytes",
+        "observed_label": "CUDA model buffer",
+        "semantics": "direct",
+        "semantics_reason": null,
+        "metric": {
+          "predicted_bytes": 4683074240,
+          "measured_bytes": 4370559140,
+          "error_bytes": -312515100,
+          "absolute_error_bytes": 312515100,
+          "error_percent": -6.673289467219721,
+          "availability": "available",
+          "unavailable_reason": null,
+          "source": "runtime_reported_allocation",
+          "runtime": "llama.cpp",
+          "driver_confirmed": false
+        }
+      },
+      {
+        "component": "gpu_kv_cache_bytes",
+        "observed_label": "CUDA KV buffer",
+        "semantics": "direct",
+        "semantics_reason": null,
+        "metric": {
+          "predicted_bytes": 234881024,
+          "measured_bytes": 234881024,
+          "error_bytes": 0,
+          "absolute_error_bytes": 0,
+          "error_percent": 0.0,
+          "availability": "available",
+          "unavailable_reason": null,
+          "source": "runtime_reported_allocation",
+          "runtime": "llama.cpp",
+          "driver_confirmed": false
+        }
+      },
+      {
+        "component": "gpu_overhead_bytes",
+        "observed_label": "CUDA compute buffer",
+        "semantics": "proxy",
+        "semantics_reason": "Jaull's runtime overhead is a heuristic covering the allocator, activation buffers and the CUDA context. llama.cpp's compute buffer is only the graph allocation it enumerates; it does not report the context or anything the allocator took on its own. The difference between the two therefore does not measure how wrong the heuristic is, and must not be used to calibrate it until a driver-attributed figure bounds the unreported part.",
+        "metric": {
+          "predicted_bytes": 1005178336,
+          "measured_bytes": 142616822,
+          "error_bytes": -862561514,
+          "absolute_error_bytes": 862561514,
+          "error_percent": -85.81178912315913,
+          "availability": "available",
+          "unavailable_reason": null,
+          "source": "runtime_reported_allocation",
+          "runtime": "llama.cpp",
+          "driver_confirmed": false
+        }
+      }
+    ]
+  },
+  "plan_flags": [
+    {
+      "name": "--model",
+      "value": "Qwen2.5-7B-Instruct-GGUF.Q4_K_M.gguf",
+      "source": "user_input",
+      "explanation": "Path to the .gguf file. Download it first with `huggingface-cli download` and pass the resulting local path."
+    },
+    {
+      "name": "--ctx-size",
+      "value": "4096",
+      "source": "estimate",
+      "explanation": "Context length used for the memory estimate."
+    },
+    {
+      "name": "--n-gpu-layers",
+      "value": "-1",
+      "source": "hardware",
+      "explanation": "llama.cpp offload units requested by the launch policy. -1 means all."
+    },
+    {
+      "name": "--device",
+      "value": "CUDA0",
+      "source": "user_input",
+      "explanation": "Runtime device selected by the confirmed llama.cpp capability probe (cuda)."
+    }
+  ],
+  "plan_warnings": [
+    "Local tensor refinement not applied: Runtime build is not verified."
+  ],
+  "benchmark_repeated": false,
+  "final_git_status": "?? validation/rtx4060-fresh-validate-20260930-135047/",
+  "tracked_diff": "",
+  "staged_diff": "",
+  "diff_check": ""
+}

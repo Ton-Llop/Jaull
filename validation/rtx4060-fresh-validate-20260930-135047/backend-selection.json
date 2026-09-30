@@ -1,0 +1,71 @@
+{
+  "selected_backend": "cuda",
+  "selected_accelerator": {
+    "name": "NVIDIA GeForce RTX 4060",
+    "vendor": "nvidia",
+    "type": "dedicated",
+    "vendor_id": "0x10de",
+    "device_id": "0x2882",
+    "pci_bus_id": "00000000:2B:00.0",
+    "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+    "dedicated_memory_bytes": 8585740288,
+    "shared_memory": false,
+    "detection_sources": [
+      "nvml",
+      "vulkaninfo"
+    ]
+  },
+  "reason": "native_backend_available",
+  "backend_info": {
+    "backend": "cuda",
+    "availability": "available",
+    "reason": "probe_available",
+    "source": "nvml",
+    "detail": "CUDA driver reported by NVML.",
+    "api_version": "13.4",
+    "device_name": null,
+    "driver_name": "616.92",
+    "software_renderer": false
+  },
+  "alternatives": [
+    {
+      "backend": "vulkan",
+      "accelerator": {
+        "name": "NVIDIA GeForce RTX 4060",
+        "vendor": "nvidia",
+        "type": "dedicated",
+        "vendor_id": "0x10de",
+        "device_id": "0x2882",
+        "pci_bus_id": "00000000:2B:00.0",
+        "uuid": "GPU-bbbc059d-9014-f50c-72d1-511fe91342e6",
+        "dedicated_memory_bytes": 8585740288,
+        "shared_memory": false,
+        "detection_sources": [
+          "nvml",
+          "vulkaninfo"
+        ]
+      },
+      "backend_info": {
+        "backend": "vulkan",
+        "availability": "available",
+        "reason": "probe_available",
+        "source": "vulkaninfo",
+        "detail": "Vulkan device exposed by vulkaninfo.",
+        "api_version": "1.4.351",
+        "device_name": "NVIDIA GeForce RTX 4060",
+        "driver_name": "NVIDIA",
+        "software_renderer": false
+      },
+      "reason": "vulkan_backend_available"
+    },
+    {
+      "backend": "cpu",
+      "accelerator": null,
+      "backend_info": null,
+      "reason": "cpu_fallback"
+    }
+  ],
+  "notes": [
+    "Backend selection is based on observed hardware/backend availability only; runtime binary support is validated in a later phase."
+  ]
+}

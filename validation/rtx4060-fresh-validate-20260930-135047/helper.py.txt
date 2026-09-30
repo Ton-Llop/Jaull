@@ -1,0 +1,143 @@
+﻿import hashlib
+import json
+import shutil
+import subprocess
+import traceback
+from dataclasses import replace
+from pathlib import Path
+from jaull.advisor.service import AdvisorService
+from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat, ModelIdentity
+from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.hardware import ComputeBackend
+from jaull.domain.runtime import RuntimeName, ExecutionReadinessStatus
+from jaull.domain.experiments import ExperimentRequest, ExperimentWorkload, ExperimentPredictionInput, RequestedComputeBackend
+from jaull.domain.requirements import WorkloadProfile, WorkloadMode
+from jaull.execution.host import HostExecutionBackend
+from jaull.execution.errors import ExecutionError
+from jaull.experiments.runner import ExperimentRunner
+from jaull.experiments.storage import ExperimentStore
+from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+from jaull.tui.screens.recommendation_validation import VALIDATION_PROMPT
+
+PROJECT = Path.cwd()
+ROOT = PROJECT / 'validation/rtx4060-fresh-validate-20260930-135047'
+RUNTIME = PROJECT / '.venv/rtx4060-runtime-b11258-recovery-20260930-121948/bin'
+REPO = 'bartowski/Qwen2.5-7B-Instruct-GGUF'
+REVISION = '8911e8a47f92bac19d6f5c64a2e2095bd2f7d031'
+FILENAME = 'Qwen2.5-7B-Instruct-Q4_K_M.gguf'
+EXPECTED = '65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423'
+
+def git(*args):
+    return subprocess.run(['git', *args], capture_output=True, text=True, check=True).stdout.strip()
+INITIAL_STATUS = git('status', '--short')
+ROOT.mkdir(exist_ok=False)
+
+def save(name, data):
+    if hasattr(data, 'model_dump'):
+        data = data.model_dump(mode='json')
+    path = ROOT / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('x', encoding='utf-8', newline='\n') as handle:
+        json.dump(data, handle, indent=2)
+        handle.write('\n')
+
+def copy(source, directory):
+    target = ROOT / directory / source.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise RuntimeError('Refusing to overwrite evidence')
+    shutil.copy2(source, target)
+    return str(target)
+
+class CaptureBackend(HostExecutionBackend):
+    def execute(self, request):
+        capture = '--prompt' in request.command
+        if capture:
+            save('actual-invocation.json', request)
+        try:
+            result = super().execute(request)
+        except ExecutionError as error:
+            result = getattr(error, 'result', None)
+            if capture and result is not None:
+                save('logs/invocation.runtime-log', {'stdout': result.stdout, 'stderr': result.stderr, 'observation': result.observation.model_dump(mode='json')})
+            raise
+        if capture:
+            save('logs/invocation.runtime-log', {'stdout': result.stdout, 'stderr': result.stderr, 'observation': result.observation.model_dump(mode='json')})
+        return result
+
+def main():
+    branch, source = git('branch', '--show-current'), git('rev-parse', 'HEAD')
+    if branch != 'c_night':
+        raise RuntimeError('Unexpected branch')
+    save('provenance.json', {'source_commit': source, 'branch': branch, 'initial_git_status': INITIAL_STATUS, 'scope': 'Fresh plan and Validate only; no prior flags or requests loaded; no Benchmark', 'environment': 'Python 3.12.14; .venv/rtx4060-py312; uv locked check matched', 'agents_md': 'Absent', 'gates': 'Full gates not repeated for this Validate-only task'})
+    expected_hashes = json.loads((PROJECT / 'validation/rtx4060-cnight-20260930-112007/runtime-binary-hashes.json').read_text('utf-8'))
+    actual_hashes = {}
+    for path in RUNTIME.iterdir():
+        if path.suffix.lower() in {'.exe', '.dll'}:
+            with path.open('rb') as handle:
+                actual_hashes[path.name] = hashlib.file_digest(handle, 'sha256').hexdigest()
+    save('runtime-binary-hashes.json', actual_hashes)
+    if actual_hashes != {Path(path).name: value for path, value in expected_hashes.items()}:
+        raise RuntimeError('Runtime hashes differ from prior b11258 installation; STOP')
+    advisor = replace(AdvisorService.default(), llama_cli_path=RUNTIME / 'llama-cli.exe', llama_bench_path=RUNTIME / 'llama-bench.exe')
+    hardware = advisor.scan_hardware()
+    save('hardware.json', hardware)
+    selection = advisor.select_runtime_backend(hardware)
+    save('backend-selection.json', selection)
+    if selection.selected_backend is not ComputeBackend.CUDA:
+        raise RuntimeError('CUDA not selected; STOP')
+    capability = advisor.inspect_llama_cpp_runtime(selection=selection)
+    save('runtime-capability.json', capability)
+    readiness = advisor.evaluate_execution_readiness(selection=selection, runtime_capability=capability)
+    save('runtime-readiness.json', readiness)
+    if readiness.status is not ExecutionReadinessStatus.READY:
+        raise RuntimeError('CUDA runtime not ready; STOP')
+    artifact = advisor.resolve_artifact(REPO, quantization='Q4_K_M', revision=REVISION)
+    if artifact.filename != FILENAME or artifact.local_path is None:
+        raise RuntimeError('Wrong or missing local baseline')
+    with artifact.local_path.open('rb') as handle:
+        sha = hashlib.file_digest(handle, 'sha256').hexdigest()
+    save('artifact-hash-check.json', {'repo': REPO, 'revision': REVISION, 'filename': FILENAME, 'expected': EXPECTED, 'actual': sha, 'matches': sha == EXPECTED})
+    if sha != EXPECTED:
+        raise RuntimeError('Model SHA mismatch; STOP')
+    artifact = advisor.verify_artifact(artifact, full=True)
+    save('verified-artifact.json', artifact)
+    config = InferenceConfiguration(context_length=4096, concurrent_users=1, quantization='Q4_K_M')
+    save('inference-configuration.json', config)
+    analysis = advisor.inspect_model(REPO)
+    save('analysis.json', analysis)
+    estimate = advisor.estimate_model(analysis, hardware, config, resolve_base_model=True, recommend_runtime=True)
+    save('initial-estimate.json', estimate)
+    identity = ModelIdentity(canonical_repo_id=REPO, model_name='Qwen2.5-7B-Instruct')
+    variant = ArtifactVariant(model_identity=identity, repo_id=REPO, revision=REVISION, format=ArtifactVariantFormat.GGUF, filename=FILENAME, size_bytes=artifact.size_bytes, quantization='Q4_K_M')
+    initial = advisor.plan_execution(model_identity=identity, artifact=variant, runtime=RuntimeName.LLAMA_CPP, estimate=estimate, hardware=hardware, local_artifact=artifact, backend_selection=selection, runtime_capability=capability, execution_readiness=readiness)
+    save('initial-execution-plan.json', initial)
+    prepared = advisor.prepare_execution_plan(initial, hardware=hardware, for_benchmark=False)
+    save('prepared-execution-plan.json', prepared)
+    plan = prepared.plan
+    save('execution-plan.json', plan)
+    if any(flag.name == '--batch-size' for flag in plan.runtime.flags):
+        raise RuntimeError('Fresh plan still emits --batch-size; STOP')
+    if plan.memory_prediction is None or plan.hardware is None or plan.backend_selection is None:
+        raise RuntimeError('Incomplete prepared plan')
+    if plan.memory_prediction.runtime_recommendation != plan.runtime:
+        raise RuntimeError('Plan and prediction not linked; STOP')
+    save('prediction-before-validation.json', plan.memory_prediction)
+    request = ExperimentRequest(hardware=plan.hardware, artifact=prepared.artifact, runtime=plan.runtime, prediction=plan.memory_prediction, prediction_input=ExperimentPredictionInput(analysis=analysis, inference_configuration=plan.memory_prediction.inference_configuration, resolve_base_model=True, recommend_runtime=True), backend_selection=plan.backend_selection, requested_backend=RequestedComputeBackend.CUDA, workload=ExperimentWorkload(prompt=VALIDATION_PROMPT, profile=WorkloadProfile(context_length=4096, concurrent_users=1, mode=WorkloadMode.INTERACTIVE)), persist=True, capture_raw_logs=True, notes=['task=general_chat; workload_mode=interactive; no SLOs', 'Fresh plan calculated from current code and hardware; no previous flags or request reused'])
+    save('experiment-request.json', request)
+    backend = CaptureBackend()
+    runner = ExperimentRunner(execution_backend=backend, llama_cpp_runner=LlamaCppRunner(backend=backend, llama_cli_path=RUNTIME / 'llama-cli.exe'), store=ExperimentStore(), llama_cli_path=RUNTIME / 'llama-cli.exe')
+    advisor = replace(advisor, experiment_runner=runner)
+    print('Fresh plan prepared without --batch-size; Validate started through ExperimentRunner', flush=True)
+    result = advisor.run_experiment(request)
+    save('experiment-result.json', result)
+    index = {'source_commit': source, 'experiment_id': result.record.identity.experiment_id, 'record_store_path': str(result.persisted_path), 'record_copy_path': copy(result.persisted_path, 'records') if result.persisted_path else None, 'raw_log_store_path': str(result.raw_log_path), 'raw_log_copy_path': copy(result.raw_log_path, 'logs') if result.raw_log_path else None, 'success': result.record.observation.success, 'exit_code': result.record.observation.exit_code, 'duration_seconds': result.record.observation.duration_seconds, 'command': json.loads((ROOT / 'actual-invocation.json').read_text('utf-8'))['command'], 'observation': result.record.observation.model_dump(mode='json'), 'comparison': result.record.comparison.model_dump(mode='json'), 'plan_flags': [flag.model_dump(mode='json') for flag in plan.runtime.flags], 'plan_warnings': plan.runtime.warnings, 'benchmark_repeated': False, 'final_git_status': git('status', '--short'), 'tracked_diff': git('diff', '--stat'), 'staged_diff': git('diff', '--cached', '--stat'), 'diff_check': git('diff', '--check')}
+    save('summary.json', index)
+    print('Validate finished: success=' + str(index['success']) + '; exit=' + str(index['exit_code']) + '; duration_seconds=' + str(index['duration_seconds']), flush=True)
+
+try:
+    main()
+except Exception:
+    (ROOT / 'failure.txt').write_text(traceback.format_exc(), encoding='utf-8')
+    print('Fresh-plan Validate failed; diagnostics retained', flush=True)
+    raise
