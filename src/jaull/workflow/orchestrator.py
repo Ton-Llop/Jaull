@@ -246,8 +246,10 @@ def run_workflow(
         reporter.start("filter")
         with telemetry.timed("filter"):
             outcome = candidate_filter.filter_candidates(candidates, requirements)
+            # Rejected search hits must not consume the eligible-candidate budget.
+            candidates = outcome.kept[: policies.MAX_UNIQUE_CANDIDATES]
             shortlist = candidate_filter.shortlist(
-                outcome.kept,
+                candidates,
                 requirements,
                 policies.MAX_DEEP_INSPECTION,
                 budget_bytes=_memory_budget(hardware),
@@ -255,11 +257,11 @@ def run_workflow(
             )
         reporter.done(
             "filter",
-            f"{len(outcome.kept)} kept, {len(outcome.rejected)} filtered out",
+            f"{len(candidates)} kept, {len(outcome.rejected)} filtered out",
         )
         current = current.model_copy(
             update={
-                "candidates": outcome.kept,
+                "candidates": candidates,
                 "search_queries": [q.label for q in queries],
                 "current_step": WorkflowStep.CANDIDATE_EVALUATION,
             }
@@ -411,7 +413,7 @@ def _search(
                 raise
 
     unique = candidate_filter.deduplicate(_interleave(per_query))
-    return unique[: policies.MAX_UNIQUE_CANDIDATES], warnings
+    return unique, warnings
 
 
 def _memory_budget(hardware: HardwareProfile) -> int | None:

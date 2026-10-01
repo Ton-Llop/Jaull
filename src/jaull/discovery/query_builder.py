@@ -15,9 +15,8 @@ from jaull.domain.requirements import UseCase, UserRequirements
 # guided run overrides it from ``jaull.application.recommendation.policies``.
 DEFAULT_RESULTS_PER_QUERY = 20
 
-# Search phrases per use case. Deliberately plain: the Hub's search is a
-# full-text match over repo names and cards, so jargon returns less than the
-# words maintainers actually put in their model names.
+# Search phrases per use case. list_models documents search over model IDs,
+# not semantic task search over model cards; naming can limit recall.
 _USE_CASE_PHRASES: dict[UseCase, tuple[str, ...]] = {
     UseCase.GENERAL_CHAT: ("instruct", "chat", "multilingual instruct"),
     UseCase.CODING: ("coder instruct", "code generation", "programming assistant"),
