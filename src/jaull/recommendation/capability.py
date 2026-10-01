@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from jaull.domain.candidates import ModelCandidate
+from jaull.domain.capability_evidence import CapabilityEvaluation
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.families import detect_family, parameter_count
@@ -70,6 +71,10 @@ class CapabilitySignal:
     chat_or_base: str | None = None
     confidence: EstimationConfidence = EstimationConfidence.MEDIUM
     reasons: tuple[str, ...] = ()
+    evaluation_evidence: tuple[CapabilityEvaluation, ...] = ()
+    evidence_catalog_version: str | None = None
+    evidence_catalog_sha256: str | None = None
+    evidence_diagnostics: tuple[str, ...] = ()
 
 
 class CapabilityAnalyzer(Protocol):

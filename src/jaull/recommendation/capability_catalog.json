@@ -1,0 +1,285 @@
+{
+  "schema_version": 1,
+  "catalog_version": "0.2.0",
+  "evaluations": [
+    {
+      "evaluation_id": "qwen3-report-v1-qwen25-32b-mmlu-redux",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "knowledge",
+      "benchmark": "MMLU-Redux",
+      "benchmark_version": null,
+      "metric": "accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 83.9,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T16",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": ["Table 16 baseline; assessment date is source review, not execution date."]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen25-32b-gpqa-diamond",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "reasoning",
+      "benchmark": "GPQA-Diamond",
+      "benchmark_version": null,
+      "metric": "mean_accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 49.5,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T16",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": [
+        "Table 16 baseline; assessment date is source review, not execution date.",
+        "Section 4.6 describes 10 samples per question; baseline-specific provenance is not supplied."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen25-32b-math500",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "maths",
+      "benchmark": "MATH-500",
+      "benchmark_version": null,
+      "metric": "accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 84.6,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T16",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": ["Table 16 baseline; assessment date is source review, not execution date."]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen25-32b-lcb-v5",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "coding",
+      "benchmark": "LiveCodeBench",
+      "benchmark_version": "v5 (2024.10-2025.02)",
+      "metric": "pass@1",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 26.4,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T16",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": [
+        "Table 16 baseline; assessment date is source review, not execution date.",
+        "Section 4.6 gives the task window; exact scorer revision and baseline decoding are unknown."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen25-32b-ifeval",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "instruction_following",
+      "benchmark": "IFEval",
+      "benchmark_version": null,
+      "metric": "strict_prompt_accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 79.5,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T16",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": ["Table 16 baseline; assessment date is source review, not execution date."]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen3-32b-nonthinking-mmlu-redux",
+      "repo_id": "Qwen/Qwen3-32B",
+      "variant": "post-trained/non-thinking",
+      "revision": null,
+      "precision": null,
+      "task": "knowledge",
+      "benchmark": "MMLU-Redux",
+      "benchmark_version": null,
+      "metric": "accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 85.7,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T14",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": "non-thinking",
+        "max_reasoning_tokens": null, "max_generation_tokens": 32768,
+        "tools": null, "temperature": 0.7
+      },
+      "notes": [
+        "Table 14; assessment date is source review, not execution date.",
+        "Section 4.6: top_p=0.8, top_k=20, presence_penalty=1.5; harness revision unknown."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen3-32b-nonthinking-gpqa-diamond",
+      "repo_id": "Qwen/Qwen3-32B",
+      "variant": "post-trained/non-thinking",
+      "revision": null,
+      "precision": null,
+      "task": "reasoning",
+      "benchmark": "GPQA-Diamond",
+      "benchmark_version": null,
+      "metric": "mean_accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 54.6,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T14",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": "non-thinking",
+        "max_reasoning_tokens": null, "max_generation_tokens": 32768,
+        "tools": null, "temperature": 0.7
+      },
+      "notes": [
+        "Table 14; assessment date is source review, not execution date.",
+        "Section 4.6: top_p=0.8, top_k=20, presence_penalty=1.5; harness revision unknown.",
+        "Section 4.6: 10 samples per question, averaged accuracy."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen3-32b-nonthinking-math500",
+      "repo_id": "Qwen/Qwen3-32B",
+      "variant": "post-trained/non-thinking",
+      "revision": null,
+      "precision": null,
+      "task": "maths",
+      "benchmark": "MATH-500",
+      "benchmark_version": null,
+      "metric": "accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 88.6,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T14",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": "non-thinking",
+        "max_reasoning_tokens": null, "max_generation_tokens": 32768,
+        "tools": null, "temperature": 0.7
+      },
+      "notes": [
+        "Table 14; assessment date is source review, not execution date.",
+        "Section 4.6: top_p=0.8, top_k=20, presence_penalty=1.5; harness revision unknown."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen3-32b-nonthinking-lcb-v5",
+      "repo_id": "Qwen/Qwen3-32B",
+      "variant": "post-trained/non-thinking",
+      "revision": null,
+      "precision": null,
+      "task": "coding",
+      "benchmark": "LiveCodeBench",
+      "benchmark_version": "v5 (2024.10-2025.02)",
+      "metric": "pass@1",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 31.3,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T14",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": "non-thinking",
+        "max_reasoning_tokens": null, "max_generation_tokens": 32768,
+        "tools": null, "temperature": 0.7
+      },
+      "notes": [
+        "Table 14; assessment date is source review, not execution date.",
+        "Section 4.6: top_p=0.8, top_k=20, presence_penalty=1.5; harness revision unknown.",
+        "Non-thinking uses the recommended benchmark prompt; its exact version is not supplied."
+      ]
+    },
+    {
+      "evaluation_id": "qwen3-report-v1-qwen3-32b-nonthinking-ifeval",
+      "repo_id": "Qwen/Qwen3-32B",
+      "variant": "post-trained/non-thinking",
+      "revision": null,
+      "precision": null,
+      "task": "instruction_following",
+      "benchmark": "IFEval",
+      "benchmark_version": null,
+      "metric": "strict_prompt_accuracy",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 83.2,
+      "source": "https://arxiv.org/html/2505.09388v1#S4.T14",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": "non-thinking",
+        "max_reasoning_tokens": null, "max_generation_tokens": 32768,
+        "tools": null, "temperature": 0.7
+      },
+      "notes": [
+        "Table 14; assessment date is source review, not execution date.",
+        "Section 4.6: top_p=0.8, top_k=20, presence_penalty=1.5; harness revision unknown."
+      ]
+    },
+    {
+      "evaluation_id": "qwen25-launch-qwen25-32b-lcb-2305-2409",
+      "repo_id": "Qwen/Qwen2.5-32B-Instruct",
+      "variant": "instruct",
+      "revision": null,
+      "precision": null,
+      "task": "coding",
+      "benchmark": "LiveCodeBench",
+      "benchmark_version": "2305-2409",
+      "metric": "pass@1",
+      "unit": "percent",
+      "direction": "higher_is_better",
+      "value": 51.2,
+      "source": "https://qwenlm.github.io/blog/qwen2.5-llm/",
+      "source_kind": "publisher_reported",
+      "date": "2026-10-01",
+      "protocol": {
+        "evaluation_method": null, "few_shot": null, "reasoning_mode": null,
+        "max_reasoning_tokens": null, "max_generation_tokens": null,
+        "tools": null, "temperature": null
+      },
+      "notes": [
+        "Launch blog, Qwen-Turbo/14B/32B-Instruct table; assessment date is source review.",
+        "Different task window from v5; do not substitute this result for the report's 26.4."
+      ]
+    }
+  ]
+}

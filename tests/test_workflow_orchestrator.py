@@ -723,6 +723,44 @@ def test_every_query_contributes_to_the_candidate_pool() -> None:
     assert len(state.candidates) <= policies.MAX_UNIQUE_CANDIDATES
 
 
+def test_rejected_search_results_do_not_spend_the_unique_candidate_budget() -> None:
+    """Synthetic pages: a valid result follows 40+ known-invalid repositories."""
+    req = orchestrator.requirements_service.build_requirements(answers(), hardware())
+    queries = orchestrator.query_builder.build_queries(
+        req, limit=policies.SEARCH_RESULTS_PER_QUERY,
+    )
+    rejected_per_query = policies.MAX_UNIQUE_CANDIDATES // len(queries) + 1
+    valid = candidate(repo_id="synthetic/Relevant-7B-Instruct", tags=["code"])
+    pages = {
+        query.label: [
+            candidate(
+                repo_id=f"synthetic/Unsupported-{page}-{index}",
+                tags=["image-text-to-text"],
+            )
+            for index in range(rejected_per_query)
+        ] + [valid.model_copy(update={"source_queries": [query.label]})]
+        for page, query in enumerate(queries)
+    }
+    assert all(len(page) <= policies.SEARCH_RESULTS_PER_QUERY for page in pages.values())
+    raw = orchestrator.candidate_filter.deduplicate(
+        orchestrator._interleave(list(pages.values()))
+    )
+    assert raw.index(next(item for item in raw if item.repo_id == valid.repo_id)) >= (
+        policies.MAX_UNIQUE_CANDIDATES
+    )
+
+    search = FakeSearchClient(results=pages)
+    services = _container(search)
+    state = orchestrator.run_workflow(answers(), hardware(), services)
+
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert [item.repo_id for item in state.candidates] == [valid.repo_id]
+    assert state.candidates[0].source_queries == [query.label for query in queries]
+    assert [item.repo_id for item in state.evaluated_candidates] == [valid.repo_id]
+    assert [item.repo_id for item in state.recommendations] == [valid.repo_id]
+    assert search.seen == queries
+
+
 def test_all_queries_are_issued_even_when_early_ones_are_plentiful() -> None:
     search = FakeSearchClient(
         default=[
