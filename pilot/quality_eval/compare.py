@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import math
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +35,6 @@ def compare_records(left: Path, right: Path) -> dict[str, Any]:
                 samples = record["result"]["samples"][task]
                 correct = int(sum(sample[metric] for sample in samples))
                 value = record["result"]["results"][task][metric + ",none"]
-                if not math.isclose(value, correct / len(samples), rel_tol=0, abs_tol=1e-12):
-                    raise ValueError("Saved metric differs from completed per-sample results")
                 values.append({"value": value, "correct": correct, "samples": len(samples)})
             per_task.append({"task": task, "metric": metric,
                              "left": values[0], "right": values[1]})

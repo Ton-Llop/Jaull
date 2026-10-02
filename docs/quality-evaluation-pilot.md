@@ -1,10 +1,15 @@
 # Controlled GGUF quality-evaluation pilot
 
-Status: protocol audit only (2026-10-01). No local quality result exists yet.
+Status: controlled plumbing pilot completed (2026-10-02). Two sequential
+three-example smokes and a placement replay exist; no full or reusable model-quality
+evaluation exists. Snapshot import validates HTTP coverage and aggregate metrics.
 This is separate from HFA fit, llama-bench speed and task-match scoring.
 Nothing in this pilot changes recommendation ranking.
 
-## Current prerequisites
+## Historical prerequisite audit — 2026-10-01
+
+The initial blockers below were resolved for the completed runs described later;
+they are not the current environment status.
 
 - A local TinyLlama 1.1B Q4_K_M GGUF is present in Jaull's model cache.
   Its complete file SHA-256 matched its sidecar during this audit:
@@ -540,19 +545,18 @@ Final audit/check results are recorded in the ignored progress handoff.
 
 ## Placement determinism probe — 2026-10-02
 
-Everything above rests on one assumption that had never been measured: that a
-score is a property of `(artifact, protocol)` alone, which is what lets a saved
-result be reused instead of recomputed. `compare.py` encodes the assumption by
-keeping hardware in provenance rather than in identity. Floating-point
-reduction is not associative, so a CUDA kernel and a CPU kernel can disagree,
-and a partial offload runs both in one forward pass. This step measures it.
+The pilot already includes placement flags in its comparison/reuse identity;
+hardware identity remains provenance. This probe tests sensitivity to placement
+on one machine, not whether a result reproduces across machines. CPU and CUDA
+kernels can differ numerically, and partial offload runs both in one forward pass.
 
 [`scripts/quality_eval_placement_replay.py`](../scripts/quality_eval_placement_replay.py)
 replays the 146 captured `/v1/completions` requests of the completed TinyLlama
 bundle against the same pinned `llama-server` build and the same verified GGUF,
 changing only `--n-gpu-layers`, `--device` and `--threads`. Replaying captured
 requests holds the harness, the dataset, the prompts and the forced target
-tokens fixed by construction, so placement is the only variable left. Before any
+tokens fixed by construction. The arms vary placement and one CPU control varies
+thread count. Before any
 arm runs, the regrouping of 146 single-token requests back into 12 continuations
 and the reimplementation of both metrics are checked against the numbers the
 harness itself wrote.
@@ -568,10 +572,10 @@ harness itself wrote.
 | `cpu_threads8` | 0 | 8 | 0/146 | 0.2916 | 0.8261 | 0/3 | 1/3 |
 
 Deltas are against the bundle recorded hours earlier. `cpu_only` and
-`cpu_threads8` are bit-identical to each other on all 146 tokens.
+`cpu_threads8` have equal serialized logprob values on all 146 tokens.
 
 Those deltas are on the raw scores. What decides an answer is the lead of the
-chosen continuation over its best rival, and that lead barely moves:
+chosen continuation over its best rival:
 
 | Arm | doc 0 | doc 1 | doc 2 |
 |---|---:|---:|---:|
@@ -584,23 +588,22 @@ placement change has to drive through zero to flip an answer.
 
 ### What this settles
 
-1. **Fixed placement is bit-reproducible.** Two fresh processes with identical
-   flags reproduced all 146 logprobs of the earlier bundle exactly. Run-to-run
-   variation is not a source of error here, which is also what makes the other
-   rows attributable to placement alone.
+1. **Fixed placement reproduced these requests exactly.** Two fresh processes
+   with identical flags reproduced all 146 serialized logprob values of the
+   earlier bundle. No run-to-run variation was observed; this does not establish
+   universal bitwise reproducibility.
 2. **Placement is score-relevant, and not at the last bit.** Full CPU changes
    every single token logprob; a partial offload changes 49 of 146. The largest
    continuation-level disagreement is 0.88 nats, which is a different number,
    not rounding.
-3. **The answers held, and not narrowly.** No per-sample answer changed in any
+3. **The answers held in these three samples.** No per-sample answer changed in any
    arm. The tightest lead, doc 1, lost 29% of an already small margin and stayed
-   positive; doc 0's lead grew. The candidates of one question share a prompt and
-   a model, so their perturbations are partly correlated and some of it cancels in
-   the difference, though less than the raw spread suggests: a continuation sum
+   positive; doc 0's lead grew. The measured changes partly cancel in the
+   differences: a continuation sum
    moves by up to 0.8776 nats while the raw lead between two of them moves by up
    to 0.4186, and in character-normalised units the pair is 0.0313 against
    0.0141. That is roughly a factor of two, not an order of magnitude.
-4. **Thread count agreed here.** 4 and 8 threads produced bit-identical logprobs
+4. **Thread count agreed here.** 4 and 8 threads produced equal serialized logprobs
    on this artifact and build. That is one pair of values on one model, which is
    not grounds for dropping `--threads` from identity.
 
@@ -611,12 +614,12 @@ placement change has to drive through zero to flip an answer.
   `--n-gpu-layers` and `--device`, so `compare.py` already reports
   `NOT_COMPARABLE` for a CPU result against a GPU result. The conservative
   default was right, and this is the evidence for keeping it.
-- **A saved score belongs to its placement.** Since the placement follows from
-  the requesting machine's memory fit, two machines that land on different
-  splits do not share a score, even though here they did share every answer.
+- **Reuse requires matching placement flags under this protocol.** Different
+  machine-specific execution plans may select different splits; this pilot
+  refuses reuse across those splits, even though here they shared every answer.
   Whether the same placement reproduces on a *different* GPU is untouched by
   this probe: unverified, not refuted, and the thing worth measuring next.
-- **Two models may only be compared under one placement.** The sequential pair
+- **The current comparison protocol requires matching placement flags.** The sequential pair
   above satisfies this: both ran `-ngl -1 --device CUDA0` on the same machine.
 - None of these magnitudes is a threshold for anything. They describe one
   artifact on one build, and a logprob delta between two placements of the same
@@ -648,4 +651,22 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python \
 ```
 
 The saved runs are the ignored bundles `placement-replay-20261002` (first
-gate) and `placement-replay-20261002-v2` (corrected gate).
+gate) and `placement-replay-20261002-v2` (corrected gate). Historical outputs
+are not rewritten when diagnostic wording changes.
+
+## Pilot closure — 2026-10-02
+
+The shared record validator checks both aggregate metrics against per-sample
+results, including when a record has a correctly recomputed checksum. Snapshot
+import and loading retained HTTP evidence reconstruct every selected continuation
+from recorded tokenization, prompt token IDs, target IDs and logprobs. Missing
+tokenizations/scores, unexpected scoring duplicates, incorrect coverage and
+scores inconsistent with the harness results are rejected. Tokenizer caching is
+allowed; response caching remains disabled. The checksum detects corruption, not
+authenticity, and this importer is limited to the pinned one-slot smoke protocol.
+
+Both original real bundles pass the stricter read-only checks. Existing bundles
+and records remain unchanged and keep their plumbing classification. No new GPU
+evaluation, quality aggregate, ranking integration or SQLite index was needed.
+The next separately reviewed step is a fixed larger sample and then broader task
+coverage; these three examples are not evidence of general model quality.

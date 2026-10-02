@@ -10,6 +10,7 @@ from pilot.quality_eval.evaluate import ARTIFACT_PINS, TASK
 from pilot.quality_eval.records import (
     JSON_FILES,
     digest,
+    load_record,
     quality_lookup,
     save_record,
     snapshot_bundle,
@@ -164,6 +165,21 @@ def test_quality_record_rejects_incomplete_unknown_limited_and_tampered_results(
     validate_record(record)
 
 
+@pytest.mark.parametrize("metric", ["acc", "acc_norm"])
+def test_inconsistent_aggregate_is_rejected_even_with_a_valid_checksum(tmp_path: Path, metric: str):
+    record = synthetic_full_record()
+    task = record["identity"]["suite"]["name"]
+    record["result"]["results"][task][metric + ",none"] = 0
+    path = tmp_path / "record.json"
+    with pytest.raises(ValueError, match="Saved metric"):
+        save_record(path, record)
+    assert not path.exists()
+    path.write_text(json.dumps({"record": record, "record_sha256": digest(record)}))
+    before = path.read_bytes()
+    assert quality_lookup(path, record["identity"]) is None
+    assert path.read_bytes() == before
+
+
 def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(tmp_path: Path, monkeypatch):
     record = synthetic_full_record()
     task = record["identity"]["suite"]["name"]
@@ -213,25 +229,62 @@ def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(tmp_path: Pat
             "usage": {"completion_tokens": 1, "prompt_tokens": 1,
                       "prompt_tokens_details": {"cached_tokens": 0}},
             "choices": [{"logprobs": {"content": [{
-                "id": 2, "logprob": -1, "top_logprobs": [{"logprob": -1}],
+                "id": 2, "logprob": -0.4, "top_logprobs": [{"logprob": -0.4}],
             }]}}],
         },
     }
     tokenization = {
         "url": "http://host.docker.internal:18083/tokenize",
-        "request": {"content": "synthetic", "add_special": True},
+        "request": {"content": "Synthetic prompt", "add_special": True},
         "response": {"tokens": [1]},
     }
+    whole = deepcopy(tokenization)
+    whole["request"]["content"] += " choice"
+    whole["response"]["tokens"] = [1, 2, 3]
+    second = deepcopy(scoring)
+    second["request"]["prompt"] = [1, 2]
+    second["request"]["logit_bias"] = [[3, 100]]
+    second["response"]["usage"]["prompt_tokens"] = 2
+    second["response"]["choices"][0]["logprobs"]["content"] = [{
+        "id": 3, "logprob": -0.6, "top_logprobs": [{"logprob": -0.6}],
+    }]
+    # Tokenization is cached by text, but every selected choice must be scored.
+    exchanges = [tokenization, whole, *([scoring, second] * 3)]
     http = tmp_path / "http.jsonl"
-    http.write_text(json.dumps(tokenization) + "\n" + json.dumps(scoring) + "\n")
+    http.write_text("".join(json.dumps(exchange) + "\n" for exchange in exchanges))
     snapshot = snapshot_bundle(tmp_path)
     save_record(tmp_path / "snapshot.json", snapshot)
     assert snapshot["result"] == result
     assert snapshot["provenance"]["evidence"]["http.jsonl"] == http.read_text()
     assert snapshot["provenance"]["hardware"] == evidence["hardware.json"]
     assert quality_lookup(tmp_path / "snapshot.json", snapshot["identity"]) is None
+    assert load_record(tmp_path / "snapshot.json") == snapshot
+    truncated = deepcopy(snapshot)
+    truncated["provenance"]["evidence"]["http.jsonl"] = json.dumps(scoring) + "\n"
+    damaged = tmp_path / "truncated-record.json"
+    damaged.write_text(json.dumps({"record": truncated, "record_sha256": digest(truncated)}))
+    with pytest.raises(ValueError, match="tokenizer evidence"):
+        load_record(damaged)
+    original = http.read_text()
+    for incomplete in (
+        [scoring],                         # The original one-response loophole.
+        exchanges[1:],                     # Missing prefix tokenization.
+        exchanges[:-1],                    # Missing final token score.
+        [*exchanges, scoring],             # Unexpected duplicate scoring.
+        [tokenization, whole, *([scoring] * 6)],  # Correct count, wrong coverage.
+    ):
+        http.write_text("".join(json.dumps(exchange) + "\n" for exchange in incomplete))
+        with pytest.raises(ValueError, match=r"evidence|coverage"):
+            snapshot_bundle(tmp_path)
+    # Valid payload/response shapes do not establish that the saved score was measured.
+    inconsistent = deepcopy(exchanges)
+    inconsistent[-1]["response"]["choices"][0]["logprobs"]["content"][0]["logprob"] = -0.7
+    http.write_text("".join(json.dumps(exchange) + "\n" for exchange in inconsistent))
+    with pytest.raises(ValueError, match="reconstruct"):
+        snapshot_bundle(tmp_path)
+    http.write_text(original)
     tokenization["request"]["add_special"] = False
-    http.write_text(json.dumps(tokenization) + "\n" + json.dumps(scoring) + "\n")
+    http.write_text("".join(json.dumps(exchange) + "\n" for exchange in exchanges))
     with pytest.raises(ValueError, match="tokenizer"):
         snapshot_bundle(tmp_path)
     (tmp_path / "runner-error.json").write_text('{"error":"synthetic failure"}')

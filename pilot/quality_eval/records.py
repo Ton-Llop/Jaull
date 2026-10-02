@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import re
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
@@ -154,10 +155,76 @@ def validate_record(record: dict[str, Any]) -> None:
                 or score[0] > 0 or type(score[1]) is not bool
             ):
                 raise ValueError("Invalid/missing continuation score")
-    for metric in ("acc,none", "acc_norm,none"):
-        value = result["results"][task][metric]
+    for metric in ("acc", "acc_norm"):
+        value = result["results"][task][metric + ",none"]
         if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
             raise ValueError("Invalid/missing task metric")
+        expected = sum(sample[metric] for sample in result["samples"][task]) / len(ids)
+        if not math.isclose(value, expected, rel_tol=0, abs_tol=1e-12):
+            raise ValueError("Saved metric differs from completed per-sample results")
+    if "evidence" in record["provenance"]:
+        fingerprint = validate_http_coverage(record["provenance"]["evidence"]["http.jsonl"],
+                                             result["samples"][task])
+        if fingerprint != identity["runtime"]["fingerprint"]:
+            raise ValueError("HTTP runtime differs from record identity")
+
+
+def validate_http_coverage(text: str, samples: list[dict[str, Any]]) -> str:
+    """Reconstruct every saved continuation from the pinned backend's HTTP evidence."""
+    tokenizations: dict[str, list[int]] = {}
+    scores: dict[tuple[tuple[int, ...], int], deque[float]] = defaultdict(deque)
+    fingerprints = set()
+    for line in text.splitlines():
+        exchange = json.loads(line)
+        if "error" in exchange or "response" not in exchange:
+            raise ValueError("Failed HTTP evidence")
+        request, response = exchange["request"], exchange["response"]
+        if exchange["url"].endswith("/v1/completions"):
+            validate_scoring_request(request)
+            validate_scoring_response(request, response)
+            key = (tuple(request["prompt"]), request["logit_bias"][0][0])
+            scores[key].append(response["choices"][0]["logprobs"]["content"][0]["logprob"])
+            fingerprints.add(response["system_fingerprint"])
+        elif exchange["url"].endswith("/tokenize"):
+            if (
+                set(request) != {"content", "add_special"}
+                or request["add_special"] is not True
+                or not isinstance(request["content"], str)
+                or not isinstance(response["tokens"], list)
+                or not response["tokens"]
+                or any(type(token) is not int or token < 0 for token in response["tokens"])
+            ):
+                raise ValueError("Unknown tokenizer protocol")
+            content, tokens = request["content"], response["tokens"]
+            if content in tokenizations and tokenizations[content] != tokens:
+                raise ValueError("Conflicting tokenizer evidence")
+            tokenizations[content] = tokens
+        else:
+            raise ValueError("Unknown HTTP protocol")
+    for sample in samples:
+        for index, (context, continuation) in enumerate(sample["arguments"]):
+            # Mirror the pinned GGUF backend's trailing-whitespace migration.
+            whole_text, prefix_text = context + continuation, context.rstrip()
+            if whole_text not in tokenizations or prefix_text not in tokenizations:
+                raise ValueError("Missing tokenizer evidence for selected continuation")
+            whole, prefix = tokenizations[whole_text], tokenizations[prefix_text]
+            if whole[:len(prefix)] != prefix:
+                raise ValueError("Ambiguous tokenization boundary in HTTP evidence")
+            total = 0.0
+            for position in range(len(prefix), len(whole)):
+                key = (tuple(whole[:position]), whole[position])
+                if not scores[key]:
+                    raise ValueError("Missing scoring evidence for selected continuation")
+                total += scores[key].popleft()
+            repeats = sample["resps"][index]
+            if len(repeats) != 1 or any(
+                not math.isclose(total, score[0], rel_tol=0, abs_tol=1e-9)
+                for score in (repeats[0], sample["filtered_resps"][index])
+            ):
+                raise ValueError("HTTP logprobs do not reconstruct saved continuation score")
+    if len(fingerprints) != 1 or any(scores.values()):
+        raise ValueError("Missing/mismatched scoring coverage")
+    return next(iter(fingerprints))
 
 
 def save_record(path: Path, record: dict[str, Any]) -> None:
@@ -219,30 +286,9 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
     )
     result = evidence["lm-eval-results.json"]
     samples = result["samples"][TASK]
-    fingerprints = set()
-    for line in raw["http.jsonl"].splitlines():
-        exchange = json.loads(line)
-        if "error" in exchange or "response" not in exchange:
-            raise ValueError("Failed HTTP evidence")
-        if exchange["url"].endswith("/v1/completions"):
-            validate_scoring_request(exchange["request"])
-            validate_scoring_response(exchange["request"], exchange["response"])
-            fingerprints.add(exchange["response"]["system_fingerprint"])
-        elif exchange["url"].endswith("/tokenize"):
-            request, response = exchange["request"], exchange["response"]
-            if (
-                set(request) != {"content", "add_special"}
-                or request["add_special"] is not True
-                or not isinstance(request["content"], str)
-                or not isinstance(response["tokens"], list)
-                or not response["tokens"]
-                or any(type(token) is not int or token < 0 for token in response["tokens"])
-            ):
-                raise ValueError("Unknown tokenizer protocol")
-        else:
-            raise ValueError("Unknown HTTP protocol")
+    fingerprint = validate_http_coverage(raw["http.jsonl"], samples)
     if (
-        len(fingerprints) != 1 or dataset["sample_ids"] != SAMPLE_IDS
+        dataset["sample_ids"] != SAMPLE_IDS
         or props["total_slots"] != 1
         or props["default_generation_settings"]["n_ctx"] != evaluator["context"]
         or props["default_generation_settings"]["params"]["post_sampling_probs"] is not False
@@ -262,7 +308,7 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         "evaluator": evaluator,
         "runtime": {
             "server_sha256": commands["server_sha256"], "image_id": evidence["image.json"]["id"],
-            "fingerprint": next(iter(fingerprints)), "backend_flags": commands["server"][3:],
+            "fingerprint": fingerprint, "backend_flags": commands["server"][3:],
             "server_defaults_sha256": digest(props["default_generation_settings"]),
         },
         "protocol": {

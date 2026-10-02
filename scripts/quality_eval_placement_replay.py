@@ -1,15 +1,14 @@
 """Replay a completed bundle's scoring requests under several offload splits.
 
-The pilot's reuse design rests on one untested assumption: that a score is a
-property of ``(artifact, protocol)`` alone. ``pilot/quality_eval/compare.py``
-encodes it by keeping hardware in provenance rather than in identity. Nothing
-has measured it. Floating-point reduction is not associative, so a CUDA kernel
-and a CPU kernel can disagree in the last bits, and a partial offload runs both
-in the same forward pass.
+The pilot already keeps placement flags in the comparison/reuse identity;
+hardware identity remains provenance. This probe tests sensitivity to placement
+on one machine, not reproducibility across machines. Floating-point reduction
+is not associative, so CUDA and CPU kernels can disagree, and partial offload
+runs both in the same forward pass.
 
 This replays the exact requests captured in ``http.jsonl``, so the harness, the
 dataset, the prompts and the forced target tokens are held fixed by
-construction and the only variable left is where the layers ran. It is a
+construction. The arms vary placement and, in one CPU control, thread count. It is a
 determinism probe, not a quality evaluation: three HellaSwag examples decide
 nothing about a model, and this script never writes a quality record.
 """
@@ -119,8 +118,7 @@ def metrics(sums: list[float], samples: list[dict[str, Any]]) -> dict[str, Any]:
             "acc": int(raw == gold), "acc_norm": int(norm == gold),
             # How far the chosen answer won by. This, not the spread of the raw
             # scores, is what a placement change has to cross to flip an answer:
-            # the candidates of one question share a prompt and a model, so their
-            # perturbations are correlated and largely cancel in the difference.
+            # measure the difference rather than assuming perturbations cancel.
             "margin_raw": group[raw] - max(
                 score for index, score in enumerate(group) if index != raw
             ),
@@ -301,13 +299,13 @@ def run(args: argparse.Namespace) -> None:
             else "PLACEMENT_CHANGES_ANSWERS"
         ),
         "interpretation": [
-            "PLACEMENT_INDEPENDENT: every replayed logprob is bit-equal to the one in the"
-            " bundle, so on this artifact and build the score does not depend on the split.",
+            "PLACEMENT_INDEPENDENT: the serialized logprob values match the bundle exactly"
+            " for these requests, tested placements, artifact, build and machine.",
             "SCORES_DIFFER_ANSWERS_STABLE: the logprobs moved and no per-sample answer did."
             " Read it with margin_shift_vs_baseline: a surviving answer whose margin barely"
             " moved is a different finding from one that nearly crossed zero.",
-            "PLACEMENT_CHANGES_ANSWERS: at least one answer moved, so a persisted score is"
-            " only reusable under its own placement.",
+            "PLACEMENT_CHANGES_ANSWERS: at least one answer moved. The current reuse policy"
+            " requires matching placement flags regardless of answer stability.",
             "One artifact, one build, one machine, this sample selection. Nothing here is a"
             " threshold for comparing two models, and nothing here bounds other artifacts,"
             " other llama.cpp builds or other GPUs.",

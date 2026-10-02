@@ -53,9 +53,9 @@ The priority is how Jaull estimates quality, not multiuser throughput.
 
 1. Review this documentation checkpoint. `v0.2.0-alpha` is a proposed release,
    not a published tag.
-2. Review the [quality-evaluation pilot](docs/quality-evaluation-pilot.md),
-   uncommitted on `docker-models-comp`: it evaluates an exact GGUF artifact
-   under a versioned protocol and persists comparable records.
+2. Review the [quality-evaluation pilot](docs/quality-evaluation-pilot.md)
+   on `docker-models-comp`: two exact GGUFs completed sequential three-example
+   smokes. Records remain plumbing diagnostics, not reusable quality evidence.
 3. Go from a three-example smoke to a limited pilot: enough samples for a
    confidence interval, and how often a placement change moves an answer. A
    `--limit 20` must never become "this model is better".
