@@ -1,0 +1,26 @@
+task: jaull-quality-smoke-v1
+dataset_path: parquet
+dataset_name: null
+dataset_kwargs:
+  data_files:
+    validation: https://huggingface.co/datasets/Rowan/hellaswag/resolve/218ec52e09a7e7462a5400043bb9a69a41d06b76/data/validation-00000-of-00001.parquet
+output_type: multiple_choice
+validation_split: validation
+training_split: null
+test_split: null
+num_fewshot: 0
+process_docs: !function lm_eval.tasks.hellaswag.utils.process_docs
+doc_to_text: "{{query}}"
+doc_to_target: "{{label}}"
+doc_to_choice: choices
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_norm
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 1.0
+  dataset_repo: Rowan/hellaswag
+  dataset_revision: 218ec52e09a7e7462a5400043bb9a69a41d06b76

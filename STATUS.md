@@ -36,7 +36,11 @@ and compares predictions with measurements when the evidence allows it.
 
 ## What is still missing
 
-- No real multiuser workload experiment or qualification verdict yet.
+- Capability is still estimated from size and publisher-reported catalog claims.
+  All 11 entries lack a precision and a revision, so they describe a model
+  rather than the artifact that runs.
+- No qualification verdict yet. The 1/2/4 concurrent-user experiment is measured
+  under `validation/2060-1vs2vs4-users/` and is deliberately not a priority.
 - NVML process VRAM is unavailable on the measured WDDM machines. Runtime
   buffer comparisons work where the methodology gates allow them, but do not
   measure every process allocation.
@@ -45,12 +49,19 @@ and compares predictions with measurements when the evidence allows it.
 
 ## Next steps
 
+The priority is how Jaull estimates quality, not multiuser throughput.
+
 1. Review this documentation checkpoint. `v0.2.0-alpha` is a proposed release,
    not a published tag.
-2. Define a small llama.cpp workload experiment: one loaded `llama-server`,
-   then 1, 2 and 4 simultaneous users. Separate loading, warm-up and measurement;
-   record per-request TTFT, generation speed, failures and memory sources.
-3. Only after that, consider evidence-based qualification and `jaull.lock`.
+2. Review the [quality-evaluation pilot](docs/quality-evaluation-pilot.md),
+   uncommitted on `docker-models-comp`: it evaluates an exact GGUF artifact
+   under a versioned protocol and persists comparable records.
+3. Go from a three-example smoke to a limited pilot: enough samples for a
+   confidence interval, and how often a placement change moves an answer. A
+   `--limit 20` must never become "this model is better".
+4. Only then turn that evidence into a Quality signal, kept separate from
+   Fastest. Prefer a gate on measured throughput over a weighted score, which
+   would reintroduce the global score the ranking dropped.
 
 No HFA, ranking, scoring or calibration changes are part of this checkpoint.
 Historical audits remain in [`docs/history/`](docs/history/).

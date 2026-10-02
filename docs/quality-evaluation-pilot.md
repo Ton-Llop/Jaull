@@ -1,0 +1,651 @@
+# Controlled GGUF quality-evaluation pilot
+
+Status: protocol audit only (2026-10-01). No local quality result exists yet.
+This is separate from HFA fit, llama-bench speed and task-match scoring.
+Nothing in this pilot changes recommendation ranking.
+
+## Current prerequisites
+
+- A local TinyLlama 1.1B Q4_K_M GGUF is present in Jaull's model cache.
+  Its complete file SHA-256 matched its sidecar during this audit:
+  `9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0`.
+  Before each evaluation, use Jaull's full artifact verification; a sidecar
+  or matching filename alone does not establish the bytes being evaluated.
+- `llama-server --version` reports build `10357 (689e227db)`, but also
+  reports that CUDA could not initialize because the driver is insufficient
+  for the CUDA runtime. `nvidia-smi` sees the RTX 2060 (driver 617.14).
+  A CPU-only server attempt with the verified TinyLlama file failed before
+  loading it because this sandbox could not bind `127.0.0.1:18080`.
+  No inference or server API compatibility was established by these probes.
+- The `docker` command in this WSL distro says Docker Desktop's WSL
+  integration is not enabled. No container or Docker GPU test was run.
+  Enable integration for the distro and confirm `docker info` before a
+  container smoke test. See [Docker's WSL instructions](https://docs.docker.com/desktop/features/wsl/).
+
+## Backend compatibility gate
+
+Do not select an evaluator version from its documentation alone. The
+[v0.4.13 GGUF backend](https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.13/lm_eval/models/gguf.py)
+passes a fixed temperature but does not forward general generation kwargs
+or a generation token limit to `/v1/completions`; its rolling
+log-likelihood method is unimplemented. Its base
+[`LM.apply_chat_template`](https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.13/lm_eval/api/model.py)
+raises `NotImplementedError`, and GGUF does not override it. Thus v0.4.13
+is **not accepted** for a controlled chat-template/generation comparison.
+The post-release [commit `ad8737a`](https://github.com/EleutherAI/lm-evaluation-harness/commit/ad8737a)
+is a **candidate pin**, not a validated evaluator. Its
+[GGUF implementation](https://github.com/EleutherAI/lm-evaluation-harness/blob/ad8737a/lm_eval/models/gguf.py)
+forwards `max_gen_toks` as `max_tokens`, uses modern `logprobs.content`
+and queries `/props` for server slots. It still does not forward every
+generation kwarg or implement chat templating. Do not build from floating
+`main`; expand the candidate to its full commit hash and test the actual
+HTTP payload before accepting a container image or any capability result.
+
+The candidate task must use methods implemented by that pinned backend.
+Check `/tokenize`, `/props` and completion/logprobs responses against the
+selected llama-server build. Avoid `--apply_chat_template` unless the pinned
+backend implements and tests it. Record the effective prompt format,
+stop strings, temperature, token limit, reasoning mode and server flags.
+Fail preflight when a requested setting is ignored; do not silently treat
+accepted CLI flags as applied model settings. Keep response caching
+(`--use_cache`) disabled: the
+[v0.4.13 cache key](https://github.com/EleutherAI/lm-evaluation-harness/blob/v0.4.13/lm_eval/api/model.py)
+uses method plus request arguments, not artifact identity.
+
+## Minimal execution sequence
+
+1. Pin the evaluator source/image, task definitions and llama.cpp build.
+   Start one GPU-backed llama-server with one verified GGUF mounted read-only,
+   plus a separate evaluator container. A host llama-server is an explicit
+   fallback if GPU containers cannot run; record which boundary was used.
+2. Probe one request at each required endpoint and inspect its effective
+   payload and response. Run only a few examples, saving prompts, outputs,
+   raw results, command lines and errors. A `--limit` run is a plumbing
+   smoke test, not a published capability result.
+3. Only after the smoke succeeds, evaluate two exact artifacts sequentially
+   on one GPU with the same suite, dataset revision, sample IDs, few-shot
+   policy and effective prompt/generation protocol. If those conditions
+   cannot be established, report NOT COMPARABLE. Keep model speed evidence
+   in Jaull's existing benchmark records, not these quality results.
+4. Keep completed results immutable. Add a SQLite lookup index only when
+   reuse is needed, keyed by full artifact SHA-256 and all effective protocol
+   inputs (including evaluator/runtime versions and task/sample identity).
+   Never reuse failed or partial results. Present per-task evidence with
+   provenance, without an overall quality score or ranking integration.
+
+Do not infer a safe number of parallel model containers from VRAM alone.
+Start with one model per GPU. Only after sequential correctness, optionally
+measure additional server slots under recorded memory and timing conditions.
+No cloud rental, large model download or long unattended evaluation belongs
+to this pilot without a separate decision.
+
+**Current gate:** enable Docker Desktop integration for this WSL distro,
+make a compatible llama-server available, and run the smoke in an environment
+that permits a loopback listener. The pinned backend's raw-prompt behavior
+also needs an explicit task/prompt decision before comparing instruct models.
+These are prerequisites, not failed quality measurements.
+
+## New launch audit — 2026-10-02
+
+This section supersedes the dated prerequisite diagnoses above. This iteration
+audits the protocol; it does **not** complete an lm-eval task smoke or establish
+model-quality evidence. The earlier document content and overnight progress
+remain history. No recommendation, HFA, runtime policy or stored record changed.
+
+### Observed prerequisites
+
+- Docker CLI 29.8.1 and Compose v5.5.1 are installed. Sandbox access to the
+  Docker socket and GPU was denied; approved probes outside that sandbox
+  confirmed engine 29.8.1/Linux and RTX 2060, driver 617.14, 6144 MiB.
+  One disposable, network-disabled, read-only container using already-local
+  image `5d143123fdf8` successfully ran `/usr/bin/nvidia-smi` with Docker's
+  `--gpus all`. This proves container GPU visibility, not CUDA
+  model inference inside a container. It exited and was removed.
+- Host `llama-server` build 10357, source commit
+  `689e227db485c6b33d061555e74034c93a867649`, binary SHA256
+  `cdb0749a2cffc6f2fe710a9616263f90e6a016e8ac07a9caa5be160fc2c5d98e`,
+  loaded TinyLlama on CUDA and served loopback HTTP under approved access.
+  Logs confirm 23/23 launch units offloaded, CUDA0 model/KV/compute buffers
+  601.02/44.00/47.01 MiB. These are runtime buffers, not driver-attributed
+  process VRAM, a peak-memory measurement or a hardware-fit recalibration.
+- Jaull `ArtifactService.verify(full=True)` rehashed the already-local
+  `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF` file
+  `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`: 668788096 bytes, SHA256 as above.
+  Cached Hub download metadata names revision
+  `52e7645ba7c309695bec7ac98f4f005b139cf465`; this is cached provenance.
+  Verification read the file/sidecar without downloading or rewriting them.
+- No evaluator image is already local. Other small Qwen GGUF files exist,
+  but their full identities/readiness have not been audited for this pilot.
+  No second artifact was run. Both temporary host servers were stopped.
+
+### Accepted scope and protocol gates
+
+Pin evaluator source to
+[`ad8737ae7fad24cf64e50fc7fc31397bff586b9e`](https://github.com/EleutherAI/lm-evaluation-harness/blob/ad8737ae7fad24cf64e50fc7fc31397bff586b9e/lm_eval/models/gguf.py)
+(`0.4.14.dev0` in its package metadata), not the version string alone.
+The backend source SHA256 is
+`71161c2b04e55699b0397e3f745da74a8c39e010f88371418a65bdcad3b8bc63`.
+The isolated offline check executes this exact class with mocked HTTP; it is
+not a full harness installation or end-to-end task evaluation.
+
+| Concern | Effective behavior / pilot gate |
+|---|---|
+| Tokenization and scoring | `/tokenize` with `add_special=true`; whitespace migration, encode together and split at context length. One `/v1/completions` request per continuation token: token-ID prompt, temperature 0, max_tokens 1, logprobs 2, logit_bias [[target,100]], id_slot 0. Require matching token IDs, finite pre-sampling logprobs and unbiased top tokens. |
+| Generation | Constructor temperature, stop strings and normalized token limit reach HTTP. Request temperature, do_sample, top_p, seed and arbitrary kwargs do not. Reject requests relying on those ignored fields; token-limit aliases have priority, so disallow conflicting aliases. Generation is outside the initial task suite. |
+| Chat | Base `LM.apply_chat_template` raises; GGUF does not override it. `/v1/completions` receives raw text/IDs. The model's template appears in `/props` but is not applied here. Reject chat-template, multiturn, tools and reasoning-mode requests. |
+| Rolling metrics | `loglikelihood_rolling` raises. Reject perplexity/rolling tasks. |
+| Context | Backend `max_length` is stored but does not enforce/truncate context. Check tokenized requests against the observed server slot context; disable context shifting. CLI flags alone do not establish applied limits. |
+| Slots | Default concurrency comes from `/props.total_slots`, with serial fallback. Context groups map round-robin to slot IDs; generation is unpinned. Use server `--parallel 1` and backend `parallel=1`; no slot-scaling experiment. |
+| Cache | Keep `--use_cache` absent/OFF: its key omits model/protocol identity. Request caching also stays off. Server prompt caching is a separate setting recorded below. |
+
+Live probes confirmed `/props.total_slots=1`, slot context 2048, BOS insertion,
+modern `logprobs.content` with token IDs, forced-token sampling and a two-token
+generation cap. With default prompt caching, the same top token's logprob
+changed from -0.95909023 to -0.99199140 between an uncached request and a cached
+prefix request. The first assertion failure and raw responses were preserved;
+this observation alone does not establish its cause. With
+`--no-cache-prompt`, both requests reported zero cached tokens and identical
+top logprobs; a forced non-top token retained a finite negative logprob.
+Use this observed setting for the first smoke rather than widening tolerances.
+No timing in these responses is used as local-speed evidence.
+
+### Next implementation step
+
+1. Build only an evaluator container at the full commit above; lock its
+   dependencies/base image and record the resulting image identity. Use the
+   proven host CUDA server boundary first. Document that a host file read
+   provides no protected container mount, and rehash before/after serving it.
+   Any container serving the artifact must mount it read-only.
+2. Define suite `jaull-quality-smoke-v1`: upstream
+   [HellaSwag task v1.0](https://github.com/EleutherAI/lm-evaluation-harness/blob/ad8737ae7fad24cf64e50fc7fc31397bff586b9e/lm_eval/tasks/hellaswag/hellaswag.yaml)
+   and preprocessing at the evaluator pin, dataset `Rowan/hellaswag` revision
+   `218ec52e09a7e7462a5400043bb9a69a41d06b76` (metadata queried, data not fetched),
+   validation indices `[0,1,2]`, zero shots, raw prompts, harness seeds
+   `0,1234,1234,1234` and server seed `0`.
+   A task override must supply `dataset_kwargs.revision`; the upstream YAML
+   does not pin it. The pinned task API passes those kwargs to `load_dataset`.
+   Save processed documents, their hashes, prompts and sample indices.
+3. The pinned CLI supports `lm-eval run`, `--include_path`, `--samples` as a
+   JSON task-to-index mapping, and `--log_samples`. `--samples` and `--limit`
+   are incompatible. Use the explicit indices above, separate fresh output
+   directories and captured HTTP/settings/errors; call this a plumbing smoke.
+4. Only after that successful harness smoke, audit a second exact local
+   artifact and run it sequentially under the same conditions. Partial/failed
+   results are not reusable. Persistence and any diagnostic comparison wait
+   for real completed results; no SQLite index or quality aggregate yet.
+
+Local audit scripts, upstream source snapshots, commands, raw exchanges and
+the failed initial assertion are retained in ignored
+`.codex-night/quality-eval-audit-20261002/`. Reproduce the offline regression:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python \
+  .codex-night/quality-eval-audit-20261002/check_backend_offline.py
+```
+
+`server-command.json` records the exact bounded endpoint-probe launch. Copy the
+audit directory to a fresh scratch directory before replaying file-writing probes.
+`verify_artifact.py` and `probe_server.py` reproduce it, with approved socket/GPU
+access required. They do not constitute an evaluator runner. WSL bash was
+already the active shell here, so these commands ran directly inside WSL.
+
+## Implemented single-artifact smoke — 2026-10-02
+
+The pinned evaluator container and bounded host runner are now implemented in
+[`pilot/quality_eval/`](../pilot/quality_eval/) and
+[`scripts/quality_eval_smoke.py`](../scripts/quality_eval_smoke.py). They accept
+only the audited TinyLlama SHA256 and llama-server binary above. Unsupported
+task/mode/settings fail rather than falling through to the GGUF backend's
+ignored kwargs. No production ranking, task suitability, HFA or speed path
+uses this pilot.
+
+- Base image: Python 3.12.12 slim/bookworm, amd64 manifest
+  `sha256:2986c55feb36e6cae00fa1fefb454283e4b33f35e75ff8bdd123b134130be301`.
+  Harness archive SHA256:
+  `010af308dae14a178fcf5e86c16fb984515cb29a7d0f0c37606faab88617f8ea`.
+  Dependencies are version/hash-locked separately from Jaull; the evaluator
+  has no torch/Transformers/GPU model backend. The image build checks actual
+  harness/YAML imports and the fixed task configuration before model launch.
+- The effective network boundary is a host CUDA server on WSL loopback plus
+  a CPU evaluator container on Docker Desktop's bridge network, accessing
+  `http://host.docker.internal:18083`. Container host networking with
+  `127.0.0.1` was accepted but did not reach this WSL listener. No Desktop
+  settings, host permissions or user services were changed.
+- The container mounts the GGUF read-only and independently hashes it. The
+  host server reads the existing host file; this does not protect it from
+  concurrent host writers. Jaull full verification runs before and after
+  serving. Each invocation requires a fresh output directory and records
+  image identity, commands, hardware/readiness, server properties, effective
+  evaluator config, runtime logs, HTTP payloads/responses and errors.
+- Suite `jaull-quality-smoke-v1` still uses the pinned upstream HellaSwag
+  preprocessing, validation indices `[0,1,2]`, zero shots, raw prompts and the
+  fixed seeds above. The proposed Hub loader was replaced by the native
+  Parquet loader: the Hub loader's metadata expected train/test even when
+  only validation was requested. The runner fetches the exact validation
+  file at the recorded dataset revision, verifies its LFS/content SHA256
+  `899813071e1e95efafec90f856e1987d2150fa4d020fc005df6962c259f660cd`,
+  saves it, and supplies that verified local file to the task API. Split
+  verification stays enabled. Only this 6315951-byte dataset file is needed;
+  preprocessing covers its 10042 rows, while inference evaluates three.
+
+Reproduce inside WSL, with approved Docker/socket/GPU access:
+
+```bash
+docker build --platform linux/amd64 --tag jaull-quality-smoke:ad8737a pilot/quality_eval
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m scripts.quality_eval_smoke \
+  --artifact-json .codex-night/quality-eval-audit-20261002/verified-artifact.json \
+  --llama-server /home/ton/tools/llama.cpp/build-cuda/bin/llama-server \
+  --image jaull-quality-smoke:ad8737a \
+  --output .codex-night/quality-eval-smoke-next-attempt
+```
+
+The artifact JSON names a local file and known digest, not an authorization
+to download. The runner re-verifies it; stale flags cannot certify the bytes.
+The evaluator has a five-minute execution bound; readiness has a 30-second
+bound. Cleanup targets only the runner's UUID container and child server.
+Generation, rolling/perplexity, chat templates, custom tasks/settings, multiple
+slots and model downloads are outside this runner's accepted scope.
+
+### Actual plumbing result
+
+Attempt `quality-eval-smoke-20261002-04` completed using local image digest
+`sha256:17b83ecff40f7c0e2d55d18122334200f490fe9eb6368be4c5800cee49410350`.
+Saved raw results/samples identify exactly `[0,1,2]`; all 146 scoring requests
+passed the token-ID, one-token, context, runtime-fingerprint, uncached-prompt
+and finite-logprob checks. All 161 captured HTTP exchanges completed without
+a recorded protocol error. The host artifact digest matched after execution,
+the server exited with code 0 and its evaluator container was removed.
+
+The harness's three-example metrics are raw **plumbing diagnostics**:
+`acc=0/3`, `acc_norm=1/3`, with stderr calculation disabled. They are not a
+full benchmark or publishable model-quality claim, and say nothing about
+overall capability, suitability, newer models or local inference speed.
+The result bundle is ignored under `.codex-night/`; nothing was uploaded.
+
+Attempts 01–03 remain intact: import failure (fixed and caught by the image
+installation check), loopback namespace connection failure (replaced with
+the working Desktop host route), and unused-split metadata failure (replaced
+with verified Parquet loading). None is comparable quality evidence.
+
+Next iteration: fully identify/verify and check readiness for one already-local
+second artifact, then extend this fixed runner minimally for a sequential
+three-example plumbing comparison. Persistence, reuse and SQLite remain
+deferred until that scoped execution work is reviewed; there is no response
+cache, quality aggregate or scoring integration.
+
+## Fresh launch review — 2026-10-02
+
+This iteration closes the existing single-artifact implementation for review.
+The earlier diagnoses and handoff are historical, not launch instructions.
+Plan: recheck prerequisites once, independently verify the saved smoke bundle,
+reject any drift in the fixed task definition before dataset loading/inference,
+add an offline regression, run the Python 3.12 gates and stop this turn.
+The second artifact and persistence are separate later iterations.
+
+Current sandbox probes deny Docker-engine and GPU access, while Compose works.
+Approved read-only probes confirm Docker engine 29.8.1/Linux, the recorded
+evaluator image, RTX 2060/617.14, and llama-server build 10357 exposing CUDA0.
+They do not prove fresh container GPU inference. No model server was started
+during this review; the evaluator's accepted boundary remains the previously
+observed host CUDA server plus CPU evaluator container.
+
+Independent inspection of `quality-eval-smoke-20261002-04` verified the
+three raw samples, all 161 HTTP exchanges (146 scoring requests), recorded
+suite digest, dataset file digest, backend source digest and server binary
+digest. Jaull full artifact verification rehashed the current TinyLlama file
+and matched both saved pre/post digests. This is a review of an existing
+plumbing result, not a new evaluation or reusable quality evidence.
+
+The task preflight previously checked only a subset of allowed values:
+changed prompt/choice/target templates, split selection, preprocessing or
+metrics could retain the suite name. This iteration requires the complete
+fixed definition, including the pinned upstream preprocessing function.
+Future task changes require an explicitly reviewed suite/version change;
+accepted CLI settings alone still do not establish an effective protocol.
+
+The offline regression reproduced this gap before the fix. A disposable
+network-disabled CPU container then loaded the actual pinned harness YAML
+and preprocessing function with the updated evaluator source mounted
+read-only: the fixed task passed, changed prompts/metrics failed, and the
+owned container was removed. No dataset or model inference ran in that check.
+The existing image digest predates this guard; rebuild with the documented
+`docker build` command before the next evaluator run and record its new ID.
+
+## Sequential two-artifact step — 2026-10-02
+
+Plan for this iteration: allow only the two audited exact artifact identities,
+check Jaull's unchanged memory estimate/full-device fit and runtime readiness,
+reuse the already-verified validation Parquet bytes via a read-only mount,
+rebuild the pinned evaluator, and run the two three-example smokes sequentially.
+A fresh TinyLlama run supplies the control under the same rebuilt image as
+Qwen; the earlier completed smoke and its failures remain intact. Keep fresh
+output directories, HTTP exchanges, full raw samples/results and errors.
+Persistence/reuse and a diagnostic comparison are subsequent scoped steps.
+
+The second file is already local: `Qwen/Qwen2.5-1.5B-Instruct-GGUF`,
+`qwen2.5-1.5b-instruct-q5_k_m.gguf`, Q5_K_M, 1285494304 bytes,
+SHA256 `b46661073c18e5b56a41fa320975f866a00def1ff08feef4718e013258896f8c`.
+Jaull full verification matched the current bytes to the sidecar and the
+cached Hub download metadata, whose revision is
+`91cad51170dc346986eccefdc2dd33a9da36ead9`. This is cached provenance,
+not a new remote publisher query. The local tensor table identifies qwen2,
+28 transformer blocks and 339 tensors. This does not change launch policy:
+the pilot requests full offload explicitly, subject to fit/readiness gates.
+The detailed audit lives in ignored `quality-eval-second-audit-20261002/`.
+
+Both artifacts use raw prompts without their conversational templates,
+context 2048, one slot, zero shots and the same fixed scoring protocol.
+Different tokenizers are part of the exact artifacts; token counts may differ.
+Only three fixed HellaSwag samples are evaluated. No full benchmark, general
+model-quality, task-suitability or speed claim follows from this step.
+
+### Reproduction and actual results
+
+The runner now requires `--dataset-file`: use the previously verified local
+validation Parquet file. The host checks its SHA256 before model launch;
+the evaluator receives it read-only, verifies it independently, and preserves
+a copy in each fresh output bundle. Dataset/preprocessing caching is separate
+from response caching; each run still has its own HF cache, and lm-eval's
+response/request caches remain OFF. No dataset or model download occurred.
+The memory preflight reads the actual local GGUF header, merges its configuration
+through Jaull, and uses the unchanged estimator/reserve/margin policies. It
+requires a GPU-resident fit and one GPU with confirmed runtime readiness.
+Capacity estimates remain capacity estimates; no runtime allocation comparison
+or inference-speed measurement is derived from them.
+
+Run these inside WSL, with approved Docker/GPU/socket access. Wait for each
+runner to exit successfully before issuing the next command. Every output path
+must be new; these example paths are intentionally different from saved runs.
+
+```bash
+docker build --platform linux/amd64 --tag jaull-quality-smoke:ad8737a-pair pilot/quality_eval
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m scripts.quality_eval_smoke \
+  --artifact-json .codex-night/quality-eval-audit-20261002/verified-artifact.json \
+  --dataset-file .codex-night/quality-eval-smoke-20261002-04/dataset-validation.parquet \
+  --llama-server /home/ton/tools/llama.cpp/build-cuda/bin/llama-server \
+  --image jaull-quality-smoke:ad8737a-pair \
+  --output .codex-night/quality-eval-pair-next-tinyllama
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m scripts.quality_eval_smoke \
+  --artifact-json .codex-night/quality-eval-second-audit-20261002/verified-artifact.json \
+  --dataset-file .codex-night/quality-eval-smoke-20261002-04/dataset-validation.parquet \
+  --llama-server /home/ton/tools/llama.cpp/build-cuda/bin/llama-server \
+  --image jaull-quality-smoke:ad8737a-pair \
+  --output .codex-night/quality-eval-pair-next-qwen
+```
+
+Both actual runs used image digest
+`sha256:c2a7b178f1867ea568664239cd2c49f9a0f56148079898ac1c4550243926e81a`
+and host llama-server build 10357. The completed ignored bundles are
+`quality-eval-pair-20261002-tinyllama` and `quality-eval-pair-20261002-qwen-02`.
+Both passed fit/readiness, completed exactly sample IDs `[0,1,2]`, and matched
+artifact SHA256 after execution. Both servers exited 0; owned containers were
+removed. Logs report GPU offload in both runs. This is host CUDA inference,
+not a claim that a CUDA model ran inside Docker.
+
+- TinyLlama: 161 HTTP exchanges, 146 scoring requests; raw three-sample
+  diagnostics `acc=0/3`, `acc_norm=1/3`.
+- Qwen: 144 HTTP exchanges, 129 scoring requests; raw three-sample
+  diagnostics `acc=2/3`, `acc_norm=3/3`.
+
+All 275 scoring requests passed the effective protocol guards. A separate
+read-only review checked equal image/config/packages, suite/dataset/sample IDs,
+documents, request text, prompt/target hashes and server commands except model
+path. Token counts differ because the artifact tokenizers differ. These are
+comparable **plumbing conditions for the two exact representations**, with
+different model weights/quantization, not a full benchmark or evidence that
+one base model is generally better. The limited results are not reusable
+quality evidence and remain separate from suitability, ranking and speed.
+
+The first network-disabled rebuild missed its dependency cache and failed
+because pip could not fetch dependencies with networking disabled. The standard
+build reused the pinned cached layers and succeeded. The first Qwen attempt
+failed before server launch at the port check; that output/error is intact.
+The socket state at that failure was not captured. A regression reproduced
+the original guard's TIME_WAIT failure and verified the corrected SO_REUSEADDR
+probe still rejects an active listener. The corrected Qwen attempt succeeded.
+All failures/logs and the independent pair check are retained under
+`.codex-night/`; none became a successful or reusable result.
+
+Stop this iteration for review. Next: the smallest immutable full-bundle
+persistence contract, explicitly retaining the limited/plumbing classification
+and excluding it from quality reuse. A SQLite index remains unnecessary.
+
+## Immutable persistence step — 2026-10-02
+
+Plan: snapshot each already-completed bundle into a separate, exclusively
+created JSON record. Preserve full harness results/samples, HTTP exchanges,
+logs and provenance; keep the verified dataset in the original bundle with
+its digest. Build an exact artifact/protocol identity from recorded evidence,
+separate hardware provenance from that identity, and fail closed on missing,
+failed, partial or unknown evidence. Quality lookup must reject these limited
+smokes. Exercise a same-identity hit and changed/incomplete identity misses
+offline with an explicitly synthetic full-result fixture. No SQLite, response
+cache, new inference runs or production-store integration is needed.
+
+`pilot.quality_eval.records` is a stdlib-only offline snapshot/import module.
+It reads the completed evidence and rejects error files, unsuccessful status,
+inconsistent artifact verification, unsupported HTTP/tokenizer payloads,
+missing scoring responses and incomplete samples. The record contains the full
+harness result and every original JSON/log/HTTP text file. The Parquet bytes
+remain in the source bundle; the snapshot verifies them and records their
+SHA256/size. HF preprocessing caches are not duplicated.
+
+Schema 1 has an exact identity and checksum, full raw result, completed status,
+classification, and separate provenance. The identity includes artifact SHA256;
+suite name/digest; dataset repository, revision, file digest, selected IDs and
+split size; per-sample doc/prompt/target hashes and rendered request arguments;
+few-shot/chat/prompt/cache policy and seeds; context; evaluator commit, backend
+digest, Python/package versions; runtime binary digest/fingerprint, evaluator
+image ID, backend flags and server-defaults digest; and the observed tokenizer
+and scoring settings. The target logit bias is the audited per-token scoring
+mechanism, not an ordinary generation policy. Explicit `None` means known
+absence only for the supported no-system-instruction/no-generation/no-cache
+fields. Missing/unknown identity fields fail validation. Hardware is recorded
+for provenance outside the identity; hardware changes cannot turn speed into
+quality evidence.
+
+Writes use exclusive creation and never replace an existing record. A checksum
+detects changed content; it is not an authenticity signature. Truncated,
+failed, partial, mismatched, unknown or limited records are quality-lookup
+misses. Lookup also requires the complete split and rejects this smoke suite
+even if someone relabels it as full. The same-identity hit is exercised only
+with a clearly synthetic full fixture; no real full benchmark or runner for
+one was introduced. The helper returns raw harness data, never a new quality
+aggregate, recommendation score or performance calibration.
+
+These offline commands run inside the existing WSL environment and need no
+Docker engine, network or GPU access. Use new output filenames:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.records \
+  --bundle .codex-night/quality-eval-pair-20261002-tinyllama \
+  --output .codex-night/quality-eval-tinyllama-next-record.json
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.records \
+  --bundle .codex-night/quality-eval-pair-20261002-qwen-02 \
+  --output .codex-night/quality-eval-qwen-next-record.json
+```
+
+Actual snapshots are in ignored `quality-eval-records-20261002/tinyllama.json`
+and `quality-eval-records-20261002/qwen.json`. Both retain `plumbing`
+classification and return a quality-lookup miss. Read-back verified the full
+record/checksum, duplicate-write rejection and byte-identical original evidence
+files including the dataset. No evaluation was rerun. Existing failures and
+experimental/benchmark records were preserved. A SQLite index adds no value
+for these two records and was not added.
+
+Stop this iteration for review. Next: the smallest diagnostic per-task view
+over these immutable snapshots, with explicit comparability reasons and the
+three-example limitation. It must remain outside recommendation scoring.
+
+## Diagnostic comparison step — 2026-10-02
+
+Plan: reuse the immutable record validation/checksums, compare every identity
+field except the intended artifact SHA256 difference, and explain matched or
+mismatched suite/dataset/sample/prompt/evaluator/runtime/protocol conditions.
+Emit a small offline per-task JSON view, with exact artifact and record
+provenance, saved metrics and sample counts. Withhold a comparison on mismatched
+conditions; label these completed limited runs as plumbing only. Add focused
+offline mismatch/corruption regressions, retain source bytes, then independently
+audit the whole pending pilot and run all final gates. No new model evaluation,
+quality aggregate, scoring integration or parallelism experiment is needed.
+
+`python -m pilot.quality_eval.compare` reads two snapshots without modifying
+them. It reuses full-result validation and verifies each record checksum, then
+compares canonical digests of suite, dataset, samples/rendered prompts,
+evaluator settings/versions, runtime flags/defaults and effective HTTP protocol.
+Classification must also agree. The intentional artifact SHA256 difference
+and hardware provenance do not make otherwise equal conditions incomparable.
+The output keeps exact identities, hardware and source-record paths/checksums.
+It contains no evaluation-duration or inference-speed metric.
+
+A valid identity mismatch produces `NOT_COMPARABLE`, names the differing
+condition and withholds the metric comparison. Corrupt, incomplete or unknown
+records fail before output creation. Matched conditions produce
+`COMPARABLE_PLUMBING` for limited/smoke results, even if relabeled as full;
+otherwise the label is `COMPARABLE_DIAGNOSTIC`. Saved per-task metrics are
+checked against their completed sample counts. No overall aggregate, ordering,
+winner, ranking integration or quality-cache reuse is introduced.
+
+The actual view is ignored `.codex-night/QUALITY_EVAL_COMPARISON_20261002_FINAL.json`.
+It reports `COMPARABLE_PLUMBING`: all seven condition checks match. Both
+artifacts used the same fixed suite/dataset revision/file, sample IDs `[0,1,2]`,
+rendered prompts, zero shots, raw template policy, context 2048, seeds,
+evaluator image/packages and observed one-slot scoring protocol. The exact
+weights, quantizations and tokenizers differ as recorded in the snapshots.
+
+| Task / saved metric | TinyLlama 1.1B Chat Q4_K_M | Qwen2.5 1.5B Instruct Q5_K_M |
+|---|---:|---:|
+| HellaSwag smoke v1 / acc | 0/3 (0.000000) | 2/3 (0.666667) |
+| HellaSwag smoke v1 / acc_norm | 1/3 (0.333333) | 3/3 (1.000000) |
+
+These are **three-example plumbing diagnostics**, not a full benchmark,
+publishable/reusable quality evidence, general base-model verdict or task
+suitability assessment. Rounded table values are for display; the view and
+original records retain the harness values. No evaluation was rerun, response
+cache enabled, container/server started, or memory/slot-scaling experiment run.
+
+Reproduce the read-only comparison inside WSL, choosing a new output filename:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.compare \
+  --left .codex-night/quality-eval-records-20261002/tinyllama.json \
+  --right .codex-night/quality-eval-records-20261002/qwen.json \
+  --output .codex-night/quality-eval-comparison-next.json
+```
+
+The controlled plumbing pilot now has protocol/runtime evidence, sequential
+exact-artifact results, immutable snapshots and this diagnostic view. A full
+quality campaign and optional parallelism remain outside the completed scope.
+Final audit/check results are recorded in the ignored progress handoff.
+
+## Placement determinism probe — 2026-10-02
+
+Everything above rests on one assumption that had never been measured: that a
+score is a property of `(artifact, protocol)` alone, which is what lets a saved
+result be reused instead of recomputed. `compare.py` encodes the assumption by
+keeping hardware in provenance rather than in identity. Floating-point
+reduction is not associative, so a CUDA kernel and a CPU kernel can disagree,
+and a partial offload runs both in one forward pass. This step measures it.
+
+[`scripts/quality_eval_placement_replay.py`](../scripts/quality_eval_placement_replay.py)
+replays the 146 captured `/v1/completions` requests of the completed TinyLlama
+bundle against the same pinned `llama-server` build and the same verified GGUF,
+changing only `--n-gpu-layers`, `--device` and `--threads`. Replaying captured
+requests holds the harness, the dataset, the prompts and the forced target
+tokens fixed by construction, so placement is the only variable left. Before any
+arm runs, the regrouping of 146 single-token requests back into 12 continuations
+and the reimplementation of both metrics are checked against the numbers the
+harness itself wrote.
+
+### Measured result
+
+| Arm | `-ngl` | threads | Tokens equal to the bundle | max abs delta, token | max abs delta, continuation | acc | acc_norm |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `gpu_full_a` | -1 | 4 | 146/146 | 0 | 0 | 0/3 | 1/3 |
+| `gpu_full_b` | -1 | 4 | 146/146 | 0 | 0 | 0/3 | 1/3 |
+| `gpu_partial` | 11 | 4 | 97/146 | 0.3223 | 0.8776 | 0/3 | 1/3 |
+| `cpu_only` | 0 | 4 | 0/146 | 0.2916 | 0.8261 | 0/3 | 1/3 |
+| `cpu_threads8` | 0 | 8 | 0/146 | 0.2916 | 0.8261 | 0/3 | 1/3 |
+
+Deltas are against the bundle recorded hours earlier. `cpu_only` and
+`cpu_threads8` are bit-identical to each other on all 146 tokens.
+
+Those deltas are on the raw scores. What decides an answer is the lead of the
+chosen continuation over its best rival, and that lead barely moves:
+
+| Arm | doc 0 | doc 1 | doc 2 |
+|---|---:|---:|---:|
+| `gpu_full_a` / `gpu_full_b` | +0.1452 | +0.0255 | +0.3705 |
+| `gpu_partial` | +0.1593 | +0.0214 | +0.3705 |
+| `cpu_only` / `cpu_threads8` | +0.1552 | +0.0182 | +0.3710 |
+
+Character-normalised lead of the top answer over its best rival, the quantity a
+placement change has to drive through zero to flip an answer.
+
+### What this settles
+
+1. **Fixed placement is bit-reproducible.** Two fresh processes with identical
+   flags reproduced all 146 logprobs of the earlier bundle exactly. Run-to-run
+   variation is not a source of error here, which is also what makes the other
+   rows attributable to placement alone.
+2. **Placement is score-relevant, and not at the last bit.** Full CPU changes
+   every single token logprob; a partial offload changes 49 of 146. The largest
+   continuation-level disagreement is 0.88 nats, which is a different number,
+   not rounding.
+3. **The answers held, and not narrowly.** No per-sample answer changed in any
+   arm. The tightest lead, doc 1, lost 29% of an already small margin and stayed
+   positive; doc 0's lead grew. The candidates of one question share a prompt and
+   a model, so their perturbations are partly correlated and some of it cancels in
+   the difference, though less than the raw spread suggests: a continuation sum
+   moves by up to 0.8776 nats while the raw lead between two of them moves by up
+   to 0.4186, and in character-normalised units the pair is 0.0313 against
+   0.0141. That is roughly a factor of two, not an order of magnitude.
+4. **Thread count agreed here.** 4 and 8 threads produced bit-identical logprobs
+   on this artifact and build. That is one pair of values on one model, which is
+   not grounds for dropping `--threads` from identity.
+
+### Consequences for reuse
+
+- **Placement stays in identity.** No change is needed to refuse the wrong
+  comparison: `identity.runtime.backend_flags` already contains
+  `--n-gpu-layers` and `--device`, so `compare.py` already reports
+  `NOT_COMPARABLE` for a CPU result against a GPU result. The conservative
+  default was right, and this is the evidence for keeping it.
+- **A saved score belongs to its placement.** Since the placement follows from
+  the requesting machine's memory fit, two machines that land on different
+  splits do not share a score, even though here they did share every answer.
+  Whether the same placement reproduces on a *different* GPU is untouched by
+  this probe: unverified, not refuted, and the thing worth measuring next.
+- **Two models may only be compared under one placement.** The sequential pair
+  above satisfies this: both ran `-ngl -1 --device CUDA0` on the same machine.
+- None of these magnitudes is a threshold for anything. They describe one
+  artifact on one build, and a logprob delta between two placements of the same
+  model says nothing about the quality distance between two different models.
+
+### Limits
+
+One artifact, one llama.cpp build, one machine, one GPU, three samples. Whether
+`-ngl -1` reproduces across different CUDA devices is the obvious next question
+and needs a second machine; this probe does not bound it. The probe writes
+`placement-replay.json` with `quality_evidence: false` and never produces a
+result record, so nothing here can enter `quality_lookup`.
+
+The first run of this probe decided answer stability by comparing aggregate `acc`
+and `acc_norm`, which two samples flipping in opposite directions would leave
+untouched. The gate now compares each answer, and reports the margin shift
+alongside it, so a surviving answer that nearly crossed zero cannot read as a
+stable one. Re-running under the corrected gate reproduced the same figures and
+the same answers.
+
+Reproduce inside WSL, with a new output directory:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python \
+  -m scripts.quality_eval_placement_replay \
+  --bundle .codex-night/quality-eval-pair-20261002-tinyllama \
+  --llama-server /home/ton/tools/llama.cpp/build-cuda/bin/llama-server \
+  --output .codex-night/placement-replay-next
+```
+
+The saved runs are the ignored bundles `placement-replay-20261002` (first
+gate) and `placement-replay-20261002-v2` (corrected gate).
