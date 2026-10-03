@@ -13,10 +13,10 @@ from jaull.artifacts.errors import (
 )
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.enums import RepositoryType
-from jaull.domain.model import ModelFile
 from jaull.estimator.gguf_selection import select_variant
 from jaull.huggingface.classifiers import classify_repository
 from jaull.huggingface.client import HfClientProtocol
+from jaull.huggingface.repository import files_from_metadata
 
 _GGUF_FORMAT = "gguf"
 
@@ -35,7 +35,7 @@ class HuggingFaceArtifactResolver:
         revision: str | None = None,
     ) -> ModelArtifact:
         info = self._client.model_info(repo_id)
-        files = self._siblings_to_files(info)
+        files = files_from_metadata(info)
         if not files:
             raise ArtifactNotFoundError(
                 f"Repository {repo_id!r} has no listed files."
@@ -68,19 +68,6 @@ class HuggingFaceArtifactResolver:
             quantization=variant.quantization,
             size_bytes=file.size_bytes,
         )
-
-    @staticmethod
-    def _siblings_to_files(info: object) -> list[ModelFile]:
-        siblings = getattr(info, "siblings", None) or []
-        files: list[ModelFile] = []
-        for sibling in siblings:
-            path = getattr(sibling, "rfilename", None)
-            if not path:
-                continue
-            size = getattr(sibling, "size", None)
-            lfs = getattr(sibling, "lfs", None) is not None
-            files.append(ModelFile(path=path, size_bytes=size, lfs=lfs))
-        return files
 
     @staticmethod
     def _extract_sha(info: object) -> str | None:

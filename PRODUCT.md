@@ -31,3 +31,12 @@ Avoid marketing-style hero layouts, decorative dashboards, over-explained techni
 ## Accessibility & Inclusion
 
 Use readable contrast in terminal themes, avoid relying on color alone for status, keep labels plain-language, and preserve keyboard-first navigation. Motion is minimal and state-based because the primary interface is a terminal workflow.
+
+## Terminal Layout
+
+- Keep the guided Hardware → Your needs → Search → Results flow and the shark identity.
+- Near-black surfaces, vivid cyan actions and selection, green fit, yellow uncertainty and pink errors. Secondary actions use bracketed terminal labels rather than filled gray blocks.
+- Results and Paths use a stable list/inspector workspace from 120 columns. Smaller terminals show Models/Paths or Selected, one view at a time, without recreating controls.
+- The inspector separates Plan, Memory (where available), and Evaluation. Execution actions sit directly below the selected model/path and outside the scrolling tabs; long explanations and provenance scroll inside them.
+- Estimate uses full-width parameter and result views, retaining values when adjusting parameters.
+- Quality metrics describe the exact historical artifact, sample coverage and limitations. They do not confirm the current protocol, imply general capability, or affect ranking.

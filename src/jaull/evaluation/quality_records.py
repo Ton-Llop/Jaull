@@ -301,6 +301,7 @@ class QualityEvidence:
     classification: str
     reusable: bool
     limitations: tuple[str, ...] = field(default=())
+    context_length: int | None = None
 
     @property
     def summary(self) -> str:
@@ -396,6 +397,7 @@ def describe_record(record: dict[str, Any]) -> QualityEvidence:
         classification=record["classification"],
         reusable=is_reusable_evidence(record),
         limitations=tuple(limitations),
+        context_length=identity["evaluator"]["context"],
     )
 
 

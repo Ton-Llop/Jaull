@@ -93,6 +93,39 @@ def test_same_model_can_produce_multiple_execution_plans() -> None:
     assert all(plan.runtime_family is RuntimeName.LLAMA_CPP for plan in plans)
 
 
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_published_artifact_digest_does_not_change_scores_or_plan_ranking(
+    priority: RecommendationPriority,
+) -> None:
+    evaluated = [
+        _evaluated_gguf("owner/Alpha-7B-GGUF", priority=priority),
+        _evaluated_gguf("owner/Beta-7B-GGUF", priority=priority),
+    ]
+    requirements = _requirements(priority)
+    before = ranking.recommend(evaluated, requirements, hardware=hardware())
+    updated = []
+    for item in evaluated:
+        assert item.analysis is not None
+        data = item.analysis.model_dump()
+        for file in data["files"]:
+            file["sha256"] = "d" * 64
+        for variant in data["classification"]["gguf_variants"]:
+            for file in variant["files"]:
+                file["sha256"] = "d" * 64
+        analysis = type(item.analysis).model_validate(data)
+        updated.append(item.model_copy(update={"analysis": analysis}))
+    after = ranking.recommend(updated, requirements, hardware=hardware())
+    assert [(rec.rank, rec.repo_id, rec.score) for rec in after] == [
+        (rec.rank, rec.repo_id, rec.score) for rec in before
+    ]
+    assert [rec.plan_assessment for rec in after] == [rec.plan_assessment for rec in before]
+    for old, new in zip(before, after, strict=True):
+        assert old.plan is not None and new.plan is not None
+        assert new.plan.plan_id == old.plan.plan_id
+        assert new.plan.artifact.sha256 == "d" * 64
+        assert new.plan.artifact.to_model_artifact() == old.plan.artifact.to_model_artifact()
+
+
 def test_transformers_plan_preserves_the_estimated_quantization_mechanism() -> None:
     evaluated = _evaluated_transformers()
     estimate = evaluated.memory_estimate

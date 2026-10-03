@@ -814,3 +814,145 @@ Attempt `01` completed TinyLlama but the local helper failed while constructing
 a relative summary path, before starting Qwen. Its evidence is preserved and
 excluded from this table. Attempt `02` repeated the complete pair with the
 corrected path handling; both records reload identically from BenchmarkStore.
+
+## Diagnostic TUI integration — 2026-10-03
+
+Results and Paths now read the existing local quality store on their evidence
+worker. Matching requires the published LFS content SHA256 of a single-file
+GGUF, not its family, repo name, quantization label or git blob ID. The same
+bytes mirrored under another repository can match; another digest, multipart
+GGUF or a missing digest cannot. Metadata is not local artifact verification:
+the existing download/verification and execution checks are unchanged.
+
+The display labels results as **historical artifact results; current
+execution/protocol not verified**, and shows the suite, metrics, grade
+(`plumbing`, `limited` or `full`), sample counts, recorded context and placement.
+The tooltip retains record identity, dataset revision, evaluator/runtime,
+hardware, timestamp and limitations. An artifact match does not establish
+comparability with the selected plan or cross-machine reproducibility.
+
+Quality does not change ranking, scores, action availability, or the
+Ready/Validated/Benchmarked states. Strict `quality_lookup` still requires the
+full protocol identity and complete results; displaying a limited record does
+not make it reusable. Old records and cached analyses load with an unknown SHA;
+they simply show no matching quality until refreshed through normal inspection.
+No automatic metadata refetch, evaluator launch or response cache is added.
+
+Import a completed pilot snapshot explicitly, from the repository checkout:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -c \
+  'import sys; from pathlib import Path; from pilot.quality_eval.records import load_record; from jaull.evaluation.quality_storage import QualityEvidenceStore; print(QualityEvidenceStore().save(load_record(Path(sys.argv[1]))))' \
+  /path/to/completed-quality-record.json
+```
+
+This applies the producer's stronger HTTP-coverage validation before storing
+the immutable record in Jaull's user data directory (`quality/`). It does not
+evaluate or alter the original snapshot. Imported records must be trusted local
+evidence: checksums detect corruption, not authenticity. Jaull does not scan
+ignored pilot directories or import them automatically. Without imported
+records, `uv run jaull` has no historical quality to display and still starts
+no evaluator containers. This integration ran no new GPU evaluations.
+
+For deterministic manual inspection, use **Advanced tools → Estimate model
+memory**, enter the exact GGUF repo, press **Detect**, select the evaluated
+quantization, then **Estimate**. This screen displays the same historical
+quality evidence by content SHA256; the repo need not appear in the shortlist.
+The results view separates **Measured evaluation** (benchmark, sample count,
+grade, accuracy metrics and recorded context) from the current memory estimate.
+Limitations remain visible; suite, placement, hashes and source provenance are
+available in the collapsed **Evaluation provenance** block. These benchmark
+results are not presented as a general capability assessment. **Adjust
+parameters** returns to the form without discarding the selected settings.
+**Detect** explicitly refreshes repository metadata, replacing an older cache
+entry that may lack content digests. Normal cached inspection is unchanged.
+For the pilot Qwen artifact use `Qwen/Qwen2.5-1.5B-Instruct-GGUF` and `Q5_K_M`.
+The recorded quality context remains 2048, even if the memory estimate uses a
+different context. This is a historical view, not a new evaluation or a
+statement that the current settings match. Unknown/multipart digests and
+unimported records produce no quality display.
+
+## Phase C: Explicit CLI execution
+
+`jaull quality run` now joins the existing runner, HTTP-validated snapshot and
+Jaull quality store. This is an explicit, opt-in CLI operation, not a TUI
+background job. No ranking, fit formula, benchmark or record schema changes.
+
+The adapter intentionally requires a **trusted source checkout** containing
+`scripts/quality_eval_smoke.py` and `pilot/quality_eval/`. These do not ship in
+the wheel. `--pilot-root` defaults to the current directory; set it explicitly
+when invoking an installed Jaull elsewhere. It executes that checkout's Python
+code, so do not point it at an untrusted directory. The existing pilot remains
+the only owner of model/dataset/runtime pins, fit/readiness, HTTP checks and
+server/container cleanup. There is no second evaluator implementation.
+
+Prerequisites: Linux/WSL, a responding Docker engine, the already-built pinned
+evaluator image, the audited host `llama-server`, the pinned local validation
+Parquet and one or both audited exact GGUFs. Nothing is downloaded, built,
+pulled or substituted by this command. See the build command above for the
+one-time image setup. Arbitrary GGUFs, new server builds and custom task suites
+remain unsupported. `smoke` is three-example plumbing; `hellaswag100` is limited
+evidence, not a full benchmark or general-quality verdict.
+
+From the checkout, use existing `ModelArtifact` JSON files (which contain
+`local_path`, exact revision/filename/quantization and SHA256):
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 jaull quality run \
+  --pilot-root . \
+  --artifact /path/to/tinyllama-artifact.json \
+  --artifact /path/to/qwen-artifact.json \
+  --dataset-file /path/to/validation.parquet \
+  --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
+  --image jaull-quality-eval:hellaswag100-v1 \
+  --profile hellaswag100 \
+  --output .codex-night/quality-cli-new-run \
+  --json
+```
+
+Each artifact runs **sequentially**, one server/container at a time. Inputs are
+never rewritten. `run-01/`, `run-02/`, etc. retain the normalized artifact
+manifest, raw bundle, runner/snapshot logs and immutable snapshot. Existing run
+directories are refused, never overwritten. Completed records are automatically
+saved in Jaull's existing user-data `quality/` store; the response returns their
+identity hashes. A failed run/snapshot is not stored, and stops later runs. If
+an earlier run completed, its record remains saved and is listed in the failure
+response. Ctrl+C lets the pilot finish its owned-process cleanup before the
+CLI exits. No response cache or automatic result reuse is enabled.
+The store still accepts only one immutable record per evaluation identity:
+repeating an identical protocol does not overwrite an earlier record. If the
+new content differs (including timestamps/provenance), import fails and the
+new snapshot remains in its run directory for review.
+
+Compare two returned identity hashes without Docker or a GPU:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 jaull quality compare \
+  LEFT_ID RIGHT_ID --json
+```
+
+The pilot comparison command and this CLI share the same per-task comparison
+function. Matching suite, dataset, samples/prompts, evaluator, runtime,
+effective protocol and grade produce diagnostic accuracy/counts; a mismatch
+produces `NOT_COMPARABLE` with reasons and no paired metrics. Placement flags
+remain part of runtime identity. Hardware is provenance, not inference-speed
+evidence. These commands neither infer an overall winner nor compare local
+tok/s; use Jaull's existing performance benchmark records for that axis.
+
+This CLI integration was validated with offline synthetic fixtures, including
+producer failure, corrupted/misattributed snapshots, cancellation, sequential
+partial failure and incompatible protocols. The new comparison CLI also read
+the two existing real 100-example records and returned `COMPARABLE_LIMITED`
+with the unchanged Qwen 46/63 and TinyLlama 36/38 counts. That was a read-only
+check, not a rerun.
+
+The human subsequently completed a real `quality run --profile smoke` for the
+already-local TinyLlama artifact in `.codex-night/phase-c-smoke-01/run-01/`.
+The producer's HTTP validator successfully reloaded its snapshot, which equals
+the automatically stored record
+`5c7bd0771334d1ba7fb0784b837214dc8af25b9f0a6c791c00d743c8da4abc14`.
+The bundle reports `plumbing_passed`, server exit code 0 and artifact-after SHA
+verification. Sample IDs are 0, 1 and 2; observed acc is 0/3 and acc_norm 1/3.
+This confirms the CLI-to-pilot-to-store path with real execution. It remains a
+three-example plumbing check, not full/reusable quality evidence or a
+general-quality assessment. Raw outputs remain locally ignored.

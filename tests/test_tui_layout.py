@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from textual.widgets import Button, TextArea
+from textual.containers import VerticalScroll
+from textual.widgets import Button, TabbedContent, TextArea
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
@@ -27,6 +28,8 @@ if str(ROOT / "scripts") not in sys.path:
 
 from capture_screenshots import build_app  # noqa: E402
 
+from jaull.tui.screens.estimate import EstimateScreen  # noqa: E402
+from jaull.tui.screens.execution_paths import ExecutionPathsScreen  # noqa: E402
 from jaull.tui.screens.recommendation_execution import (  # noqa: E402
     RecommendationExecutionScreen,
 )
@@ -34,6 +37,9 @@ from jaull.tui.screens.recommendation_results import (  # noqa: E402
     RecommendationResultsScreen,
 )
 from jaull.tui.screens.requirements_wizard import RequirementsWizardScreen  # noqa: E402
+from jaull.tui.widgets.action_button import ActionButton  # noqa: E402
+from jaull.tui.widgets.selection_workspace import SelectionWorkspace  # noqa: E402
+from tests._workflow_fixtures import gguf_analysis  # noqa: E402
 
 # The sizes the interface is designed against: a comfortable terminal, a
 # medium one, and 80x24 — the classic default, and the width at which the old
@@ -102,6 +108,128 @@ def _assert_visible(screen: Any, selector: str, label: str) -> None:
         f"({region.y}..{region.bottom} in {screen.size.height} rows)"
     )
     assert region.right <= screen.size.width, f"{label}: {selector} is cut off"
+
+
+def test_secondary_action_labels_are_literal_and_keep_brackets_when_relabelled() -> None:
+    button = ActionButton("Validate [local]")
+    assert button.label.plain == "[ Validate [local] ]"
+    button.set_action_label("Paths [2]")
+    assert button.action_label == "Paths [2]"
+    assert button.label.plain == "[ Paths [2] ]"
+
+
+@pytest.mark.parametrize("size", [(150, 42), (120, 32), (80, 24)])
+def test_results_inspector_keeps_selection_and_controls_across_resize(
+    size: tuple[int, int],
+) -> None:
+    async def scenario() -> None:
+        app = build_app()
+        async with app.run_test(size=size) as pilot:
+            app.start_guided_workflow()
+            await _wait_for(pilot, lambda: bool(app.screen.query("#hw-continue")))
+            app.goto_requirements()
+            await _wait_for(pilot, lambda: isinstance(app.screen, RequirementsWizardScreen))
+            answers = app.screen.collect_answers()
+            app.start_discovery(answers)
+            await _wait_for(
+                pilot, lambda: isinstance(app.screen, RecommendationResultsScreen)
+                and bool(app.screen.query("#res-run-0")),
+            )
+            screen = app.screen
+            workspace = screen.query_one(SelectionWorkspace)
+            run = screen.query_one("#res-run-1", Button)
+            if workspace.compact:
+                await pilot.click("#workspace-list")
+                assert screen.query_one("#results-body").display
+                assert not screen.query_one("#results-inspector").display
+            await pilot.press("down")
+            await pilot.pause()
+            assert screen._selected == 1, repr(app.focused)
+            # Browsing the list does not force the inspector open on each key.
+            if workspace.compact:
+                assert screen.query_one("#results-body").display
+            await pilot.press("enter")
+            await pilot.pause()
+            assert screen.query_one("#rec-detail-1").display
+            assert not screen.query_one("#rec-detail-0").display
+            _assert_visible(screen, "#res-run-1", "selected actions")
+            detail = screen.query_one("#rec-detail-1")
+            subtitle = detail.query_one(".inspector-subtitle")
+            actions = detail.query_one(".rec-actions")
+            tabs = detail.query_one(TabbedContent)
+            assert subtitle.region.bottom <= actions.region.y
+            assert actions.region.bottom <= tabs.region.y
+            if not workspace.compact:
+                left = screen.query_one("#results-body").region
+                right = screen.query_one("#results-inspector").region
+                assert left.right <= right.x
+            await pilot.resize_terminal(80, 24)
+            await pilot.pause()
+            assert workspace.compact
+            assert not screen.query_one("#results-body").display
+            assert screen.query_one("#results-inspector").display
+            _assert_visible(screen, "#res-run-1", "narrow selected actions")
+            assert actions.region.bottom <= tabs.region.y
+            await pilot.resize_terminal(150, 42)
+            await pilot.pause()
+            assert not workspace.compact
+            assert screen.query_one("#results-body").display
+            assert screen.query_one("#res-run-1", Button) is run
+            _assert_buttons_fit(screen, "resized results")
+            screen.query_one("#res-paths-1", Button).press()
+            await _wait_for(
+                pilot, lambda: isinstance(app.screen, ExecutionPathsScreen)
+                and bool(app.screen.query(".path-option"))
+                and app.screen.query_one("#paths-selected").display,
+            )
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+            paths = app.screen
+            path_actions = paths.query_one("#paths-actions")
+            assert paths.query_one("#paths-selected-meta").region.bottom <= path_actions.region.y
+            assert path_actions.region.bottom <= paths.query_one(TabbedContent).region.y
+            _assert_visible(paths, "#paths-run", "selected path actions")
+            _assert_buttons_fit(paths, "selected path actions")
+
+    _run(scenario())
+
+
+@pytest.mark.parametrize("size", [(160, 50), (110, 55), (80, 24)])
+def test_estimate_form_uses_available_height_without_an_empty_results_pane(
+    size: tuple[int, int],
+) -> None:
+    async def scenario() -> None:
+        app = build_app()
+        async with app.run_test(size=size) as pilot:
+            app.push_screen("estimate")
+            await _wait_for(pilot, lambda: isinstance(app.screen, EstimateScreen))
+            screen = app.screen
+            assert isinstance(screen, EstimateScreen)
+            screen._render_form(gguf_analysis())
+            await _wait_for(
+                pilot,
+                lambda: bool(screen.query("#est-run"))
+                and screen.query_one("#est-run").region.height > 0,
+            )
+            body = screen.query_one("#est-body", VerticalScroll)
+            label = f"estimate {size}"
+            if size[1] >= 50:
+                assert body.max_scroll_y == 0, "empty results must not reserve a separate pane"
+                _assert_visible(screen, "#est-device", label)
+                _assert_visible(screen, "#est-run", label)
+                assert screen.query_one("#est-run").region.bottom <= body.content_region.bottom
+            else:
+                assert body.max_scroll_y > 0
+                body.scroll_to_widget(
+                    screen.query_one("#est-run"), animate=False, immediate=True,
+                )
+                await pilot.pause()
+                _assert_visible(screen, "#est-run", label)
+                assert screen.query_one("#est-run").region.bottom <= body.content_region.bottom
+            assert not screen.query_one("#est-output").display
+            _assert_buttons_fit(screen, label)
+
+    _run(scenario())
 
 
 @pytest.mark.parametrize("size", SIZES)

@@ -21,6 +21,7 @@ from jaull.cli.doctor import run_doctor
 from jaull.cli.estimate import EstimateOptions, run_estimate
 from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
 from jaull.cli.inspect import run_inspect
+from jaull.cli.quality import run_quality, run_quality_compare
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.scan import run_scan
 from jaull.domain.inference import TargetDevice, WeightPrecision
@@ -28,6 +29,7 @@ from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
+from jaull.runtime.quality_eval_runner import QualityProfile, QualityRunRequest
 
 _DEFAULT_RESERVE_GIB = DEVICE_RESERVE_DEFAULT_BYTES / (1024**3)
 
@@ -48,6 +50,11 @@ case_app = typer.Typer(
     help="Group experiment and benchmark evidence into one experimental case.",
 )
 experiments_app.add_typer(case_app, name="case")
+quality_app = typer.Typer(
+    add_completion=False,
+    help="Run the pinned local quality pilot or compare stored diagnostics (no ranking changes).",
+)
+app.add_typer(quality_app, name="quality")
 case_bundle_app = typer.Typer(
     add_completion=False,
     help="Inspect a portable experimental case bundle offline.",
@@ -402,6 +409,53 @@ def list_cases_command(
     ),
 ) -> None:
     raise typer.Exit(code=run_list_cases(CaseOptions(as_json=as_json)))
+
+
+@quality_app.command(
+    "run", help="Evaluate explicit local GGUFs sequentially; never download/build.",
+)
+def quality_run_command(
+    artifact: list[Path] = typer.Option(
+        ..., "--artifact", help="ModelArtifact JSON. Repeat for sequential evaluation.",
+    ),
+    dataset_file: Path = typer.Option(
+        ..., "--dataset-file", help="Pinned local validation Parquet.",
+    ),
+    llama_server: Path = typer.Option(
+        ..., "--llama-server", help="Audited host llama-server binary.",
+    ),
+    image: str = typer.Option(..., "--image", help="Already-built evaluator image (never pulled)."),
+    output: Path = typer.Option(
+        ..., "--output", help="Fresh campaign directory for logs and bundles.",
+    ),
+    pilot_root: Path = typer.Option(
+        Path(), "--pilot-root", help="Trusted Jaull source-checkout root.",
+    ),
+    profile: QualityProfile = typer.Option(
+        QualityProfile.SMOKE, "--profile", help="Fixed smoke or limited 100-sample profile.",
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit completion ids or an explicit failure.",
+    ),
+) -> None:
+    raise typer.Exit(code=run_quality([
+        QualityRunRequest(
+            artifact_json=path, dataset_file=dataset_file, llama_server=llama_server,
+            image=image, output=output / f"run-{index:02d}", pilot_root=pilot_root, profile=profile,
+        )
+        for index, path in enumerate(artifact, start=1)
+    ], as_json=as_json))
+
+
+@quality_app.command(
+    "compare", help="Compare stored records; incompatible protocols stay separate.",
+)
+def quality_compare_command(
+    left_id: str = typer.Argument(..., metavar="LEFT_ID"),
+    right_id: str = typer.Argument(..., metavar="RIGHT_ID"),
+    as_json: bool = typer.Option(False, "--json", help="Emit per-task comparison with provenance."),
+) -> None:
+    raise typer.Exit(code=run_quality_compare(left_id, right_id, as_json=as_json))
 
 
 if __name__ == "__main__":

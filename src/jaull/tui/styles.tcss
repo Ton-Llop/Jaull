@@ -12,7 +12,7 @@
    Nothing is enclosed in a rounded rectangle any more. An edge means one of
    four things, and its weight says which:
 
-     █  thick left     selected — the row you act on
+        tinted row     selected — the row you act on
      ▌  outer left     a callout beside the content: a warning, a command
      ─  solid bottom   a field you can type in, or a zone rule
      ━  heavy bottom   that field has focus
@@ -40,9 +40,7 @@
    shadowing them breaks Textual's own stylesheet (`hatch: right $panel`),
    which is why the tokens here are `$ink` and `$chrome`.
    --------------------------------------------------------------------- */
-/* Near-black with a cold cast, so a saturated accent on top reads as if it
-   were emitting rather than painted. The surfaces sit very close to the
-   ground: contrast comes from the accent, not from stacked greys. */
+/* Original vivid terminal colours; surfaces stay dark beneath the data. */
 $bg:         #070a10;
 $surface:    #0d131c;
 $surface-2:  #0b111a;
@@ -54,11 +52,9 @@ $well:       #04070c;
 
 $ink:        #d8e6f0;
 $ink-2:      #8fa8bd;
-$ink-3:      #6d8599;
+$ink-3:      #8399ab;
 
-/* Still one accent and three states — the same four meanings, turned up. A
-   fifth hue would be decoration, and the point of a neon palette is that the
-   few colours in it each mean something. */
+/* One vivid accent and three semantic states. */
 $accent:     #00e5ff;
 $accent-lit: #7df9ff;
 $accent-deep: #0091a7;
@@ -67,8 +63,7 @@ $warn:       #ffc400;
 $warn-lit:   #ffe066;
 $bad:        #ff2e63;
 
-/* Neon is bright enough that text sits *on* it in near-black, not in white:
-   #ffffff on #00e5ff is barely legible, and dark-on-glow is the whole look. */
+/* Cyan needs dark text for readable primary actions. */
 $on-accent:  #04121a;
 
 /* Tinted grounds for badges and warning panels. Dark enough that the
@@ -91,11 +86,11 @@ Screen {
    Layout baseline.
 
    Textual's Vertical, Horizontal and ListView all default to `height: 1fr`.
-   Every container in this app is a block of document flow inside a scroll
-   region, never a flexible pane, so that default makes a single block expand
+   Document containers inside scroll regions should follow their content,
+   otherwise a single block expands
    to the whole viewport and pushes everything after it below the fold. Size
    them to their content instead; the surrounding VerticalScroll is what
-   flexes.
+   flexes. Selection workspaces explicitly override this for their panes.
    --------------------------------------------------------------------- */
 VerticalScroll > Vertical,
 VerticalScroll > Horizontal,
@@ -111,6 +106,7 @@ Header {
     text-style: bold;
     height: 1;
     border-bottom: solid $line;
+    display: none;
 }
 
 /* The default header icon is U+2B58, which most terminal fonts lack and which
@@ -288,14 +284,11 @@ Footer > .footer--key {
 /* ---------------------------------------------------------------------
    Selection.
 
-   One idiom everywhere: a left accent bar plus accented text. `blank` on the
-   unselected state reserves the same cell, so selecting a row never shifts
-   its content sideways.
+   A tinted row and bold text keep selection clear without shifting content.
    --------------------------------------------------------------------- */
 .selectable {
     height: auto;
-    border-left: blank;
-    padding: 0 0 0 1;
+    padding: 0 1;
 }
 
 .selectable:hover {
@@ -303,8 +296,8 @@ Footer > .footer--key {
 }
 
 .selectable.-selected {
-    border-left: thick $accent;
-    background: $surface;
+    background: $surface-3;
+    text-style: bold;
 }
 
 /* ---------------------------------------------------------------------
@@ -332,7 +325,7 @@ Footer > .footer--key {
 
 .chip.-active {
     background: $accent;
-    color: $ink;
+    color: $on-accent;
     text-style: bold;
 }
 
@@ -475,10 +468,8 @@ Select > SelectOverlay {
    four-word toolbar cost three rows and spread "Compare" across sixteen
    columns. Six of those rows on the results screen were blank.
 
-   Here an action row reads as a toolbar of labels. Only the primary action is
-   filled; the rest are text over a hairline that thickens and takes the accent
-   when focused. That gives the row one obvious entry point instead of four
-   equal-weight rectangles, and it costs two rows instead of three.
+   Secondary actions are bracketed labels; only the primary action is filled.
+   All buttons use one row so toolbars remain usable in short terminals.
    --------------------------------------------------------------------- */
 /* The bare Button is the primary's base; every secondary action is an
    `ActionButton`, styled by `.action` below. */
@@ -502,16 +493,15 @@ Button:focus {
     text-style: bold;
 }
 
-/* `[ Compare ]` — the brackets are the affordance, so there is no face and no
-   border to draw. One row, and a row of four actions reads as four actions
-   rather than as four rectangles competing with the content above them. */
+/* Brackets carry the affordance without a filled rectangle. */
 Button.action {
     background: transparent;
     color: $ink;
     border: none;
     height: 1;
     min-width: 0;
-    padding: 0 1;
+    padding: 0;
+    margin: 0 1 0 0;
 }
 
 Button.action:hover {
@@ -519,14 +509,14 @@ Button.action:hover {
     color: $accent-lit;
 }
 
-/* Focus turns the label the same cyan the brackets already wear, so the whole
-   thing lights up as one object. */
+/* Keyboard focus changes shape as well as colour. */
 Button.action:focus {
     background: transparent;
     color: $accent;
-    text-style: bold;
+    text-style: bold underline;
 }
 
+/* Disabled actions keep their place and their explanatory tooltips. */
 Button.action:disabled {
     background: transparent;
     color: $ink-3;
@@ -852,6 +842,25 @@ DataTable > .datatable--header {
     padding: 0 2;
 }
 
+/* ---------------------------------------------------------------------
+   Doctor detail.
+
+   What a check found used to be a table cell, which truncated it. In a pane
+   it is prose, so it gets a measure: past roughly 70 columns the eye loses
+   the start of the next line, and a diagnostic nobody finishes reading is a
+   diagnostic that did not run. The body flexes because the workspace inside
+   it asks for the height that is left.
+   --------------------------------------------------------------------- */
+#doctor-content {
+    height: 1fr;
+}
+
+.doctor-detail-body {
+    color: $ink-2;
+    padding: 1 0 0 0;
+    max-width: 72;
+}
+
 #validation-body,
 #validation-details-body,
 #benchmark-body,
@@ -945,9 +954,27 @@ DataTable > .datatable--header {
 /* ---------------------------------------------------------------------
    Requirements wizard: questions separated by whitespace, not by boxes.
    --------------------------------------------------------------------- */
+/* The ordinal is a figure beside the question rather than two characters in
+   front of its title: it marks where one question ends and the next begins
+   without a rule or a box, and it is the one thing on this screen that can be
+   read at a glance from across the room. The spacing is generous on purpose —
+   six questions used to be packed tight enough to read as one wall. */
 .question {
     height: auto;
-    margin: 0 0 1 0;
+    layout: horizontal;
+    margin: 0 0 2 0;
+}
+
+.question-number {
+    width: 5;
+    height: auto;
+    color: $accent-deep;
+    padding: 0 2 0 0;
+}
+
+.question-body {
+    width: 1fr;
+    height: auto;
 }
 
 .question-title {
@@ -999,7 +1026,8 @@ DataTable > .datatable--header {
 }
 
 .rec-row:focus-within {
-    background: $surface-2;
+    background: $surface-3;
+    outline: solid $line-2;
 }
 
 .rec-headline {
@@ -1010,6 +1038,12 @@ DataTable > .datatable--header {
 .rec-rank {
     width: 4;
     color: $ink-3;
+}
+
+/* The pick the ranking actually made, rather than merely the first row. */
+.rec-rank.-top {
+    color: $accent;
+    text-style: bold;
 }
 
 .rec-name {
@@ -1025,32 +1059,60 @@ DataTable > .datatable--header {
     color: $accent;
 }
 
-.rec-fit {
-    width: auto;
-    text-align: right;
-    padding: 0 0 0 2;
+/* Runtime, backend and format repeat almost unchanged down the column, so
+   they are chrome, not data: they recede a level and let the model name and
+   the fit verdict carry the row. The reason is prose meant to be read, and
+   stays where the eye can reach it. */
+.rec-plan {
+    color: $ink-3;
+    padding: 0 0 0 4;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
-.rec-plan,
-.rec-reason {
-    color: $ink-2;
-    padding: 0 0 0 4;
-}
+.rec-list-fit { padding: 0 0 0 4; }
 
 .rec-unknown-reason {
     color: $ink-2;
     padding: 0 0 0 4;
 }
 
-.rec-evidence {
-    padding: 0 0 0 4;
-}
-
 .rec-actions {
     height: auto;
-    padding: 0 0 0 4;
-    margin: 1 0 0 0;
+    padding: 0;
+    margin: 0 0 1 0;
 }
+
+/* Two unframed panes. Narrow terminals retain the same mounted controls and
+   switch views; neither pane consumes the other's usable height. */
+.selection-workspace { height: 1fr; }
+.workspace-switch { height: 1; padding: 0 2; margin-bottom: 1; }
+.workspace-switch Button.-active { background: transparent; color: $accent; text-style: bold underline; }
+.selection-workspace .workspace-panes { height: 1fr; }
+.workspace-master { width: 56%; height: 1fr; padding: 0 2; }
+.workspace-detail { width: 44%; height: 1fr; padding: 0 2; border-left: solid $line; }
+.selection-workspace.-compact .workspace-master,
+.selection-workspace.-compact .workspace-detail { width: 1fr; border: none; }
+.selection-workspace.-compact .workspace-switch { margin-bottom: 0; }
+.selection-workspace.-compact .inspector-subtitle { margin-bottom: 0; }
+.selection-workspace.-compact TabPane { padding: 0; }
+.selection-workspace.-compact .section-title { padding-bottom: 0; }
+.recommendation-inspector { height: 1fr; }
+.inspector-title { text-style: bold; height: auto; }
+.inspector-subtitle { color: $ink-2; height: auto; margin-bottom: 1; }
+.workspace-detail TabbedContent { height: 1fr; }
+.workspace-detail ContentSwitcher { height: 1fr; }
+.workspace-detail TabPane { height: 1fr; padding: 1 0; }
+.workspace-detail TabPane VerticalScroll { height: 1fr; }
+Tab { background: transparent; color: $ink-3; }
+Tab.-active { color: $accent; text-style: bold; }
+.results-toolbar { height: auto; padding: 0 2; border-top: solid $line; }
+.results-criteria { height: auto; padding: 0 2; color: $ink-2; }
+.selection-workspace .rec-list-head { height: auto; layout: vertical; }
+.selection-workspace .rec-list-aside { width: 1fr; text-align: left; padding: 0; color: $ink-3; }
+.selectable.-selected .rec-plan,
+.selectable.-selected .path-option-meta,
+.selectable.-selected .rec-unknown-reason { color: $ink; }
 
 .rec-actions Button {
     margin: 0 1 0 0;
@@ -1331,4 +1393,106 @@ InspectScreen > .card {
 #benchmark-status {
     color: $ink-2;
     height: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Validation tabs.
+
+   The outcome, the prediction it is compared against, the path that ran and
+   the reproducibility fields used to be a long column plus a second screen.
+   As tabs they need the height the body has left, so both flex.
+   --------------------------------------------------------------------- */
+#validation-result {
+    height: 1fr;
+}
+
+.validation-tabs {
+    height: 1fr;
+}
+
+.validation-tabs TabPane {
+    height: 1fr;
+    padding: 1 0;
+}
+
+.validation-tabs TabPane VerticalScroll {
+    height: 1fr;
+}
+
+/* ---------------------------------------------------------------------
+   Hardware headline.
+
+   Two figures, side by side, in seven-segment numerals. Everything this tool
+   says is a claim about how much fits in these two numbers, so they are read
+   first and from across the room; the unit sits under the figure rather than
+   beside it, where it would halve the digits to make room.
+
+   The profile below is a definition list, and a definition list spanning a
+   150-column terminal stops being a pair: the measure is capped so the label
+   and its value stay in one glance.
+   --------------------------------------------------------------------- */
+.memory-headline {
+    height: auto;
+    padding: 1 0 2 0;
+}
+
+.memory-figure {
+    width: auto;
+    height: auto;
+    padding: 0 6 0 0;
+}
+
+.memory-figure-label {
+    color: $ink-3;
+}
+
+.memory-figure-value {
+    color: $accent;
+    width: auto;
+}
+
+.memory-figure-value.-vram {
+    color: $ok;
+}
+
+.memory-figure-unit {
+    color: $ink-2;
+}
+
+#hardware-content {
+    max-width: 76;
+}
+
+/* ---------------------------------------------------------------------
+   Requirements wizard columns.
+
+   Six questions in one column ran past the fold on every terminal, so the
+   button that submits them was never on screen with the last answer. Two
+   columns halve the height, and the pair is split where the two sides weigh
+   about the same rather than down the middle of the list.
+
+   The height has to be stated: a Horizontal defaults to filling its parent,
+   which would push the submit button out of the scroll region again.
+
+   Below 100 cells they stack back into one. Two 45-column columns of radio
+   labels wrap, and a wrapped option list reads worse than a long one.
+   --------------------------------------------------------------------- */
+.wizard-columns {
+    height: auto;
+    layout: horizontal;
+}
+
+.wizard-column {
+    width: 1fr;
+    height: auto;
+    padding: 0 3 0 0;
+}
+
+.wizard-columns.-narrow {
+    layout: vertical;
+}
+
+.wizard-columns.-narrow .wizard-column {
+    width: 1fr;
+    padding: 0;
 }

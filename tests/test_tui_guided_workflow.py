@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import Event, Lock
 
-from textual.widgets import Button, Checkbox, DataTable, RadioSet, Static
+from textual.widgets import Button, Checkbox, DataTable, Digits, RadioSet, Static
 
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.requirements import UseCase, WorkloadMode
@@ -394,13 +394,15 @@ def test_wizard_question_numbers_never_skip() -> None:
             assert isinstance(screen, RequirementsWizardScreen)
 
             def visible_numbers() -> list[int]:
+                # The ordinal is a Digits figure beside the question now, not
+                # two characters in front of its title.
                 numbers = []
-                for widget in screen.query(".question-title"):
-                    if not widget.display or not widget.parent.display:  # type: ignore[union-attr]
+                for question in screen.query(".question"):
+                    if not question.display:
                         continue
-                    text = str(widget.render())
-                    if text.strip():
-                        numbers.append(int(text.split()[0]))
+                    value = question.query_one(Digits).value
+                    if value.strip():
+                        numbers.append(int(value))
                 return numbers
 
             # General chat: the text-size question is hidden.

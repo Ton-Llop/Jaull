@@ -19,7 +19,7 @@ LINE_2 = "#274156"
 # Text
 INK = "#d8e6f0"
 INK_2 = "#8fa8bd"
-INK_3 = "#6d8599"
+INK_3 = "#8399ab"
 
 # Meaning. One accent, three states.
 ACCENT = "#00e5ff"

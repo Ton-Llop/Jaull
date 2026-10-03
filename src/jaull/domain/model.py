@@ -13,6 +13,7 @@ class ModelFile(BaseModel):
     path: str
     size_bytes: int | None = None
     lfs: bool = False
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ModelRepositoryInfo(BaseModel):
@@ -71,6 +72,11 @@ class GgufVariant(BaseModel):
     quantization: str
     files: list[ModelFile]
     total_bytes: int
+
+    @property
+    def sha256(self) -> str | None:
+        """Only a single-file variant has one artifact digest."""
+        return self.files[0].sha256 if len(self.files) == 1 else None
 
 
 class SafetensorsSummary(BaseModel):

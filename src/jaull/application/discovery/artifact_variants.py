@@ -185,6 +185,7 @@ def _variants_from_candidate(
                     revision="main",
                     format=ArtifactVariantFormat.GGUF,
                     filename=gguf.files[0].path if gguf.files else None,
+                    sha256=gguf.sha256,
                     size_bytes=gguf.total_bytes,
                     file_count=len(gguf.files),
                     quantization=gguf.quantization,

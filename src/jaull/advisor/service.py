@@ -112,6 +112,7 @@ if TYPE_CHECKING:
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
     from jaull.runtime.locator import RuntimeLocator
+    from jaull.runtime.quality_eval_runner import QualityRunRequest
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
     from jaull.runtime.transformers_runner import TransformersRunner
 
@@ -177,9 +178,9 @@ class AdvisorService:
             return _default_diagnostics(runtime_locator=self._runtime_locator())
         return self.collect_diagnostics()
 
-    def inspect_model(self, repo_id: str) -> ModelAnalysis:
+    def inspect_model(self, repo_id: str, *, refresh: bool = False) -> ModelAnalysis:
         candidate = ModelCandidate(repo_id=repo_id)
-        cached = self._cached_model_analysis(candidate)
+        cached = None if refresh else self._cached_model_analysis(candidate)
         if cached is not None:
             return cached
         analysis = self._inspect_model_live(repo_id)
@@ -674,6 +675,20 @@ class AdvisorService:
     def lookup_quality(self, identity: dict[str, Any]) -> dict[str, Any] | None:
         """Reusable evidence for this exact identity, or nothing."""
         return self._quality_store().lookup(identity)
+
+    def run_quality_evaluation(self, request: QualityRunRequest) -> Path:
+        from jaull.runtime.quality_eval_runner import run_quality_evaluation
+
+        return self.save_quality_record(run_quality_evaluation(request))
+
+    def compare_quality(self, left_id: str, right_id: str) -> dict[str, Any]:
+        from jaull.evaluation.quality_comparison import compare_quality_records
+
+        return compare_quality_records(
+            self.load_quality_record(left_id), self.load_quality_record(right_id),
+            left_source=str(self._quality_store().path_for(left_id)),
+            right_source=str(self._quality_store().path_for(right_id)),
+        )
 
     def save_case_manifest(self, manifest: ExperimentalCaseManifest) -> Path:
         return self._case_store().save(manifest)

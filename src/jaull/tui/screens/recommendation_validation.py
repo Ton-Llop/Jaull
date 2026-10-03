@@ -11,7 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Footer, Static
+from textual.widgets import Button, Checkbox, Footer, Static, TabbedContent, TabPane
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
@@ -55,7 +55,6 @@ from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
-from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.context_bar import ContextBar
 from jaull.tui.widgets.metric_list import MetricList, MetricRow
 from jaull.tui.widgets.progress_step import format_step_log
@@ -98,6 +97,48 @@ class _ValidationFailed(Message):
     def __init__(self, message: str) -> None:
         super().__init__()
         self.message = message
+
+
+
+class _ValidationTabs(Vertical):
+    """The outcome and how it was produced, side by side instead of two screens.
+
+    `Result` is what happened, `Prediction` is what the estimator said before
+    it happened, `Execution` is the path that ran and `Technical` is everything
+    needed to reproduce it. Splitting them across a screen boundary meant the
+    prediction and the measurement could never be read together, which is the
+    one comparison this screen exists to make.
+    """
+
+    DEFAULT_CLASSES = "validation-tabs"
+
+    def __init__(
+        self,
+        record: ExperimentRecord,
+        path: Path | None,
+        detail_rows: list[tuple[str, str]],
+    ) -> None:
+        super().__init__()
+        self._record = record
+        self._path = path
+        self._detail_rows = detail_rows
+
+    def compose(self) -> ComposeResult:
+        with TabbedContent():
+            with TabPane("Result"), VerticalScroll():
+                yield MetricList("Result", _result_rows(self._record), emphasis="measured")
+            with TabPane("Prediction"), VerticalScroll():
+                yield _prediction_block(self._record)
+            with TabPane("Execution"), VerticalScroll():
+                yield MetricList("Execution", _execution_rows(self._record))
+            with TabPane("Technical"), VerticalScroll():
+                yield SummaryCard(
+                    "Experiment", _technical_experiment_rows(self._record, self._path)
+                )
+                yield SummaryCard("Artifact", _technical_artifact_rows(self._record))
+                yield SummaryCard("Runtime", _technical_runtime_rows(self._record))
+                yield SummaryCard("Observation", _technical_observation_rows(self._record))
+                yield TechnicalDetails(self._detail_rows)
 
 
 class RecommendationValidationScreen(Screen[None]):
@@ -154,11 +195,6 @@ class RecommendationValidationScreen(Screen[None]):
                     id="validation-start",
                     classes="-primary",
                 )
-                yield ActionButton(
-                    "Technical details",
-                    id="validation-details",
-                    disabled=True,
-                )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -192,14 +228,6 @@ class RecommendationValidationScreen(Screen[None]):
         match event.button.id:
             case "validation-start":
                 self._start_validation()
-            case "validation-details":
-                if self._last_record is not None:
-                    self.app.push_screen(
-                        ValidationDetailsScreen(
-                            self._last_record,
-                            self._last_persisted_path,
-                        )
-                    )
 
     def _start_validation(self) -> None:
         if self._future is not None and not self._future.done():
@@ -409,9 +437,6 @@ class RecommendationValidationScreen(Screen[None]):
 
     def _set_busy(self, busy: bool) -> None:
         self.query_one("#validation-start", Button).disabled = busy
-        self.query_one("#validation-details", Button).disabled = (
-            busy or self._last_record is None
-        )
 
     def _set_error(self, message: str) -> None:
         widget = self.query_one("#validation-error", Static)
@@ -429,7 +454,6 @@ class RecommendationValidationScreen(Screen[None]):
         self._last_result = None
         self._last_record = None
         self._last_persisted_path = None
-        self.query_one("#validation-details", Button).disabled = True
 
     def _render_record(
         self,
@@ -459,23 +483,6 @@ class RecommendationValidationScreen(Screen[None]):
                 ),
             )
         )
-        # Result: what actually happened, in the units a person cares about.
-        body.mount(
-            MetricList("Result", _result_rows(record), emphasis="measured").add_class(
-                "validation-result-node"
-            )
-        )
-        body.mount(
-            _prediction_block(record).add_class("validation-result-node")
-        )
-        body.mount(
-            MetricList("Execution", _execution_rows(record)).add_class(
-                "validation-result-node"
-            )
-        )
-        # Record id, storage path and the step log are reproducibility detail,
-        # not the outcome. They stay one keystroke away rather than competing
-        # with the result for the top of the screen.
         detail_rows = [
             ("Experiment ID", record.identity.experiment_id),
             ("Saved", str(persisted_path) if persisted_path else "not saved"),
@@ -486,9 +493,12 @@ class RecommendationValidationScreen(Screen[None]):
             (f"Step {index}", step)
             for index, step in enumerate(self._log_messages, start=1)
         )
-        body.mount(TechnicalDetails(detail_rows).add_class("validation-result-node"))
+        body.mount(
+            _ValidationTabs(record, persisted_path, detail_rows).add_class(
+                "validation-result-node"
+            )
+        )
         self._set_status("")
-        self.query_one("#validation-details", Button).disabled = False
 
     def _estimate(self) -> MemoryEstimate | None:
         if self._execution_plan is not None:
@@ -511,32 +521,6 @@ class RecommendationValidationScreen(Screen[None]):
 
         assert isinstance(self.app, JaullApp)
         return self.app
-
-
-class ValidationDetailsScreen(Screen[None]):
-    BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
-
-    def __init__(self, record: ExperimentRecord, path: Path | None) -> None:
-        super().__init__()
-        self._record = record
-        self._path = path
-
-    def compose(self) -> ComposeResult:
-        yield Static("Validation details", classes="section-title")
-        with VerticalScroll(id="validation-details-body"):
-            yield SummaryCard(
-                "Experiment",
-                _technical_experiment_rows(self._record, self._path),
-            )
-            yield SummaryCard("Artifact", _technical_artifact_rows(self._record))
-            yield SummaryCard("Runtime", _technical_runtime_rows(self._record))
-            yield SummaryCard("Observation", _technical_observation_rows(self._record))
-            yield ActionButton("Back", id="validation-details-back")
-        yield Footer()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "validation-details-back":
-            self.app.pop_screen()
 
 
 class _ValidationHeader(ContextBar):
@@ -750,5 +734,4 @@ def _duration(value: float) -> str:
 __all__ = [
     "VALIDATION_PROMPT",
     "RecommendationValidationScreen",
-    "ValidationDetailsScreen",
 ]

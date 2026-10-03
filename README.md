@@ -157,6 +157,15 @@ benchmarks of the same logical model can be compared as complete execution plans
 than as disembodied numbers. Failed runs retain diagnostics but do not replace earlier
 successful performance evidence.
 
+**Optional quality diagnostics.** `jaull quality run` explicitly invokes the pinned
+local GGUF/container pilot, evaluates artifacts sequentially and saves completed,
+HTTP-validated records. `jaull quality compare` compares stored per-task metrics
+offline and withholds comparisons when protocols differ. Execution currently needs
+a trusted Jaull checkout, its audited local artifacts/runtime/dataset and an already-built
+evaluator image; it performs no downloads or automatic builds. Results are plumbing or
+limited diagnostics, not a general-quality score, and never alter ranking.
+→ [CLI quality pilot](docs/quality-evaluation-pilot.md#phase-c-explicit-cli-execution)
+
 **Prediction vs observation.** `compare_prediction` puts a `MemoryEstimate` next to an
 `ExecutionObservation` and reports the signed error under a single convention
 (`measured − predicted`), plus whether the compatibility verdict was a correct
@@ -204,7 +213,7 @@ Validation runs the plan for real and compares the prediction against the observ
 More screens — search, run history, failure states, the memory estimate view — in
 [docs/ui.md](docs/ui.md).
 
-> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py`
+> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py --size 150x42`
 > (headless, no network, no llama.cpp).
 
 ---

@@ -299,6 +299,7 @@ def _gguf_plans(
             revision="main",
             format=ArtifactVariantFormat.GGUF,
             filename=variant.files[0].path if variant.files else None,
+            sha256=variant.sha256,
             size_bytes=variant.total_bytes,
             file_count=len(variant.files),
             quantization=variant.quantization,

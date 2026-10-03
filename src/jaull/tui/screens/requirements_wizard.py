@@ -8,6 +8,7 @@ from textual.screen import Screen
 from textual.widgets import (
     Button,
     Checkbox,
+    Digits,
     Footer,
     Input,
     RadioButton,
@@ -98,6 +99,15 @@ class RequirementsWizardScreen(Screen[None]):
 
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
+    def on_resize(self) -> None:
+        self._apply_columns()
+
+    def _apply_columns(self) -> None:
+        """One column below 100 cells: two would each be too narrow to read."""
+        columns = self.query(".wizard-columns")
+        if columns:
+            columns.first().set_class(self.size.width < 100, "-narrow")
+
     def compose(self) -> ComposeResult:
         yield WorkflowHeader(
             WorkflowStep.REQUIREMENTS,
@@ -106,98 +116,121 @@ class RequirementsWizardScreen(Screen[None]):
         # Numbered questions separated by whitespace, not by six boxes: the
         # heading and the indent already say where one question ends.
         with VerticalScroll(id="wizard-body"):
-            with Vertical(classes="question"):
-                yield Static(id="q-title-use-case", classes="question-title")
-                yield RadioSet(
-                    *[
-                        RadioButton(label, value=index == 0, id=f"uc-{case.value}")
-                        for index, (case, label) in enumerate(_USE_CASES)
-                    ],
-                    id="q-use-case",
-                )
-            with Vertical(classes="question"):
-                yield Static(id="q-title-workload-mode", classes="question-title")
-                yield RadioSet(
-                    *[
-                        RadioButton(
-                            label,
-                            value=mode is WorkloadMode.INTERACTIVE,
-                            id=f"wm-{mode.value}",
-                        )
-                        for mode, label in _WORKLOAD_MODES
-                    ],
-                    id="q-workload-mode",
-                )
-            with Vertical(classes="question"):
-                yield Static(id="q-title-priority", classes="question-title")
-                yield RadioSet(
-                    *[
-                        RadioButton(
-                            label,
-                            value=priority is RecommendationPriority.BALANCED,
-                            id=f"pr-{priority.value}",
-                        )
-                        for priority, label in _PRIORITIES
-                    ],
-                    id="q-priority",
-                )
-            with Vertical(classes="question"):
-                yield Static(id="q-title-languages", classes="question-title")
-                for language in _LANGUAGES:
-                    yield Checkbox(
-                        language,
-                        value=language == "English",
-                        id=f"lang-{language.lower()}",
-                    )
-                yield Checkbox("Other", value=False, id="lang-other")
-                yield Input(
-                    placeholder="Other languages, comma separated (e.g. fr, italian)",
-                    id="lang-other-input",
-                )
-            with Vertical(classes="question"):
-                yield Static(id="q-title-concurrency", classes="question-title")
-                yield RadioSet(
-                    *[
-                        RadioButton(
-                            label,
-                            value=level is ConcurrencyLevel.SINGLE,
-                            id=f"cc-{level.value}",
-                        )
-                        for level, label in _CONCURRENCY
-                    ],
-                    id="q-concurrency",
-                )
-            # Only meaningful for document work; hidden otherwise so the wizard
-            # never asks a question the answer cannot influence.
-            with Vertical(classes="question", id="q-documents-card"):
-                yield Static(id="q-title-documents", classes="question-title")
-                yield Static(
-                    "Sets the context window — not the size of a document "
-                    "collection; retrieval feeds the model a few chunks at a time.",
-                    classes="question-note",
-                )
-                yield RadioSet(
-                    *[
-                        RadioButton(
-                            label,
-                            value=scale is DocumentScale.MEDIUM,
-                            id=f"ds-{scale.value}",
-                        )
-                        for scale, label in _DOCUMENT_SCALE
-                    ],
-                    id="q-documents",
-                )
-            with Vertical(classes="question"):
-                yield Static(id="q-title-commercial", classes="question-title")
-                yield RadioSet(
-                    *[
-                        RadioButton(
-                            label, value=choice is CommercialUse.YES, id=f"cu-{choice.value}"
-                        )
-                        for choice, label in _COMMERCIAL
-                    ],
-                    id="q-commercial",
-                )
+            # Seven questions stacked in one column ran past the fold, which put
+            # the submit button somewhere you had to go looking for. Two columns
+            # halve the height; below 100 cells they fold back into one, where
+            # stacking is the only honest option.
+            with Horizontal(classes="wizard-columns"):
+                with Vertical(classes="wizard-column"):
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-use-case", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-use-case", classes="question-title")
+                            yield RadioSet(
+                                *[
+                                    RadioButton(label, value=index == 0, id=f"uc-{case.value}")
+                                    for index, (case, label) in enumerate(_USE_CASES)
+                                ],
+                                id="q-use-case",
+                            )
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-workload-mode", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-workload-mode", classes="question-title")
+                            yield RadioSet(
+                                *[
+                                    RadioButton(
+                                        label,
+                                        value=mode is WorkloadMode.INTERACTIVE,
+                                        id=f"wm-{mode.value}",
+                                    )
+                                    for mode, label in _WORKLOAD_MODES
+                                ],
+                                id="q-workload-mode",
+                            )
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-priority", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-priority", classes="question-title")
+                            yield RadioSet(
+                                *[
+                                    RadioButton(
+                                        label,
+                                        value=priority is RecommendationPriority.BALANCED,
+                                        id=f"pr-{priority.value}",
+                                    )
+                                    for priority, label in _PRIORITIES
+                                ],
+                                id="q-priority",
+                            )
+                with Vertical(classes="wizard-column"):
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-languages", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-languages", classes="question-title")
+                            for language in _LANGUAGES:
+                                yield Checkbox(
+                                    language,
+                                    value=language == "English",
+                                    id=f"lang-{language.lower()}",
+                                )
+                            yield Checkbox("Other", value=False, id="lang-other")
+                            yield Input(
+                                placeholder="Other languages, comma separated (e.g. fr, italian)",
+                                id="lang-other-input",
+                            )
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-concurrency", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-concurrency", classes="question-title")
+                            yield RadioSet(
+                                *[
+                                    RadioButton(
+                                        label,
+                                        value=level is ConcurrencyLevel.SINGLE,
+                                        id=f"cc-{level.value}",
+                                    )
+                                    for level, label in _CONCURRENCY
+                                ],
+                                id="q-concurrency",
+                            )
+                    # Only meaningful for document work; hidden otherwise so the wizard
+                    # never asks a question the answer cannot influence.
+                    with Horizontal(classes="question", id="q-documents-card"):
+                        yield Digits("1", id="q-num-documents", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-documents", classes="question-title")
+                            yield Static(
+                                "Sets the context window — not the size of a document "
+                                "collection; retrieval feeds the model a few chunks at a time.",
+                                classes="question-note",
+                            )
+                            yield RadioSet(
+                                *[
+                                    RadioButton(
+                                        label,
+                                        value=scale is DocumentScale.MEDIUM,
+                                        id=f"ds-{scale.value}",
+                                    )
+                                    for scale, label in _DOCUMENT_SCALE
+                                ],
+                                id="q-documents",
+                            )
+                    with Horizontal(classes="question"):
+                        yield Digits("1", id="q-num-commercial", classes="question-number")
+                        with Vertical(classes="question-body"):
+                            yield Static(id="q-title-commercial", classes="question-title")
+                            yield RadioSet(
+                                *[
+                                    RadioButton(
+                                        label,
+                                        value=choice is CommercialUse.YES,
+                                        id=f"cu-{choice.value}",
+                                    )
+                                    for choice, label in _COMMERCIAL
+                                ],
+                                id="q-commercial",
+                            )
             yield Vertical(id="wizard-errors")
             with Horizontal(id="wizard-actions", classes="actions-right"):
                 yield Button("Find models", id="wizard-submit", classes="-primary")
@@ -212,7 +245,7 @@ class RequirementsWizardScreen(Screen[None]):
 
     def _sync_document_question(self) -> None:
         """The text-size question exists only for the document use case."""
-        card = self.query_one("#q-documents-card", Vertical)
+        card = self.query_one("#q-documents-card", Horizontal)
         card.display = self._selected_use_case() is UseCase.DOCUMENT_QA
         self._renumber_questions()
 
@@ -222,13 +255,15 @@ class RequirementsWizardScreen(Screen[None]):
         Hiding a question in the middle used to leave a gap in the sequence,
         because each title carried its ordinal as a literal string.
         """
-        documents_visible = self.query_one("#q-documents-card", Vertical).display
+        documents_visible = self.query_one("#q-documents-card", Horizontal).display
         ordinal = 0
         for widget_id, text in _QUESTION_TITLES:
             if widget_id == "q-title-documents" and not documents_visible:
                 continue
             ordinal += 1
-            self.query_one(f"#{widget_id}", Static).update(f"{ordinal}  {text}")
+            self.query_one(f"#{widget_id}", Static).update(text)
+            number = widget_id.replace("q-title-", "q-num-")
+            self.query_one(f"#{number}", Digits).update(str(ordinal))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id != "wizard-submit":

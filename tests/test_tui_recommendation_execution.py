@@ -1168,7 +1168,6 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             await _wait_until(
                 pilot,
                 lambda: len(advisor.experiment_records) == 1
-                and screen.query_one("#validation-details", Button).disabled is False,
             )
 
             assert advisor.operations == [
@@ -1200,8 +1199,7 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert "Measured RAM" in text
             assert "Execution" in text
             assert advisor.experiment_persisted_path is not None
-            assert screen.query_one("#validation-details", Button).disabled is False
-            screen.query_one("#validation-details", Button).press()
+            assert "Technical" in _visible_text(screen)
             await _wait_until(
                 pilot,
                 lambda: advisor.experiment_persisted_path is not None
@@ -1291,7 +1289,10 @@ def test_validation_screen_runs_transformers_experiment_without_gguf_resolution(
             assert advisor.experiment_records[0].runtime.runtime is RuntimeName.TRANSFORMERS
             text = _visible_text(screen)
             assert "Configuration validated" in text
-            assert "Runtime status" not in text
+            # The reproducibility fields are on this screen now, behind the
+            # Technical tab rather than behind a second screen, so the result
+            # and the prediction it is compared against can be read together.
+            assert all(tab in text for tab in ("Result", "Prediction", "Technical"))
 
     _run(scenario())
 
@@ -2595,7 +2596,7 @@ def test_selecting_a_recommendation_expands_it_and_collapses_the_others() -> Non
             second = screen.query_one("#rec-row-1")
 
             def actions_shown(row: Any) -> bool:
-                return row.query_one(".rec-actions").display
+                return screen.query_one("#" + row.id.replace("rec-row", "rec-detail")).display
 
             assert first.has_class("-selected")
             assert not second.has_class("-selected")

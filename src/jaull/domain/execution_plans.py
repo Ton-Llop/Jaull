@@ -151,6 +151,8 @@ class ArtifactVariant(BaseModel):
     revision: str | None = None
     format: ArtifactVariantFormat
     filename: str | None = None
+    # Published discovery metadata, not proof of a verified local download.
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     size_bytes: int | None = Field(default=None, ge=0)
     file_count: int | None = Field(default=None, ge=1)
     quantization: str | None = None

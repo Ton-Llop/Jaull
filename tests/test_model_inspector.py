@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from jaull.domain.enums import RepositoryType
+from jaull.domain.model import ModelAnalysis, ModelFile
 from jaull.exceptions import ModelAccessDeniedError, ModelNotFoundError
-from jaull.huggingface.repository import inspect_model
+from jaull.huggingface.repository import files_from_metadata, inspect_model
 
 
 @dataclass
@@ -148,3 +150,31 @@ def test_repository_total_includes_all_variants(tmp_path: Path) -> None:
     assert len(analysis.classification.gguf_variants) == 3
     sizes = {v.quantization: v.total_bytes for v in analysis.classification.gguf_variants}
     assert sizes == {"Q4_K_M": 4_000_000_000, "Q5_K_M": 5_000_000_000, "Q8_0": 8_000_000_000}
+
+
+@pytest.mark.parametrize("lfs", [
+    {"sha256": "a" * 64}, SimpleNamespace(sha256="a" * 64),
+    None, object(), {"sha256": "b" * 40}, {"sha256": 123},
+])
+def test_published_content_digest_is_optional_and_never_a_git_blob_id(lfs: object) -> None:
+    info = SimpleNamespace(siblings=[SimpleNamespace(
+        rfilename="model-Q4_K_M.gguf", size=123, lfs=lfs, blob_id="b" * 40,
+    )])
+    file = files_from_metadata(info)[0]
+    expected = "a" * 64 if isinstance(lfs, dict) and lfs.get("sha256") == "a" * 64 else None
+    if isinstance(lfs, SimpleNamespace):
+        expected = "a" * 64
+    assert file.sha256 == expected
+    assert file.lfs is (lfs is not None)
+    assert file.size_bytes == 123
+
+
+def test_inspection_preserves_digest_and_legacy_metadata_still_loads(tmp_path: Path) -> None:
+    info = _FakeModelInfo(id="owner/model-GGUF", siblings=[_Sibling(
+        rfilename="model-Q4_K_M.gguf", size=123, lfs={"sha256": "a" * 64},
+    )])
+    analysis = inspect_model(info.id, client=_FakeHfClient(info=info, tmp_path=tmp_path))
+    assert analysis.classification.gguf_variants[0].sha256 == "a" * 64
+    assert ModelAnalysis.model_validate_json(analysis.model_dump_json()) == analysis
+    legacy = ModelFile.model_validate({"path": "model.gguf", "size_bytes": 123, "lfs": True})
+    assert legacy.sha256 is None
