@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-from pilot.quality_eval.evaluate import ARTIFACT_PINS, TASK
+from pilot.quality_eval.evaluate import ARTIFACT_PINS, LIMITED_TASK, PROFILES, TASK
 from pilot.quality_eval.records import (
     JSON_FILES,
     digest,
@@ -63,6 +63,42 @@ def synthetic_full_record():
         },
         "provenance": {"hardware": "synthetic hardware, no real measurement"},
     }
+
+
+def synthetic_limited_record():
+    record = synthetic_full_record()
+    task = record["identity"]["suite"]["name"]
+    ids = list(PROFILES["hellaswag100"]["sample_ids"])
+    identity = record["identity"]
+    identity["suite"]["name"] = LIMITED_TASK
+    identity["dataset"].update(sample_ids=ids, total_samples=10042)
+    identity["evaluator"]["sample_ids"] = ids
+    identity["samples"] = [identity["samples"][0] | {"doc_id": i} for i in ids]
+    record["identity_sha256"] = digest(identity)
+    result = record["result"]
+    for field in ("results", "configs", "n-samples", "samples"):
+        result[field][LIMITED_TASK] = result[field].pop(task)
+    result["n-samples"][LIMITED_TASK] = {"original": 10042, "effective": 100}
+    result["samples"][LIMITED_TASK] = [result["samples"][LIMITED_TASK][0] | {"doc_id": i}
+                                              for i in ids]
+    record["classification"] = "limited"
+    return record
+
+
+def test_limited_results_cannot_be_reused_or_relabelled_as_full(tmp_path: Path):
+    record = synthetic_limited_record()
+    for classification in ("limited", "full"):
+        record["classification"] = classification
+        path = tmp_path / f"{classification}.json"
+        save_record(path, record)
+        assert quality_lookup(path, record["identity"]) is None
+    record["identity"]["dataset"]["sample_ids"][0] = 0
+    record["identity"]["evaluator"]["sample_ids"] = record["identity"]["dataset"]["sample_ids"]
+    record["identity"]["samples"][0]["doc_id"] = 0
+    record["result"]["samples"][LIMITED_TASK][0]["doc_id"] = 0
+    record["identity_sha256"] = digest(record["identity"])
+    with pytest.raises(ValueError, match="fixed 100-example"):
+        validate_record(record)
 
 
 def test_quality_record_identity_reuse_and_immutable_full_results(tmp_path: Path) -> None:
@@ -180,16 +216,21 @@ def test_inconsistent_aggregate_is_rejected_even_with_a_valid_checksum(tmp_path:
     assert path.read_bytes() == before
 
 
-def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("profile_name", ["smoke", "hellaswag100"])
+def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(
+    tmp_path: Path, monkeypatch, profile_name: str,
+):
+    profile = PROFILES[profile_name]
+    selected_ids, selected_task = profile["sample_ids"], profile["task"]
     record = synthetic_full_record()
     task = record["identity"]["suite"]["name"]
     result = record["result"]
     for key in ("results", "configs", "n-samples", "samples"):
-        result[key][TASK] = result[key].pop(task)
-    sample = result["samples"][TASK][0]
-    result["samples"][TASK] = [sample | {"doc_id": i} for i in range(3)]
-    result["n-samples"][TASK] = {"original": 10042, "effective": 3}
-    evaluator = record["identity"]["evaluator"] | {"sample_ids": [0, 1, 2]}
+        result[key][selected_task] = result[key].pop(task)
+    sample = result["samples"][selected_task][0]
+    result["samples"][selected_task] = [sample | {"doc_id": i} for i in selected_ids]
+    result["n-samples"][selected_task] = {"original": 10042, "effective": len(selected_ids)}
+    evaluator = record["identity"]["evaluator"] | {"sample_ids": selected_ids}
     sha, pin = next(iter(ARTIFACT_PINS.items()))
     artifact = pin | {"sha256": sha, "local_path": "/synthetic/model.gguf"}
     data = b"synthetic dataset, not parquet or measured data"
@@ -210,10 +251,10 @@ def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(tmp_path: Pat
         },
         "evaluator-config.json": evaluator,
         "dataset.json": {"repo": "synthetic/dataset", "revision": "f" * 40,
-                         "sha256": hashlib.sha256(data).hexdigest(), "sample_ids": [0, 1, 2]},
+                         "sha256": hashlib.sha256(data).hexdigest(), "sample_ids": selected_ids},
         "lm-eval-results.json": result,
-        "smoke-status.json": {"status": "plumbing_passed", "quality_evidence": False},
-        "runner-status.json": {"status": "plumbing_passed", "quality_evidence": False,
+        "smoke-status.json": {"status": profile["status"], "quality_evidence": False},
+        "runner-status.json": {"status": profile["status"], "quality_evidence": False,
                                "server_exit_code": 0},
     }
     for name, value in evidence.items():
@@ -249,12 +290,13 @@ def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(tmp_path: Pat
         "id": 3, "logprob": -0.6, "top_logprobs": [{"logprob": -0.6}],
     }]
     # Tokenization is cached by text, but every selected choice must be scored.
-    exchanges = [tokenization, whole, *([scoring, second] * 3)]
+    exchanges = [tokenization, whole, *([scoring, second] * len(selected_ids))]
     http = tmp_path / "http.jsonl"
     http.write_text("".join(json.dumps(exchange) + "\n" for exchange in exchanges))
     snapshot = snapshot_bundle(tmp_path)
     save_record(tmp_path / "snapshot.json", snapshot)
     assert snapshot["result"] == result
+    assert snapshot["classification"] == profile["classification"]
     assert snapshot["provenance"]["evidence"]["http.jsonl"] == http.read_text()
     assert snapshot["provenance"]["hardware"] == evidence["hardware.json"]
     assert quality_lookup(tmp_path / "snapshot.json", snapshot["identity"]) is None

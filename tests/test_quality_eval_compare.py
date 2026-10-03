@@ -8,7 +8,7 @@ import pytest
 from pilot.quality_eval.compare import compare_records
 from pilot.quality_eval.records import digest, save_record
 
-from tests.test_quality_eval_records import synthetic_full_record
+from tests.test_quality_eval_records import synthetic_full_record, synthetic_limited_record
 
 
 def test_diagnostic_comparison_keeps_artifacts_and_hardware_as_provenance(tmp_path: Path):
@@ -83,3 +83,19 @@ def test_comparison_fails_closed_on_corrupt_partial_unknown_or_inconsistent_resu
         right.write_text(json.dumps({"record": changed, "record_sha256": checksum}))
         with pytest.raises((ValueError, KeyError)):
             compare_records(left, right)
+
+
+def test_fixed_larger_subset_is_diagnostic_not_a_full_benchmark(tmp_path: Path):
+    record = synthetic_limited_record()
+    paths = [tmp_path / "left.json", tmp_path / "right.json"]
+    for path in paths:
+        save_record(path, record)
+    report = compare_records(*paths)
+    assert report["status"] == "COMPARABLE_LIMITED"
+    assert all(check["match"] for check in report["checks"])
+    assert report["per_task"][0]["left"]["samples"] == 100
+    assert any("not a full benchmark" in text for text in report["limitations"])
+    smoke = synthetic_full_record() | {"classification": "plumbing"}
+    smoke_path = tmp_path / "smoke.json"
+    save_record(smoke_path, smoke)
+    assert compare_records(paths[0], smoke_path)["status"] == "NOT_COMPARABLE"

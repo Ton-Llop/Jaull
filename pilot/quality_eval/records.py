@@ -1,4 +1,11 @@
-"""Offline, write-once result snapshots; limited smokes never satisfy quality lookup."""
+"""Produce write-once snapshots of a finished bundle, validated harder than on read.
+
+The reusable half of this module now lives in
+:mod:`jaull.evaluation.quality_records`, because the advisor and the interface
+read records and ``pilot/`` does not ship in the wheel. What stays here is what
+only the producer can check: the audited sample selection of each profile, and
+the reconstruction of every saved continuation from the captured HTTP evidence.
+"""
 
 from __future__ import annotations
 
@@ -6,19 +13,36 @@ import argparse
 import hashlib
 import json
 import math
-import re
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
 from pilot.quality_eval.evaluate import (
-    SAMPLE_IDS,
-    TASK,
+    DATASET_SIZE,
+    LIMITED_TASK,
+    profile_for_task,
     validate_artifact_identity,
     validate_scoring_request,
     validate_scoring_response,
     verified_dataset_bytes,
-    write_json,
+)
+
+from jaull.evaluation.quality_records import (
+    digest,
+    known,
+    validate_identity,
+)
+from jaull.evaluation.quality_records import (
+    load_record as _load_record_contract,
+)
+from jaull.evaluation.quality_records import (
+    quality_lookup as _quality_lookup_contract,
+)
+from jaull.evaluation.quality_records import (
+    save_record as _save_record_contract,
+)
+from jaull.evaluation.quality_records import (
+    validate_record as _validate_record_contract,
 )
 
 JSON_FILES = (
@@ -28,143 +52,20 @@ JSON_FILES = (
     "dataset.json", "lm-eval-results.json", "smoke-status.json", "runner-status.json",
 )
 TEXT_FILES = ("http.jsonl", "server.log", "evaluator.log")
-EVALUATOR_FIELDS = {
-    "evaluator_commit", "backend_sha256", "suite_sha256", "sample_ids", "num_fewshot",
-    "context", "apply_chat_template", "system_instruction", "generation", "use_cache",
-    "cache_requests", "seeds", "server_seed", "python", "packages",
-}
-
-
-def digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
-    ).encode()).hexdigest()
-
-
-def known(value: Any) -> bool:
-    """Null/empty identity values are unknown, except explicitly checked absences."""
-    if isinstance(value, dict):
-        return bool(value) and all(known(item) for item in value.values())
-    if isinstance(value, list):
-        return bool(value) and all(known(item) for item in value)
-    return value is not None and value != ""
-
-
-def validate_identity(identity: dict[str, Any]) -> None:
-    if set(identity) != {"artifact_sha256", "suite", "dataset", "samples",
-                         "evaluator", "runtime", "protocol"}:
-        raise ValueError("Missing/unknown identity fields")
-    evaluator = identity["evaluator"]
-    if set(evaluator) != EVALUATOR_FIELDS:
-        raise ValueError("Incomplete evaluator identity")
-    absent = {"system_instruction", "generation", "use_cache"}
-    if (
-        any(evaluator[key] is not None for key in absent)
-        or evaluator["apply_chat_template"] is not False
-        or evaluator["cache_requests"] is not False
-        or not known({key: value for key, value in evaluator.items() if key not in absent})
-        or not known({key: value for key, value in identity.items() if key != "evaluator"})
-    ):
-        raise ValueError("Unknown identity or unsupported chat/generation/cache mode")
-    suite, dataset, runtime = (identity[key] for key in ("suite", "dataset", "runtime"))
-    if (
-        set(suite) != {"name", "sha256"}
-        or set(dataset) != {"repo", "revision", "sha256", "sample_ids", "total_samples"}
-        or set(runtime) != {"server_sha256", "image_id", "fingerprint", "backend_flags",
-                            "server_defaults_sha256"}
-        or identity["protocol"] != {
-            "mode": "loglikelihood", "tokenize_add_special": True,
-            "temperature": 0, "max_tokens": 1, "logprobs": 2, "id_slot": 0,
-            "target_logit_bias": 100, "cached_prompt_tokens": 0,
-        }
-    ):
-        raise ValueError("Unsupported identity schema/protocol")
-    for sha in (identity["artifact_sha256"], suite["sha256"], dataset["sha256"],
-                runtime["server_sha256"], evaluator["backend_sha256"],
-                runtime["server_defaults_sha256"],
-                runtime["image_id"].removeprefix("sha256:")):
-        if not isinstance(sha, str) or re.fullmatch("[0-9a-f]{64}", sha) is None:
-            raise ValueError("Unknown exact digest")
-    ids = dataset["sample_ids"]
-    if (
-        type(dataset["total_samples"]) is not int or dataset["total_samples"] < 1
-        or not isinstance(ids, list) or not ids
-        or any(type(item) is not int or not 0 <= item < dataset["total_samples"] for item in ids)
-        or len(set(ids)) != len(ids) or evaluator["sample_ids"] != ids
-        or evaluator["suite_sha256"] != suite["sha256"]
-        or type(evaluator["context"]) is not int or evaluator["context"] < 1
-        or re.fullmatch("[0-9a-f]{40}", evaluator["evaluator_commit"]) is None
-        or re.fullmatch("[0-9a-f]{40}", dataset["revision"]) is None
-        or not isinstance(evaluator["packages"], dict) or not evaluator["packages"]
-        or not isinstance(runtime["backend_flags"], list)
-        or any(not isinstance(flag, str) for flag in runtime["backend_flags"])
-    ):
-        raise ValueError("Incomplete sample/config identity")
-    samples = identity["samples"]
-    if not isinstance(samples, list) or [sample["doc_id"] for sample in samples] != ids:
-        raise ValueError("Incomplete selected sample identity")
-    for sample in samples:
-        if set(sample) != {"doc_id", "doc_hash", "prompt_hash", "target_hash", "arguments"}:
-            raise ValueError("Unknown sample identity")
-        for field in ("doc_hash", "prompt_hash", "target_hash"):
-            if re.fullmatch("[0-9a-f]{64}", sample[field]) is None:
-                raise ValueError("Unknown sample/prompt digest")
-
-
 def validate_record(record: dict[str, Any]) -> None:
-    if record["schema_version"] != 1 or record["status"] != "completed":
-        raise ValueError("Unsupported/unfinished result record")
+    """The shared contract, plus the two things only the producer can verify."""
+    _validate_record_contract(record)
     identity = record["identity"]
-    validate_identity(identity)
-    if not record["provenance"]["hardware"]:
-        raise ValueError("Missing hardware provenance")
-    if record["identity_sha256"] != digest(identity):
-        raise ValueError("Identity checksum mismatch")
-    result, task = record["result"], identity["suite"]["name"]
-    ids = identity["dataset"]["sample_ids"]
-    if (
-        record["classification"] not in ("plumbing", "full")
-        or result["n-samples"][task] != {
-            "original": identity["dataset"]["total_samples"], "effective": len(ids),
-        }
-        or [sample["doc_id"] for sample in result["samples"][task]] != ids
-        or not result["results"][task] or not result["configs"][task]
-        or any(
-            {key: sample[key] for key in expected} != expected
-            for sample, expected in zip(result["samples"][task], identity["samples"], strict=True)
-        )
+    task = identity["suite"]["name"]
+    if task == LIMITED_TASK and (
+        identity["dataset"]["sample_ids"] != profile_for_task(task)["sample_ids"]
+        or identity["dataset"]["total_samples"] != DATASET_SIZE
     ):
-        raise ValueError("Incomplete/mismatched raw results")
-    for sample in result["samples"][task]:
-        if (
-            len(sample["resps"]) != len(sample["arguments"])
-            or len(sample["filtered_resps"]) != len(sample["arguments"])
-            or any(sample[metric] not in (0, 1) for metric in ("acc", "acc_norm"))
-            or "error" in sample
-        ):
-            raise ValueError("Incomplete sample responses/metrics")
-        for repeats in sample["resps"]:
-            if not isinstance(repeats, list) or not repeats:
-                raise ValueError("Missing continuation scores")
-        for score in [value for repeats in sample["resps"] for value in repeats] + sample[
-            "filtered_resps"
-        ]:
-            if (
-                not isinstance(score, list) or len(score) != 2
-                or type(score[0]) not in (int, float) or not math.isfinite(score[0])
-                or score[0] > 0 or type(score[1]) is not bool
-            ):
-                raise ValueError("Invalid/missing continuation score")
-    for metric in ("acc", "acc_norm"):
-        value = result["results"][task][metric + ",none"]
-        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
-            raise ValueError("Invalid/missing task metric")
-        expected = sum(sample[metric] for sample in result["samples"][task]) / len(ids)
-        if not math.isclose(value, expected, rel_tol=0, abs_tol=1e-12):
-            raise ValueError("Saved metric differs from completed per-sample results")
+        raise ValueError("Limited result does not match the fixed 100-example selection")
     if "evidence" in record["provenance"]:
-        fingerprint = validate_http_coverage(record["provenance"]["evidence"]["http.jsonl"],
-                                             result["samples"][task])
+        fingerprint = validate_http_coverage(
+            record["provenance"]["evidence"]["http.jsonl"], record["result"]["samples"][task]
+        )
         if fingerprint != identity["runtime"]["fingerprint"]:
             raise ValueError("HTTP runtime differs from record identity")
 
@@ -228,37 +129,15 @@ def validate_http_coverage(text: str, samples: list[dict[str, Any]]) -> str:
 
 
 def save_record(path: Path, record: dict[str, Any]) -> None:
-    validate_record(record)
-    # Serialize before exclusive creation; interrupted/truncated files are lookup misses.
-    envelope = {"record": record, "record_sha256": digest(record)}
-    write_json(path, envelope)
+    _save_record_contract(path, record, validate=validate_record)
 
 
 def load_record(path: Path) -> dict[str, Any]:
-    envelope = json.loads(path.read_text(encoding="utf-8"))
-    record = envelope["record"]
-    validate_record(record)
-    if envelope["record_sha256"] != digest(record):
-        raise ValueError("Result record checksum mismatch")
-    return record
+    return _load_record_contract(path, validate=validate_record)
 
 
 def quality_lookup(path: Path, identity: dict[str, Any]) -> dict[str, Any] | None:
-    """Read only. Return raw harness data; no speed evidence or hardware-based match."""
-    try:
-        validate_identity(identity)
-        record = load_record(path)
-        dataset = identity["dataset"]
-        if (
-            record["identity_sha256"] != digest(identity)
-            or record["classification"] != "full"
-            or identity["suite"]["name"] == TASK
-            or dataset["sample_ids"] != list(range(dataset["total_samples"]))
-        ):
-            return None
-        return record["result"]
-    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError):
-        return None
+    return _quality_lookup_contract(path, identity, validate=validate_record)
 
 
 def snapshot_bundle(bundle: Path) -> dict[str, Any]:
@@ -268,10 +147,15 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
     evidence = {name: json.loads(raw[name]) for name in JSON_FILES}
     artifact = evidence["verified-artifact.json"]
     validate_artifact_identity(artifact)
+    result = evidence["lm-eval-results.json"]
+    if len(result["samples"]) != 1:
+        raise ValueError("Expected exactly one fixed evaluation task")
+    task = next(iter(result["samples"]))
+    profile = profile_for_task(task)
     if (
-        evidence["smoke-status.json"] != {"status": "plumbing_passed", "quality_evidence": False}
+        evidence["smoke-status.json"] != {"status": profile["status"], "quality_evidence": False}
         or evidence["runner-status.json"] != {
-            "status": "plumbing_passed", "quality_evidence": False, "server_exit_code": 0,
+            "status": profile["status"], "quality_evidence": False, "server_exit_code": 0,
         }
         or evidence["artifact-after.json"] != artifact
         or evidence["container-artifact.json"] != {
@@ -284,11 +168,10 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         evidence[name] for name in ("evaluator-config.json", "dataset.json",
                                    "commands.json", "server-props.json")
     )
-    result = evidence["lm-eval-results.json"]
-    samples = result["samples"][TASK]
+    samples = result["samples"][task]
     fingerprint = validate_http_coverage(raw["http.jsonl"], samples)
     if (
-        dataset["sample_ids"] != SAMPLE_IDS
+        dataset["sample_ids"] != profile["sample_ids"]
         or props["total_slots"] != 1
         or props["default_generation_settings"]["n_ctx"] != evaluator["context"]
         or props["default_generation_settings"]["params"]["post_sampling_probs"] is not False
@@ -299,9 +182,9 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         raise ValueError("Missing/mismatched effective protocol evidence")
     identity = {
         "artifact_sha256": artifact["sha256"],
-        "suite": {"name": TASK, "sha256": evaluator["suite_sha256"]},
+        "suite": {"name": task, "sha256": evaluator["suite_sha256"]},
         "dataset": {key: dataset[key] for key in ("repo", "revision", "sha256", "sample_ids")}
-        | {"total_samples": result["n-samples"][TASK]["original"]},
+        | {"total_samples": result["n-samples"][task]["original"]},
         "samples": [{key: sample[key] for key in (
             "doc_id", "doc_hash", "prompt_hash", "target_hash", "arguments",
         )} for sample in samples],
@@ -318,7 +201,8 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         },
     }
     record = {
-        "schema_version": 1, "status": "completed", "classification": "plumbing",
+        "schema_version": 1, "status": "completed",
+        "classification": profile["classification"],
         "identity": identity, "identity_sha256": digest(identity), "result": result,
         "provenance": {
             "source_bundle": str(bundle.resolve()), "hardware": evidence["hardware.json"],
@@ -340,3 +224,18 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+__all__ = [
+    "JSON_FILES",
+    "TEXT_FILES",
+    "digest",
+    "known",
+    "load_record",
+    "quality_lookup",
+    "save_record",
+    "snapshot_bundle",
+    "validate_http_coverage",
+    "validate_identity",
+    "validate_record",
+]

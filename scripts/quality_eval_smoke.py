@@ -1,4 +1,4 @@
-"""Run one of two exact GGUF plumbing smokes; own and clean up its processes."""
+"""Run a fixed GGUF smoke or limited evaluation; own and clean up its processes."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from urllib.request import urlopen
 
 from pilot.quality_eval.evaluate import (
     CONTEXT,
+    PROFILES,
     SERVER_SHA256,
     validate_artifact_identity,
     verified_dataset_bytes,
@@ -149,7 +150,10 @@ def check_server_port(port: int) -> None:
 
 def docker_command(
     image: str, name: str, output: Path, artifact: Path, dataset: Path,
+    *, profile: str = "smoke",
 ) -> list[str]:
+    if profile not in PROFILES:
+        raise ValueError("Unknown fixed evaluation profile")
     return [
         "docker",
         "run",
@@ -177,10 +181,13 @@ def docker_command(
         image,
         "--base-url",
         "http://host.docker.internal:18083",
+        # Preserve the original smoke's recorded command exactly.
+        *(["--profile", profile] if profile != "smoke" else []),
     ]
 
 
 def run(args: argparse.Namespace) -> None:
+    profile = PROFILES[args.profile]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     server = None
@@ -232,6 +239,7 @@ def run(args: argparse.Namespace) -> None:
         launch = server_command(args.llama_server.resolve(), artifact.local_path)
         evaluate = docker_command(
             image["Id"], container_name, output, artifact.local_path, args.dataset_file.resolve(),
+            profile=args.profile,
         )
         write_json(
             output / "commands.json",
@@ -247,14 +255,15 @@ def run(args: argparse.Namespace) -> None:
             wait_for_server(server, 18083)
             container_attempted = True
             subprocess.run(
-                evaluate, stdout=eval_log, stderr=subprocess.STDOUT, timeout=300, check=True
+                evaluate, stdout=eval_log, stderr=subprocess.STDOUT,
+                timeout=300 if args.profile == "smoke" else 600, check=True,
             )
             container_attempted = False  # Successful --rm already removed our container.
         if json.loads((output / "smoke-status.json").read_text()) != {
-            "status": "plumbing_passed",
+            "status": profile["status"],
             "quality_evidence": False,
         }:
-            raise RuntimeError("Evaluator exited without its completed plumbing status")
+            raise RuntimeError("Evaluator exited without its completed profile status")
     except Exception as exc:
         write_json(output / "runner-error.json", {"type": type(exc).__name__, "error": str(exc)})
         raise
@@ -294,7 +303,7 @@ def run(args: argparse.Namespace) -> None:
     write_json(
         output / "runner-status.json",
         {
-            "status": "plumbing_passed",
+            "status": profile["status"],
             "quality_evidence": False,
             "server_exit_code": server.returncode,
         },
@@ -308,6 +317,7 @@ def main() -> None:
     parser.add_argument("--llama-server", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--profile", choices=PROFILES, default="smoke")
     run(parser.parse_args())
 
 

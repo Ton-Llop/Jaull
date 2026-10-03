@@ -668,5 +668,149 @@ authenticity, and this importer is limited to the pinned one-slot smoke protocol
 Both original real bundles pass the stricter read-only checks. Existing bundles
 and records remain unchanged and keep their plumbing classification. No new GPU
 evaluation, quality aggregate, ranking integration or SQLite index was needed.
-The next separately reviewed step is a fixed larger sample and then broader task
-coverage; these three examples are not evidence of general model quality.
+These three examples are not evidence of general model quality.
+
+## Fixed 100-example subset — completed on 2026-10-02
+
+`--profile hellaswag100` selects the separate task `jaull-hellaswag-100-v1`.
+It samples 100 unique indices uniformly without replacement from the pinned
+10,042-row validation split with `random.Random(20261002)`, then sorts them.
+Python is pinned to 3.12.12 in the evaluator; an offline regression freezes the
+selection digest. Exact IDs are persisted in both dataset and evaluator identity
+and must match the selected samples. They are not chosen based on model answers.
+The underlying YAML definition, prompts, zero-shot policy, context 2048, cache
+policy, llama-server pin and full CUDA placement are unchanged. The new task name,
+sample IDs and rebuilt image ID distinguish this protocol from the old smoke.
+`--profile smoke` remains the default and retains the original three IDs and
+launch command.
+
+Larger-subset records have `classification: limited`, are excluded from
+`quality_lookup`, and compare as `COMPARABLE_LIMITED` only when all protocol
+checks match. They report per-task accuracy/counts, not an overall model-quality
+score. Relabelling a limited record as full cannot enable quality reuse. A
+three-example smoke and the new subset are `NOT_COMPARABLE`; neither their
+samples nor their suites should be combined. A hundred examples still leave
+sampling uncertainty, cover only HellaSwag and do not establish general capability.
+No confidence interval or significance test is added in this step.
+
+Docker Desktop WSL integration was restored after the initial offline preparation.
+Both artifacts completed sequentially on the local RTX 2060 using image ID
+`sha256:088d6da9b6f10952aeb42cd46fff814971f762127fd0f12f1c1a6720d0052e55`.
+The strict snapshot importer verified artifact checks before/after execution,
+all selected sample IDs, HTTP scoring coverage and aggregate consistency.
+The comparison reports `COMPARABLE_LIMITED`: suite, dataset, samples, evaluator,
+runtime, effective protocol and classification all match.
+
+| Exact local artifact | `acc` | `acc_norm` |
+|---|---:|---:|
+| TinyLlama-1.1B-Chat-v1.0 Q4_K_M | 36/100 | 38/100 |
+| Qwen2.5-1.5B-Instruct Q5_K_M | 46/100 | 63/100 |
+
+These are observed results for this fixed subset, not full HellaSwag scores,
+statistical-significance claims or a general-quality ranking. Parameter counts,
+quantizations and tokenizers differ; no isolated family or quantization effect
+is established. Evaluation duration is not inference-speed evidence.
+
+TinyLlama attempt `01` was interrupted by a PC restart. Its final JSON files
+are empty and its log tails damaged; snapshot import rejects it. It remains
+intact and excluded. The valid repeat is attempt `02`; Qwen completed attempt
+`01`. Both successful snapshots retain the complete raw evidence. No failed
+result was repaired, reused or merged with the completed subset.
+
+Build a new image tag rather than replacing the historical evaluator image;
+using an old image with the new profile will fail instead of silently scoring
+three samples. Run the models sequentially with fresh output directories:
+
+```bash
+docker build --platform linux/amd64 --tag jaull-quality-eval:hellaswag100-v1 pilot/quality_eval
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m scripts.quality_eval_smoke \
+  --profile hellaswag100 \
+  --artifact-json .codex-night/quality-eval-pair-20261002-tinyllama/verified-artifact.json \
+  --dataset-file .codex-night/quality-eval-pair-20261002-tinyllama/dataset-validation.parquet \
+  --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
+  --image jaull-quality-eval:hellaswag100-v1 \
+  --output .codex-night/hellaswag100-v1-tinyllama-02
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m scripts.quality_eval_smoke \
+  --profile hellaswag100 \
+  --artifact-json .codex-night/quality-eval-pair-20261002-qwen-02/verified-artifact.json \
+  --dataset-file .codex-night/quality-eval-pair-20261002-tinyllama/dataset-validation.parquet \
+  --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
+  --image jaull-quality-eval:hellaswag100-v1 \
+  --output .codex-night/hellaswag100-v1-qwen-01
+```
+
+Each evaluator has a ten-minute wall-time limit, with the original five-minute
+limit retained for the smoke. Timeout/error evidence remains a failure; do not
+reuse it or silently drop difficult examples to complete the subset. Artifact
+verification, fit/readiness gates, process ownership and cleanup remain in place.
+After both runs complete, the existing snapshot and comparison tools work offline:
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.records \
+  --bundle .codex-night/hellaswag100-v1-tinyllama-02 \
+  --output .codex-night/hellaswag100-v1-tinyllama-record-02.json
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.records \
+  --bundle .codex-night/hellaswag100-v1-qwen-01 \
+  --output .codex-night/hellaswag100-v1-qwen-record-01.json
+UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 python -m pilot.quality_eval.compare \
+  --left .codex-night/hellaswag100-v1-tinyllama-record-02.json \
+  --right .codex-night/hellaswag100-v1-qwen-record-01.json \
+  --output .codex-night/hellaswag100-v1-comparison-01.json
+```
+
+All paths above are local ignored evidence. Historical bundles/records are never
+rewritten. `uv run jaull` still does not build or launch evaluator containers.
+The listed successful output paths now exist; use new attempt suffixes when
+repeating the commands rather than overwriting them.
+
+## Local throughput companion — 2026-10-03
+
+The same exact two GGUF SHA256 identities were benchmarked sequentially with
+the existing Jaull llama-bench command builder, runner, parser and BenchmarkStore.
+No production code or quality/ranking integration was added. A local ignored
+helper pinned four threads and requested JSONL on stderr alongside the Markdown
+table, retaining all five individual measurements. The observation records the
+actual executed argv, including these explicit supplementary flags.
+
+Hardware: RTX 2060, 6 GiB, WSL, NVIDIA driver 617.14. Runtime build:
+`689e227db (10357)`. Full CUDA0 offload, four threads, batch 2048, ubatch 512,
+f16 K/V caches, default warmup enabled, five repetitions per test. Raw JSONL
+confirms those settings, build, device, token counts and repetition coverage.
+Artifact verification before/after each run passed, as did fit/readiness gates.
+The common command is:
+
+```bash
+"$HOME/tools/llama.cpp/build-cuda/bin/llama-bench" -m "$VERIFIED_GGUF" \
+  -dev CUDA0 -ngl -1 -p 512 -n 128 -r 5 -t 4 -b 2048 -ub 512 \
+  -ctk f16 -ctv f16 -o md -oe jsonl --progress
+```
+
+`VERIFIED_GGUF` is the already-local path of each verified artifact, not a Hub
+download. Complete commands, binary SHA256, hardware snapshots, individual
+samples, raw logs and immutable benchmark records are retained under
+`.codex-night/quality-speed-pair-20261003-02/` (locally ignored).
+
+| Exact local artifact | pp512 tok/s (mean +/- SD) | tg128 tok/s (mean +/- SD) |
+|---|---:|---:|
+| TinyLlama-1.1B-Chat-v1.0 Q4_K_M | 5937.53 +/- 654.15 | 190.73 +/- 5.67 |
+| Qwen2.5-1.5B-Instruct Q5_K_M | 4487.96 +/- 394.41 | 123.94 +/- 1.63 |
+
+These are two separate synthetic-token throughput tests, not a combined
+512-token conversation followed by a 128-token answer. No `--ctx-size` was
+applied and no conversational TTFT, end-to-end latency or service capacity was
+measured. Different tokenizers mean equal token counts do not imply equal text.
+The desktop GPU was not isolated: pre-run utilization was 23% and 28%, so
+background contention and run-order effects are not excluded. The +/- values
+are sample standard deviations over five repetitions, not confidence intervals.
+
+Keep these performance observations separate from the 100-example quality
+results. They show this TinyLlama artifact had higher observed throughput in
+these runs; they do not prove that an older generation is faster or establish a
+universal model-speed ordering. Jaull's existing benchmark aggregate requires
+the same artifact and therefore intentionally rejects this pair; this table is
+a descriptive cross-artifact side-by-side view, not that equivalence verdict.
+
+Attempt `01` completed TinyLlama but the local helper failed while constructing
+a relative summary path, before starting Qwen. Its evidence is preserved and
+excluded from this table. Attempt `02` repeated the complete pair with the
+corrected path handling; both records reload identically from BenchmarkStore.

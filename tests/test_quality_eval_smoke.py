@@ -1,9 +1,14 @@
 """Offline protocol and launch checks. All HTTP values here are synthetic."""
 
 import errno
+import hashlib
+import json
 import socket
+import sys
 from copy import deepcopy
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pilot.quality_eval.evaluate import (
@@ -11,7 +16,10 @@ from pilot.quality_eval.evaluate import (
     CONTEXT,
     DATASET_REVISION,
     DATASET_URL,
+    LIMITED_TASK,
+    PROFILES,
     TASK,
+    profile_for_task,
     validate_artifact_identity,
     validate_scoring_request,
     validate_scoring_response,
@@ -106,13 +114,13 @@ def test_quality_smoke_rejects_protocol_drift_and_preserves_previous_output(tmp_
     assert "--use_cache" not in command and "--gen_kwargs" not in command
 
 
-def test_quality_smoke_rejects_changes_under_the_fixed_suite_name() -> None:
+def synthetic_task_config():
     def process_docs(docs):
         return docs
 
     # Synthetic stand-in; the container loads this function from the pinned harness.
     process_docs.__module__ = "lm_eval.tasks.hellaswag.utils"
-    task = {
+    return {
         "task": TASK,
         "dataset_path": "parquet",
         "dataset_name": None,
@@ -136,6 +144,10 @@ def test_quality_smoke_rejects_changes_under_the_fixed_suite_name() -> None:
             "dataset_revision": DATASET_REVISION,
         },
     }
+
+
+def test_quality_smoke_rejects_changes_under_the_fixed_suite_name() -> None:
+    task = synthetic_task_config()
     validate_task(task)
     for change in (
         {"output_type": "loglikelihood_rolling"},
@@ -225,3 +237,90 @@ def test_port_probe_reuses_time_wait_and_rejects_an_active_listener() -> None:
         probe.bind(("127.0.0.1", port))
     assert error.value.errno == errno.EADDRINUSE  # TIME_WAIT reproduces the original failure.
     check_server_port(port)
+
+
+def test_larger_profile_is_fixed_and_explicitly_forwarded_to_the_container(tmp_path: Path):
+    profile = PROFILES["hellaswag100"]
+    ids = profile["sample_ids"]
+    assert profile["task"] == LIMITED_TASK and profile["classification"] == "limited"
+    assert len(ids) == len(set(ids)) == 100 and ids == sorted(ids)
+    assert all(0 <= index < 10042 for index in ids)
+    # Freeze the selection independently of its sampling implementation.
+    assert hashlib.sha256(json.dumps(ids).encode()).hexdigest() == (
+        "efa126f5252a5e211a8f65c5fee35efbfcf0754e367123e129cd3ea192ef207f"
+    )
+    assert PROFILES["smoke"]["sample_ids"] == [0, 1, 2]
+    assert profile_for_task(TASK) == PROFILES["smoke"]
+    assert profile_for_task(LIMITED_TASK) == profile
+    with pytest.raises(ValueError, match="Unknown"):
+        profile_for_task("unversioned-task")
+    command = docker_command("sha256:synthetic", "owned", tmp_path, Path("/model"),
+                             Path("/dataset"), profile="hellaswag100")
+    assert command[-2:] == ["--profile", "hellaswag100"]
+    default = docker_command("sha256:synthetic", "owned", tmp_path, Path("/model"), Path("/data"))
+    assert "--profile" not in default  # Legacy three-example launch stays unchanged.
+    with pytest.raises(ValueError, match="Unknown"):
+        docker_command("image", "owned", tmp_path, Path("/model"), Path("/data"), profile="full")
+
+
+@pytest.mark.parametrize("profile_name", ["smoke", "hellaswag100"])
+def test_selected_profile_reaches_the_harness_without_enabling_caches(tmp_path, monkeypatch,
+                                                                     profile_name):
+    """Synthetic harness/modules; no Docker, server, model inference or real results."""
+    from pilot.quality_eval import evaluate
+
+    profile = PROFILES[profile_name]
+    source = tmp_path / "synthetic-gguf.py"
+    source.write_bytes(b"synthetic backend")
+    monkeypatch.setattr(evaluate, "BACKEND_SHA256", hashlib.sha256(source.read_bytes()).hexdigest())
+    model_bytes = b"synthetic model, not GGUF"
+    sha = hashlib.sha256(model_bytes).hexdigest()
+    pin = next(iter(ARTIFACT_PINS.values()))
+    monkeypatch.setattr(evaluate, "ARTIFACT_PINS", {sha: pin})
+    write_json(tmp_path / "verified-artifact.json", pin | {"sha256": sha,
+                                                         "local_path": "/synthetic/model"})
+    original_open = Path.open
+
+    def open_model(path, *args, **kwargs):
+        if path == Path("/artifact/model.gguf"):
+            return BytesIO(model_bytes)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_model)
+    monkeypatch.setattr(evaluate, "verified_dataset_bytes", lambda path: b"synthetic dataset")
+    props = {"total_slots": 1, "model_path": "/synthetic/model",
+             "default_generation_settings": {"n_ctx": CONTEXT,
+                                               "params": {"post_sampling_probs": False}}}
+    requests = SimpleNamespace(get=lambda *args, **kwargs: SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: props,
+    ))
+
+    class SyntheticGGUF:
+        def __init__(self, **kwargs):
+            pass
+
+    def simple_evaluate(**kwargs):
+        assert kwargs["samples"] == {profile["task"]: profile["sample_ids"]}
+        assert kwargs["tasks"][0]["task"] == profile["task"]
+        assert kwargs["use_cache"] is None and kwargs["cache_requests"] is False
+        assert kwargs["apply_chat_template"] is False and kwargs["num_fewshot"] == 0
+        return {"samples": {profile["task"]: [{"doc_id": i} for i in profile["sample_ids"]]},
+                "n-samples": {profile["task"]: {"original": 10042,
+                                                  "effective": len(profile["sample_ids"])}}}
+
+    for name, module in {
+        "requests": requests,
+        "lm_eval": SimpleNamespace(simple_evaluate=simple_evaluate),
+        "lm_eval.models": SimpleNamespace(gguf=SimpleNamespace(__file__=str(source),
+                                                               GGUFLM=SyntheticGGUF)),
+        "lm_eval.tasks": SimpleNamespace(TaskManager=lambda **kwargs: None),
+        "lm_eval.tasks._yaml_loader": SimpleNamespace(load_yaml=lambda *args, **kwargs:
+                                                      synthetic_task_config()),
+        "lm_eval.utils": SimpleNamespace(handle_non_serializable=str),
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    evaluate.run(tmp_path, "http://synthetic.invalid", profile_name)
+    config = json.loads((tmp_path / "evaluator-config.json").read_text())
+    assert config["sample_ids"] == profile["sample_ids"]
+    status = json.loads((tmp_path / "smoke-status.json").read_text())
+    assert status == {"status": profile["status"], "quality_evidence": False}

@@ -160,10 +160,22 @@ Tanco errors que podien perdre un intent fallit o acceptar evidència incorrecta
 
 Corregeixo el timing GPU de Transformers sincronitzant el treball i separant prefill de decode: metodologia v3, sense reescriure els records v2. Els benchmarks fallits ja no desplacen els exitosos i Jaull no atribueix el commit d'un repositori pare. 1906 tests, Ruff i mypy verds; cap canvi a l'HFA, al ranking ni a les constants de memòria.
 
+## 01/10 — Pilot de qualitat amb Docker
+
+Executo `lm-evaluation-harness` en un contenidor contra `llama-server`, amb versions fixades i els GGUF exactes de TinyLlama i Qwen. Guardo les peticions HTTP i comprovo que els scores coincideixin amb els logprobs reals. El replay amb TinyLlama mostra que canviar el repartiment CPU/GPU pot canviar els scores: el placement també ha de formar part del protocol. Encara és un pilot separat de la TUI i del ranking.
+
+## 02/10 — De tres mostres a cent
+
+Repeteixo HellaSwag amb 100 exemples fixos i els dos models en seqüència a la 2060. TinyLlama encerta 36/100, o 38 amb normalització; Qwen, 46/100 i 63. La comparació passa els gates, però continua sent un subset d'un sol benchmark, no una mesura de qualitat general. El reinici del PC deixa un intent corrupte: el rebutjo i el conservo, sense reconstruir resultats. 2060 tests, Ruff i mypy verds.
+
+## 03/10 — Qualitat i velocitat no són el mateix
+
+Mesuro `pp512` i `tg128` amb `llama-bench`, cinc repeticions, quatre threads i tot a CUDA0. TinyLlama genera 190,73 tok/s i Qwen 123,94: en aquestes proves, un dona més velocitat i l'altre més encerts. Guardo les mostres, els flags efectius i els records immutables. És throughput amb la GPU compartida amb l'escriptori, no latència fins al primer token. 28 tests de benchmark/arquitectura, Ruff i mypy verds; cap canvi al ranking ni a l'HFA.
+
 ---
 
 ## Ara mateix
 
 El contracte ja conserva l'assignació que reporta llama.cpp, separada de NVML, i la comparació aplica els seus gates metodològics. El RSS amb `mmap` no prova la memòria host del placement, i NVML per procés continua bloquejat pel WDDM local.
 
-Toca revisar els quatre commits i l'evidència existent de la 4060 abans de repetir proves. Els benchmarks Transformers v2 no compten com a evidència vigent de rendiment; cal repetir-los amb v3 si els volem utilitzar. No ajusto marges ni overhead sense una campanya reproduïble en més d'una màquina.
+El pilot ja separa qualitat limitada i rendiment local, amb evidència verificada. El següent pas proposat és mostrar aquests records a la TUI en mode lectura; llançar avaluacions des de la interfície queda per després de provar preflight, cancel·lació i errors. No hi ha score nou ni integració al ranking. Els benchmarks Transformers v2 continuen sense comptar com a evidència vigent, i no ajusto marges ni overhead sense més mesures. Les proves amb documents de Biosfer queden aparcades fins que torni a l'empresa.

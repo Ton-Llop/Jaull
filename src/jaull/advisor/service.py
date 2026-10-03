@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from jaull.application.execution import (
     ExecutionOverrides,
@@ -103,6 +103,8 @@ if TYPE_CHECKING:
     from jaull.cases.storage import CaseStore
     from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
+    from jaull.evaluation.quality_records import QualityEvidence
+    from jaull.evaluation.quality_storage import QualityEvidenceStore
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
@@ -138,6 +140,7 @@ class AdvisorService:
     transformers_benchmark_runner: TransformersBenchmarkRunner | None = field(default=None)
     benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
     benchmark_store: BenchmarkStore | None = field(default=None)
+    quality_store: QualityEvidenceStore | None = field(default=None)
     case_store: CaseStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
@@ -649,6 +652,28 @@ class AdvisorService:
 
     def list_benchmark_ids(self) -> list[str]:
         return self._benchmark_store().list_ids()
+
+    # ------------------------------------------------------------------
+    # Quality evidence. Two read paths on purpose: `quality_evidence` shows
+    # what was measured with its grade attached, `lookup_quality` answers the
+    # stricter question of whether a result may be reused at all.
+    # ------------------------------------------------------------------
+    def save_quality_record(self, record: dict[str, Any]) -> Path:
+        return self._quality_store().save(record)
+
+    def load_quality_record(self, identity_sha256: str) -> dict[str, Any]:
+        return self._quality_store().load(identity_sha256)
+
+    def list_quality_ids(self) -> list[str]:
+        return self._quality_store().list_ids()
+
+    def quality_evidence(self) -> list[QualityEvidence]:
+        """Every readable record, diagnostics included and labelled as such."""
+        return self._quality_store().evidence()
+
+    def lookup_quality(self, identity: dict[str, Any]) -> dict[str, Any] | None:
+        """Reusable evidence for this exact identity, or nothing."""
+        return self._quality_store().lookup(identity)
 
     def save_case_manifest(self, manifest: ExperimentalCaseManifest) -> Path:
         return self._case_store().save(manifest)
@@ -1246,6 +1271,15 @@ class AdvisorService:
             python_executable=installation.python_executable,
         )
         object.__setattr__(self, "transformers_benchmark_runner", fresh)
+        return fresh
+
+    def _quality_store(self) -> QualityEvidenceStore:
+        if self.quality_store is not None:
+            return self.quality_store
+        from jaull.evaluation.quality_storage import QualityEvidenceStore
+
+        fresh = QualityEvidenceStore()
+        object.__setattr__(self, "quality_store", fresh)
         return fresh
 
     def _benchmark_store(self) -> BenchmarkStore:

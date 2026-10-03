@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from pilot.quality_eval.evaluate import TASK, write_json
+from pilot.quality_eval.evaluate import LIMITED_TASK, TASK, write_json
 from pilot.quality_eval.records import digest, load_record
 
 
@@ -20,9 +20,14 @@ def compare_records(left: Path, right: Path) -> dict[str, Any]:
     checks.append({"field": "classification", "match":
                    records[0]["classification"] == records[1]["classification"]})
     comparable = all(check["match"] for check in checks)
-    limited = any(
+    plumbing = any(
         record["classification"] == "plumbing"
         or identity["suite"]["name"] == TASK
+        for record, identity in zip(records, identities, strict=True)
+    )
+    limited = any(
+        record["classification"] == "limited"
+        or identity["suite"]["name"] == LIMITED_TASK
         or len(identity["dataset"]["sample_ids"]) < identity["dataset"]["total_samples"]
         for record, identity in zip(records, identities, strict=True)
     )
@@ -40,7 +45,8 @@ def compare_records(left: Path, right: Path) -> dict[str, Any]:
                              "left": values[0], "right": values[1]})
     return {
         "schema_version": 1, "purpose": "diagnostic_only",
-        "status": ("COMPARABLE_PLUMBING" if limited else "COMPARABLE_DIAGNOSTIC")
+        "status": ("COMPARABLE_PLUMBING" if plumbing else
+                   "COMPARABLE_LIMITED" if limited else "COMPARABLE_DIAGNOSTIC")
         if comparable else "NOT_COMPARABLE",
         "checks": checks,
         "reasons": [
@@ -49,6 +55,7 @@ def compare_records(left: Path, right: Path) -> dict[str, Any]:
         ],
         "limitations": [
             "Limited evaluations are plumbing checks, not publishable or reusable quality evidence."
+            if plumbing else "Subset diagnostics, not a full benchmark or general-quality verdict."
             if limited else "Full per-task diagnostics; no aggregate or suitability score.",
             "Artifacts include model weights, quantization and tokenizers; no base-model verdict.",
             "Hardware is provenance; no evaluation duration or inference-speed comparison.",

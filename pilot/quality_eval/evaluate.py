@@ -1,4 +1,4 @@
-"""Three-example plumbing smoke. No response cache, ranking or speed evidence."""
+"""Fixed smoke/limited samples. No response cache, ranking or speed evidence."""
 
 from __future__ import annotations
 
@@ -8,11 +8,32 @@ import importlib.metadata
 import json
 import math
 import platform
+import random
 from pathlib import Path
 from typing import Any
 
 TASK = "jaull-quality-smoke-v1"
 SAMPLE_IDS = [0, 1, 2]
+LIMITED_TASK = "jaull-hellaswag-100-v1"
+DATASET_SIZE = 10042
+PROFILES = {
+    "smoke": {"task": TASK, "sample_ids": SAMPLE_IDS, "classification": "plumbing",
+              "status": "plumbing_passed"},
+    "hellaswag100": {
+        "task": LIMITED_TASK,
+        "sample_ids": sorted(random.Random(20261002).sample(range(DATASET_SIZE), 100)),
+        "classification": "limited", "status": "limited_passed",
+    },
+}
+
+
+def profile_for_task(task: str) -> dict[str, Any]:
+    for profile in PROFILES.values():
+        if profile["task"] == task:
+            return profile
+    raise ValueError("Unknown fixed evaluation profile")
+
+
 CONTEXT = 2048
 EVALUATOR_COMMIT = "ad8737ae7fad24cf64e50fc7fc31397bff586b9e"
 BACKEND_SHA256 = "71161c2b04e55699b0397e3f745da74a8c39e010f88371418a65bdcad3b8bc63"
@@ -145,7 +166,9 @@ def validate_scoring_response(payload: dict[str, Any], response: dict[str, Any])
         raise ValueError("Missing/mismatched token, runtime, uncached prompt or finite logprobs")
 
 
-def run(output: Path, base_url: str) -> None:
+def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
+    profile = PROFILES[profile_name]
+    task, sample_ids = profile["task"], profile["sample_ids"]
     import requests
     from lm_eval import simple_evaluate
     from lm_eval.models import gguf
@@ -159,6 +182,8 @@ def run(output: Path, base_url: str) -> None:
     suite = Path(__file__).with_name("suite.yaml")
     config = load_yaml(suite, resolve_func=True)
     validate_task(config)
+    # Same pinned task definition; the profile gives the larger subset its own identity.
+    config["task"] = task
     artifact = json.loads((output / "verified-artifact.json").read_text())
     validate_artifact_identity(artifact)
     with Path("/artifact/model.gguf").open("rb") as model:
@@ -184,7 +209,7 @@ def run(output: Path, base_url: str) -> None:
             "evaluator_commit": EVALUATOR_COMMIT,
             "backend_sha256": BACKEND_SHA256,
             "suite_sha256": hashlib.sha256(suite.read_bytes()).hexdigest(),
-            "sample_ids": SAMPLE_IDS,
+            "sample_ids": sample_ids,
             "num_fewshot": 0,
             "context": CONTEXT,
             "apply_chat_template": False,
@@ -209,7 +234,7 @@ def run(output: Path, base_url: str) -> None:
             "revision": DATASET_REVISION,
             "url": DATASET_URL,
             "sha256": DATASET_SHA256,
-            "sample_ids": SAMPLE_IDS,
+            "sample_ids": sample_ids,
         },
     )
     # Load the verified file with the native parquet loader, retaining split checks.
@@ -258,7 +283,7 @@ def run(output: Path, base_url: str) -> None:
             tasks=[config],
             task_manager=TaskManager(include_path=str(suite.parent), include_defaults=False),
             num_fewshot=0,
-            samples={TASK: SAMPLE_IDS},
+            samples={task: sample_ids},
             log_samples=True,
             use_cache=None,
             cache_requests=False,
@@ -272,7 +297,8 @@ def run(output: Path, base_url: str) -> None:
         )
     if (
         result is None
-        or sorted(sample["doc_id"] for sample in result["samples"][TASK]) != SAMPLE_IDS
+        or result["n-samples"][task] != {"original": DATASET_SIZE, "effective": len(sample_ids)}
+        or sorted(sample["doc_id"] for sample in result["samples"][task]) != sample_ids
     ):
         raise ValueError("Harness did not complete exactly the selected samples")
     # Preserve full harness results, including samples. Not a reusable quality record.
@@ -280,7 +306,7 @@ def run(output: Path, base_url: str) -> None:
         json.dump(result, handle, indent=2, default=handle_non_serializable)
         handle.write("\n")
     write_json(
-        output / "smoke-status.json", {"status": "plumbing_passed", "quality_evidence": False}
+        output / "smoke-status.json", {"status": profile["status"], "quality_evidence": False}
     )
 
 
@@ -288,9 +314,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True, choices=["http://host.docker.internal:18083"])
     parser.add_argument("--output", type=Path, default=Path("/output"))
+    parser.add_argument("--profile", choices=PROFILES, default="smoke")
     args = parser.parse_args()
     try:
-        run(args.output, args.base_url)
+        run(args.output, args.base_url, args.profile)
     except Exception as exc:
         write_json(
             args.output / "evaluator-error.json", {"type": type(exc).__name__, "error": str(exc)}
