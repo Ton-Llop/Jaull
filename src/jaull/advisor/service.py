@@ -688,6 +688,101 @@ class AdvisorService:
             raise QualityEvaluationCancelled("Evaluation cancelled; no result imported.")
         return self.save_quality_record(record)
 
+    def quality_evaluation_setup(self) -> dict[str, str]:
+        from jaull.runtime.quality_eval_runner import load_quality_setup, quality_setup_defaults
+
+        setup = quality_setup_defaults() | load_quality_setup()
+        if "server" not in setup:
+            cli = self._resolved_llama_cpp_installation().llama_cli
+            if cli is not None:
+                server = Path(cli).with_name("llama-server")
+                if server.is_file():
+                    setup["server"] = str(server)
+        return setup
+
+    def remember_quality_evaluation_setup(self, request: QualityRunRequest) -> None:
+        from jaull.runtime.quality_eval_runner import save_quality_setup
+
+        save_quality_setup(request)
+
+    def prepare_quality_evaluation_setup(
+        self, request: QualityRunRequest, *,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
+        from jaull.runtime.quality_eval_runner import prepare_quality_setup
+
+        prepare_quality_setup(request, is_cancelled=is_cancelled, on_progress=on_progress)
+
+    def run_quality_evaluation_for_plan(
+        self, plan: ExecutionPlan, request: QualityRunRequest, *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> Path:
+        """Prepare only the selected GGUF, then use the unchanged quality pilot."""
+        import re
+        from tempfile import TemporaryDirectory
+
+        from jaull.advisor.quality import check_selected_artifact
+        from jaull.runtime.quality_eval_runner import QualityEvaluationError, _check_cancel
+
+        selected = plan.artifact
+        artifact = selected.to_model_artifact().model_copy(update={"sha256": selected.sha256})
+        check_selected_artifact(artifact, selected)
+        if request.output.expanduser().exists():
+            raise FileExistsError(request.output)
+
+        def report(message: str) -> None:
+            _check_cancel(is_cancelled)
+            if on_progress is not None:
+                on_progress(message)
+
+        # The same infrastructure checks apply to CLI, TUI and standalone setup.
+        self.prepare_quality_evaluation_setup(
+            request, is_cancelled=is_cancelled, on_progress=on_progress,
+        )
+        report("Preparing selected GGUF")
+        if re.fullmatch(r"[0-9a-f]{40}", artifact.revision) is None:
+            if selected.revision not in (None, "main"):
+                raise QualityEvaluationError(
+                    "Quality preparation requires a commit revision or main."
+                )
+            # Resolve published metadata before local promotion: a sidecar is not
+            # evidence that this file belongs to the repository's current commit.
+            artifact = self._artifacts().resolver.resolve(
+                selected.repo_id, quantization=selected.quantization, revision=None,
+            )
+            check_selected_artifact(artifact, selected)
+        if re.fullmatch(r"[0-9a-f]{40}", artifact.revision) is None:
+            raise QualityEvaluationError("The repository did not provide an immutable revision.")
+        if not artifact.sha256 or artifact.size_bytes is None or artifact.size_bytes <= 0:
+            raise QualityEvaluationError(
+                "Automatic preparation requires a published SHA256 and file size."
+            )
+        if artifact.local_path is None:
+            artifact = artifact.model_copy(update={
+                "local_path": self._artifacts().storage.path_for(artifact),
+            })
+        assert artifact.local_path is not None
+        if not artifact.local_path.is_file():
+            if not allow_download:
+                raise QualityEvaluationError(
+                    "Selected GGUF is not local. Enable download permission or download it first."
+                )
+            report(f"Downloading {artifact.filename}")
+            artifact = self.download_artifact(artifact)
+        report("Fully verifying selected GGUF")
+        artifact = self.verify_artifact(artifact, full=True)
+        check_selected_artifact(artifact, selected)
+        report("Starting fixed quality protocol")
+        with TemporaryDirectory(prefix="jaull-quality-") as directory:
+            manifest = Path(directory) / "artifact.json"
+            manifest.write_text(artifact.model_dump_json(indent=2), encoding="utf-8")
+            return self.run_quality_evaluation(
+                replace(request, artifact_json=manifest), is_cancelled=is_cancelled,
+            )
+
     def compare_quality(self, left_id: str, right_id: str) -> dict[str, Any]:
         from jaull.evaluation.quality_comparison import compare_quality_records
 

@@ -103,6 +103,13 @@ def test_quantization_matching_is_case_insensitive(tmp_path: Path) -> None:
     assert artifact.filename == "m-q5_k_m.gguf"
 
 
+def test_resolver_preserves_published_digest(tmp_path: Path) -> None:
+    client = _gguf_repo([("m-q5_k_m.gguf", 100)])
+    client.info.siblings[0].lfs = {"sha256": "a" * 64}
+    artifact = _make_service(tmp_path, client).resolve("owner/repo", quantization="Q5_K_M")
+    assert artifact.sha256 == "a" * 64
+
+
 def test_missing_quantization_raises(tmp_path: Path) -> None:
     client = _gguf_repo([("m-q4_k_m.gguf", 100), ("m-q8_0.gguf", 200)])
     service = _make_service(tmp_path, client)

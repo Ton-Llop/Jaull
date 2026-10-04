@@ -32,7 +32,8 @@ from tests.test_quality_eval_records import synthetic_full_record
 def _request(tmp_path: Path) -> QualityRunRequest:
     root = tmp_path / "trusted checkout"
     for name in ("scripts/quality_eval_smoke.py", "pilot/quality_eval/evaluate.py",
-                 "pilot/quality_eval/records.py", "pilot/quality_eval/suite.yaml"):
+                 "pilot/quality_eval/records.py", "pilot/quality_eval/suite.yaml",
+                 "pilot/quality_eval/setup.py"):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("synthetic placeholder, never executed", encoding="utf-8")
@@ -49,6 +50,19 @@ def _request(tmp_path: Path) -> QualityRunRequest:
         artifact_json=artifact_json, dataset_file=dataset, llama_server=server,
         image="synthetic:local", output=tmp_path / "new run", pilot_root=root,
     )
+
+
+@pytest.fixture(autouse=True)
+def _offline_infrastructure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These producer/record tests use synthetic executables and dataset bytes.
+    # Real infrastructure checks are exercised in test_quality_setup.py.
+    def prepare(request: QualityRunRequest, **kwargs: Any) -> None:
+        runner._check_cancel(kwargs.get("is_cancelled"))
+        runner._pilot_root(request)
+        if not request.dataset_file.is_file() or not request.llama_server.is_file():
+            raise QualityEvaluationError("Synthetic infrastructure input missing")
+
+    monkeypatch.setattr(runner, "prepare_quality_setup", prepare)
 
 
 def _record() -> dict[str, Any]:

@@ -162,11 +162,16 @@ local GGUF/container pilot, evaluates artifacts sequentially and saves completed
 HTTP-validated records. `jaull quality compare` compares stored per-task metrics
 offline and withholds comparisons when protocols differ. Execution currently needs
 a trusted Jaull checkout, exact verified local GGUFs, the pinned runtime/dataset and an already-built
-evaluator image; it performs no downloads or automatic builds. Results are plumbing or
+evaluator image; it performs no model downloads or automatic builds. Results are plumbing or
 limited diagnostics, not a general-quality score, and never alter ranking.
 The TUI exposes the same opt-in pilot in **Advanced tools → Evaluate local GGUF quality**
-and **Paths → Evaluation → Evaluate quality**. Local inputs remain explicit;
-opening Jaull never starts an evaluator.
+and **Results/Paths → Evaluation**. The TUI prepares the selected GGUF
+manifest automatically, with full verification and explicit download permission.
+**Prepare evaluator** checks the pinned runtime, dataset and image. The dataset
+has a managed default location and can be downloaded with separate explicit
+permission; `jaull quality setup --allow-dataset-download` offers the same flow
+from the CLI. Shared settings are remembered after successful setup; download
+permissions are not. Opening Jaull never starts a download or evaluator.
 → [CLI quality pilot](docs/quality-evaluation-pilot.md#phase-c-explicit-cli-execution)
 
 **Prediction vs observation.** `compare_prediction` puts a `MemoryEstimate` next to an

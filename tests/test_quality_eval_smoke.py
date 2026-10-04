@@ -29,12 +29,12 @@ from pilot.quality_eval.evaluate import (
     verified_dataset_bytes,
     write_json,
 )
+from pilot.quality_eval.setup import validate_evaluator_image
 from scripts.quality_eval_smoke import (
     artifact_memory_estimate,
     check_server_port,
     docker_command,
     server_command,
-    validate_evaluator_image,
 )
 
 from jaull.artifacts.errors import ArtifactVerificationError
@@ -281,6 +281,7 @@ def test_quality_generic_preflight_fails_before_launching_server_or_container(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
 ) -> None:
     """Synthetic GGUF metadata/bytes; never starts a process or accesses Docker."""
+    from pilot.quality_eval import setup
     from scripts import quality_eval_smoke as smoke
 
     model, server = tmp_path / "model.gguf", tmp_path / "server"
@@ -305,10 +306,11 @@ def test_quality_generic_preflight_fails_before_launching_server_or_container(
         model.write_bytes(model.read_bytes() + b"wrong bytes")
         artifact["size_bytes"] = model.stat().st_size  # Size matches, checksum does not.
     server.write_bytes(b"synthetic server, not executable")
+    server.chmod(0o700)
     artifact_json = tmp_path / "artifact.json"
     artifact_json.write_text(json.dumps(artifact))
-    monkeypatch.setattr(smoke, "verified_dataset_bytes", lambda path: b"synthetic dataset")
-    monkeypatch.setattr(smoke, "SERVER_SHA256", hashlib.sha256(server.read_bytes()).hexdigest())
+    monkeypatch.setattr(setup, "prepare_dataset", lambda *args, **kwargs: None)
+    monkeypatch.setattr(setup, "SERVER_SHA256", hashlib.sha256(server.read_bytes()).hexdigest())
     hardware = qwen_hardware()
     if failure == "fit":
         hardware = hardware.model_copy(update={"gpus": [
@@ -329,9 +331,10 @@ def test_quality_generic_preflight_fails_before_launching_server_or_container(
                         pytest.fail("Preflight must not execute a container"))
 
     def image_inspect(*args, **kwargs):
-        if failure != "image":
-            pytest.fail("Earlier artifact/fit gate must stop before Docker inspection")
-        return '[{"Id":"synthetic","RepoDigests":[],"Config":{"Labels":{}}}]'
+        assert failure in ("image", "fit", "metadata")
+        labels = {} if failure == "image" else {ARTIFACT_CONTRACT_LABEL: ARTIFACT_CONTRACT}
+        return json.dumps([{"Id": "sha256:" + "c" * 64, "RepoDigests": [],
+                            "Config": {"Labels": labels}}])
 
     monkeypatch.setattr(smoke.subprocess, "check_output", image_inspect)
     args = SimpleNamespace(profile="smoke", output=tmp_path / "run", artifact_json=artifact_json,

@@ -186,6 +186,14 @@ Evidence:
 - `run_quality_evaluation(...)` — explicitly invoke the audited source-checkout pilot,
   validate its producer snapshot and save a diagnostic record. The optional evaluator
   remains outside the wheel; the CLI requires a trusted checkout via `--pilot-root`.
+- `run_quality_evaluation_for_plan(...)` — prepare the exact selected GGUF and
+  generate its manifest for the same diagnostic pilot. Downloads require explicit
+  permission; local files undergo full hashing. Shared evaluator paths can be
+  remembered per user after success, never artifact identity or download consent.
+- `prepare_quality_evaluation_setup(...)` — shared infrastructure preflight via
+  the trusted pilot, before a selected-model download. Optional consented dataset
+  preparation atomically publishes SHA256-verified bytes in user-data storage.
+  Setup success is infrastructure readiness, not model fit or quality evidence.
 - `compare_quality(...)` — read-only per-task comparison of saved records. Protocol
   mismatches withhold metrics; quality never changes ranking or HFA.
 

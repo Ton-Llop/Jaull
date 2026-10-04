@@ -67,6 +67,7 @@ class HuggingFaceArtifactResolver:
             format=_GGUF_FORMAT,
             quantization=variant.quantization,
             size_bytes=file.size_bytes,
+            sha256=file.sha256,
         )
 
     @staticmethod

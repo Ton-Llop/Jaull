@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import hashlib
 import json
 import os
 import socket
@@ -12,20 +11,17 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from pilot.quality_eval.evaluate import (
-    ARTIFACT_CONTRACT,
-    ARTIFACT_CONTRACT_LABEL,
     CONTEXT,
     PROFILES,
     SERVER_SHA256,
     validate_artifact_identity,
-    verified_dataset_bytes,
     write_json,
 )
+from pilot.quality_eval.setup import prepare_infrastructure
 
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
@@ -196,16 +192,6 @@ def docker_command(
     ]
 
 
-def validate_evaluator_image(image: dict[str, Any]) -> None:
-    config = image.get("Config")
-    labels = config.get("Labels") if isinstance(config, dict) else None
-    if not isinstance(labels, dict) or labels.get(ARTIFACT_CONTRACT_LABEL) != ARTIFACT_CONTRACT:
-        raise ValueError(
-            "Evaluator image lacks the exact-local-gguf-v1 contract; rebuild "
-            "pilot/quality_eval with a new image tag before evaluation."
-        )
-
-
 def run(args: argparse.Namespace) -> None:
     profile = PROFILES[args.profile]
     output = args.output.resolve()
@@ -222,9 +208,7 @@ def run(args: argparse.Namespace) -> None:
         artifact = service.verify(artifact, full=True)
         artifact_verified = True
         write_json(output / "verified-artifact.json", artifact.model_dump(mode="json"))
-        verified_dataset_bytes(args.dataset_file)
-        if hashlib.sha256(args.llama_server.read_bytes()).hexdigest() != SERVER_SHA256:
-            raise ValueError("llama-server binary differs from the audited pin")
+        image = prepare_infrastructure(args.dataset_file, args.llama_server, args.image)
         hardware = detect_hardware()
         estimate = artifact_memory_estimate(artifact, hardware)
         write_json(output / "memory-preflight.json", estimate.model_dump(mode="json"))
@@ -247,14 +231,6 @@ def run(args: argparse.Namespace) -> None:
             or estimate.hardware_fit.mode is not HardwareFitMode.GPU_RESIDENT
         ):
             raise ValueError("The explicit full-offload smoke requires a full-device memory fit")
-        image = json.loads(
-            subprocess.check_output(
-                ["docker", "image", "inspect", args.image],
-                text=True,
-                timeout=15,
-            )
-        )[0]
-        validate_evaluator_image(image)
         write_json(output / "image.json", {"id": image["Id"], "digests": image["RepoDigests"]})
         assert artifact.local_path is not None
         launch = server_command(args.llama_server.resolve(), artifact.local_path)

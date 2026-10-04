@@ -17,7 +17,7 @@ from textual.widgets import Button, DataTable, Footer, Input, Static, TabbedCont
 
 from jaull.domain.benchmarks import BenchmarkMeasurementKind
 from jaull.domain.estimation import CompatibilityStatus
-from jaull.domain.execution_plans import ModelIdentity, model_identity_key
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, model_identity_key
 from jaull.evaluation.benchmark_comparison import (
     BenchmarkComparison,
     BenchmarkPlanMetricComparison,
@@ -25,6 +25,7 @@ from jaull.evaluation.benchmark_comparison import (
 )
 from jaull.presentation.plan_labels import (
     format_gib,
+    is_gguf_plan,
     model_display_name,
     plan_backend,
     plan_summary_line,
@@ -38,6 +39,7 @@ from jaull.reporting.writer import (
 )
 from jaull.tui.evidence import EvidenceIndex, PlanEvidence, state_class
 from jaull.tui.screens.execution_paths import ExecutionPathsScreen
+from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
@@ -183,6 +185,11 @@ class _RecommendationInspector(Vertical):
                 else:
                     yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
             with TabPane("Evaluation"), VerticalScroll():
+                yield ActionButton(
+                    "Evaluate quality" if _quality_plan(rec) is not None
+                    else "Choose GGUF to evaluate",
+                    id=f"res-evaluate-{self._index}",
+                )
                 yield Static(
                     "No measured evaluation for this exact artifact.",
                     id=f"rec-quality-empty-{self._index}",
@@ -190,6 +197,10 @@ class _RecommendationInspector(Vertical):
                 )
                 yield Static(
                     "", id=f"rec-quality-{self._index}", classes="text-secondary", markup=False
+                )
+                yield Static(
+                    "", id=f"rec-quality-alternatives-{self._index}",
+                    classes="text-secondary", markup=False,
                 )
                 yield TechnicalDetails(
                     title="Evaluation provenance",
@@ -231,6 +242,7 @@ class _RecommendationInspector(Vertical):
         self.query_one(f"#rec-quality-{self._index}").display = False
         self.query_one(f"#rec-quality-details-{self._index}").display = False
         self.query_one(f"#rec-quality-provenance-{self._index}").display = False
+        self.query_one(f"#rec-quality-alternatives-{self._index}").display = False
 
     def show_evidence(self, evidence: PlanEvidence) -> None:
         widget = self.query_one(f"#rec-evidence-{self._index}", Static)
@@ -249,6 +261,23 @@ class _RecommendationInspector(Vertical):
         self.query_one(f"#rec-quality-provenance-{self._index}").display = (
             bool(evidence.quality_records)
         )
+
+    def show_alternative_quality(
+        self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],
+    ) -> None:
+        widget = self.query_one(f"#rec-quality-alternatives-{self._index}", Static)
+        sections = [
+            f"{plan.artifact.repo_id}\n{plan.artifact.filename}\n{evidence.quality_readout()}"
+            for plan, evidence in alternatives
+        ]
+        widget.update(
+            "Evaluated GGUF alternatives (not the selected artifact):\n\n"
+            + "\n\n".join(sections) if sections else ""
+        )
+        widget.tooltip = "\n\n".join(
+            evidence.quality_details() for _, evidence in alternatives
+        ) or None
+        widget.display = bool(sections)
 
 
 class _RecommendationEvidenceLoaded(Message):
@@ -281,6 +310,8 @@ class RecommendationResultsScreen(Screen[None]):
             thread_name_prefix="jaull-results-evidence",
         )
         self._evidence_future: Future[None] | None = None
+        self._known_paths: dict[int, tuple[ExecutionPlan, ...]] = {}
+        self._paths_view: tuple[int, ExecutionPathsScreen] | None = None
 
     def compose(self) -> ComposeResult:
         yield WorkflowHeader(
@@ -369,6 +400,19 @@ class RecommendationResultsScreen(Screen[None]):
             self._evidence_future = None
         self._evidence_executor.shutdown(wait=False, cancel_futures=True)
 
+    def on_screen_resume(self) -> None:
+        # Returning from evaluation/Paths must see newly persisted evidence.
+        # The first resume precedes on_mount and has no future yet.
+        if self._evidence_future is None or self._evidence_closing.is_set():
+            return
+        if self._paths_view is not None:
+            index, paths = self._paths_view
+            self._known_paths[index] = paths.execution_plans
+            self._paths_view = None
+        self._evidence_future = self._evidence_executor.submit(
+            self._evidence_worker, self._app().advisor,
+        )
+
     def _evidence_worker(self, advisor: AdvisorService) -> None:
         """One scan of both record stores, shared by every row."""
         try:
@@ -389,6 +433,10 @@ class RecommendationResultsScreen(Screen[None]):
             )
             if found is not None:
                 row.show_evidence(found)
+            rec = self._state.recommendations[row._index]
+            row.detail.show_alternative_quality(_alternative_quality(
+                message.evidence, rec, self._known_paths.get(row._index, ()),
+            ))
 
     @on(_RecommendationRow.Chosen)
     def _row_chosen(self, message: _RecommendationRow.Chosen) -> None:
@@ -436,7 +484,16 @@ class RecommendationResultsScreen(Screen[None]):
         if button_id.startswith("res-paths-"):
             index = int(button_id.removeprefix("res-paths-"))
             if 0 <= index < len(self._state.recommendations):
-                self.app.push_screen(ExecutionPathsScreen(self._state.recommendations[index]))
+                self._open_paths(index)
+            return
+        if button_id.startswith("res-evaluate-"):
+            index = int(button_id.removeprefix("res-evaluate-"))
+            if 0 <= index < len(self._state.recommendations):
+                plan = _quality_plan(self._state.recommendations[index])
+                if plan is not None:
+                    self.app.push_screen(QualityEvaluationScreen(plan))
+                else:
+                    self._open_paths(index, evaluation=True)
             return
 
         match button_id:
@@ -465,6 +522,11 @@ class RecommendationResultsScreen(Screen[None]):
                 app.restart_workflow()
             case "res-advanced":
                 app.goto_advanced_tools()
+
+    def _open_paths(self, index: int, *, evaluation: bool = False) -> None:
+        screen = ExecutionPathsScreen(self._state.recommendations[index], evaluation=evaluation)
+        self._paths_view = (index, screen)
+        self.app.push_screen(screen)
 
     def _app(self) -> JaullApp:
         from jaull.tui.app import JaullApp
@@ -1210,6 +1272,44 @@ def _evidence_for_recommendation(
     except ValueError:
         return None
     return evidence.for_plan(plan)
+
+
+def _quality_plan(rec: ModelRecommendation) -> ExecutionPlan | None:
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
+
+    try:
+        plan = execution_plan_for_recommendation(rec)
+    except ValueError:
+        return None
+    return (
+        plan if is_gguf_plan(plan) and plan.artifact.filename and plan.artifact.file_count == 1
+        else None
+    )
+
+
+def _alternative_quality(
+    evidence: EvidenceIndex, rec: ModelRecommendation, known: tuple[ExecutionPlan, ...],
+) -> list[tuple[ExecutionPlan, PlanEvidence]]:
+    """Exact-byte evidence for other known paths, never evidence for the primary."""
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
+
+    try:
+        primary = execution_plan_for_recommendation(rec)
+    except ValueError:
+        return []
+    seen = {primary.artifact.sha256} if is_gguf_plan(primary) else set()
+    found: list[tuple[ExecutionPlan, PlanEvidence]] = []
+    for plan in (*rec.alternative_plans, *known):
+        if model_identity_key(plan.model_identity) != model_identity_key(primary.model_identity):
+            continue
+        digest = plan.artifact.sha256
+        if digest in seen:
+            continue
+        match = evidence.for_plan(plan)
+        if match.quality_records:
+            seen.add(digest)
+            found.append((plan, match))
+    return found
 
 
 def _recommendation_metadata(rec: ModelRecommendation) -> list[str]:

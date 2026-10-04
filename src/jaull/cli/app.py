@@ -21,7 +21,7 @@ from jaull.cli.doctor import run_doctor
 from jaull.cli.estimate import EstimateOptions, run_estimate
 from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
 from jaull.cli.inspect import run_inspect
-from jaull.cli.quality import run_quality, run_quality_compare
+from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setup
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.scan import run_scan
 from jaull.domain.inference import TargetDevice, WeightPrecision
@@ -409,6 +409,21 @@ def list_cases_command(
     ),
 ) -> None:
     raise typer.Exit(code=run_list_cases(CaseOptions(as_json=as_json)))
+
+
+@quality_app.command("setup", help="Check local evaluator; optionally prepare its pinned dataset.")
+def quality_setup_command(
+    dataset_file: Path | None = typer.Option(None, "--dataset-file"),
+    llama_server: Path | None = typer.Option(None, "--llama-server"),
+    pilot_root: Path | None = typer.Option(None, "--pilot-root"),
+    image: str | None = typer.Option(None, "--image"),
+    allow_dataset_download: bool = typer.Option(False, "--allow-dataset-download"),
+    as_json: bool = typer.Option(False, "--json"),
+) -> None:
+    raise typer.Exit(code=run_quality_setup(
+        dataset_file=dataset_file, llama_server=llama_server, pilot_root=pilot_root,
+        image=image, allow_dataset_download=allow_dataset_download, as_json=as_json,
+    ))
 
 
 @quality_app.command(

@@ -1010,15 +1010,43 @@ empirically demonstrated. The next separate block is TUI orchestration.
 ## Phase E: Opt-in TUI execution
 
 The same bounded pilot can now be started from **Advanced tools → Evaluate local
-GGUF quality**, or **Paths → Evaluation → Evaluate quality** for the selected
-single-file GGUF. Opening either screen starts no evaluation, download, image
-build or pull. Performance remains the separate **Benchmark** action; no automatic
+GGUF quality**, **Paths → Evaluation → Evaluate quality**, or the **Results →
+Evaluation** action for the selected single-file GGUF. A non-GGUF primary path
+offers **Choose GGUF to evaluate**, opening Paths on its Evaluation tab instead
+of evaluating the Transformers artifact. Opening a screen starts no evaluation,
+download, image build or pull. Performance remains the separate **Benchmark** action; no automatic
 priority-based campaign or ranking integration is introduced.
 
-The form requires the same local inputs as the CLI: a verified artifact JSON
-manifest, pinned validation Parquet, pinned host llama-server, trusted pilot
-checkout, already-built evaluator image and a new output directory. Output
-defaults to a unique directory under Jaull's user-data `quality-runs/`, not the
+From Results or Paths, the selected GGUF is prepared automatically: no artifact JSON
+is requested. Jaull resolves `main` to an immutable commit, checks the exact
+selected filename/quantization and known metadata, then fully verifies the local
+bytes before creating a temporary `ModelArtifact` manifest. Published SHA256
+and positive size are required; a sidecar alone cannot establish revision
+provenance. Unknown identities or conflicting metadata fail closed. The runner
+retains its own copy of the manifest with the output.
+
+The GGUF download permission checkbox defaults to **off** on every screen.
+If missing, the artifact is downloaded only after **Start evaluation** and with
+that permission enabled; the selected size (or unknown size) is shown first.
+Opening the screen does not resolve remote metadata or download anything.
+Cancellation during a Hub download waits for the existing blocking downloader
+to return; it prevents evaluation/import afterwards, but is not immediate
+download interruption. Streaming download cancellation remains out of scope.
+
+The shared evaluator inputs still need a one-time setup: pinned validation
+Parquet, pinned host llama-server, trusted pilot checkout and already-built
+evaluator image. A sibling llama-server of the locally discovered llama-cli is
+suggested when available, not certified; the existing binary pin still applies.
+After successful setup or TUI evaluation these four inputs are saved atomically in
+the per-user `quality-setup.json` and prefilled next time. The setup section
+collapses when saved paths exist; invalid/unreadable settings show an error.
+Artifact, output, profile and download consent are never remembered. Dataset
+preparation now has its own permission (see Guided Setup below). No image
+build/pull, runtime installation or automatic cache reuse is introduced.
+Advanced tools retains the manual manifest input for standalone runs; existing
+CLI run arguments remain unchanged.
+
+Output defaults to a unique directory under Jaull's user-data `quality-runs/`, not the
 repository. Select **Smoke - 3 examples** or **Limited - 100 examples**, then
 press **Start evaluation**. The runtime/dataset/fit/image/HTTP checks remain in
 the existing pilot, not duplicated in the screen.
@@ -1026,7 +1054,7 @@ Validation/progress/error messages stay visible beside the fixed actions, outsid
 the scrolling form. Missing inputs are named and the first empty input receives
 focus. A responding Docker engine alone is not sufficient to start evaluation.
 
-From Paths, the manifest must match the selected repository, filename,
+The prepared manifest must match the selected repository, filename,
 quantization and any published size/digest and fixed revision. A mutable `main`
 does not establish revision equality: the manifest must still declare its own
 immutable revision, enforced by the pilot. This is an artifact selection, not an
@@ -1035,13 +1063,20 @@ continues to use the fixed full-CUDA-offload, ctx-2048, raw zero-shot protocol,
 visibly separate from the selected execution plan. Other runtimes, multipart
 GGUFs, unsupported settings and unavailable inputs do not acquire evidence.
 
-The worker calls `AdvisorService.run_quality_evaluation` and shows the shared
-record projection with its grade, coverage and limitations. Only a completed,
+The worker uses `AdvisorService.run_quality_evaluation_for_plan` for automatic
+artifact preparation (or `run_quality_evaluation` for standalone manifests),
+and shows the shared record projection with its grade, coverage and limitations.
+Only a completed,
 HTTP-validated snapshot is imported. Back/quit during execution requests SIGINT
 from the pilot owner and waits for its cleanup before leaving; unmount also
 requests cancellation. No cancelled record is imported. Logs and partial output
 are retained. Returning to Paths after a saved result refreshes its historical
-evidence view without changing recommendation order.
+evidence view without changing recommendation order. Returning to Results also
+refreshes saved evidence. Results shows evaluations of known alternative GGUF
+paths separately, explicitly not as evidence for the selected artifact.
+These alternatives come from the recommendation or a previously visited Paths
+screen; Results does not start another Hub scan to discover them. Exact artifact
+digest matching still applies, and no GGUF result transfers to safetensors.
 
 The form and cancellation paths are tested offline using synthetic records and
 a real CPU-only signal-handling child process. No new Docker/GPU success is
@@ -1053,3 +1088,61 @@ Later the same day, Docker image inspection succeeded and confirmed
 `sha256:366e365fa1f1003ee8afaadf12fde8fb20f66b36c47f6daa12bf45df9102b09d`.
 This verifies image availability/contract, not a new GPU evaluation; a real TUI
 smoke is still pending.
+
+## Phase F: Guided Setup
+
+Results now opens evaluation and refreshes saved results, but execution still
+depends on the trusted source checkout. The wheel reads quality records; it
+does not yet ship the pilot runner or container build. Remembering setup paths
+does not remove that boundary.
+
+The TUI's fixed **Prepare evaluator** action and `jaull quality setup` now use
+the same infrastructure checks as the host pilot. They verify the executable
+llama-server SHA256, inspect the already-local image/contract and verify the
+dataset. Missing or incompatible infrastructure blocks a selected-model
+download before it starts. Execution still separately checks CUDA readiness,
+full-offload fit and the HTTP protocol; setup does not certify those.
+
+For a source install, defaults derive the trusted checkout from the installed
+module location, not CWD or PATH. The default dataset is
+`quality-datasets/hellaswag-v1/validation.parquet` under Jaull's user-data
+directory. Existing explicitly saved paths take precedence; no overnight
+directories are searched. Wheel installs must still supply a trusted checkout.
+
+The dataset permission defaults **off**, independently of GGUF download consent.
+Enable it and press **Prepare evaluator** (or explicitly Start). The shared
+preparation downloads only the existing pinned HellaSwag validation URL, verifies
+SHA256 and atomically publishes the temporary file. Interrupted, oversized or
+wrong-digest downloads leave no usable dataset. Corrupt existing files fail
+closed rather than being silently overwritten. The fixed download is bounded
+at 64 MiB, with a 30-second socket timeout and a 120-second between-chunk deadline.
+Cancellation uses the existing owned-child SIGINT path and removes temporary
+bytes; a network read may take up to its socket timeout to return.
+
+Successful setup remembers only the shared paths/image. It runs no model,
+creates no quality record and never remembers consent. Logs live in user-data
+`quality-setup-runs/`; evaluation bundles keep their separate output directories.
+The preflight is rechecked at evaluation start, including the runner's defensive
+checks, rather than treating remembered preferences as proof of readiness.
+
+```bash
+uv run jaull quality setup --allow-dataset-download --json
+```
+
+The CLI uses remembered/local defaults and accepts `--llama-server`, `--image`,
+`--dataset-file` and `--pilot-root` overrides. No automatic runtime installation,
+Docker image build/pull or model evaluation occurs in setup. The evaluator
+container/protocol pins are unchanged; this host-side change needs no rebuild.
+
+Validation: synthetic offline regressions cover consent, verified local reuse,
+corrupt/interrupted/oversized downloads, timeout/cancellation cleanup,
+incompatible runtime/image and malformed preflight reports. The real
+`jaull quality setup` command also passed using the existing local dataset,
+audited llama-server and Docker image, with isolated settings under `/tmp`.
+This was a read-only infrastructure probe: no network dataset download, model
+execution, quality score or GPU measurement is claimed by that check.
+
+Multi-candidate orchestration is a separate decision after this setup works.
+It must not turn smoke/limited results into quality ranking or launch several
+models concurrently on the shared GPU. Packaged execution without a checkout
+remains deferred; guided setup does not make that boundary disappear.

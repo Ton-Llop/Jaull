@@ -165,9 +165,12 @@ class _PathOption(Vertical):
 class ExecutionPathsScreen(Screen[None]):
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self, recommendation: ModelRecommendation, *, evaluation: bool = False,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._open_evaluation = evaluation
         self._plans: list[ExecutionPlan] = []
         self._evidence = EvidenceIndex.empty()
         self._selected_plan_id: str | None = None
@@ -224,7 +227,7 @@ class ExecutionPathsScreen(Screen[None]):
                 yield Static("", id="paths-warnings", classes="warning-line")
                 yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
                 yield Static("", id="paths-action-reason", classes="warning-line")
-            with TabPane("Evaluation"), VerticalScroll():
+            with TabPane("Evaluation", id="paths-evaluation"), VerticalScroll():
                 yield ActionButton("Evaluate quality", id="paths-evaluate", disabled=True)
                 yield Static(
                     "No measured evaluation for this exact artifact.",
@@ -250,7 +253,14 @@ class ExecutionPathsScreen(Screen[None]):
         ):
             self.query_one(widget_id).display = False
         self._paths_closing.clear()
+        if self._open_evaluation:
+            self.query_one(TabbedContent).active = "paths-evaluation"
         self._future = self._executor.submit(self._load_worker, self._app().advisor)
+
+    @property
+    def execution_plans(self) -> tuple[ExecutionPlan, ...]:
+        """Already inspected choices, available to the parent without another Hub scan."""
+        return tuple(self._plans)
 
     def on_unmount(self) -> None:
         self._paths_closing.set()
