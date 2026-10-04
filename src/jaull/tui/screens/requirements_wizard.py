@@ -26,6 +26,7 @@ from jaull.domain.requirements import (
     UserAnswers,
     WorkloadMode,
 )
+from jaull.tui.palette import INK_3
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 from jaull.tui.widgets.workflow_header import WorkflowHeader
 from jaull.workflow.models import WorkflowStep
@@ -94,6 +95,21 @@ _COMMERCIAL: tuple[tuple[CommercialUse, str], ...] = (
 )
 
 
+
+def _option_label(text: str) -> str:
+    """Separate an option's name from the sentence that explains it.
+
+    "Interactive — someone is waiting for the answer" is two things wearing one
+    weight: the name you are choosing, and the reason it exists. Dimming the
+    tail keeps the exact wording while letting the eye land on the name first,
+    and costs no extra row, which matters in a column holding six questions.
+    """
+    name, separator, detail = text.partition(" — ")
+    if not separator:
+        return text
+    return f"{name}  [{INK_3}]{detail}[/]"
+
+
 class RequirementsWizardScreen(Screen[None]):
     """Step 2: task and workload are separate questions."""
 
@@ -140,7 +156,7 @@ class RequirementsWizardScreen(Screen[None]):
                             yield RadioSet(
                                 *[
                                     RadioButton(
-                                        label,
+                                        _option_label(label),
                                         value=mode is WorkloadMode.INTERACTIVE,
                                         id=f"wm-{mode.value}",
                                     )

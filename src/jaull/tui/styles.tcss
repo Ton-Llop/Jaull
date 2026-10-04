@@ -1357,7 +1357,7 @@ InspectScreen > .card {
 /* Guided workflow header, superseded by .context-bar. */
 .workflow-header {
     height: auto;
-    padding: 0 2;
+    padding: 2 2 0 2;
     margin: 0 0 1 0;
     border-bottom: solid $line;
 }
@@ -1459,23 +1459,24 @@ InspectScreen > .card {
     color: $ink-2;
 }
 
-#hardware-content {
-    max-width: 76;
+/* The profile below is a definition list, and a label 110 cells from its
+   value is not a pair any more. The figures above keep the full measure
+   because they are read as a row; this one gets a reading width. */
+#hardware-content SummaryCard {
+    max-width: 72;
 }
 
 /* ---------------------------------------------------------------------
-   Requirements wizard columns.
+   Requirements wizard grid.
 
-   Six questions in one column ran past the fold on every terminal, so the
-   button that submits them was never on screen with the last answer. Two
-   columns halve the height, and the pair is split where the two sides weigh
-   about the same rather than down the middle of the list.
+   Two Verticals stacking independently never lined up: each column was as
+   tall as its own questions, so the pairs drifted apart down the screen. A
+   grid gives both columns one width and every row one height, which is what
+   makes six blocks read as one field instead of six widgets placed near
+   each other.
 
-   The height has to be stated: a Horizontal defaults to filling its parent,
-   which would push the submit button out of the scroll region again.
-
-   Below 100 cells they stack back into one. Two 45-column columns of radio
-   labels wrap, and a wrapped option list reads worse than a long one.
+   Below 100 cells it collapses to a single column. Two 45-cell columns wrap
+   their radio labels, and a wrapped option list reads worse than a long one.
    --------------------------------------------------------------------- */
 .wizard-columns {
     height: auto;
@@ -1485,7 +1486,7 @@ InspectScreen > .card {
 .wizard-column {
     width: 1fr;
     height: auto;
-    padding: 0 3 0 0;
+    padding: 0 4 0 0;
 }
 
 .wizard-columns.-narrow {
@@ -1495,4 +1496,51 @@ InspectScreen > .card {
 .wizard-columns.-narrow .wizard-column {
     width: 1fr;
     padding: 0;
+}
+
+/* A common floor, not a ceiling. Both columns hold three questions, so one
+   height per block puts row two of the left column level with row two of the
+   right one. A grid would align them too, but Textual divides a grid's height
+   between its rows, which silently clipped the six-option questions. */
+.wizard-columns .question {
+    min-height: 9;
+}
+
+.wizard-columns.-narrow .question {
+    min-height: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Content width.
+
+   A wizard spread across a 200-column monitor puts its two halves so far
+   apart that they stop reading as a pair, and a definition list that wide
+   stops pairing its label with its value. The cap is a reading measure, not
+   a frame: below it the content still uses everything the terminal has.
+   --------------------------------------------------------------------- */
+#wizard-body,
+#hardware-content {
+    align-horizontal: center;
+}
+
+/* The cap goes on the blocks, not on the scroll region: capping the region
+   itself pinned everything to the left edge and left the right third of a
+   wide monitor empty. Centred, the measure reads as a column of content
+   rather than as content that ran out of terminal. */
+#wizard-body > *,
+#hardware-content > * {
+    max-width: 148;
+}
+
+/* ---------------------------------------------------------------------
+   No scrollbar on the two screens that fit.
+
+   Scoped on purpose. The bar is the only sign that a screen has more below
+   it, so hiding it everywhere would cost real information on the screens
+   that scroll; these two now fit their content, so the line it drew down
+   the right edge was reading as a frame around the page and marking nothing.
+   --------------------------------------------------------------------- */
+#wizard-body,
+HardwareAnalysisScreen VerticalScroll {
+    scrollbar-size-vertical: 0;
 }

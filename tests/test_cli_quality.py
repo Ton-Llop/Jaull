@@ -8,6 +8,7 @@ import signal
 import sys
 from dataclasses import replace
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from typing import Any
 
@@ -223,6 +224,74 @@ def test_process_bridge_captures_real_child_output_without_a_gpu(tmp_path: Path)
             tmp_path, log,
         )
     assert "synthetic child output" in log.read_text()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Pilot signal handling requires Linux or WSL")
+def test_worker_cancellation_waits_for_real_child_cleanup(tmp_path: Path) -> None:
+    log = tmp_path / "cancel.log"
+    code = (
+        "import signal,time; "
+        "signal.signal(signal.SIGINT, lambda *a: (print('cleanup', flush=True), exit(0))); "
+        "print('ready', flush=True); time.sleep(20)"
+    )
+    with pytest.raises(runner.QualityEvaluationCancelled):
+        runner._invoke(
+            [sys.executable, "-c", code], tmp_path, log,
+            lambda: log.exists() and "ready" in log.read_text(),
+        )
+    assert "cleanup" in log.read_text()  # Returned only after the owner handled SIGINT.
+
+
+def test_cancelled_before_launch_never_creates_output_or_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    monkeypatch.setattr(runner, "_invoke", lambda *a: pytest.fail("Unexpected launch"))
+    advisor = _advisor(tmp_path / "store")
+    with pytest.raises(runner.QualityEvaluationCancelled):
+        advisor.run_quality_evaluation(request, is_cancelled=lambda: True)
+    assert not request.output.exists()
+    assert advisor.list_quality_ids() == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Host/container execution requires Linux or WSL")
+def test_artifact_manifest_accepts_home_relative_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = replace(_request(tmp_path), artifact_json=Path("~/input.json"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def invoke(command: list[str], root: Path, log: Path) -> None:
+        if command[2] == "pilot.quality_eval.records":
+            save_record(Path(command[command.index("--output") + 1]), _record())
+
+    monkeypatch.setattr(runner, "_invoke", invoke)
+    assert runner.run_quality_evaluation(request) == _record()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Host/container execution requires Linux or WSL")
+@pytest.mark.parametrize("stage", ["scripts.quality_eval_smoke", "pilot.quality_eval.records"])
+def test_cancellation_between_stages_does_not_import_a_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str,
+) -> None:
+    request = _request(tmp_path)
+    cancel = Event()
+    calls: list[str] = []
+
+    def invoke(command: list[str], root: Path, log: Path, is_cancelled: Any) -> None:
+        runner._check_cancel(is_cancelled)
+        calls.append(command[2])
+        if command[2] == "pilot.quality_eval.records":
+            save_record(Path(command[command.index("--output") + 1]), _record())
+        if command[2] == stage:
+            cancel.set()
+
+    monkeypatch.setattr(runner, "_invoke", invoke)
+    advisor = _advisor(tmp_path / "store")
+    with pytest.raises(runner.QualityEvaluationCancelled):
+        advisor.run_quality_evaluation(request, is_cancelled=cancel.is_set)
+    assert advisor.list_quality_ids() == []
+    assert len(calls) == (1 if stage.endswith("smoke") else 2)
 
 
 def _args(request: QualityRunRequest) -> list[str]:

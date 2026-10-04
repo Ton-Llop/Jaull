@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 from typing import TYPE_CHECKING
 
@@ -47,6 +48,7 @@ from jaull.presentation.plan_labels import (
 )
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.evidence import EvidenceIndex, PlanEvidence
+from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.context_bar import ContextBar
 from jaull.tui.widgets.selection_workspace import SelectionWorkspace
@@ -223,6 +225,7 @@ class ExecutionPathsScreen(Screen[None]):
                 yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
                 yield Static("", id="paths-action-reason", classes="warning-line")
             with TabPane("Evaluation"), VerticalScroll():
+                yield ActionButton("Evaluate quality", id="paths-evaluate", disabled=True)
                 yield Static(
                     "No measured evaluation for this exact artifact.",
                     id="paths-quality-empty",
@@ -368,6 +371,12 @@ class ExecutionPathsScreen(Screen[None]):
             app.validate_recommendation(self._recommendation, plan)
         elif button_id == "paths-benchmark":
             app.benchmark_recommendation(self._recommendation, plan)
+        elif button_id == "paths-evaluate" and is_gguf_plan(plan):
+            self.app.push_screen(QualityEvaluationScreen(plan), self._quality_finished)
+
+    def _quality_finished(self, stored: Path | None) -> None:
+        if stored is not None and not self._paths_closing.is_set():
+            self._future = self._executor.submit(self._load_worker, self._app().advisor)
 
     # ------------------------------------------------------------------
     # Rendering
@@ -476,6 +485,19 @@ class ExecutionPathsScreen(Screen[None]):
     def _apply_selection(self) -> None:
         """Reflect the current plan everywhere, without rebuilding the list."""
         selected = self._selected_plan()
+        evaluate = self.query_one("#paths-evaluate", Button)
+        evaluate.disabled = selected is None or not is_gguf_plan(selected)
+        evaluate.tooltip = (
+            "Select a GGUF path for the quality pilot." if evaluate.disabled
+            else "Requires an exact local manifest and the fixed pilot protocol."
+        )
+        if selected is not None and is_gguf_plan(selected):
+            if selected.artifact.filename is None:
+                evaluate.disabled = True
+                evaluate.tooltip = "The selected path does not identify a single GGUF file."
+            elif selected.artifact.file_count not in (None, 1):
+                evaluate.disabled = True
+                evaluate.tooltip = "Multipart GGUF is not supported by the quality pilot."
         gguf_plan = self._visible_gguf_plan()
         for option in self.query(_PathOption):
             if option.id == "paths-gguf":

@@ -12,10 +12,13 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from pilot.quality_eval.evaluate import (
+    ARTIFACT_CONTRACT,
+    ARTIFACT_CONTRACT_LABEL,
     CONTEXT,
     PROFILES,
     SERVER_SHA256,
@@ -59,12 +62,19 @@ class OfflineResolver:
 
 def artifact_memory_estimate(artifact: ModelArtifact, hardware: HardwareProfile) -> MemoryEstimate:
     assert artifact.local_path is not None and artifact.size_bytes is not None
-    # ponytail: 32 MiB header cap for these two files; stream if larger artifacts enter.
+    # ponytail: retain the bounded 32 MiB metadata parser; larger headers fail closed.
     with artifact.local_path.open("rb") as model:
         header = parse_header(model.read(32 * 1024**2))
     enriched = merge(header, None)
     if enriched is None or header is None or (header.context_length or 0) < CONTEXT:
         raise ValueError("Local GGUF lacks the required configuration/context")
+    if (
+        type(header.raw_kv.get("split.count", 1)) is not int
+        or header.raw_kv.get("split.count", 1) != 1
+        or type(header.raw_kv.get("split.no", 0)) is not int
+        or header.raw_kv.get("split.no", 0) != 0
+    ):
+        raise ValueError("Multipart GGUF quality evaluation is unsupported")
     analysis = ModelAnalysis(
         repo=ModelRepositoryInfo(repo_id=artifact.repo_id),
         config=enriched.config,
@@ -186,6 +196,16 @@ def docker_command(
     ]
 
 
+def validate_evaluator_image(image: dict[str, Any]) -> None:
+    config = image.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    if not isinstance(labels, dict) or labels.get(ARTIFACT_CONTRACT_LABEL) != ARTIFACT_CONTRACT:
+        raise ValueError(
+            "Evaluator image lacks the exact-local-gguf-v1 contract; rebuild "
+            "pilot/quality_eval with a new image tag before evaluation."
+        )
+
+
 def run(args: argparse.Namespace) -> None:
     profile = PROFILES[args.profile]
     output = args.output.resolve()
@@ -234,6 +254,7 @@ def run(args: argparse.Namespace) -> None:
                 timeout=15,
             )
         )[0]
+        validate_evaluator_image(image)
         write_json(output / "image.json", {"id": image["Id"], "digests": image["RepoDigests"]})
         assert artifact.local_path is not None
         launch = server_command(args.llama_server.resolve(), artifact.local_path)

@@ -888,9 +888,10 @@ server/container cleanup. There is no second evaluator implementation.
 
 Prerequisites: Linux/WSL, a responding Docker engine, the already-built pinned
 evaluator image, the audited host `llama-server`, the pinned local validation
-Parquet and one or both audited exact GGUFs. Nothing is downloaded, built,
+Parquet and exact verified local GGUFs. Nothing is downloaded, built,
 pulled or substituted by this command. See the build command above for the
-one-time image setup. Arbitrary GGUFs, new server builds and custom task suites
+one-time image setup. Phase C initially admitted only the two audited artifacts;
+Phase D below expands that boundary. New server builds and custom task suites
 remain unsupported. `smoke` is three-example plumbing; `hellaswag100` is limited
 evidence, not a full benchmark or general-quality verdict.
 
@@ -904,7 +905,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 jaull quality run \
   --artifact /path/to/qwen-artifact.json \
   --dataset-file /path/to/validation.parquet \
   --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
-  --image jaull-quality-eval:hellaswag100-v1 \
+  --image jaull-quality-eval:gguf-v1 \
   --profile hellaswag100 \
   --output .codex-night/quality-cli-new-run \
   --json
@@ -956,3 +957,99 @@ verification. Sample IDs are 0, 1 and 2; observed acc is 0/3 and acc_norm 1/3.
 This confirms the CLI-to-pilot-to-store path with real execution. It remains a
 three-example plumbing check, not full/reusable quality evidence or a
 general-quality assessment. Raw outputs remain locally ignored.
+
+## Phase D: Exact local GGUFs, fixed evaluation protocol
+
+The previous two-digest execution whitelist is removed. The existing
+`ModelArtifact` manifest is still the sole artifact representation: callers
+must supply repo, immutable 40-hex revision (not `main`), relative GGUF filename,
+quantization label, positive size, lowercase SHA256 and absolute local path. The runner
+reuses ArtifactService's full sidecar/size/disk verification before and after
+execution; the container independently hashes its read-only model mount.
+Names and family membership never substitute for a content digest. Caller
+coordinates are provenance, not a verified publisher endorsement; matching a
+SHA establishes byte identity, not authenticity of an arbitrary manifest.
+
+The preflight derives the existing memory estimate from the local GGUF header
+without Hub access. Multipart filename conventions and split metadata are
+rejected, including a shard renamed to look like a single file. Missing KV/
+configuration metadata, insufficient memory or an unknown fit cannot satisfy
+the existing full-device gate. Metadata parsing retains its 32 MiB ceiling;
+larger/incomplete headers fail closed. Runtime support is not promised for
+every architecture: server startup, tokenizer boundaries and every HTTP
+scoring response must pass the existing checks before a record is produced.
+
+This is **not** general runtime/task support. It retains the exact audited
+llama-server binary, CUDA full offload on one GPU, ctx2048, one slot, raw
+zero-shot multiple-choice HellaSwag prompts without chat templates, and the
+same three/100 sample selections. No ranking, score, HFA formula, automatic
+downloads, scheduling or TUI changes are introduced.
+
+Rebuild the evaluator explicitly under a **new tag**, preserving the old image:
+
+```bash
+docker build --platform linux/amd64 \
+  --tag jaull-quality-eval:gguf-v1 pilot/quality_eval
+```
+
+Use this tag with the Phase C CLI commands. The host requires image label
+`io.jaull.quality.artifact-contract=exact-local-gguf-v1` before starting the
+server/container; unlabeled older images fail preflight with a rebuild message.
+The label declares interface compatibility, not image authenticity; only use
+images built from the trusted checkout. The resolved image ID remains part of
+record identity, so a rebuilt image is not automatically comparable with an
+old one. Existing snapshots/records and their schema are unchanged and remain
+readable; historical bundles and image pins are not rewritten.
+
+Phase D is validated with synthetic offline manifests, new-artifact HTTP
+snapshot checks, historical fixtures and pre-launch failure regressions.
+No new image build or GPU evaluation is claimed in this implementation step.
+A real new-artifact smoke remains required before calling generalization
+empirically demonstrated. The next separate block is TUI orchestration.
+
+## Phase E: Opt-in TUI execution
+
+The same bounded pilot can now be started from **Advanced tools → Evaluate local
+GGUF quality**, or **Paths → Evaluation → Evaluate quality** for the selected
+single-file GGUF. Opening either screen starts no evaluation, download, image
+build or pull. Performance remains the separate **Benchmark** action; no automatic
+priority-based campaign or ranking integration is introduced.
+
+The form requires the same local inputs as the CLI: a verified artifact JSON
+manifest, pinned validation Parquet, pinned host llama-server, trusted pilot
+checkout, already-built evaluator image and a new output directory. Output
+defaults to a unique directory under Jaull's user-data `quality-runs/`, not the
+repository. Select **Smoke - 3 examples** or **Limited - 100 examples**, then
+press **Start evaluation**. The runtime/dataset/fit/image/HTTP checks remain in
+the existing pilot, not duplicated in the screen.
+Validation/progress/error messages stay visible beside the fixed actions, outside
+the scrolling form. Missing inputs are named and the first empty input receives
+focus. A responding Docker engine alone is not sufficient to start evaluation.
+
+From Paths, the manifest must match the selected repository, filename,
+quantization and any published size/digest and fixed revision. A mutable `main`
+does not establish revision equality: the manifest must still declare its own
+immutable revision, enforced by the pilot. This is an artifact selection, not an
+assertion that the selected plan's runtime settings were evaluated. Evaluation
+continues to use the fixed full-CUDA-offload, ctx-2048, raw zero-shot protocol,
+visibly separate from the selected execution plan. Other runtimes, multipart
+GGUFs, unsupported settings and unavailable inputs do not acquire evidence.
+
+The worker calls `AdvisorService.run_quality_evaluation` and shows the shared
+record projection with its grade, coverage and limitations. Only a completed,
+HTTP-validated snapshot is imported. Back/quit during execution requests SIGINT
+from the pilot owner and waits for its cleanup before leaving; unmount also
+requests cancellation. No cancelled record is imported. Logs and partial output
+are retained. Returning to Paths after a saved result refreshes its historical
+evidence view without changing recommendation order.
+
+The form and cancellation paths are tested offline using synthetic records and
+a real CPU-only signal-handling child process. No new Docker/GPU success is
+claimed by this integration. On 2026-10-04, `docker image inspect` in this WSL
+session reported that Docker integration was unavailable, so the human's rebuilt
+image and a real TUI smoke still require verification when Docker is accessible.
+Later the same day, Docker image inspection succeeded and confirmed
+`io.jaull.quality.artifact-contract=exact-local-gguf-v1` on image
+`sha256:366e365fa1f1003ee8afaadf12fde8fb20f66b36c47f6daa12bf45df9102b09d`.
+This verifies image availability/contract, not a new GPU evaluation; a real TUI
+smoke is still pending.

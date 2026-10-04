@@ -19,8 +19,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from textual.app import ComposeResult
 from textual.containers import VerticalScroll
-from textual.widgets import Button, TabbedContent, TextArea
+from textual.screen import Screen
+from textual.widgets import Button, Static, TabbedContent, TextArea
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
@@ -116,6 +118,34 @@ def test_secondary_action_labels_are_literal_and_keep_brackets_when_relabelled()
     button.set_action_label("Paths [2]")
     assert button.action_label == "Paths [2]"
     assert button.label.plain == "[ Paths [2] ]"
+
+
+@pytest.mark.parametrize("width", [120, 121, 150, 207, 208, 256])
+def test_selection_panes_fill_the_entire_available_width(width: int) -> None:
+    class WorkspaceScreen(Screen[None]):
+        def compose(self) -> ComposeResult:
+            yield SelectionWorkspace(
+                lambda: iter([Static("Models")]), lambda: iter([Static("Selected model")]),
+                list_label="Models", master_id="models", detail_id="selected-model",
+            )
+
+    async def scenario() -> None:
+        app = build_app()
+        async with app.run_test(size=(width, 40)) as pilot:
+            await app.push_screen(WorkspaceScreen())
+            await pilot.pause()
+            screen = app.screen
+            workspace = screen.query_one(SelectionWorkspace)
+            panes = screen.query_one(".workspace-panes")
+            left = screen.query_one(".workspace-master")
+            right = screen.query_one(".workspace-detail")
+            assert not workspace.compact
+            assert panes.region.width == width
+            assert left.region.x == panes.content_region.x
+            assert left.region.right == right.region.x
+            assert right.region.right == panes.content_region.right
+
+    _run(scenario())
 
 
 @pytest.mark.parametrize("size", [(150, 42), (120, 32), (80, 24)])

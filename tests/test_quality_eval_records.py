@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-from pilot.quality_eval.evaluate import ARTIFACT_PINS, LIMITED_TASK, PROFILES, TASK
+from pilot.quality_eval.evaluate import LIMITED_TASK, PROFILES, TASK
 from pilot.quality_eval.records import (
     JSON_FILES,
     digest,
@@ -16,6 +16,8 @@ from pilot.quality_eval.records import (
     snapshot_bundle,
     validate_record,
 )
+
+from tests._quality_eval_fixtures import ARTIFACT_PINS
 
 
 def synthetic_full_record():
@@ -217,8 +219,9 @@ def test_inconsistent_aggregate_is_rejected_even_with_a_valid_checksum(tmp_path:
 
 
 @pytest.mark.parametrize("profile_name", ["smoke", "hellaswag100"])
+@pytest.mark.parametrize("artifact_kind", ["historical", "unlisted"])
 def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(
-    tmp_path: Path, monkeypatch, profile_name: str,
+    tmp_path: Path, monkeypatch, profile_name: str, artifact_kind: str,
 ):
     profile = PROFILES[profile_name]
     selected_ids, selected_task = profile["sample_ids"], profile["task"]
@@ -232,6 +235,11 @@ def test_snapshot_checks_actual_http_and_retains_full_raw_evidence(
     result["n-samples"][selected_task] = {"original": 10042, "effective": len(selected_ids)}
     evaluator = record["identity"]["evaluator"] | {"sample_ids": selected_ids}
     sha, pin = next(iter(ARTIFACT_PINS.items()))
+    if artifact_kind == "unlisted":
+        sha = "5" * 64
+        pin = {"repo_id": "synthetic/unlisted-model", "revision": "6" * 40,
+               "filename": "new-model.Q8_0.gguf", "format": "gguf",
+               "quantization": "Q8_0", "size_bytes": 128}
     artifact = pin | {"sha256": sha, "local_path": "/synthetic/model.gguf"}
     data = b"synthetic dataset, not parquet or measured data"
     # Only file verification is replaced; the evidence/parser/protocol guards run normally.

@@ -676,10 +676,17 @@ class AdvisorService:
         """Reusable evidence for this exact identity, or nothing."""
         return self._quality_store().lookup(identity)
 
-    def run_quality_evaluation(self, request: QualityRunRequest) -> Path:
+    def run_quality_evaluation(
+        self, request: QualityRunRequest, *, is_cancelled: CancelCheck | None = None,
+    ) -> Path:
         from jaull.runtime.quality_eval_runner import run_quality_evaluation
 
-        return self.save_quality_record(run_quality_evaluation(request))
+        record = run_quality_evaluation(request, is_cancelled=is_cancelled)
+        if is_cancelled is not None and is_cancelled():
+            from jaull.runtime.quality_eval_runner import QualityEvaluationCancelled
+
+            raise QualityEvaluationCancelled("Evaluation cancelled; no result imported.")
+        return self.save_quality_record(record)
 
     def compare_quality(self, left_id: str, right_id: str) -> dict[str, Any]:
         from jaull.evaluation.quality_comparison import compare_quality_records

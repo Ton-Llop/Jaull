@@ -9,7 +9,8 @@ import json
 import math
 import platform
 import random
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 TASK = "jaull-quality-smoke-v1"
@@ -38,25 +39,8 @@ CONTEXT = 2048
 EVALUATOR_COMMIT = "ad8737ae7fad24cf64e50fc7fc31397bff586b9e"
 BACKEND_SHA256 = "71161c2b04e55699b0397e3f745da74a8c39e010f88371418a65bdcad3b8bc63"
 SERVER_SHA256 = "cdb0749a2cffc6f2fe710a9616263f90e6a016e8ac07a9caa5be160fc2c5d98e"
-ARTIFACT_SHA256 = "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0"
-ARTIFACT_PINS = {
-    ARTIFACT_SHA256: {
-        "repo_id": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-        "revision": "52e7645ba7c309695bec7ac98f4f005b139cf465",
-        "filename": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-        "format": "gguf",
-        "quantization": "Q4_K_M",
-        "size_bytes": 668788096,
-    },
-    "b46661073c18e5b56a41fa320975f866a00def1ff08feef4718e013258896f8c": {
-        "repo_id": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-        "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
-        "filename": "qwen2.5-1.5b-instruct-q5_k_m.gguf",
-        "format": "gguf",
-        "quantization": "Q5_K_M",
-        "size_bytes": 1285494304,
-    },
-}
+ARTIFACT_CONTRACT = "exact-local-gguf-v1"
+ARTIFACT_CONTRACT_LABEL = "io.jaull.quality.artifact-contract"
 DATASET_REVISION = "218ec52e09a7e7462a5400043bb9a69a41d06b76"
 DATASET_URL = (
     f"https://huggingface.co/datasets/Rowan/hellaswag/resolve/{DATASET_REVISION}/"
@@ -66,9 +50,31 @@ DATASET_SHA256 = "899813071e1e95efafec90f856e1987d2150fa4d020fc005df6962c259f660
 
 
 def validate_artifact_identity(artifact: dict[str, Any]) -> None:
-    pin = ARTIFACT_PINS.get(artifact.get("sha256"))
-    if pin is None or any(artifact.get(field) != value for field, value in pin.items()):
-        raise ValueError("Only the two audited exact GGUF identities are supported")
+    """Validate an explicit identity, not its publisher or its physical bytes.
+
+    Host verification and the read-only container hash check establish the
+    bytes separately. No family/name match can substitute for that digest.
+    """
+    if artifact.get("format") != "gguf":
+        raise ValueError("Quality evaluation requires a single-file GGUF artifact")
+    for field in ("repo_id", "filename", "quantization", "local_path"):
+        value = artifact.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Missing GGUF identity field: {field}")
+    for field, length in (("sha256", 64), ("revision", 40)):
+        value = artifact.get(field)
+        if not isinstance(value, str) or re.fullmatch(f"[0-9a-f]{{{length}}}", value) is None:
+            raise ValueError(f"GGUF {field} must be an exact lowercase hexadecimal digest")
+    if type(artifact.get("size_bytes")) is not int or artifact["size_bytes"] <= 0:
+        raise ValueError("GGUF identity requires a positive file size")
+    filename = PurePosixPath(artifact["filename"])
+    if filename.is_absolute() or ".." in filename.parts or filename.suffix.lower() != ".gguf":
+        raise ValueError("GGUF filename must be a relative .gguf repository path")
+    if not PurePosixPath(artifact["local_path"]).is_absolute():
+        raise ValueError("GGUF local_path must be absolute in the Linux/WSL host")
+    split = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", filename.name, re.IGNORECASE)
+    if split and (int(split[1]) != 1 or int(split[2]) != 1):
+        raise ValueError("Multipart GGUF quality evaluation is unsupported")
 
 
 def verified_dataset_bytes(path: Path) -> bytes:
@@ -189,7 +195,7 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
     with Path("/artifact/model.gguf").open("rb") as model:
         digest = hashlib.file_digest(model, "sha256").hexdigest()
     if digest != artifact["sha256"]:
-        raise ValueError("Read-only container artifact differs from the audited GGUF")
+        raise ValueError("Read-only container artifact differs from the requested GGUF")
     write_json(output / "container-artifact.json", {"sha256": digest, "mount": "read-only"})
     props = requests.get(base_url + "/props", timeout=15)
     props.raise_for_status()

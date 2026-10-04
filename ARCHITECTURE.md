@@ -5,8 +5,9 @@ dependency rules. The dated pipeline walkthrough is archived at
 [`docs/history/workflow-2026-09-28.md`](docs/history/workflow-2026-09-28.md).
 
 Jaull is still a **modular Python monolith** today: no network workers or remote
-executor. Docker is optional and confined to the explicit quality pilot; it is not
-started by recommendation or the TUI. Guided recommendation remains metadata-only,
+executor. Docker is optional and confined to the explicit quality pilot. CLI and TUI
+evaluation actions can start it, never recommendation or application startup.
+Guided recommendation remains metadata-only,
 but explicit local execution paths
 already exist: `jaull run` resolves, downloads, verifies and executes single-file GGUF
 artifacts with `llama-cli`, and the TUI adds execution of Transformers repositories through

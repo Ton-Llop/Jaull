@@ -11,4 +11,5 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation /tmp/harness.tar.g
 WORKDIR /pilot
 COPY evaluate.py suite.yaml /pilot/pilot/quality_eval/
 RUN python -c "from lm_eval import simple_evaluate; from lm_eval.tasks._yaml_loader import load_yaml; from pilot.quality_eval.evaluate import validate_task; validate_task(load_yaml('/pilot/pilot/quality_eval/suite.yaml', resolve_func=True))"
+LABEL io.jaull.quality.artifact-contract="exact-local-gguf-v1"
 ENTRYPOINT ["python", "-m", "pilot.quality_eval.evaluate"]
