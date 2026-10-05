@@ -11,11 +11,12 @@ from uuid import uuid4
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Collapsible, Footer, Input, Select, Static
 
+from jaull.advisor.quality_candidates import QualityCandidateSelection
 from jaull.evaluation.quality_records import describe_record
 from jaull.paths import user_data_dir
 from jaull.runtime.quality_eval_runner import (
@@ -29,9 +30,11 @@ from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.context_bar import ContextBar
 
 if TYPE_CHECKING:
+    from jaull.advisor.quality_candidates import QualityCandidate
     from jaull.advisor.service import AdvisorService
     from jaull.domain.execution_plans import ExecutionPlan
     from jaull.tui.app import JaullApp
+    from jaull.workflow.state import RecommendationWorkflowState
 
 _log = logging.getLogger(__name__)
 
@@ -56,6 +59,12 @@ class _QualitySetupFinished(Message):
         self.text = text
 
 
+class _QualityCandidatesReady(Message):
+    def __init__(self, selection: QualityCandidateSelection) -> None:
+        super().__init__()
+        self.selection = selection
+
+
 class QualityEvaluationScreen(Screen[Path | None]):
     BINDINGS = [("escape", "back", "Back"), ("q", "quit", "Quit")]
 
@@ -65,11 +74,18 @@ class QualityEvaluationScreen(Screen[Path | None]):
     QualityEvaluationScreen #quality-actions { height: 3; }
     QualityEvaluationScreen #quality-status { margin: 0 2 1 2; }
     QualityEvaluationScreen #quality-result { height: auto; margin-top: 1; }
+    QualityEvaluationScreen #quality-candidates { height: auto; margin-bottom: 1; }
     """
 
-    def __init__(self, plan: ExecutionPlan | None = None) -> None:
+    def __init__(
+        self, plan: ExecutionPlan | None = None, *,
+        search_state: RecommendationWorkflowState | None = None,
+    ) -> None:
         super().__init__()
         self._plan = plan
+        self._search_state = search_state
+        self._selection = QualityCandidateSelection()
+        self._selecting = search_state is not None
         self._cancel = Event()
         self._quality_closing = Event()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="jaull-quality")
@@ -78,13 +94,22 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self._quit = False
         self._stored: Path | None = None
 
+    @property
+    def candidate_plans(self) -> tuple[ExecutionPlan, ...]:
+        return tuple(candidate.plan for candidate in self._selection.candidates)
+
     def compose(self) -> ComposeResult:
-        yield ContextBar("Quality evaluation", aside="Diagnostic pilot")
+        yield ContextBar(
+            "Evaluate search candidates" if self._search_state else "Quality evaluation",
+            aside="Diagnostic pilot",
+        )
         with VerticalScroll(id="quality-body"):
             yield Static(
                 (f"{self._plan.artifact.repo_id}\n"
                  f"{self._plan.artifact.filename or self._plan.artifact.label}")
-                if self._plan else "Exact local GGUF",
+                if self._plan else (
+                    "Search candidates" if self._search_state else "Exact local GGUF"
+                ),
                 classes="section-title",
                 markup=False,
             )
@@ -93,7 +118,9 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 "Evaluation protocol is separate from the selected execution plan.",
                 classes="text-secondary",
             )
-            if self._plan is None:
+            if self._search_state is not None:
+                yield Vertical(id="quality-candidates")
+            if self._plan is None and self._search_state is None:
                 yield Static("Verified artifact manifest (JSON)", classes="field-label")
                 yield Input(placeholder="Verified artifact manifest (JSON)", id="quality-artifact")
             yield Static("Evaluation samples", classes="field-label")
@@ -101,13 +128,13 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 [("Smoke - 3 examples", "smoke"), ("Limited - 100 examples", "hellaswag100")],
                 value="smoke", allow_blank=False, id="quality-profile",
             )
-            if self._plan is not None:
-                size = self._plan.artifact.size_bytes
+            if self._plan is not None or self._search_state is not None:
+                size = self._plan.artifact.size_bytes if self._plan else None
                 yield Static(
                     f"GGUF download size: {size / 1024**3:.2f} GiB" if size is not None
-                    else "GGUF download size: unknown", classes="text-secondary",
+                    else "", classes="text-secondary",
                 )
-                yield Checkbox("Allow downloading the selected GGUF if missing",
+                yield Checkbox("Allow downloading selected GGUF artifacts if missing",
                                id="quality-download", value=False)
             with Collapsible(title="Evaluator setup", collapsed=False, id="quality-setup"):
                 yield Checkbox("Allow downloading pinned HellaSwag dataset if missing",
@@ -149,6 +176,69 @@ class QualityEvaluationScreen(Screen[Path | None]):
         except (OSError, ValueError, QualityEvaluationError) as exc:
             _log.warning("Could not restore quality setup", exc_info=True)
             self._set_status(f"Could not restore evaluator setup: {exc}")
+        if self._search_state is not None:
+            self._busy = True
+            self._set_busy(True)
+            self._set_status("Inspecting candidate metadata; no models downloaded")
+            self._executor.submit(self._select_candidates, self._app().advisor)
+
+    def _select_candidates(self, advisor: AdvisorService) -> None:
+        assert self._search_state is not None
+        def progress(text: str) -> None:
+            if not self._quality_closing.is_set():
+                self.post_message(_QualityProgress(text))
+        try:
+            selection = advisor.prepare_quality_candidates(
+                self._search_state, is_cancelled=self._cancel.is_set,
+                on_progress=progress,
+            )
+        except Exception as exc:
+            _log.exception("Quality candidate selection failed")
+            selection = QualityCandidateSelection(notices=(f"Selection failed: {exc}",))
+        if not self._quality_closing.is_set():
+            self.post_message(_QualityCandidatesReady(selection))
+
+    @on(_QualityCandidatesReady)
+    async def _candidates_ready(self, message: _QualityCandidatesReady) -> None:
+        self._selection = message.selection
+        self._selecting = False
+        container = self.query_one("#quality-candidates", Vertical)
+        await container.remove_children()
+        await container.mount(Static(
+            f"{len(message.selection.candidates)} candidates from "
+            f"{message.selection.considered} eligible inspected models",
+            classes="section-title", markup=False,
+        ))
+        for index, candidate in enumerate(message.selection.candidates):
+            plan = candidate.plan
+            size = (plan.artifact.size_bytes or 0) / 1024**3
+            await container.mount(Checkbox(
+                f"{plan.model_identity.model_name} / {plan.artifact.label}",
+                value=True, id=f"quality-candidate-{index}",
+            ))
+            await container.mount(Static(
+                f"{plan.artifact.repo_id} / {plan.artifact.filename}\n"
+                f"{candidate.reason}\n"
+                f"{'Local' if candidate.downloaded else 'Download required'}: {size:.2f} GiB. "
+                f"Historical records: {candidate.historical_records} (not reused).",
+                markup=False, classes="text-secondary",
+            ))
+        if message.selection.notices:
+            with_details = Collapsible(
+                title="Selection details", collapsed=bool(message.selection.candidates),
+            )
+            await container.mount(with_details)
+            await with_details.mount(Static("\n".join(message.selection.notices), markup=False))
+        self._busy = False
+        self._set_busy(False)
+        self._set_status(
+            "Review candidates before starting; execution is sequential."
+            if message.selection.candidates else "No models available for this evaluation protocol."
+        )
+        if self._quit:
+            self.app.exit()
+        elif self._leave:
+            self.dismiss(self._stored)
 
     def on_unmount(self) -> None:
         self._quality_closing.set()
@@ -159,7 +249,9 @@ class QualityEvaluationScreen(Screen[Path | None]):
         values = {
             key: self.query_one(f"#quality-{key}", Input).value.strip()
             for key in ("artifact", "dataset", "server", "root", "image", "output")
-            if key != "artifact" or (self._plan is None and require_artifact)
+            if key != "artifact" or (
+                self._plan is None and self._search_state is None and require_artifact
+            )
         }
         missing = [
             self.query_one(f"#quality-{key}", Input).placeholder
@@ -201,15 +293,81 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 self._set_status("Preparing evaluator infrastructure")
                 self._executor.submit(self._prepare, self._app().advisor, request)
                 return
+            candidates = tuple(
+                candidate for index, candidate in enumerate(self._selection.candidates)
+                if self.query_one(f"#quality-candidate-{index}", Checkbox).value
+            ) if self._search_state is not None else ()
+            if self._search_state is not None and not candidates:
+                self._busy = False
+                self._set_busy(False)
+                self._set_status("Select at least one candidate.")
+                return
             self.query_one("#quality-result", Static).update("")
             self._set_status(
                 f"Preparing {request.profile.value}; output: {request.output}"
             )
             allow_download = (
                 self.query_one("#quality-download", Checkbox).value
-                if self._plan is not None else False
+                if self._plan is not None or self._search_state is not None else False
             )
-            self._executor.submit(self._run, self._app().advisor, request, allow_download)
+            if self._search_state is not None:
+                self._executor.submit(
+                    self._run_candidates, self._app().advisor, request, allow_download, candidates,
+                )
+            else:
+                self._executor.submit(self._run, self._app().advisor, request, allow_download)
+
+    def _run_candidates(
+        self, advisor: AdvisorService, request: QualityRunRequest, allow_download: bool,
+        candidates: tuple[QualityCandidate, ...],
+    ) -> None:
+        stored = None
+        def progress(text: str) -> None:
+            if not self._quality_closing.is_set():
+                self.post_message(_QualityProgress(text))
+        try:
+            outcomes = advisor.run_quality_candidates(
+                candidates, request, allow_download=allow_download,
+                is_cancelled=self._cancel.is_set,
+                on_progress=progress,
+            )
+            readouts: list[str] = []
+            for outcome in outcomes:
+                readout = outcome.plan.model_identity.model_name
+                if outcome.path is not None:
+                    stored = outcome.path
+                    evidence = describe_record(advisor.load_quality_record(outcome.path.stem))
+                    readout += "\n" + PlanEvidence(
+                        state=EvidenceState.ESTIMATED, quality_records=(evidence,),
+                    ).quality_readout()
+                    readout += f"\nSaved: {outcome.path}"
+                else:
+                    readout += f"\nFailed: {outcome.error}"
+                readouts.append(readout)
+            if self._cancel.is_set():
+                readouts.append("Cancelled. Earlier completed records remain saved.")
+            elif outcomes:
+                try:
+                    advisor.remember_quality_evaluation_setup(request)
+                except (OSError, ValueError) as exc:
+                    _log.warning("Could not remember quality setup", exc_info=True)
+                    readouts.append(f"Evaluator setup was not saved: {exc}")
+            completed = sum(outcome.path is not None for outcome in outcomes)
+            readouts.insert(0, (
+                f"{'Cancelled. ' if self._cancel.is_set() else ''}"
+                f"Completed {completed}/{len(candidates)}; "
+                f"failed {len(outcomes) - completed}; "
+                f"not started {len(candidates) - len(outcomes)}."
+            ))
+            readouts.append("Per-artifact diagnostics only; recommendation order unchanged.")
+            message = _QualityFinished(stored, "\n\n".join(readouts))
+        except Exception as exc:
+            _log.exception("Candidate evaluations failed")
+            message = _QualityFinished(
+                stored, f"Evaluation failed: {exc}\nOutput: {request.output}",
+            )
+        if not self._quality_closing.is_set():
+            self.post_message(message)
 
     def _prepare(self, advisor: AdvisorService, request: QualityRunRequest) -> None:
         def progress(text: str) -> None:
@@ -293,7 +451,8 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self._stored = message.path
         self._set_busy(False)
         self._set_status(
-            f"Saved: {message.path}" if message.path else message.readout.splitlines()[0]
+            f"Saved: {message.path}" if message.path and self._search_state is None
+            else message.readout.splitlines()[0]
         )
         result = self.query_one("#quality-result", Static)
         result.update(message.readout)
@@ -309,11 +468,19 @@ class QualityEvaluationScreen(Screen[Path | None]):
         for checkbox in self.query(Checkbox):
             checkbox.disabled = busy
         self.query_one("#quality-profile", Select).disabled = busy
-        self.query_one("#quality-start", Button).disabled = busy
-        self.query_one("#quality-prepare", Button).disabled = busy
-        self.query_one("#quality-start", Button).tooltip = (
-            "Evaluation in progress." if busy else None
+        self.query_one("#quality-start", Button).disabled = busy or (
+            self._search_state is not None and not self._selection.candidates
         )
+        self.query_one("#quality-prepare", Button).disabled = busy
+        if busy:
+            start_reason = (
+                "Inspecting candidate metadata." if self._selecting else "Evaluation in progress."
+            )
+        elif self._search_state is not None and not self._selection.candidates:
+            start_reason = "No evaluation candidates available. Selection details show the reasons."
+        else:
+            start_reason = None
+        self.query_one("#quality-start", Button).tooltip = start_reason
         self.query_one("#quality-cancel", Button).disabled = not busy
         self.query_one("#quality-cancel", Button).tooltip = (
             None if busy else "No active evaluation."
@@ -333,14 +500,14 @@ class QualityEvaluationScreen(Screen[Path | None]):
         status.display = bool(text)
 
     def action_back(self) -> None:
-        if self._busy:
+        if self._busy or self._selecting:
             self._leave = True
             self._request_cancel()
         else:
             self.dismiss(self._stored)
 
     def action_quit(self) -> None:
-        if self._busy:
+        if self._busy or self._selecting:
             self._quit = True
             self._request_cancel()
         else:

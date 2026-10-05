@@ -196,6 +196,10 @@ Evidence:
   Setup success is infrastructure readiness, not model fit or quality evidence.
 - `compare_quality(...)` — read-only per-task comparison of saved records. Protocol
   mismatches withhold metrics; quality never changes ranking or HFA.
+- `prepare_quality_candidates(...)` / `run_quality_candidates(...)` — opt-in
+  selection from the inspected search pool and bounded sequential diagnostics.
+  Reuses existing eligibility/diversity and the same per-artifact runner; keeps
+  results separate from recommendation ordering and performance evidence.
 
 Two factories:
 

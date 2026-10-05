@@ -15,6 +15,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Input, Static, TabbedContent, TabPane
 
+from jaull.advisor.quality import quality_evaluation_block_reason
 from jaull.domain.benchmarks import BenchmarkMeasurementKind
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, model_identity_key
@@ -185,10 +186,35 @@ class _RecommendationInspector(Vertical):
                 else:
                     yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
             with TabPane("Evaluation"), VerticalScroll():
-                yield ActionButton(
-                    "Evaluate quality" if _quality_plan(rec) is not None
+                yield Static("Published model references", classes="section-title")
+                yield Static(
+                    "Loading published references...", id=f"rec-published-{self._index}",
+                    classes="text-secondary", markup=False,
+                )
+                yield TechnicalDetails(
+                    title="Published reference provenance",
+                    extra=[Static("", id=f"rec-published-details-{self._index}", markup=False)],
+                    id=f"rec-published-provenance-{self._index}",
+                )
+                yield Static("Measured on this artifact", classes="section-title")
+                quality_plan = _quality_plan(rec)
+                quality_reason = (
+                    quality_evaluation_block_reason(quality_plan) if quality_plan is not None
+                    else None
+                )
+                evaluate = ActionButton(
+                    "Evaluate quality" if quality_plan is not None
                     else "Choose GGUF to evaluate",
                     id=f"res-evaluate-{self._index}",
+                    disabled=quality_reason is not None,
+                )
+                evaluate.tooltip = quality_reason or (
+                    "Open evaluation setup; preflight is required before running."
+                )
+                yield evaluate
+                yield Static(
+                    quality_reason or "", id=f"rec-evaluate-reason-{self._index}",
+                    classes="warning-line", markup=False,
                 )
                 yield Static(
                     "No measured evaluation for this exact artifact.",
@@ -203,7 +229,7 @@ class _RecommendationInspector(Vertical):
                     classes="text-secondary", markup=False,
                 )
                 yield TechnicalDetails(
-                    title="Evaluation provenance",
+                    title="Artifact measurement provenance",
                     extra=[Static(
                         "", id=f"rec-quality-details-{self._index}", markup=False,
                     )],
@@ -243,8 +269,19 @@ class _RecommendationInspector(Vertical):
         self.query_one(f"#rec-quality-details-{self._index}").display = False
         self.query_one(f"#rec-quality-provenance-{self._index}").display = False
         self.query_one(f"#rec-quality-alternatives-{self._index}").display = False
+        self.query_one(f"#rec-published-provenance-{self._index}").display = False
+        self.query_one(f"#rec-evaluate-reason-{self._index}").display = bool(
+            self.query_one(f"#res-evaluate-{self._index}", Button).disabled
+        )
 
     def show_evidence(self, evidence: PlanEvidence) -> None:
+        self.query_one(f"#rec-published-{self._index}", Static).update(evidence.published_summary)
+        self.query_one(f"#rec-published-details-{self._index}", Static).update(
+            evidence.published_provenance
+        )
+        self.query_one(f"#rec-published-provenance-{self._index}").display = bool(
+            evidence.published_provenance
+        )
         widget = self.query_one(f"#rec-evidence-{self._index}", Static)
         widget.update(evidence.summary())
         widget.set_classes(state_class(evidence.state))
@@ -497,6 +534,11 @@ class RecommendationResultsScreen(Screen[None]):
             return
 
         match button_id:
+            case "res-candidate-evaluation":
+                screen = QualityEvaluationScreen(search_state=self._state)
+                self.app.push_screen(
+                    screen, lambda _: self._candidate_evaluations_finished(screen),
+                )
             case "res-compare":
                 self.app.push_screen(RecommendationCompareScreen(self._state))
             case "res-compare-paths":
@@ -527,6 +569,21 @@ class RecommendationResultsScreen(Screen[None]):
         screen = ExecutionPathsScreen(self._state.recommendations[index], evaluation=evaluation)
         self._paths_view = (index, screen)
         self.app.push_screen(screen)
+
+    def _candidate_evaluations_finished(self, screen: QualityEvaluationScreen) -> None:
+        for index, rec in enumerate(self._state.recommendations):
+            identity = rec.plan.model_identity if rec.plan is not None else None
+            if identity is None:
+                continue
+            matching = tuple(
+                plan for plan in screen.candidate_plans
+                if model_identity_key(plan.model_identity) == model_identity_key(identity)
+            )
+            self._known_paths[index] = (*self._known_paths.get(index, ()), *matching)
+        if not self._evidence_closing.is_set():
+            self._evidence_future = self._evidence_executor.submit(
+                self._evidence_worker, self._app().advisor,
+            )
 
     def _app(self) -> JaullApp:
         from jaull.tui.app import JaullApp
@@ -854,6 +911,8 @@ def _results_actions(has_results: bool) -> ComposeResult:
             yield ActionButton("Details", id="res-details")
             yield ActionButton("Export", id="res-export")
     with Horizontal(id="results-actions-secondary"):
+        if has_results:
+            yield ActionButton("Evaluate candidates", id="res-candidate-evaluation")
         yield Button("Start again", id="res-restart", classes="-quiet")
         yield Button("Advanced tools", id="res-advanced", classes="-quiet")
 
@@ -1282,7 +1341,7 @@ def _quality_plan(rec: ModelRecommendation) -> ExecutionPlan | None:
     except ValueError:
         return None
     return (
-        plan if is_gguf_plan(plan) and plan.artifact.filename and plan.artifact.file_count == 1
+        plan if is_gguf_plan(plan)
         else None
     )
 

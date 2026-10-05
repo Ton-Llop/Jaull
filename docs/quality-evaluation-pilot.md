@@ -1142,7 +1142,77 @@ audited llama-server and Docker image, with isolated settings under `/tmp`.
 This was a read-only infrastructure probe: no network dataset download, model
 execution, quality score or GPU measurement is claimed by that check.
 
-Multi-candidate orchestration is a separate decision after this setup works.
-It must not turn smoke/limited results into quality ranking or launch several
-models concurrently on the shared GPU. Packaged execution without a checkout
-remains deferred; guided setup does not make that boundary disappear.
+Packaged execution without a checkout remains deferred; guided setup does not
+make that boundary disappear.
+
+## Phase G: Search Candidate Queue
+
+**Results -> Evaluate candidates** prepares a reviewable selection from the
+search's already-inspected candidates, before the final five-result truncation.
+It reuses the existing recommendation eligibility, priority and diversity rules
+with a wider output limit; it never rewrites the search state or scores. This is
+an evaluation selection heuristic, not a claim that these are the best models.
+It uses the facade's existing ranking context, including local performance and
+execution records, rather than discarding those signals for candidate selection.
+Discovery recall is still bounded by the original queries and inspection budget.
+
+Selection inspects paths for up to six logical models (the existing variant
+inspection budget), selects up to three, and explains omissions and untouched
+models. Only confirmed single-file GGUF identities are eligible for this queue.
+If no candidates qualify, Start is disabled and any selection reasons are expanded.
+Published resolution pins the revision and checks digest/size against exact
+artifact metadata. The existing estimator must confirm fit for the requested
+workload AND full-device fit for the separate ctx-2048 evaluation protocol.
+This queue currently requires one CUDA GPU; CPU/offload-only and multi-device
+evaluation remain unsupported, without removing those model recommendations.
+The runner still rechecks local bytes, hardware, fit and effective HTTP settings.
+
+Preparing the selection reads Hub metadata and, where needed, bounded GGUF
+header ranges. It never downloads a complete model or launches a container.
+The form shows file sizes, local availability, reasons
+and historical record counts. Candidates may be deselected; model and dataset
+download permissions remain separate and off by default. **Start evaluation**
+explicitly runs the chosen candidates sequentially through the existing pilot.
+Each candidate has a separate model-NN output folder and each completed result
+is stored before advancing. A domain failure does not stop later candidates;
+cancellation cleans up the current runner and leaves earlier records intact.
+Occupied output roots fail before preparation; no previous output is overwritten.
+
+Results refreshes exact-artifact diagnostics after returning. Evidence for an
+alternative GGUF is labelled separately from a Transformers primary path.
+Historical records are displayed but NOT reused to skip this queue: the current
+smoke/100-example profiles are non-reusable, and an artifact SHA alone does not
+establish a matching execution/evaluation identity. No response cache is enabled.
+
+This step supplies selection and execution, not general-quality ranking. The
+HellaSwag profiles remain plumbing/limited diagnostics. Broader tasks, statistical
+comparison, strict full-identity reuse and evidence-based recommendation ordering
+are separate follow-ups. There are no new dependencies, persisted record schema
+changes, hardware campaigns or HFA/ranking/performance formula changes.
+
+## Published References And Artifact Measurements
+
+The **Evaluation** tabs in Results and Paths keep two independent sections:
+
+- **Published model references** lists catalog entries for an exact repository
+  confirmed by repository identity or declared base-model metadata. Name/suffix
+  heuristics cannot establish that relationship. Each entry keeps its evaluated
+  variant, reasoning mode, source kind/URL and unknown revision/precision visible;
+  complete protocol fields, notes and catalog version/digest are in provenance.
+  This is a bibliography, not a claim that the current plan reproduces the result.
+  Qwen3 non-thinking references can therefore be displayed without relaxing the
+  strict `attach_capability_evidence` subject matching or inheriting a GGUF score.
+- **Measured on this artifact** continues to use exact GGUF content hashes and
+  displays sample coverage, classification and historical protocol limitations.
+  Published results never fill this section or replace local measurements.
+
+Missing/invalid catalogs have visible diagnostics; absent entries are not poor
+quality. No comparison winner, aggregate quality score or ranking bonus is added.
+Changing the selected path updates both sections without rewriting any record.
+The explicit evaluation action remains available when there is no measurement.
+Known unsupported formats, multipart/missing-file GGUF paths and machines with
+other than one GPU disable direct evaluation with a visible reason. Choosing a
+GGUF path from a Transformers recommendation remains available through Paths.
+Opening setup is not an execution-readiness guarantee: the existing pilot still
+checks the pinned server/image, dataset, CUDA and full-device fit at ctx 2048
+before running. It does not use llama-cli readiness to judge its pinned server.

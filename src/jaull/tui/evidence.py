@@ -40,6 +40,8 @@ from jaull.domain.execution_plans import (
 from jaull.domain.runtime import RuntimeName
 from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
+from jaull.presentation.published_evaluations import published_reference_text
+from jaull.recommendation.capability_catalog import CatalogReadResult
 
 _log = logging.getLogger(__name__)
 
@@ -95,6 +97,8 @@ class PlanEvidence:
     experiment_ids: tuple[str, ...] = ()
     benchmark_ids: tuple[str, ...] = ()
     quality_records: tuple[QualityEvidence, ...] = ()
+    published_summary: str = "No published references loaded."
+    published_provenance: str = ""
 
     @property
     def validated(self) -> bool:
@@ -189,6 +193,7 @@ class EvidenceIndex:
     _experiments: dict[str, list[str]] = field(default_factory=dict)
     _benchmarks: dict[str, list[str]] = field(default_factory=dict)
     _quality: dict[str, list[QualityEvidence]] = field(default_factory=dict)
+    _catalog: CatalogReadResult | None = None
 
     @classmethod
     def empty(cls) -> EvidenceIndex:
@@ -243,7 +248,12 @@ class EvidenceIndex:
             if result is not None:
                 quality.setdefault(result.artifact_sha256, []).append(result)
 
-        return cls(_experiments=experiments, _benchmarks=benchmarks, _quality=quality)
+        # Older injected facades may expose only the record-store methods.
+        catalog_reader = getattr(advisor, "capability_catalog", None)
+        catalog = catalog_reader() if catalog_reader is not None else None
+        return cls(
+            _experiments=experiments, _benchmarks=benchmarks, _quality=quality, _catalog=catalog,
+        )
 
     def for_plan(self, plan: ExecutionPlan) -> PlanEvidence:
         key = _plan_key(plan)
@@ -266,11 +276,14 @@ class EvidenceIndex:
             and plan.runtime_family is RuntimeName.LLAMA_CPP
             else ()
         )
+        published, provenance = published_reference_text(plan.model_identity, self._catalog)
         return PlanEvidence(
             state=state,
             experiment_ids=experiments,
             benchmark_ids=benchmarks,
             quality_records=quality,
+            published_summary=published,
+            published_provenance=provenance,
         )
 
     def quality_for_sha(self, sha256: str | None) -> tuple[QualityEvidence, ...]:

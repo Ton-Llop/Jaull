@@ -1,7 +1,24 @@
 """Selection guard shared by manual and automatically prepared quality runs."""
 
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat
+from jaull.domain.execution_plans import ArtifactVariant, ArtifactVariantFormat, ExecutionPlan
+
+
+def quality_evaluation_block_reason(plan: ExecutionPlan) -> str | None:
+    """Known pilot blockers; server/image and fixed-context fit still need preflight.
+
+    Do not use llama-cli readiness: this pilot uses a separately pinned server,
+    and its CUDA/full-offload protocol is independent of the selected launch.
+    """
+    if plan.artifact.format is not ArtifactVariantFormat.GGUF:
+        return "Select a GGUF path to evaluate this model."
+    if plan.artifact.filename is None:
+        return "The selected path does not identify a single GGUF file."
+    if plan.artifact.file_count not in (None, 1):
+        return "Multipart GGUF is not supported by the quality pilot."
+    if plan.hardware is not None and len(plan.hardware.gpus) != 1:
+        return "The fixed quality pilot requires one CUDA GPU."
+    return None
 
 
 def check_selected_artifact(artifact: ModelArtifact, selected: ArtifactVariant) -> None:

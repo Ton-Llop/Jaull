@@ -22,6 +22,10 @@ from jaull.domain.benchmarks import (
     BenchmarkRequest,
 )
 from jaull.domain.candidates import EvaluatedCandidate
+from jaull.domain.capability_evidence import (
+    CapabilityEvaluation,
+    EvaluationProtocol,
+)
 from jaull.domain.comparison import (
     CompatibilityComparison,
     CompatibilityOutcome,
@@ -31,6 +35,11 @@ from jaull.domain.comparison import (
 )
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.execution import ExecutionObservation
+from jaull.domain.execution_plans import (
+    ExecutionPlan,
+    ModelIdentityEvidence,
+    ModelIdentityEvidenceKind,
+)
 from jaull.domain.experiments import ExperimentRecord, ExperimentWorkload
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import WeightPrecision
@@ -1008,8 +1017,231 @@ def test_non_executable_plan_does_not_appear_in_top3_when_ready_plans_exist() ->
     assert all(item.plan.runtime_family is RuntimeName.LLAMA_CPP for item in ranked)
 
 
-def test_external_evaluation_provenance_is_retained_without_global_quality_score() -> None:
-    evidence = ExternalEvaluationEvidence(
+
+def _capability_evaluation(repo_id: str | None) -> CapabilityEvaluation:
+    """A catalogue entry for one repository, with its conditions left unknown."""
+    return CapabilityEvaluation(
+        evaluation_id=f"test-{repo_id}",
+        repo_id=repo_id or "org/Unknown",
+        variant=None,
+        revision=None,
+        precision=None,
+        task="coding",
+        benchmark="HumanEval",
+        benchmark_version=None,
+        metric="pass@1",
+        unit="percent",
+        direction="higher_is_better",
+        value=72.0,
+        source="https://example.invalid/report",
+        source_kind="publisher_reported",
+        date="2026-10-01",
+        protocol=EvaluationProtocol(),
+        notes=[],
+        confidence=EstimationConfidence.MEDIUM,
+    )
+
+
+
+def _with_confirmed_lineage(plan: ExecutionPlan) -> ExecutionPlan:
+    """The same plan, with its canonical repository confirmed by metadata.
+
+    The GGUF fixture reaches its canonical repository by stripping the suffix
+    off the repack's name, which on its own is not enough to inherit a
+    publisher's results. These tests are about attribution and serialization,
+    so they state the lineage rather than leaning on the guess.
+    """
+    identity = plan.model_identity.model_copy(
+        update={
+            "evidence": [
+                ModelIdentityEvidence(
+                    kind=ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+                    source="org/Coder-7B-GGUF",
+                    value=plan.model_identity.canonical_repo_id or "org/Coder-7B",
+                    confidence=EstimationConfidence.HIGH,
+                )
+            ]
+        }
+    )
+    return plan.model_copy(update={"model_identity": identity})
+
+
+def test_published_evidence_reaches_only_the_plan_whose_model_it_names() -> None:
+    """One catalogue serves the whole ranking, so attribution has to be per plan.
+
+    The context carries every published result at once. Without a per-plan
+    filter each plan would claim all of them, and a score reported for one
+    model would appear under another — which is worse than showing nothing.
+    """
+    evaluated = _evaluated_gguf()
+    plan = _with_confirmed_lineage(generate_execution_plans(evaluated, _requirements())[0])
+    mine = _capability_evaluation(plan.model_identity.canonical_repo_id)
+    someone_elses = _capability_evaluation("other/Unrelated-7B")
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(external_evaluations=[mine, someone_elses]),
+    )
+
+    assert assessment.external_evaluations == [mine]
+    assert "score" not in assessment.model_dump()
+
+
+
+def test_a_repository_guessed_from_a_name_does_not_inherit_published_results() -> None:
+    """Stripping `-GGUF` off a name is a hunch, not a lineage.
+
+    `logical_model_repo_id` turns `org/Thing-7B-GGUF` into `org/Thing-7B`, and
+    it is right often enough to be dangerous: on that basis alone a repack
+    would be handed the original publisher's numbers. Metadata naming the base
+    model is a claim someone made; a stripped suffix is not.
+    """
+    evaluated = _evaluated_gguf()
+    plan = generate_execution_plans(evaluated, _requirements())[0]
+    guessed = plan.model_identity.model_copy(
+        update={
+            "evidence": [
+                ModelIdentityEvidence(
+                    kind=ModelIdentityEvidenceKind.NAME_HEURISTIC,
+                    source="org/Coder-7B-GGUF",
+                    value="org/Coder-7B",
+                    confidence=EstimationConfidence.LOW,
+                )
+            ]
+        }
+    )
+    plan = plan.model_copy(update={"model_identity": guessed})
+    entry = _capability_evaluation(plan.model_identity.canonical_repo_id)
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(external_evaluations=[entry]),
+    )
+
+    assert assessment.external_evaluations == []
+
+
+def test_confirmed_lineage_pointing_at_another_model_confirms_nothing() -> None:
+    """The evidence has to name the repository actually being matched.
+
+    Checking only that *some* confirmed evidence exists would let metadata
+    about `org/Other` vouch for a match against `org/Coder-7B`, which is the
+    inheritance this rule exists to refuse, wearing a better hat.
+    """
+    evaluated = _evaluated_gguf()
+    plan = generate_execution_plans(evaluated, _requirements())[0]
+    elsewhere = plan.model_identity.model_copy(
+        update={
+            "evidence": [
+                ModelIdentityEvidence(
+                    kind=ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+                    source="org/Coder-7B-GGUF",
+                    value="org/Other",
+                    confidence=EstimationConfidence.HIGH,
+                )
+            ]
+        }
+    )
+    plan = plan.model_copy(update={"model_identity": elsewhere})
+    entry = _capability_evaluation(plan.model_identity.canonical_repo_id)
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(external_evaluations=[entry]),
+    )
+
+    assert assessment.external_evaluations == []
+
+
+@pytest.mark.parametrize("metadata_first", [True, False])
+def test_lineage_does_not_depend_on_the_order_of_the_evidence(metadata_first: bool) -> None:
+    """`evidence` is ordinary model data; anything may append to it.
+
+    A decision that flipped with the order of two entries would be a decision
+    about list construction, not about lineage.
+    """
+    evaluated = _evaluated_gguf()
+    plan = generate_execution_plans(evaluated, _requirements())[0]
+    canonical = plan.model_identity.canonical_repo_id or "org/Coder-7B"
+    confirmed = ModelIdentityEvidence(
+        kind=ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+        source="org/Coder-7B-GGUF",
+        value=canonical,
+        confidence=EstimationConfidence.HIGH,
+    )
+    guessed = ModelIdentityEvidence(
+        kind=ModelIdentityEvidenceKind.NAME_HEURISTIC,
+        source="org/Coder-7B-GGUF",
+        value=canonical,
+        confidence=EstimationConfidence.LOW,
+    )
+    order = [confirmed, guessed] if metadata_first else [guessed, confirmed]
+    plan = plan.model_copy(
+        update={"model_identity": plan.model_identity.model_copy(update={"evidence": order})}
+    )
+    entry = _capability_evaluation(canonical)
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(external_evaluations=[entry]),
+    )
+
+    assert assessment.external_evaluations == [entry]
+
+
+def test_metadata_naming_the_repack_does_not_confirm_the_stripped_repository() -> None:
+    """Comparing through the grouping key would re-admit the guess.
+
+    `logical_model_repo_key` exists to group identities and strips artifact
+    suffixes to do it. Used here it would read metadata declaring
+    `org/Coder-7B-GGUF` as confirmation of `org/Coder-7B` — which is precisely
+    the stripped-suffix inference this rule refuses, arriving through the
+    comparison instead of through the resolution.
+    """
+    evaluated = _evaluated_gguf()
+    plan = generate_execution_plans(evaluated, _requirements())[0]
+    canonical = plan.model_identity.canonical_repo_id or "org/Coder-7B"
+    repack = plan.model_identity.model_copy(
+        update={
+            "evidence": [
+                ModelIdentityEvidence(
+                    kind=ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+                    source="org/Coder-7B-GGUF",
+                    value=f"{canonical}-GGUF",
+                    confidence=EstimationConfidence.HIGH,
+                )
+            ]
+        }
+    )
+    plan = plan.model_copy(update={"model_identity": repack})
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(
+            external_evaluations=[_capability_evaluation(canonical)]
+        ),
+    )
+
+    assert assessment.external_evaluations == []
+
+def test_evidence_that_names_no_model_is_dropped_rather_than_spread() -> None:
+    """Unattributable evidence is not everyone's evidence.
+
+    A bare `ExternalEvaluationEvidence` says what was measured but not of what.
+    Attaching it to every plan would put a number on candidates nobody
+    evaluated, so it is dropped and the row simply has nothing to show.
+    """
+    unattributed = ExternalEvaluationEvidence(
         benchmark="HumanEval",
         task="coding",
         value=72.0,
@@ -1025,11 +1257,34 @@ def test_external_evaluation_provenance_is_retained_without_global_quality_score
         evaluated,
         plan,
         _requirements(),
-        context=PlanRankingContext(external_evaluations=[evidence]),
+        context=PlanRankingContext(external_evaluations=[unattributed]),
     )
 
-    assert assessment.external_evaluations == [evidence]
-    assert "score" not in assessment.model_dump()
+    assert assessment.external_evaluations == []
+
+
+def test_published_evidence_keeps_its_attribution_through_export() -> None:
+    """A score without its source is not evidence.
+
+    `external_evaluations` is declared as the base type, so pydantic would
+    serialize a catalogue entry as that base and silently drop the repository,
+    the variant, who reported it and under what protocol.
+    """
+    evaluated = _evaluated_gguf()
+    plan = _with_confirmed_lineage(generate_execution_plans(evaluated, _requirements())[0])
+    entry = _capability_evaluation(plan.model_identity.canonical_repo_id)
+
+    assessment = assess_plan(
+        evaluated,
+        plan,
+        _requirements(),
+        context=PlanRankingContext(external_evaluations=[entry]),
+    )
+    exported = assessment.model_dump()["external_evaluations"][0]
+
+    assert exported["repo_id"] == plan.model_identity.canonical_repo_id
+    assert exported["source_kind"] == "publisher_reported"
+    assert "protocol" in exported
 
 
 def test_unknown_benchmark_methodology_cannot_displace_recognized_evidence() -> None:

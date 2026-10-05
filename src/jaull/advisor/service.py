@@ -94,6 +94,13 @@ from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from jaull.advisor.quality_candidates import (
+        QualityCandidate,
+        QualityCandidateOutcome,
+        QualityCandidateSelection,
+    )
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
         BenchmarkMatrixResult,
@@ -101,6 +108,7 @@ if TYPE_CHECKING:
     )
     from jaull.benchmarks.storage import BenchmarkStore
     from jaull.cases.storage import CaseStore
+    from jaull.domain.recommendation import ExternalEvaluationEvidence
     from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
     from jaull.evaluation.quality_records import QualityEvidence
@@ -108,6 +116,7 @@ if TYPE_CHECKING:
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
+    from jaull.recommendation.capability_catalog import CatalogReadResult
     from jaull.recommendation.models import ModelRecommendation
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
@@ -142,6 +151,9 @@ class AdvisorService:
     benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
     benchmark_store: BenchmarkStore | None = field(default=None)
     quality_store: QualityEvidenceStore | None = field(default=None)
+    _catalog_result: CatalogReadResult | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     case_store: CaseStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
@@ -245,6 +257,7 @@ class AdvisorService:
                 selection=backend_selection,
             ),
             benchmark_records=self._stored_benchmark_records(),
+            external_evaluations=self._published_evaluations(),
             experiment_records=self._stored_experiment_records(),
         )
 
@@ -293,6 +306,36 @@ class AdvisorService:
                 exc_info=True,
             )
         return readiness or None
+
+    def _published_evaluations(self) -> Sequence[ExternalEvaluationEvidence]:
+        """The shipped catalogue, read once per service.
+
+        These are publisher-reported results about a model, never a measurement
+        of the artifact a plan would run, and never a score. `assess_plan`
+        attaches each one only to the plan whose model it names; a missing or
+        unreadable catalogue costs the ranking nothing.
+        """
+        result = self.capability_catalog()
+        return (
+            result.catalog.evaluations
+            if result.status == "loaded" and result.catalog is not None else ()
+        )
+
+    def capability_catalog(self) -> CatalogReadResult:
+        """Cached diagnostic data, retaining version, digest and read failures."""
+        cached = self._catalog_result
+        if cached is not None:
+            return cached
+        from jaull.recommendation.capability_catalog import (
+            default_catalog_path,
+            load_capability_catalog,
+        )
+
+        result = load_capability_catalog(default_catalog_path())
+        if result.diagnostic is not None:
+            logger.debug("Capability catalog unavailable: %s", result.diagnostic)
+        object.__setattr__(self, "_catalog_result", result)
+        return result
 
     def _stored_benchmark_records(self) -> list[BenchmarkRecord]:
         try:
@@ -790,6 +833,28 @@ class AdvisorService:
             self.load_quality_record(left_id), self.load_quality_record(right_id),
             left_source=str(self._quality_store().path_for(left_id)),
             right_source=str(self._quality_store().path_for(right_id)),
+        )
+
+    def prepare_quality_candidates(
+        self, state: RecommendationWorkflowState, *,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> QualityCandidateSelection:
+        from jaull.advisor.quality_candidates import prepare_candidates
+
+        return prepare_candidates(self, state, is_cancelled=is_cancelled, on_progress=on_progress)
+
+    def run_quality_candidates(
+        self, candidates: tuple[QualityCandidate, ...], request: QualityRunRequest, *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> tuple[QualityCandidateOutcome, ...]:
+        from jaull.advisor.quality_candidates import run_candidates
+
+        return run_candidates(
+            self, candidates, request, allow_download=allow_download,
+            is_cancelled=is_cancelled, on_progress=on_progress,
         )
 
     def save_case_manifest(self, manifest: ExperimentalCaseManifest) -> Path:

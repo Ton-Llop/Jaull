@@ -9,12 +9,18 @@ from threading import Event
 from typing import Any
 
 import pytest
-from textual.widgets import Button, Checkbox, Input, Select, Static, TabbedContent
+from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent
 
-from jaull.advisor.quality import check_selected_artifact
+from jaull.advisor.quality import check_selected_artifact, quality_evaluation_block_reason
+from jaull.advisor.quality_candidates import (
+    QualityCandidate,
+    QualityCandidateSelection,
+    run_candidates,
+)
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution_plans import ArtifactVariantFormat
 from jaull.domain.runtime import RuntimeName
+from jaull.recommendation.capability_catalog import CatalogReadResult
 from jaull.runtime.quality_eval_runner import (
     QualityEvaluationCancelled,
     QualityEvaluationError,
@@ -31,8 +37,10 @@ from jaull.tui.screens.recommendation_results import (
 )
 from jaull.tui.widgets.selection_workspace import SelectionWorkspace
 from jaull.workflow.state import RecommendationWorkflowState
+from tests._workflow_fixtures import hardware
 from tests.test_cli_quality import _record, _request
 from tests.test_execution_plans import _gguf_recommendation
+from tests.test_published_evaluation_presentation import _catalog, _identity
 from tests.test_tui_evidence import _FakeStoreAdvisor, _plan
 
 
@@ -99,7 +107,7 @@ def _fill(screen: QualityEvaluationScreen, request: QualityRunRequest) -> None:
         ("server", request.llama_server), ("root", request.pilot_root),
         ("image", request.image), ("output", request.output),
     ):
-        if key == "artifact" and screen._plan is not None:
+        if key == "artifact" and not screen.query("#quality-artifact"):
             continue
         screen.query_one(f"#quality-{key}", Input).value = str(value)
 
@@ -110,6 +118,138 @@ async def _settled(pilot: Any, screen: QualityEvaluationScreen) -> None:
         if not screen._busy:
             return
     pytest.fail("Quality screen did not finish")
+
+
+class CandidateAdvisor(FakeAdvisor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.selection_calls = 0
+        self.candidates = tuple(
+            QualityCandidate(_plan(repo_id=f"synthetic/Model-{index}"), "Synthetic fit", False)
+            for index in range(3)
+        )
+
+    def prepare_quality_candidates(self, state: Any, **kwargs: Any) -> QualityCandidateSelection:
+        self.selection_calls += 1
+        return QualityCandidateSelection(self.candidates, ("Other models: outside budget",), 8)
+
+    def run_quality_candidates(self, candidates: Any, request: Any, **kwargs: Any) -> Any:
+        return run_candidates(self, candidates, request, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+@pytest.mark.parametrize("preference_failure", [False, True])
+def test_search_candidate_queue_is_reviewable_opt_in_and_sequential(
+    size: tuple[int, int], tmp_path: Path, preference_failure: bool,
+) -> None:
+    async def scenario() -> None:
+        advisor = CandidateAdvisor()
+        if preference_failure:
+            def cannot_save(request: Any) -> None:
+                raise OSError("Synthetic preferences unavailable")
+            advisor.remember_quality_evaluation_setup = cannot_save  # type: ignore[method-assign]
+        rec = _gguf_recommendation().model_copy(update={"plan": advisor.candidates[0].plan})
+        state = RecommendationWorkflowState(recommendations=[rec])
+        before = state.model_dump_json()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            results = RecommendationResultsScreen(state)
+            await app.push_screen(results)
+            await pilot.pause()
+            assert not advisor.calls and not advisor.selection_calls
+            action = results.query_one("#res-candidate-evaluation", Button)
+            assert action.region.right <= size[0]
+            assert action.region.bottom < size[1]
+            await pilot.click("#res-candidate-evaluation")
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, QualityEvaluationScreen)
+            await _settled(pilot, screen)
+            assert advisor.selection_calls == 1 and advisor.calls == []
+            assert len(screen.candidate_plans) == 3
+            assert not screen.query("#quality-artifact")
+            assert not screen.query_one("#quality-download", Checkbox).value
+            assert not screen.query_one("#quality-dataset-download", Checkbox).value
+            _fill(screen, _request(tmp_path))
+            # Review changes the queue, not the recommendations.
+            screen.query_one("#quality-candidate-1", Checkbox).value = False
+            await pilot.pause(0.6)
+            await pilot.click("#quality-start")
+            await _settled(pilot, screen)
+            assert len(advisor.plan_calls) == len(advisor.calls) == 2
+            assert [p.artifact.repo_id for p, _ in advisor.plan_calls] == [
+                "synthetic/Model-0", "synthetic/Model-2",
+            ]
+            assert all(not consent for _, consent in advisor.plan_calls)
+            assert [request.output.name for request in advisor.calls] == ["model-01", "model-02"]
+            assert "order unchanged" in str(screen.query_one("#quality-result", Static).content)
+            text = str(screen.query_one("#quality-result", Static).content)
+            assert "Completed 2/2; failed 0; not started 0" in text
+            assert screen._stored is not None and "Saved:" in text
+            if preference_failure:
+                assert "setup was not saved" in text
+            for name in ("start", "prepare", "cancel", "back"):
+                button = screen.query_one(f"#quality-{name}", Button)
+                assert button.region.right <= size[0]
+                assert button.region.bottom < size[1]
+            app.save_screenshot(filename=f"candidate-queue-{size[0]}.svg", path=str(tmp_path))
+            await pilot.click("#quality-back")
+            await pilot.pause()
+            assert app.screen is results
+            assert state.model_dump_json() == before
+            assert results._known_paths[0][0] == advisor.candidates[0].plan
+    asyncio.run(scenario())
+
+
+def test_empty_candidate_selection_has_explanation_and_no_run(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        advisor = CandidateAdvisor()
+        advisor.candidates = ()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = QualityEvaluationScreen(search_state=RecommendationWorkflowState())
+            await app.push_screen(screen)
+            await _settled(pilot, screen)
+            assert screen.query_one("#quality-start", Button).disabled
+            assert "No evaluation candidates" in str(
+                screen.query_one("#quality-start", Button).tooltip,
+            )
+            assert "No models available" in str(screen.query_one("#quality-status", Static).content)
+            assert not screen.query_one("#quality-candidates Collapsible", Collapsible).collapsed
+            assert not advisor.calls
+            text = "\n".join(str(widget.content)
+                             for widget in screen.query("#quality-candidates Static"))
+            assert "0 candidates" in text and "outside budget" in text
+            await pilot.click("#quality-back")
+    asyncio.run(scenario())
+
+
+def test_candidate_queue_cancel_waits_for_cleanup_and_never_starts_next_model(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        advisor = CandidateAdvisor()
+        advisor.wait = True
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = QualityEvaluationScreen(search_state=RecommendationWorkflowState())
+            await app.push_screen(screen)
+            await _settled(pilot, screen)
+            _fill(screen, _request(tmp_path))
+            await pilot.click("#quality-start")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if advisor.calls:
+                    break
+            assert screen._busy and len(advisor.calls) == 1
+            await pilot.press("escape")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if app.screen is not screen:
+                    break
+            assert app.screen is not screen
+            assert advisor.cleaned.is_set() and len(advisor.calls) == 1
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 50)])
@@ -398,6 +538,9 @@ class ResultsAdvisor(_FakeStoreAdvisor):
     def quality_evaluation_setup(self) -> dict[str, str]:
         return {}
 
+    def capability_catalog(self) -> CatalogReadResult:
+        return _catalog()
+
 
 @pytest.mark.parametrize("gguf_primary", [False, True])
 @pytest.mark.parametrize("size", [(80, 24), (160, 50)])
@@ -508,3 +651,118 @@ def test_results_alternatives_require_exact_digest_and_model_identity() -> None:
         unrelated, _plan(sha256="7" * 64), _plan(),
         _plan(file_count=3, sha256=matching.artifact.sha256),
     ))
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+@pytest.mark.parametrize("measured", [False, True])
+def test_results_separates_published_references_from_exact_artifact_measurements(
+    size: tuple[int, int], measured: bool,
+) -> None:
+    async def exercise() -> None:
+        record = _record()
+        gguf = _plan(sha256=record["identity"]["artifact_sha256"]).model_copy(
+            update={"model_identity": _identity()},
+        )
+        rec = _gguf_recommendation().model_copy(update={"plan": gguf})
+        state = RecommendationWorkflowState(recommendations=[rec])
+        before = state.model_dump_json()
+        advisor = ResultsAdvisor([gguf])
+        if measured:
+            advisor._quality[record["identity_sha256"]] = record
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            results = RecommendationResultsScreen(state)
+            await app.push_screen(results)
+            results.query_one(SelectionWorkspace).show_detail()
+            results._rows[0].detail.query_one(TabbedContent).active = "tab-3"
+            for _ in range(100):
+                await pilot.pause(0.02)
+                if "75%" in str(results.query_one("#rec-published-0", Static).content):
+                    break
+            published = str(results.query_one("#rec-published-0", Static).content)
+            assert "publisher-reported" in published and "independent" in published
+            assert "non-thinking" in published and "not measured on this artifact" in published
+            assert "75%" in published and "65%" in published
+            assert results.query_one("#rec-quality-0").display is measured
+            assert results.query_one("#rec-quality-empty-0").display is not measured
+            assert results.query_one("#rec-published-provenance-0").display
+            assert '"reasoning_mode": "non-thinking"' in str(
+                results.query_one("#rec-published-details-0", Static).content
+            )
+            if measured:
+                assert "plumbing" in str(results.query_one("#rec-quality-0", Static).content)
+            assert state.model_dump_json() == before and advisor.path_lookups == 0
+            button = results.query_one("#res-evaluate-0", Button)
+            assert not button.disabled
+            # The worker's text update changes scroll geometry on the next refresh.
+            await pilot.pause()
+            button.scroll_visible(animate=False)
+            await pilot.pause()
+            assert button.parent is not None
+            assert button.parent.content_region.contains_region(button.region)
+            assert app.get_widget_at(*button.region.center)[0] is button
+            app.save_screenshot(f"jaull-published-{size[0]}-{measured}.svg", path="/tmp")
+            await pilot.click("#res-evaluate-0")
+            await pilot.pause()
+            assert isinstance(app.screen, QualityEvaluationScreen)
+            assert app.screen._plan == gguf
+
+    asyncio.run(exercise())
+
+
+def test_paths_published_references_follow_selected_model_and_never_fill_local_metrics() -> None:
+    async def exercise() -> None:
+        gguf = _plan().model_copy(update={"model_identity": _identity()})
+        unrelated = _plan(repo_id="other/Unrelated-GGUF").model_copy(update={
+            "model_identity": _identity("other/NoCatalogEntry"),
+        })
+        advisor = ResultsAdvisor([gguf, unrelated])
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(160, 50)) as pilot:
+            screen = ExecutionPathsScreen(_gguf_recommendation())
+            await app.push_screen(screen)
+            await pilot.pause()
+            index = EvidenceIndex.load(advisor)  # type: ignore[arg-type]
+            await screen._paths_loaded(_ExecutionPathsLoaded([gguf, unrelated], index))
+            screen._selected_plan_id = gguf.plan_id
+            screen._apply_selection()
+            assert "75%" in str(screen.query_one("#paths-published", Static).content)
+            assert not screen.query_one("#paths-quality").display
+            assert screen.query_one("#paths-quality-empty").display
+            screen._selected_plan_id = unrelated.plan_id
+            screen._apply_selection()
+            text = str(screen.query_one("#paths-published", Static).content)
+            assert "Absence is not poor quality" in text and "75%" not in text
+            assert not screen.query_one("#paths-published-provenance").display
+            assert str(screen.query_one("#paths-published-details", Static).content) == ""
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("problem,reason", [
+    ("multipart", "Multipart GGUF"), ("missing-file", "single GGUF"),
+    ("no-gpu", "one CUDA GPU"),
+])
+def test_results_disables_known_incompatible_quality_paths_with_visible_reason(
+    problem: str, reason: str,
+) -> None:
+    async def exercise() -> None:
+        plan = _plan()
+        if problem == "no-gpu":
+            plan = plan.model_copy(update={"hardware": hardware(vram_gib=None)})
+        else:
+            change = {"file_count": 3} if problem == "multipart" else {"filename": None}
+            plan = plan.model_copy(update={"artifact": plan.artifact.model_copy(update=change)})
+        assert reason in (quality_evaluation_block_reason(plan) or "")
+        rec = _gguf_recommendation().model_copy(update={"plan": plan})
+        app = JaullApp(advisor=ResultsAdvisor([plan]))  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = RecommendationResultsScreen(RecommendationWorkflowState(recommendations=[rec]))
+            await app.push_screen(screen)
+            await pilot.pause()
+            assert screen.query_one("#res-evaluate-0", Button).disabled
+            assert reason in str(screen.query_one("#rec-evaluate-reason-0", Static).content)
+            assert screen.query_one("#rec-evaluate-reason-0").display
+            assert not screen.query_one("#res-paths-0", Button).disabled
+
+    asyncio.run(exercise())

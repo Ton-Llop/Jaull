@@ -32,6 +32,7 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Select, Static, TabbedContent, TabPane
 
+from jaull.advisor.quality import quality_evaluation_block_reason
 from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.runtime import RuntimeName
 from jaull.presentation.plan_labels import (
@@ -228,7 +229,16 @@ class ExecutionPathsScreen(Screen[None]):
                 yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
                 yield Static("", id="paths-action-reason", classes="warning-line")
             with TabPane("Evaluation", id="paths-evaluation"), VerticalScroll():
+                yield Static("Published model references", classes="section-title")
+                yield Static("", id="paths-published", classes="text-secondary", markup=False)
+                yield TechnicalDetails(
+                    title="Published reference provenance",
+                    extra=[Static("", id="paths-published-details", markup=False)],
+                    id="paths-published-provenance",
+                )
+                yield Static("Measured on this artifact", classes="section-title")
                 yield ActionButton("Evaluate quality", id="paths-evaluate", disabled=True)
+                yield Static("", id="paths-evaluate-reason", classes="warning-line", markup=False)
                 yield Static(
                     "No measured evaluation for this exact artifact.",
                     id="paths-quality-empty",
@@ -236,7 +246,7 @@ class ExecutionPathsScreen(Screen[None]):
                 )
                 yield Static("", id="paths-quality", classes="text-secondary", markup=False)
                 yield TechnicalDetails(
-                    title="Evaluation provenance",
+                    title="Artifact measurement provenance",
                     extra=[Static("", id="paths-quality-details", markup=False)],
                     id="paths-quality-provenance",
                 )
@@ -496,18 +506,17 @@ class ExecutionPathsScreen(Screen[None]):
         """Reflect the current plan everywhere, without rebuilding the list."""
         selected = self._selected_plan()
         evaluate = self.query_one("#paths-evaluate", Button)
-        evaluate.disabled = selected is None or not is_gguf_plan(selected)
-        evaluate.tooltip = (
-            "Select a GGUF path for the quality pilot." if evaluate.disabled
-            else "Requires an exact local manifest and the fixed pilot protocol."
+        evaluation_reason = (
+            quality_evaluation_block_reason(selected) if selected is not None
+            else "Select a GGUF path for the quality pilot."
         )
-        if selected is not None and is_gguf_plan(selected):
-            if selected.artifact.filename is None:
-                evaluate.disabled = True
-                evaluate.tooltip = "The selected path does not identify a single GGUF file."
-            elif selected.artifact.file_count not in (None, 1):
-                evaluate.disabled = True
-                evaluate.tooltip = "Multipart GGUF is not supported by the quality pilot."
+        evaluate.disabled = evaluation_reason is not None
+        evaluate.tooltip = (
+            evaluation_reason or "Open evaluation setup; preflight is required before running."
+        )
+        reason = self.query_one("#paths-evaluate-reason", Static)
+        reason.update(evaluation_reason or "")
+        reason.display = evaluation_reason is not None
         gguf_plan = self._visible_gguf_plan()
         for option in self.query(_PathOption):
             if option.id == "paths-gguf":
@@ -521,6 +530,8 @@ class ExecutionPathsScreen(Screen[None]):
         meta = self.query_one("#paths-selected-meta", Static)
         warnings = self.query_one("#paths-warnings", Static)
         if selected is None:
+            self.query_one("#paths-published", Static).update("No execution path selected.")
+            self.query_one("#paths-published-provenance").display = False
             title.display = False
             meta.display = False
             warnings.display = False
@@ -536,6 +547,9 @@ class ExecutionPathsScreen(Screen[None]):
             return
 
         evidence = self._evidence.for_plan(selected)
+        self.query_one("#paths-published", Static).update(evidence.published_summary)
+        self.query_one("#paths-published-details", Static).update(evidence.published_provenance)
+        self.query_one("#paths-published-provenance").display = bool(evidence.published_provenance)
         title.update(f"Selected · {selected_plan_label(selected)}")
         title.display = True
         meta.update(f"{readiness_detail(selected)} · {evidence.summary()} · {_memory(selected)}")
