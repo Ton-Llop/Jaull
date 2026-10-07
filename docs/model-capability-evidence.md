@@ -169,6 +169,34 @@ behavior, not endorsement of their quality or confirmation that their selected
 paths can execute. No numeric score, task match, eligibility rule or hardware
 formula was changed on the basis of this sample.
 
+### Catalog coverage of the observed recommendations (2026-10-06)
+
+An offline check intersected the ten exact repository IDs in the two final lists
+above with the repository IDs in shipped catalog `0.2.0` (11 entries). It did not
+query the Hub, infer lineage or match names/families. A repository match would
+only be a first check: variant, evaluated revision and precision still need
+separate confirmation before evidence can describe an execution plan.
+
+| Recorded workflow (2026-10-01) | Final recommendations | Repository IDs in catalog |
+|---|---:|---:|
+| Chat | 5 | 0 |
+| Coding | 5 | 0 |
+| Combined, distinct | 10 | 0 |
+
+The catalog covers only `Qwen/Qwen2.5-32B-Instruct` (six entries) and
+`Qwen/Qwen3-32B` (five). Neither was a final recommendation in that hardware
+sample. The first reached the chat eligible pool but not its shortlist; the
+second was absent from the fetched pages. These are coverage and discovery
+observations, not negative quality findings about the ten recommended models.
+In particular, a Qwen3-4B or Qwen2.5-Coder result cannot inherit the 32B
+reference by family name. This dated sample used the recorded RTX 2060 machine;
+it is not a fresh recommendation run on the current laptop.
+
+Current production code keeps the catalog as an explicit offline lookup.
+Results and Paths show locally persisted evaluations for exact artifact bytes;
+they do not yet load these publisher references. Those two evidence sources
+must remain visibly distinct when published-reference presentation is added.
+
 `application/recommendation/service.py` consumes the analyzer's numeric score;
 `recommendation/engine_v2.py` also constructs the metadata analyzer when assessing
 plans. This implementation changes neither path. It attaches optional sourced
@@ -330,5 +358,23 @@ first resolve exact identity/provenance without broadening matching.
 Before ranking integration, decide which independently reviewed comparisons
 justify a broad capability claim, how protocol gaps and conflicting dimensions
 are presented, and how discovery recall is measured. A user-facing diagnostic
-surface remains deferred at the explicit lookup boundary above. No new GPU campaign
-or HFA calibration is required for this contract.
+surface for published references remains deferred at the explicit lookup boundary above.
+No new GPU campaign or HFA calibration is required for this contract.
+
+## Priority policy for human review (proposal only)
+
+The current catalog has no overlap with the ten observed final recommendations,
+so these modes cannot yet justify a new automatic ordering. Any future policy
+would use the existing fit and task eligibility decisions unchanged and keep
+missing evidence explicitly unknown:
+
+| Priority | Evidence to consider after existing eligibility | When evidence is missing or incompatible |
+|---|---|---|
+| Quality | Reviewed, model-specific results for the requested task under stated, comparable protocols; show dimension and source, not a single general score. | Abstain from quality ordering; keep the model eligible and mark quality unknown. |
+| Fastest | Local measurements of complete execution plans on the relevant machine and comparable workload, with methodology and backend visible. | Abstain from a speed claim; never treat tok/s as quality. |
+| Balanced | Present supported quality, local speed and memory as separate trade-offs for human choice. | Show the gaps and avoid a forced winner or hidden weighted total. |
+
+Smoke and 100-example HellaSwag results remain protocol diagnostics, not broad
+quality evidence. Published results for an unpinned representation must not be
+silently attached to a different quantization, fine-tune or current revision.
+No ranking, score, task-match or placement rule is changed by this proposal.

@@ -52,19 +52,120 @@ def test_a_record_round_trips_under_its_own_identity_digest(tmp_path: Path) -> N
     assert store.exists(record["identity_sha256"])
 
 
-def test_the_same_identity_stores_once_and_conflicts_are_refused(tmp_path: Path) -> None:
+def test_repeated_runs_keep_distinct_records_without_overwriting(tmp_path: Path) -> None:
     store = QualityEvidenceStore(tmp_path)
     record = synthetic_full_record()
     first = store.save(record)
     assert store.save(deepcopy(record)) == first
 
-    # Same identity, different numbers: one of them is wrong, so neither wins.
-    conflicting = deepcopy(record)
-    task = conflicting["identity"]["suite"]["name"]
-    conflicting["result"]["results"][task]["acc,none"] = 0.0
-    conflicting["result"]["samples"][task][0]["acc"] = 0
-    with pytest.raises(QualityStoreError, match="different record content"):
-        store.save(conflicting)
+    repeated = deepcopy(record)
+    repeated["result"]["date"] = 1790943344.0
+    second = store.save(repeated)
+
+    assert second != first
+    assert second.stem == f"{record['identity_sha256']}-{digest(repeated)}"
+    assert store.save(deepcopy(repeated)) == second
+    assert store.load(first.stem) == record
+    assert store.load(second.stem) == repeated
+    assert store.list_ids() == sorted([first.stem, second.stem])
+    assert store.lookup(record["identity"]) is None
+
+    differing_measurement = deepcopy(record)
+    task = record["identity"]["suite"]["name"]
+    differing_measurement["result"]["results"][task]["acc,none"] = 0.0
+    differing_measurement["result"]["samples"][task][0]["acc"] = 0
+    third = store.save(differing_measurement)
+    assert third not in (first, second)
+    assert store.load(third.stem) == differing_measurement
+    assert len(store.evidence()) == 3
+
+
+def test_concurrent_first_run_publication_falls_back_to_a_distinct_record_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jaull.evaluation import quality_storage
+
+    store = QualityEvidenceStore(tmp_path)
+    first = synthetic_full_record()
+    second = deepcopy(first)
+    second["result"]["date"] = 1790943344.0
+    original_save = quality_storage.save_record
+
+    def raced_save(path: Path, record: dict[str, object]) -> None:
+        if path.stem == first["identity_sha256"]:
+            original_save(path, first)
+            raise FileExistsError(path)
+        original_save(path, record)
+
+    monkeypatch.setattr(quality_storage, "save_record", raced_save)
+    second_path = store.save(second)
+
+    assert second_path.stem == f"{first['identity_sha256']}-{digest(second)}"
+    assert store.load(first["identity_sha256"]) == first
+    assert store.load(second_path.stem) == second
+
+
+def test_legacy_truncated_record_does_not_block_a_new_run(tmp_path: Path) -> None:
+    store = QualityEvidenceStore(tmp_path)
+    record = synthetic_full_record()
+    primary = store.path_for(record["identity_sha256"])
+    primary.write_text("{", encoding="utf-8")
+
+    saved = store.save(record)
+
+    assert saved != primary
+    assert primary.read_text(encoding="utf-8") == "{"
+    assert store.load(saved.stem) == record
+    assert store.lookup(record["identity"]) == record["result"]
+
+
+def test_atomic_publication_keeps_existing_record_and_cleans_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jaull.evaluation import quality_records
+
+    record = synthetic_full_record()
+    path = tmp_path / "atomic.json"
+
+    def fail_publication(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated interrupted publication")
+
+    monkeypatch.setattr(quality_records.os, "link", fail_publication)
+    with pytest.raises(OSError, match="interrupted publication"):
+        quality_records.save_record(path, record)
+    assert not path.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_interrupted_json_write_never_publishes_a_partial_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jaull.evaluation import quality_records
+
+    def partial_dump(payload: object, handle: object, **kwargs: object) -> None:
+        handle.write("{")  # type: ignore[attr-defined]
+        raise OSError("simulated interrupted write")
+
+    monkeypatch.setattr(quality_records.json, "dump", partial_dump)
+    path = tmp_path / "partial.json"
+    with pytest.raises(OSError, match="interrupted write"):
+        quality_records.save_record(path, synthetic_full_record())
+    assert not path.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_publication_never_replaces_an_existing_record(tmp_path: Path) -> None:
+    from jaull.evaluation.quality_records import save_record
+
+    record = synthetic_full_record()
+    path = tmp_path / "immutable.json"
+    save_record(path, record)
+    original = path.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        save_record(path, record)
+    assert path.read_bytes() == original
+    assert list(tmp_path.iterdir()) == [path]
 
 
 def test_a_record_whose_digest_does_not_match_its_identity_is_refused(tmp_path: Path) -> None:

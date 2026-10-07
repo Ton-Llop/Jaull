@@ -916,16 +916,18 @@ never rewritten. `run-01/`, `run-02/`, etc. retain the normalized artifact
 manifest, raw bundle, runner/snapshot logs and immutable snapshot. Existing run
 directories are refused, never overwritten. Completed records are automatically
 saved in Jaull's existing user-data `quality/` store; the response returns their
-identity hashes. A failed run/snapshot is not stored, and stops later runs. If
+record IDs. A failed run/snapshot is not stored, and stops later runs. If
 an earlier run completed, its record remains saved and is listed in the failure
 response. Ctrl+C lets the pilot finish its owned-process cleanup before the
 CLI exits. No response cache or automatic result reuse is enabled.
-The store still accepts only one immutable record per evaluation identity:
-repeating an identical protocol does not overwrite an earlier record. If the
-new content differs (including timestamps/provenance), import fails and the
-new snapshot remains in its run directory for review.
+The store preserves repeated evaluations of the same identity. The first
+record retains the legacy identity-hash filename; a different subsequent run
+uses an identity-and-record-hash ID. Saving identical record content is
+idempotent. Records are published atomically and never overwritten. A strict
+quality lookup abstains when several runs share one identity; it does not pick
+one result or aggregate them implicitly.
 
-Compare two returned identity hashes without Docker or a GPU:
+Compare two returned record IDs without Docker or a GPU:
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 jaull quality compare \

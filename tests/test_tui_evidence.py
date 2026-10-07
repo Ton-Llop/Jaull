@@ -26,6 +26,7 @@ from jaull.domain.execution_plans import (
     ExecutionPlan,
     ModelIdentity,
 )
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.tui.app import JaullApp
@@ -40,6 +41,7 @@ from jaull.tui.screens.execution_paths import (
 from jaull.tui.screens.recommendation_results import _RecommendationRow
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from tests._workflow_fixtures import hardware
+from tests.test_benchmarks import _record as _benchmark_record
 from tests.test_execution_plans import _gguf_recommendation
 from tests.test_experiment_store import _sample_record
 from tests.test_quality_eval_records import synthetic_full_record, synthetic_limited_record
@@ -92,14 +94,17 @@ def _plan(
     quantization: str | None = "Q4_K_M",
     runtime: RuntimeName = RuntimeName.LLAMA_CPP,
     ready: bool = True,
-    sha256: str | None = None,
+    sha256: str | None = "1" * 64,
     file_count: int = 1,
+    revision: str = "main",
+    backend: ComputeBackend = ComputeBackend.CPU,
+    context_length: int = 4096,
 ) -> ExecutionPlan:
     identity = ModelIdentity(model_name=repo_id.split("/")[-1])
     variant = ArtifactVariant(
         model_identity=identity,
         repo_id=repo_id,
-        revision="main",
+        revision=revision,
         format=ArtifactVariantFormat.GGUF,
         filename="model.gguf",
         sha256=sha256,
@@ -107,13 +112,26 @@ def _plan(
         quantization=quantization,
         compatible_runtimes=[runtime],
     )
-    recommendation = RuntimeRecommendation(
-        runtime=runtime,
-        confidence=EstimationConfidence.HIGH,
-    )
     # A real readiness object rather than a hand-built one: it carries a
     # selection and a runtime capability, and the resolver only reads `.status`.
-    readiness = _sample_record().preflight.execution_readiness if ready else None
+    sample = _sample_record()
+    recommendation = (
+        sample.runtime if runtime is RuntimeName.LLAMA_CPP else RuntimeRecommendation(
+            runtime=runtime,
+            confidence=EstimationConfidence.HIGH,
+        )
+    )
+    readiness = sample.preflight.execution_readiness if ready else None
+    prediction = sample.prediction
+    if context_length != 4096:
+        prediction = prediction.model_copy(update={
+            "inference_configuration": prediction.inference_configuration.model_copy(
+                update={"context_length": context_length}
+            ),
+        })
+    selection = sample.preflight.execution_readiness.selection.model_copy(
+        update={"selected_backend": backend}
+    )
     return ExecutionPlan(
         plan_id=f"{repo_id}:{quantization}",
         model_identity=identity,
@@ -121,6 +139,9 @@ def _plan(
         runtime=recommendation,
         runtime_family=runtime,
         execution_readiness=readiness,
+        backend_selection=selection,
+        memory_prediction=prediction,
+        hardware=sample.hardware,
     )
 
 
@@ -202,6 +223,56 @@ def test_evidence_does_not_cross_repositories() -> None:
     index = EvidenceIndex.load(advisor, ModelIdentity(model_name="repo"))
 
     assert index.for_plan(_plan(repo_id="other/repo")).validated is False
+
+
+def test_evidence_does_not_cross_artifact_hashes_or_mutable_unpinned_revisions() -> None:
+    advisor = _FakeStoreAdvisor(experiments={"exp-1": _experiment()})
+    index = EvidenceIndex.load(advisor)
+
+    assert not index.for_plan(_plan(sha256="2" * 64)).validated
+    assert not index.for_plan(_plan(sha256=None)).validated
+
+
+def test_pinned_revision_and_filename_can_identify_artifact_without_sha() -> None:
+    revision = "a" * 40
+    experiment = _experiment()
+    experiment = experiment.model_copy(update={"artifact": experiment.artifact.model_copy(
+        update={"revision": revision, "sha256": None}
+    )})
+    index = EvidenceIndex.load(_FakeStoreAdvisor(experiments={"exp-1": experiment}))
+
+    assert index.for_plan(_plan(sha256=None, revision=revision)).validated
+    assert not index.for_plan(_plan(sha256=None, revision="b" * 40)).validated
+
+
+def test_evidence_does_not_cross_backend_context_or_machine() -> None:
+    advisor = _FakeStoreAdvisor(experiments={"exp-1": _experiment()})
+    index = EvidenceIndex.load(advisor)
+
+    assert not index.for_plan(_plan(backend=ComputeBackend.VULKAN)).validated
+    assert not index.for_plan(_plan(context_length=8192)).validated
+    different_machine = _plan().model_copy(update={"hardware": hardware()})
+    assert not index.for_plan(different_machine).validated
+    changed_flags = _plan().runtime.model_copy(update={"flags": []})
+    assert not index.for_plan(_plan().model_copy(update={"runtime": changed_flags})).validated
+
+
+def test_benchmark_evidence_is_specific_to_artifact_backend_context_and_machine(
+    tmp_path: Path,
+) -> None:
+    benchmark = _benchmark_record(tmp_path)
+    request = benchmark.request.model_copy(update={"context_length": 4096})
+    benchmark = benchmark.model_copy(update={"request": request})
+    index = EvidenceIndex.load(_FakeStoreAdvisor(benchmarks={
+        benchmark.identity.benchmark_id: benchmark,
+    }))
+
+    assert index.for_plan(_plan()).benchmarked
+    assert not index.for_plan(_plan(sha256="2" * 64)).benchmarked
+    assert not index.for_plan(_plan(backend=ComputeBackend.VULKAN)).benchmarked
+    assert not index.for_plan(_plan(context_length=8192)).benchmarked
+    different_machine = _plan().model_copy(update={"hardware": hardware()})
+    assert not index.for_plan(different_machine).benchmarked
 
 
 def test_loading_without_an_identity_indexes_every_model() -> None:
@@ -292,8 +363,12 @@ def test_quality_never_inherits_to_unknown_different_or_multipart_artifacts() ->
 
 def test_corrupt_quality_does_not_hide_valid_execution_or_quality_records() -> None:
     good = synthetic_full_record()
+    experiment = _experiment()
+    experiment = experiment.model_copy(update={"artifact": experiment.artifact.model_copy(
+        update={"sha256": good["identity"]["artifact_sha256"]}
+    )})
     index = EvidenceIndex.load(_FakeStoreAdvisor(
-        experiments={"exp-1": _experiment()},
+        experiments={"exp-1": experiment},
         quality={"bad": {}, good["identity_sha256"]: good},
     ))
     found = index.for_plan(_plan(sha256=good["identity"]["artifact_sha256"]))
@@ -307,7 +382,7 @@ def test_unreadable_quality_store_does_not_hide_execution_evidence() -> None:
             raise OSError("quality directory unreadable")
 
     index = EvidenceIndex.load(Unreadable(experiments={"exp-1": _experiment()}))
-    found = index.for_plan(_plan(sha256="a" * 64))
+    found = index.for_plan(_plan())
     assert found.validated
     assert not found.quality_records
 
