@@ -371,6 +371,8 @@ def test_cli_comparison_uses_store_and_withholds_incompatible_metrics(
     assert result.exit_code == 0
     report = json.loads(result.stdout)
     assert report["status"] == "COMPARABLE_PLUMBING" and len(report["per_task"]) == 2
+    assert report["per_task"][0]["difference"]["percentage_points"] == 0
+    assert report["per_task"][0]["uncertainty"]["status"] == "not_estimated"
     assert Path(report["provenance"][0]["record_path"]).is_file()
     assert [advisor.load_quality_record(value) for value in ids] == before
     right["identity"]["runtime"]["backend_flags"] = ["--n-gpu-layers", "0"]

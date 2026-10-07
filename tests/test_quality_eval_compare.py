@@ -30,7 +30,62 @@ def test_diagnostic_comparison_keeps_artifacts_and_hardware_as_provenance(tmp_pa
     assert report["provenance"][1]["identity"]["artifact_sha256"] == "5" * 64
     assert report["provenance"][0]["hardware"] != report["provenance"][1]["hardware"]
     assert any("plumbing" in text for text in report["limitations"])
+    assert report["per_task"][0]["uncertainty"] == {
+        "status": "not_estimated", "reason": "plumbing evaluation",
+    }
     assert [path.read_bytes() for path in paths] == before
+
+
+def test_limited_comparison_reports_paired_difference_and_repeatable_interval(
+    tmp_path: Path,
+):
+    left = synthetic_limited_record()
+    right = deepcopy(left)
+    right["identity"]["artifact_sha256"] = "5" * 64
+    right["identity_sha256"] = digest(right["identity"])
+
+    for index, sample in enumerate(left["result"]["samples"]["jaull-hellaswag-100-v1"]):
+        sample["acc"] = int(index < 60)
+    for index, sample in enumerate(right["result"]["samples"]["jaull-hellaswag-100-v1"]):
+        sample["acc"] = int(index < 55 or 60 <= index < 63)
+    left["result"]["results"]["jaull-hellaswag-100-v1"]["acc,none"] = 0.6
+    right["result"]["results"]["jaull-hellaswag-100-v1"]["acc,none"] = 0.58
+
+    paths = [tmp_path / "left.json", tmp_path / "right.json"]
+    for path, record in zip(paths, (left, right), strict=True):
+        save_record(path, record)
+
+    report = compare_records(*paths)
+    row = next(item for item in report["per_task"] if item["metric"] == "acc")
+    assert row["difference"]["left_minus_right"] == pytest.approx(0.02)
+    assert row["difference"]["percentage_points"] == pytest.approx(2.0)
+    assert row["paired_outcomes"] == {
+        "left_only_correct": 5, "right_only_correct": 3, "both_same": 92,
+    }
+    interval = row["uncertainty"]
+    assert interval["status"] == "estimated"
+    assert interval["method"] == "paired percentile bootstrap"
+    assert interval["confidence_level"] == 0.95
+    assert interval["replicates"] == 2_000
+    assert interval["left_minus_right"]["lower"] <= interval["left_minus_right"]["upper"]
+    assert compare_records(*paths) == report
+
+
+def test_full_split_reports_exact_score_without_sampling_interval(tmp_path: Path):
+    left = synthetic_full_record()
+    right = deepcopy(left)
+    right["identity"]["artifact_sha256"] = "5" * 64
+    right["identity_sha256"] = digest(right["identity"])
+    paths = [tmp_path / "left.json", tmp_path / "right.json"]
+    for path, record in zip(paths, (left, right), strict=True):
+        save_record(path, record)
+
+    report = compare_records(*paths)
+
+    assert report["status"] == "COMPARABLE_DIAGNOSTIC"
+    uncertainty = report["per_task"][0]["uncertainty"]
+    assert uncertainty["status"] == "not_estimated"
+    assert "exact for this split" in uncertainty["reason"]
 
 
 def test_comparison_withholds_metrics_for_each_changed_protocol_field(tmp_path: Path):
@@ -94,6 +149,7 @@ def test_fixed_larger_subset_is_diagnostic_not_a_full_benchmark(tmp_path: Path):
     assert report["status"] == "COMPARABLE_LIMITED"
     assert all(check["match"] for check in report["checks"])
     assert report["per_task"][0]["left"]["samples"] == 100
+    assert report["per_task"][0]["uncertainty"]["status"] == "not_estimated"
     assert any("not a full benchmark" in text for text in report["limitations"])
     smoke = synthetic_full_record() | {"classification": "plumbing"}
     smoke_path = tmp_path / "smoke.json"
