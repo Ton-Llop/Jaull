@@ -700,11 +700,19 @@ def test_results_separates_published_references_from_exact_artifact_measurements
             assert state.model_dump_json() == before and advisor.path_lookups == 0
             button = results.query_one("#res-evaluate-0", Button)
             assert not button.disabled
-            # The worker's text update changes scroll geometry on the next refresh.
-            await pilot.pause()
-            button.scroll_visible(animate=False)
-            await pilot.pause()
             assert button.parent is not None
+            # `scroll_visible` is deferred: it does not move the offset in the
+            # call, only on a later refresh. The evidence worker is also still
+            # growing the pane when the loop above exits — measured here, the
+            # virtual height went 20 to 22 rows after it broke. Counting
+            # refreshes encodes one machine's scheduling; waiting for the
+            # button to actually be inside the viewport is the condition this
+            # test is about, and it holds wherever it runs.
+            for _ in range(100):
+                button.scroll_visible(animate=False)
+                await pilot.pause()
+                if button.parent.content_region.contains_region(button.region):
+                    break
             assert button.parent.content_region.contains_region(button.region)
             assert app.get_widget_at(*button.region.center)[0] is button
             app.save_screenshot(f"jaull-published-{size[0]}-{measured}.svg", path="/tmp")
