@@ -157,6 +157,27 @@ benchmarks of the same logical model can be compared as complete execution plans
 than as disembodied numbers. Failed runs retain diagnostics but do not replace earlier
 successful performance evidence.
 
+**Optional quality diagnostics.** `jaull quality run` explicitly invokes the pinned
+local GGUF/container pilot, evaluates artifacts sequentially and saves completed,
+HTTP-validated records. `jaull quality compare` compares stored per-task metrics
+offline and withholds comparisons when protocols differ. Execution currently needs
+a trusted Jaull checkout, exact verified local GGUFs, the pinned runtime/dataset and an already-built
+evaluator image; it performs no model downloads or automatic builds. Results are plumbing or
+limited diagnostics, not a general-quality score, and never alter ranking.
+The TUI exposes the same opt-in pilot in **Advanced tools → Evaluate local GGUF quality**
+and **Results/Paths → Evaluation**. The TUI prepares the selected GGUF
+manifest automatically, with full verification and explicit download permission.
+**Prepare evaluator** checks the pinned runtime, dataset and image. The dataset
+has a managed default location and can be downloaded with separate explicit
+permission; `jaull quality setup --allow-dataset-download` offers the same flow
+from the CLI. Shared settings are remembered after successful setup; download
+permissions are not. Opening Jaull never starts a download or evaluator.
+**Results -> Evaluate candidates** proposes up to three exact GGUFs from the
+inspected search pool, not just the displayed top five. Review the selection,
+download sizes and omissions, then start sequential diagnostics. This does not
+find a general-quality winner or change the recommendation order.
+→ [CLI quality pilot](docs/quality-evaluation-pilot.md#phase-c-explicit-cli-execution)
+
 **Prediction vs observation.** `compare_prediction` puts a `MemoryEstimate` next to an
 `ExecutionObservation` and reports the signed error under a single convention
 (`measured − predicted`), plus whether the compatibility verdict was a correct
@@ -204,7 +225,7 @@ Validation runs the plan for real and compares the prediction against the observ
 More screens — search, run history, failure states, the memory estimate view — in
 [docs/ui.md](docs/ui.md).
 
-> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py`
+> Screenshots are regenerated with `uv run python scripts/capture_screenshots.py --size 150x42`
 > (headless, no network, no llama.cpp).
 
 ---

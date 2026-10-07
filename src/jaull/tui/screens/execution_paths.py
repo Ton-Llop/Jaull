@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from threading import Event
 from typing import TYPE_CHECKING
 
@@ -29,8 +30,9 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Select, Static
+from textual.widgets import Button, Footer, Select, Static, TabbedContent, TabPane
 
+from jaull.advisor.quality import quality_evaluation_block_reason
 from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.runtime import RuntimeName
 from jaull.presentation.plan_labels import (
@@ -47,8 +49,11 @@ from jaull.presentation.plan_labels import (
 )
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.evidence import EvidenceIndex, PlanEvidence
+from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.context_bar import ContextBar
+from jaull.tui.widgets.selection_workspace import SelectionWorkspace
+from jaull.tui.widgets.technical_details import TechnicalDetails
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -120,6 +125,16 @@ class _PathOption(Vertical):
             f"{readiness_detail(self._plan)} · {self._evidence.summary()}",
             classes=f"path-option-meta -evidence {_evidence_class(self._evidence)}",
         )
+        yield Static(
+            self._evidence.quality_summary(),
+            classes="path-option-meta -quality",
+            markup=False,
+        )
+
+    def on_mount(self) -> None:
+        quality = self.query_one(".-quality", Static)
+        quality.display = bool(self._evidence.quality_records)
+        quality.tooltip = self._evidence.quality_details() or None
 
     def rebind(self, plan: ExecutionPlan, evidence: PlanEvidence) -> None:
         """Point this option at a different plan behind the same choice.
@@ -136,6 +151,10 @@ class _PathOption(Vertical):
         for widget in self.query(".-evidence").results(Static):
             widget.update(f"{readiness_detail(plan)} · {evidence.summary()}")
             widget.set_classes(f"path-option-meta -evidence {_evidence_class(evidence)}")
+        quality = self.query_one(".-quality", Static)
+        quality.update(evidence.quality_summary())
+        quality.display = bool(evidence.quality_records)
+        quality.tooltip = evidence.quality_details() or None
 
     def on_click(self) -> None:
         self.post_message(self.Chosen(self._plan.plan_id))
@@ -147,9 +166,12 @@ class _PathOption(Vertical):
 class ExecutionPathsScreen(Screen[None]):
     BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
 
-    def __init__(self, recommendation: ModelRecommendation) -> None:
+    def __init__(
+        self, recommendation: ModelRecommendation, *, evaluation: bool = False,
+    ) -> None:
         super().__init__()
         self._recommendation = recommendation
+        self._open_evaluation = evaluation
         self._plans: list[ExecutionPlan] = []
         self._evidence = EvidenceIndex.empty()
         self._selected_plan_id: str | None = None
@@ -171,37 +193,84 @@ class ExecutionPathsScreen(Screen[None]):
             self._recommendation.repo_id,
             aside="Execution",
         )
-        with VerticalScroll(id="paths-body"):
-            yield Static("Loading execution paths...", id="paths-status", classes="status-line")
-            yield Static("", id="paths-error", classes="warning-line")
-            yield Static("", id="paths-selected", classes="section-title")
-            yield Static("", id="paths-selected-meta", classes="text-muted")
-            with Horizontal(id="paths-filters"):
-                for key, label in _FILTERS:
-                    yield Button(
-                        label,
-                        id=f"paths-filter-{key}",
-                        classes="chip -active" if key == "all" else "chip",
-                    )
-            with Vertical(id="paths-list"):
-                yield Static("", id="paths-empty", classes="text-muted")
-            yield Static("", id="paths-warnings", classes="warning-line")
-            with Horizontal(id="paths-actions"):
-                yield Button("Run", id="paths-run", classes="-primary", disabled=True)
-                yield ActionButton("Validate", id="paths-validate", disabled=True)
-                yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
-                yield ActionButton("Recheck runtime", id="paths-recheck", disabled=True)
-                yield ActionButton("Back", id="paths-back")
-            yield Static("", id="paths-action-reason", classes="warning-line")
+        yield SelectionWorkspace(
+            self._compose_choices,
+            self._compose_inspector,
+            list_label="Paths",
+            master_id="paths-body",
+            detail_id="paths-inspector",
+        )
         yield Footer()
+
+    def _compose_choices(self) -> ComposeResult:
+        yield Static("Execution paths", classes="section-title")
+        with Horizontal(id="paths-filters"):
+            for key, label in _FILTERS:
+                yield Button(
+                    label,
+                    id=f"paths-filter-{key}",
+                    classes="chip -active" if key == "all" else "chip",
+                )
+        with Vertical(id="paths-list"):
+            yield Static("", id="paths-empty", classes="text-muted")
+
+    def _compose_inspector(self) -> ComposeResult:
+        yield Static("Loading execution paths...", id="paths-status", classes="status-line")
+        yield Static("", id="paths-error", classes="warning-line")
+        yield Static("", id="paths-selected", classes="section-title")
+        yield Static("", id="paths-selected-meta", classes="text-muted")
+        with Horizontal(id="paths-actions"):
+            yield Button("Run", id="paths-run", classes="-primary", disabled=True)
+            yield ActionButton("Validate", id="paths-validate", disabled=True)
+            yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
+        with TabbedContent():
+            with TabPane("Plan"), VerticalScroll():
+                yield Static("", id="paths-warnings", classes="warning-line")
+                yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
+                yield Static("", id="paths-action-reason", classes="warning-line")
+            with TabPane("Evaluation", id="paths-evaluation"), VerticalScroll():
+                yield Static("Published model references", classes="section-title")
+                yield Static("", id="paths-published", classes="text-secondary", markup=False)
+                yield TechnicalDetails(
+                    title="Published reference provenance",
+                    extra=[Static("", id="paths-published-details", markup=False)],
+                    id="paths-published-provenance",
+                )
+                yield Static("Measured on this artifact", classes="section-title")
+                yield ActionButton("Evaluate quality", id="paths-evaluate", disabled=True)
+                yield Static("", id="paths-evaluate-reason", classes="warning-line", markup=False)
+                yield Static(
+                    "No measured evaluation for this exact artifact.",
+                    id="paths-quality-empty",
+                    classes="text-secondary",
+                )
+                yield Static("", id="paths-quality", classes="text-secondary", markup=False)
+                yield TechnicalDetails(
+                    title="Artifact measurement provenance",
+                    extra=[Static("", id="paths-quality-details", markup=False)],
+                    id="paths-quality-provenance",
+                )
+        with Horizontal(classes="actions-row"):
+            yield ActionButton("Recheck runtime", id="paths-recheck", disabled=True)
+            yield ActionButton("Back", id="paths-back")
 
     def on_mount(self) -> None:
         # An empty Static still occupies its row; the error and warning lines
         # only exist once they have something to say.
-        for widget_id in ("#paths-error", "#paths-warnings", "#paths-selected"):
-            self.query_one(widget_id, Static).display = False
+        for widget_id in (
+            "#paths-error", "#paths-warnings", "#paths-selected", "#paths-quality",
+            "#paths-quality-provenance",
+        ):
+            self.query_one(widget_id).display = False
         self._paths_closing.clear()
+        if self._open_evaluation:
+            self.query_one(TabbedContent).active = "paths-evaluation"
         self._future = self._executor.submit(self._load_worker, self._app().advisor)
+
+    @property
+    def execution_plans(self) -> tuple[ExecutionPlan, ...]:
+        """Already inspected choices, available to the parent without another Hub scan."""
+        return tuple(self._plans)
 
     def on_unmount(self) -> None:
         self._paths_closing.set()
@@ -273,10 +342,9 @@ class ExecutionPathsScreen(Screen[None]):
 
     @on(_PathOption.Chosen)
     def _option_chosen(self, message: _PathOption.Chosen) -> None:
-        if message.plan_id == self._selected_plan_id:
-            return
         self._selected_plan_id = message.plan_id
         self._apply_selection()
+        self.query_one(SelectionWorkspace).show_detail()
 
     @on(Select.Changed, "#paths-quant")
     def _quantization_changed(self, event: Select.Changed) -> None:
@@ -323,6 +391,12 @@ class ExecutionPathsScreen(Screen[None]):
             app.validate_recommendation(self._recommendation, plan)
         elif button_id == "paths-benchmark":
             app.benchmark_recommendation(self._recommendation, plan)
+        elif button_id == "paths-evaluate" and is_gguf_plan(plan):
+            self.app.push_screen(QualityEvaluationScreen(plan), self._quality_finished)
+
+    def _quality_finished(self, stored: Path | None) -> None:
+        if stored is not None and not self._paths_closing.is_set():
+            self._future = self._executor.submit(self._load_worker, self._app().advisor)
 
     # ------------------------------------------------------------------
     # Rendering
@@ -337,9 +411,7 @@ class ExecutionPathsScreen(Screen[None]):
         container = self.query_one("#paths-list", Vertical)
         await container.remove_children()
         if not self._plans:
-            await container.mount(
-                Static("No execution paths were found.", classes="text-muted")
-            )
+            await container.mount(Static("No execution paths were found.", classes="text-muted"))
             self._apply_selection()
             return
 
@@ -392,13 +464,14 @@ class ExecutionPathsScreen(Screen[None]):
             if (plan.artifact.quantization or "") in SUGGESTED_QUANTIZATIONS
         ]
         advanced = [plan for plan in gguf_plans if plan not in suggested]
-        visible_advanced = advanced if self._show_advanced_quantizations else [
-            plan for plan in advanced if plan.plan_id == self._selected_plan_id
-        ]
+        visible_advanced = (
+            advanced
+            if self._show_advanced_quantizations
+            else [plan for plan in advanced if plan.plan_id == self._selected_plan_id]
+        )
 
         options = [
-            (f"{_quantization_name(plan)} · recommended", plan.plan_id)
-            for plan in suggested
+            (f"{_quantization_name(plan)} · recommended", plan.plan_id) for plan in suggested
         ] + [(_quantization_name(plan), plan.plan_id) for plan in visible_advanced]
         if not options:
             return
@@ -427,13 +500,23 @@ class ExecutionPathsScreen(Screen[None]):
                 if self._show_advanced_quantizations
                 else f"Show {hidden} advanced quantization{plural}"
             )
-            await picker.mount(
-                ActionButton(label, id="paths-toggle-advanced", classes="-quiet")
-            )
+            await picker.mount(ActionButton(label, id="paths-toggle-advanced", classes="-quiet"))
 
     def _apply_selection(self) -> None:
         """Reflect the current plan everywhere, without rebuilding the list."""
         selected = self._selected_plan()
+        evaluate = self.query_one("#paths-evaluate", Button)
+        evaluation_reason = (
+            quality_evaluation_block_reason(selected) if selected is not None
+            else "Select a GGUF path for the quality pilot."
+        )
+        evaluate.disabled = evaluation_reason is not None
+        evaluate.tooltip = (
+            evaluation_reason or "Open evaluation setup; preflight is required before running."
+        )
+        reason = self.query_one("#paths-evaluate-reason", Static)
+        reason.update(evaluation_reason or "")
+        reason.display = evaluation_reason is not None
         gguf_plan = self._visible_gguf_plan()
         for option in self.query(_PathOption):
             if option.id == "paths-gguf":
@@ -447,9 +530,16 @@ class ExecutionPathsScreen(Screen[None]):
         meta = self.query_one("#paths-selected-meta", Static)
         warnings = self.query_one("#paths-warnings", Static)
         if selected is None:
+            self.query_one("#paths-published", Static).update("No execution path selected.")
+            self.query_one("#paths-published-provenance").display = False
             title.display = False
             meta.display = False
             warnings.display = False
+            self.query_one("#paths-quality", Static).display = False
+            self.query_one("#paths-quality-empty").display = False
+            self.query_one("#paths-quality-provenance").display = False
+            self.query_one("#paths-quality-details", Static).update("")
+            self.query_one("#paths-protocol", Static).update("")
             self._set_actions(
                 enabled=False,
                 reason="No execution path is selected.",
@@ -457,12 +547,27 @@ class ExecutionPathsScreen(Screen[None]):
             return
 
         evidence = self._evidence.for_plan(selected)
+        self.query_one("#paths-published", Static).update(evidence.published_summary)
+        self.query_one("#paths-published-details", Static).update(evidence.published_provenance)
+        self.query_one("#paths-published-provenance").display = bool(evidence.published_provenance)
         title.update(f"Selected · {selected_plan_label(selected)}")
         title.display = True
-        meta.update(
-            f"{readiness_detail(selected)} · {evidence.summary()} · {_memory(selected)}"
-        )
+        meta.update(f"{readiness_detail(selected)} · {evidence.summary()} · {_memory(selected)}")
         meta.display = True
+        quality = self.query_one("#paths-quality", Static)
+        quality.update(evidence.quality_readout())
+        quality.display = bool(evidence.quality_records)
+        quality.tooltip = evidence.quality_details() or None
+        self.query_one("#paths-quality-empty").display = not bool(evidence.quality_records)
+        details = self.query_one("#paths-quality-details", Static)
+        details.update(evidence.quality_details())
+        details.display = bool(evidence.quality_records)
+        self.query_one("#paths-quality-provenance").display = bool(evidence.quality_records)
+        self.query_one("#paths-protocol", Static).update(
+            f"Artifact: {artifact_display(selected)}\n"
+            f"Readiness: {readiness_detail(selected)}\n"
+            f"Saved execution evidence: {evidence.summary()}"
+        )
 
         # Plan warnings are computed today and were never rendered.
         text = " ".join(selected.warnings)
@@ -498,8 +603,7 @@ class ExecutionPathsScreen(Screen[None]):
     def _label_actions(self, evidence: PlanEvidence) -> None:
         """A tick on an action that already has evidence behind it.
 
-        Through `set_action_label` so the brackets survive: assigning `.label`
-        directly would replace the whole rendered label, escaping included.
+        Use the shared action-label API, preserving the button's presentation.
         """
         self.query_one("#paths-validate", ActionButton).set_action_label(
             "Validate ✓" if evidence.validated else "Validate"

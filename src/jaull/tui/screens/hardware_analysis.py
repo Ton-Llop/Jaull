@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, Footer
+from textual.widgets import Button, Digits, Footer, Static
 
 from jaull.domain.hardware import AcceleratorType, HardwareProfile
 from jaull.tui.widgets.progress_step import ProgressStepList
@@ -123,7 +123,17 @@ class HardwareAnalysisScreen(Screen[None]):
         # required to see what came back, and no leftover progress UI.
         content = self.query_one("#hardware-content", Vertical)
         content.remove_children()
-        content.mount(SummaryCard("This machine", _summary_rows(profile)))
+        rows = _summary_rows(profile)
+        figures = dict(rows)
+        content.mount(
+            _MemoryHeadline(figures.get("RAM", "unknown"), figures.get("VRAM"))
+        )
+        content.mount(
+            SummaryCard(
+                "This machine",
+                [(label, value) for label, value in rows if label not in {"RAM", "VRAM"}],
+            )
+        )
 
         if profile.warnings:
             # A missing accelerator is a warning, never a failure: CPU-only
@@ -164,6 +174,46 @@ class _ScanChecklist(Vertical):
 
     def update_progress(self, progress: WorkflowProgress) -> None:
         self.query_one(ProgressStepList).update_progress(progress)
+
+
+
+class _MemoryHeadline(Horizontal):
+    """RAM and VRAM as figures rather than as two more rows in a list.
+
+    Every recommendation this tool makes is a statement about these two
+    numbers, so they are the screen, not an entry in it. The rest of the
+    profile stays below as supporting detail: useful, but not what decides
+    whether a model fits.
+    """
+
+    DEFAULT_CLASSES = "memory-headline"
+
+    def __init__(self, ram: str, vram: str | None) -> None:
+        super().__init__()
+        self._ram = ram
+        self._vram = vram
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="memory-figure"):
+            yield Static("RAM", classes="memory-figure-label")
+            yield Digits(_digits(self._ram), classes="memory-figure-value")
+            yield Static(_unit(self._ram), classes="memory-figure-unit")
+        if self._vram is not None:
+            with Vertical(classes="memory-figure"):
+                yield Static("VRAM", classes="memory-figure-label")
+                yield Digits(_digits(self._vram), classes="memory-figure-value -vram")
+                yield Static(_unit(self._vram), classes="memory-figure-unit")
+
+
+def _digits(value: str) -> str:
+    """The numeric part of a formatted size, or a dash when there is none."""
+    head = value.split(" ")[0]
+    return head if head.replace(".", "", 1).isdigit() else "--"
+
+
+def _unit(value: str) -> str:
+    parts = value.split(" ", 1)
+    return parts[1] if len(parts) == 2 else ""
 
 
 def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:

@@ -33,8 +33,9 @@ class TechnicalDetails(Collapsible):
         title: str = "Technical details",
         extra: Iterable[Widget] = (),
         collapsed: bool = True,
+        id: str | None = None,
     ) -> None:
-        super().__init__(title=title, collapsed=collapsed)
+        super().__init__(title=title, collapsed=collapsed, id=id)
         self._rows = list(rows)
         self._extra = list(extra)
 

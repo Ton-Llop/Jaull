@@ -4,8 +4,11 @@ This is the canonical architecture reference: it describes Jaull's layers, data 
 dependency rules. The dated pipeline walkthrough is archived at
 [`docs/history/workflow-2026-09-28.md`](docs/history/workflow-2026-09-28.md).
 
-Jaull is still a **modular Python monolith** today: no network workers, no Docker, no remote
-executor. Guided recommendation remains metadata-only, but explicit local execution paths
+Jaull is still a **modular Python monolith** today: no network workers or remote
+executor. Docker is optional and confined to the explicit quality pilot. CLI and TUI
+evaluation actions can start it, never recommendation or application startup.
+Guided recommendation remains metadata-only,
+but explicit local execution paths
 already exist: `jaull run` resolves, downloads, verifies and executes single-file GGUF
 artifacts with `llama-cli`, and the TUI adds execution of Transformers repositories through
 an isolated Python worker, validation (persisted experiments) and benchmarks (`llama-bench`
@@ -180,6 +183,23 @@ Evidence:
   `benchmark_records_for_model(...)` — the store.
 - `compare_benchmarks(...)` / `compare_saved_benchmarks_for_recommendation(...)` — compare
   benchmarks as complete execution plans.
+- `run_quality_evaluation(...)` — explicitly invoke the audited source-checkout pilot,
+  validate its producer snapshot and save a diagnostic record. The optional evaluator
+  remains outside the wheel; the CLI requires a trusted checkout via `--pilot-root`.
+- `run_quality_evaluation_for_plan(...)` — prepare the exact selected GGUF and
+  generate its manifest for the same diagnostic pilot. Downloads require explicit
+  permission; local files undergo full hashing. Shared evaluator paths can be
+  remembered per user after success, never artifact identity or download consent.
+- `prepare_quality_evaluation_setup(...)` — shared infrastructure preflight via
+  the trusted pilot, before a selected-model download. Optional consented dataset
+  preparation atomically publishes SHA256-verified bytes in user-data storage.
+  Setup success is infrastructure readiness, not model fit or quality evidence.
+- `compare_quality(...)` — read-only per-task comparison of saved records. Protocol
+  mismatches withhold metrics; quality never changes ranking or HFA.
+- `prepare_quality_candidates(...)` / `run_quality_candidates(...)` — opt-in
+  selection from the inspected search pool and bounded sequential diagnostics.
+  Reuses existing eligibility/diversity and the same per-artifact runner; keeps
+  results separate from recommendation ordering and performance evidence.
 
 Two factories:
 
@@ -326,7 +346,7 @@ compares the JSON and Markdown output against `tests/snapshots/report.json` and
 
 ## Pending work (outside this cycle)
 
-- Docker / Docker Compose.
+- General-purpose Docker execution / Docker Compose (the fixed quality pilot is separate).
 - Download streaming and byte-level progress for large artifacts.
 - Concurrent load experiments and capacity curves.
 - Deployment qualification verdict and reproducible manifest (`jaull.lock`).

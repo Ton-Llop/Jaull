@@ -11,7 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Static
+from textual.widgets import Button, DataTable, Footer, Static, TabbedContent, TabPane
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.benchmarks.errors import BenchmarkRunnerError
@@ -48,16 +48,16 @@ from jaull.presentation.plan_labels import (
     runtime_block_reason,
 )
 from jaull.recommendation.models import ModelRecommendation
+from jaull.tui import palette
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
-from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.context_bar import ContextBar
 from jaull.tui.widgets.metric_list import MetricList, MetricRow
 from jaull.tui.widgets.progress_step import format_step_log
-from jaull.tui.widgets.summary_card import SummaryCard
+from jaull.tui.widgets.selection_workspace import SelectionWorkspace
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 
@@ -84,6 +84,115 @@ class _BenchmarkFailed(Message):
         self.message = message
 
 
+
+class _RunInspector(Vertical):
+    """Everything known about one benchmarked configuration, in three tabs.
+
+    These used to live on a separate screen reached by a button, which meant a
+    measurement and the configuration that produced it could never be read at
+    the same time. The tabs keep the reproducibility fields one keypress away
+    without spending a screen on them.
+    """
+
+    DEFAULT_CLASSES = "benchmark-inspector"
+
+    def __init__(
+        self,
+        index: int,
+        title: str,
+        *,
+        performance: Widget | None,
+        memory: Widget | None,
+        technical: list[tuple[str, str]],
+        note: str | None = None,
+    ) -> None:
+        super().__init__(id=f"benchmark-detail-{index}")
+        self._title = title
+        self._performance = performance
+        self._memory = memory
+        self._technical = technical
+        self._note = note
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._title, classes="inspector-title")
+        with TabbedContent():
+            with TabPane("Performance"), VerticalScroll():
+                if self._note is not None:
+                    yield Static(self._note, classes="warning-line")
+                if self._performance is not None:
+                    yield self._performance
+            with TabPane("Memory"), VerticalScroll():
+                if self._memory is not None:
+                    yield self._memory
+                else:
+                    yield Static("No memory figures for this run.", classes="text-muted")
+            with TabPane("Technical"), VerticalScroll():
+                if self._technical:
+                    yield MetricList("Reproducibility", self._technical)
+                else:
+                    yield Static("No reproducibility fields recorded.", classes="text-muted")
+
+
+class _RunRow(Vertical):
+    """One configuration in the run list; its inspector sits in the other pane."""
+
+    DEFAULT_CLASSES = "selectable"
+    BINDINGS = [("enter", "choose", "Select")]
+
+    class Moved(Message):
+        def __init__(self, delta: int) -> None:
+            super().__init__()
+            self.delta = delta
+
+    class Chosen(Message):
+        def __init__(self, index: int) -> None:
+            super().__init__()
+            self.index = index
+
+    def __init__(
+        self,
+        index: int,
+        label: str,
+        headline: str,
+        headline_colour: str,
+        detail: _RunInspector,
+        *,
+        selected: bool,
+    ) -> None:
+        super().__init__(id=f"benchmark-run-{index}")
+        self._index = index
+        self._label = label
+        self._headline = headline
+        self._headline_colour = headline_colour
+        self.detail = detail
+        self._selected = selected
+        self.can_focus = True
+        self.set_class(selected, "-selected")
+
+    def compose(self) -> ComposeResult:
+        yield Static(
+            f"{self._label}  [{self._headline_colour}]{self._headline}[/]",
+            classes="rec-name",
+        )
+
+    def on_mount(self) -> None:
+        self._apply()
+
+    def set_selected(self, selected: bool) -> None:
+        self._selected = selected
+        self.set_class(selected, "-selected")
+        self._apply()
+
+    def _apply(self) -> None:
+        self.detail.display = self._selected
+
+    def on_click(self) -> None:
+        self.post_message(self.Chosen(self._index))
+
+    def action_choose(self) -> None:
+        self.post_message(self.Chosen(self._index))
+
+
 class RecommendationBenchmarkScreen(Screen[None]):
     """Run reproducible runtime-specific measurements for a recommendation."""
 
@@ -99,6 +208,8 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self._execution_plan = execution_plan
         self._log_messages: list[str] = []
         self._last_result: BenchmarkMatrixResult | None = None
+        self._rows: list[_RunRow] = []
+        self._selected = 0
         self._benchmark_closing = Event()
         self._executor = ThreadPoolExecutor(
             max_workers=1,
@@ -132,11 +243,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
                     id="benchmark-start",
                     classes="-primary",
                 )
-                yield ActionButton(
-                    "Technical details",
-                    id="benchmark-details",
-                    disabled=True,
-                )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -169,10 +275,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
         match event.button.id:
             case "benchmark-start":
                 self._start_benchmark()
-            case "benchmark-details":
-                if self._last_result is not None:
-                    self.app.push_screen(BenchmarkDetailsScreen(self._last_result))
-
     def _start_benchmark(self) -> None:
         if self._future is not None and not self._future.done():
             return
@@ -404,9 +506,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
 
     def _set_busy(self, busy: bool) -> None:
         self.query_one("#benchmark-start", Button).disabled = busy
-        self.query_one("#benchmark-details", Button).disabled = (
-            busy or self._last_result is None
-        )
 
     def _set_error(self, message: str) -> None:
         widget = self.query_one("#benchmark-error", Static)
@@ -422,7 +521,132 @@ class RecommendationBenchmarkScreen(Screen[None]):
         for node in list(self.query(".benchmark-result-node")):
             node.remove()
         self._last_result = None
-        self.query_one("#benchmark-details", Button).disabled = True
+
+
+    def _build_rows(self, result: BenchmarkMatrixResult) -> list[_RunRow]:
+        """One row per configuration the matrix touched, outcome first.
+
+        Completed runs come first because they are what the screen was opened
+        for; a failure or a skip still gets a row, because a configuration that
+        did not run is a result about this machine, not an absence of one.
+        """
+        rows: list[_RunRow] = []
+        estimate = self._estimate()
+        for run in result.completed:
+            index = len(rows)
+            headline = _headline_speed(run)
+            rows.append(
+                _RunRow(
+                    index,
+                    _config_label(run.record),
+                    headline,
+                    palette.OK,
+                    _RunInspector(
+                        index,
+                        _config_label(run.record),
+                        performance=_performance_block([run], titled=False),
+                        memory=_memory_block([run], estimate, titled=False),
+                        technical=_technical_rows(run.record, run.persisted_path),
+                    ),
+                    selected=not rows,
+                )
+            )
+        for failure in result.failed:
+            index = len(rows)
+            label = _request_label(failure.request.backend.value, failure.request.device)
+            rows.append(
+                _RunRow(
+                    index,
+                    label,
+                    "Failed",
+                    palette.BAD,
+                    _RunInspector(
+                        index,
+                        label,
+                        performance=None,
+                        memory=None,
+                        technical=(
+                            _technical_rows(failure.record, failure.persisted_path)
+                            if failure.record is not None
+                            else []
+                        ),
+                        note=failure.message,
+                    ),
+                    selected=not rows,
+                )
+            )
+        for skip in result.skipped:
+            index = len(rows)
+            label = _request_label(skip.backend.value, skip.device)
+            rows.append(
+                _RunRow(
+                    index,
+                    label,
+                    "Skipped",
+                    palette.INK_3,
+                    _RunInspector(
+                        index,
+                        label,
+                        performance=None,
+                        memory=None,
+                        technical=[],
+                        note=skip.reason,
+                    ),
+                    selected=not rows,
+                )
+            )
+        return rows
+
+    def _compose_runs(self) -> ComposeResult:
+        yield Static("Runs", classes="section-title")
+        yield from self._rows
+        if self._last_result is None:
+            return
+        # Comparing configurations is what the master pane is for; the bars for
+        # any single one of them are a pane away. Dropping this table when the
+        # list arrived would have traded a cross-run view for a per-run one.
+        if len(self._last_result.completed) > 1:
+            yield Vertical(
+                Static("Comparison", classes="section-title"),
+                _result_table(self._last_result.completed),
+                classes="section",
+            )
+        startup_rows = _startup_rows(self._last_result.completed)
+        if startup_rows:
+            yield MetricList("Startup", startup_rows)
+        aggregate = aggregate_benchmark_records(
+            [item.record for item in self._last_result.completed]
+        )
+        if aggregate.comparisons:
+            yield MetricList(
+                "Measured differences",
+                [
+                    (
+                        _metric_label(comparison.kind, comparison.tokens),
+                        f"~{comparison.speedup:.1f}x",
+                    )
+                    for comparison in aggregate.comparisons
+                ],
+            )
+
+    def _compose_inspectors(self) -> ComposeResult:
+        for row in self._rows:
+            row.detail.display = row._index == self._selected
+            yield row.detail
+
+    @on(_RunRow.Chosen)
+    def _run_chosen(self, message: _RunRow.Chosen) -> None:
+        self._select_run(message.index)
+
+    @on(_RunRow.Moved)
+    def _run_moved(self, message: _RunRow.Moved) -> None:
+        if self._rows:
+            self._select_run((self._selected + message.delta) % len(self._rows))
+
+    def _select_run(self, index: int) -> None:
+        self._selected = index
+        for row in self._rows:
+            row.set_selected(row._index == index)
 
     def _render_result(self, result: BenchmarkMatrixResult) -> None:
         """Result first, mechanism last.
@@ -452,36 +676,18 @@ class RecommendationBenchmarkScreen(Screen[None]):
                 ),
             )
         )
-        if succeeded:
+        self._rows = self._build_rows(result)
+        if self._rows:
+            self._selected = 0
             body.mount(
-                _performance_block(result.completed).add_class("benchmark-result-node")
+                SelectionWorkspace(
+                    self._compose_runs,
+                    self._compose_inspectors,
+                    list_label="Runs",
+                    master_id="benchmark-runs",
+                    detail_id="benchmark-inspector",
+                ).add_class("benchmark-result-node")
             )
-            memory_block = _memory_block(result.completed, self._estimate())
-            if memory_block is not None:
-                body.mount(memory_block.add_class("benchmark-result-node"))
-
-            startup_rows = _startup_rows(result.completed)
-            if startup_rows:
-                body.mount(
-                    MetricList("Startup", startup_rows).add_class(
-                        "benchmark-result-node"
-                    )
-                )
-
-            aggregate = aggregate_benchmark_records([item.record for item in result.completed])
-            if aggregate.comparisons:
-                body.mount(
-                    MetricList(
-                        "Measured differences",
-                        [
-                            (
-                                _metric_label(comparison.kind, comparison.tokens),
-                                f"~{comparison.speedup:.1f}x",
-                            )
-                            for comparison in aggregate.comparisons
-                        ],
-                    ).add_class("benchmark-result-node")
-                )
         warnings = _warnings(result)
         if warnings:
             body.mount(
@@ -497,7 +703,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
                 ).add_class("benchmark-result-node")
             )
             self._set_status("")
-        self.query_one("#benchmark-details", Button).disabled = False
 
     def _runtime(self) -> RuntimeRecommendation | None:
         if self._execution_plan is not None:
@@ -518,52 +723,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
 
         assert isinstance(self.app, JaullApp)
         return self.app
-
-
-class BenchmarkDetailsScreen(Screen[None]):
-    BINDINGS = [("escape", "app.pop_screen", "Back"), ("q", "quit", "Quit")]
-
-    def __init__(self, result: BenchmarkMatrixResult) -> None:
-        super().__init__()
-        self._result = result
-
-    def compose(self) -> ComposeResult:
-        yield Static("Benchmark details", classes="section-title")
-        with VerticalScroll(id="benchmark-details-body"):
-            for run in self._result.completed:
-                yield SummaryCard(
-                    _config_label(run.record),
-                    _technical_rows(run.record, run.persisted_path),
-                )
-            for failure in self._result.failed:
-                rows = [("Error", failure.message)]
-                if failure.record is not None:
-                    rows.extend(_technical_rows(failure.record, failure.persisted_path))
-                title = _request_label(
-                    failure.request.backend.value,
-                    failure.request.device,
-                )
-                yield SummaryCard(
-                    f"Failed: {title}",
-                    rows,
-                )
-            if self._result.skipped:
-                yield SummaryCard(
-                    "Skipped",
-                    [
-                        (
-                            _request_label(skip.backend.value, skip.device),
-                            skip.reason,
-                        )
-                        for skip in self._result.skipped
-                    ],
-                )
-            yield ActionButton("Back", id="benchmark-details-back")
-        yield Footer()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "benchmark-details-back":
-            self.app.pop_screen()
 
 
 class _BenchmarkHeader(ContextBar):
@@ -609,7 +768,7 @@ def _execution_plan_label(plan: ExecutionPlan) -> str:
 _BAR_WIDTH = 18
 
 
-def _performance_block(results: list[BenchmarkRunResult]) -> Widget:
+def _performance_block(results: list[BenchmarkRunResult], *, titled: bool = True) -> Widget:
     """Throughput, grouped by what is being measured.
 
     One configuration gets bars on a single scale across prompt processing and
@@ -619,7 +778,9 @@ def _performance_block(results: list[BenchmarkRunResult]) -> Widget:
 
     Bars never replace the figure. Every row carries its exact tok/s.
     """
-    children: list[Widget] = [Static("Performance", classes="section-title")]
+    children: list[Widget] = (
+        [Static("Performance", classes="section-title")] if titled else []
+    )
     measurements = (
         sorted(
             results[0].record.observation.measurements,
@@ -663,6 +824,8 @@ def _kind_label(kind: BenchmarkMeasurementKind) -> str:
 def _memory_block(
     results: list[BenchmarkRunResult],
     estimate: MemoryEstimate | None,
+    *,
+    titled: bool = True,
 ) -> Widget | None:
     """Predicted against observed, with the observed figure carrying weight.
 
@@ -673,7 +836,9 @@ def _memory_block(
     rows = _memory_rows(results, estimate)
     if not rows:
         return None
-    children: list[Widget] = [Static("Memory", classes="section-title")]
+    children: list[Widget] = (
+        [Static("Memory", classes="section-title")] if titled else []
+    )
     for label, value in rows:
         emphasis = None
         if label == "Estimated":
@@ -805,6 +970,22 @@ def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[st
             ("Runtime capability", record.runtime_capability.runtime_family.value),
         ]
     return rows
+
+
+def _headline_speed(run: BenchmarkRunResult) -> str:
+    """The one figure a run is remembered by in the list: its generation speed.
+
+    Prompt processing is usually several times faster and would flatter every
+    row equally; generation is what a conversation actually waits for. The exact
+    figures for both stay one pane away, so nothing is lost by choosing here.
+    """
+    measurements = list(run.record.observation.measurements)
+    generation = [m for m in measurements if m.kind is not BenchmarkMeasurementKind.PREFILL]
+    chosen = generation or measurements
+    if not chosen:
+        return "no measurements"
+    fastest = max(chosen, key=lambda m: m.mean_tokens_per_second)
+    return f"{fastest.mean_tokens_per_second:.1f} tok/s"
 
 
 def _config_label(record: BenchmarkRecord) -> str:
@@ -978,6 +1159,5 @@ def _bytes(value: int | None) -> str:
 
 
 __all__ = [
-    "BenchmarkDetailsScreen",
     "RecommendationBenchmarkScreen",
 ]

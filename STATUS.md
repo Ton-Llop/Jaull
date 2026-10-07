@@ -1,6 +1,6 @@
 # Status
 
-Updated 2026-09-30. Code checkpoint: `8b128c6` on `master`.
+Updated 2026-10-07. Code checkpoint: `b3edb99` on `docker-models-comp`.
 PR [#25](https://github.com/Ton-Llop/Jaull/pull/25) is merged.
 
 ## What works
@@ -18,14 +18,18 @@ and compares predictions with measurements when the evidence allows it.
   `--batch-size`. Token batching uses runtime defaults; explicit old flags remain.
 - Artifact verification rejects incorrect downloads and removes stale SHA
   sidecars before replacing files.
+- Quality evaluation is an explicit, sequential GGUF pilot in the CLI and TUI.
+  Results separate publisher references from measurements of exact artifact
+  bytes; neither changes recommendation ordering.
+- The quality store preserves repeated completed runs. Reuse requires one
+  complete, protocol-matched run; diagnostics and ambiguous repeats are misses.
 
 ## Checks and evidence
 
-- [CI for `8b128c6`](https://github.com/Ton-Llop/Jaull/actions/runs/36748809534)
-  completed successfully. CI includes tests, Ruff, mypy, packaging checks and an
-  installed-wheel smoke test.
-- Local cleanup validation: **1,923 tests passed**. Ruff, mypy, compileall and
-  architecture checks also passed.
+- The historical [CI run for `8b128c6`](https://github.com/Ton-Llop/Jaull/actions/runs/36748809534)
+  passed. It predates this branch's quality-evaluation changes.
+- Local validation for this checkpoint is recorded below after the current
+  branch's full gates have run.
 - The RTX 4060 campaign has a successful Validate and a complete
   pp512/tg128 benchmark with three repetitions.
 - [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
@@ -36,7 +40,11 @@ and compares predictions with measurements when the evidence allows it.
 
 ## What is still missing
 
-- No real multiuser workload experiment or qualification verdict yet.
+- Capability estimation still uses a scale prior. Published catalog results
+  are diagnostic references only; all 11 entries lack an evaluated revision
+  and precision and do not certify the artifact that runs.
+- No qualification verdict yet. The 1/2/4 concurrent-user experiment is measured
+  under `validation/2060-1vs2vs4-users/` and is deliberately not a priority.
 - NVML process VRAM is unavailable on the measured WDDM machines. Runtime
   buffer comparisons work where the methodology gates allow them, but do not
   measure every process allocation.
@@ -45,12 +53,20 @@ and compares predictions with measurements when the evidence allows it.
 
 ## Next steps
 
-1. Review this documentation checkpoint. `v0.2.0-alpha` is a proposed release,
-   not a published tag.
-2. Define a small llama.cpp workload experiment: one loaded `llama-server`,
-   then 1, 2 and 4 simultaneous users. Separate loading, warm-up and measurement;
-   record per-request TTFT, generation speed, failures and memory sources.
-3. Only after that, consider evidence-based qualification and `jaull.lock`.
+The priority is how Jaull estimates quality, not multiuser throughput.
+
+1. Review and broaden the catalog cautiously for models that appear in Jaull's
+   actual recommendation results, using primary sources and exact provenance.
+2. Design a Quality/Fastest/Balanced policy for review before any ranking
+   integration. Keep unknown and incomparable evidence visible.
+3. Upgrade the limited pilot only after defining sample coverage and uncertainty;
+   a small `--limit` run is not a model-quality verdict.
 
 No HFA, ranking, scoring or calibration changes are part of this checkpoint.
 Historical audits remain in [`docs/history/`](docs/history/).
+
+## Current branch validation
+
+- Current working-tree validation: **2,287 tests passed** on Python 3.12;
+  Ruff, mypy (`249` source files), architecture checks (`4` passed),
+  compileall and `git diff --check` passed.

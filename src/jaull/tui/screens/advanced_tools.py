@@ -21,6 +21,7 @@ _MENU_ITEMS = [
     ("inspect", "Inspect Hugging Face model"),
     ("estimate", "Estimate model memory"),
     ("doctor", "Run diagnostics"),
+    ("quality", "Evaluate local GGUF quality"),
     ("welcome", "Back to welcome"),
 ]
 
@@ -74,6 +75,9 @@ class AdvancedToolsScreen(Screen[None]):
         app = self._app()
         if key == "welcome":
             app.pop_screen()
+            return
+        if key == "quality":
+            app.evaluate_quality()
             return
         if key in {"scan", "inspect", "estimate", "doctor"}:
             app.push_screen(key)

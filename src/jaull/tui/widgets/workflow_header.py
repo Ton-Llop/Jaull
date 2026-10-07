@@ -42,7 +42,7 @@ class WorkflowHeader(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="context-title-row"):
-            yield Static(self._title, classes="workflow-title")
+            yield Static(f"[{palette.ACCENT}]JAULL[/]  |  {self._title}", classes="workflow-title")
             yield Static("", classes="workflow-machine", id="workflow-machine")
         yield Static(self._breadcrumb(), classes="workflow-breadcrumb")
 

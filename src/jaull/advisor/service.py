@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from jaull.application.execution import (
     ExecutionOverrides,
@@ -94,6 +94,13 @@ from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from jaull.advisor.quality_candidates import (
+        QualityCandidate,
+        QualityCandidateOutcome,
+        QualityCandidateSelection,
+    )
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
         BenchmarkMatrixResult,
@@ -101,15 +108,20 @@ if TYPE_CHECKING:
     )
     from jaull.benchmarks.storage import BenchmarkStore
     from jaull.cases.storage import CaseStore
+    from jaull.domain.recommendation import ExternalEvaluationEvidence
     from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
+    from jaull.evaluation.quality_records import QualityEvidence
+    from jaull.evaluation.quality_storage import QualityEvidenceStore
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
+    from jaull.recommendation.capability_catalog import CatalogReadResult
     from jaull.recommendation.models import ModelRecommendation
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
     from jaull.runtime.locator import RuntimeLocator
+    from jaull.runtime.quality_eval_runner import QualityRunRequest
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
     from jaull.runtime.transformers_runner import TransformersRunner
 
@@ -138,6 +150,10 @@ class AdvisorService:
     transformers_benchmark_runner: TransformersBenchmarkRunner | None = field(default=None)
     benchmark_matrix_runner: BenchmarkMatrixRunner | None = field(default=None)
     benchmark_store: BenchmarkStore | None = field(default=None)
+    quality_store: QualityEvidenceStore | None = field(default=None)
+    _catalog_result: CatalogReadResult | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
     case_store: CaseStore | None = field(default=None)
     llama_cli_path: str | Path | None = field(default=None)
     llama_cli_timeout_seconds: float = field(default=300.0)
@@ -174,9 +190,9 @@ class AdvisorService:
             return _default_diagnostics(runtime_locator=self._runtime_locator())
         return self.collect_diagnostics()
 
-    def inspect_model(self, repo_id: str) -> ModelAnalysis:
+    def inspect_model(self, repo_id: str, *, refresh: bool = False) -> ModelAnalysis:
         candidate = ModelCandidate(repo_id=repo_id)
-        cached = self._cached_model_analysis(candidate)
+        cached = None if refresh else self._cached_model_analysis(candidate)
         if cached is not None:
             return cached
         analysis = self._inspect_model_live(repo_id)
@@ -241,6 +257,7 @@ class AdvisorService:
                 selection=backend_selection,
             ),
             benchmark_records=self._stored_benchmark_records(),
+            external_evaluations=self._published_evaluations(),
             experiment_records=self._stored_experiment_records(),
         )
 
@@ -289,6 +306,36 @@ class AdvisorService:
                 exc_info=True,
             )
         return readiness or None
+
+    def _published_evaluations(self) -> Sequence[ExternalEvaluationEvidence]:
+        """The shipped catalogue, read once per service.
+
+        These are publisher-reported results about a model, never a measurement
+        of the artifact a plan would run, and never a score. `assess_plan`
+        attaches each one only to the plan whose model it names; a missing or
+        unreadable catalogue costs the ranking nothing.
+        """
+        result = self.capability_catalog()
+        return (
+            result.catalog.evaluations
+            if result.status == "loaded" and result.catalog is not None else ()
+        )
+
+    def capability_catalog(self) -> CatalogReadResult:
+        """Cached diagnostic data, retaining version, digest and read failures."""
+        cached = self._catalog_result
+        if cached is not None:
+            return cached
+        from jaull.recommendation.capability_catalog import (
+            default_catalog_path,
+            load_capability_catalog,
+        )
+
+        result = load_capability_catalog(default_catalog_path())
+        if result.diagnostic is not None:
+            logger.debug("Capability catalog unavailable: %s", result.diagnostic)
+        object.__setattr__(self, "_catalog_result", result)
+        return result
 
     def _stored_benchmark_records(self) -> list[BenchmarkRecord]:
         try:
@@ -649,6 +696,166 @@ class AdvisorService:
 
     def list_benchmark_ids(self) -> list[str]:
         return self._benchmark_store().list_ids()
+
+    # ------------------------------------------------------------------
+    # Quality evidence. Two read paths on purpose: `quality_evidence` shows
+    # what was measured with its grade attached, `lookup_quality` answers the
+    # stricter question of whether a result may be reused at all.
+    # ------------------------------------------------------------------
+    def save_quality_record(self, record: dict[str, Any]) -> Path:
+        return self._quality_store().save(record)
+
+    def load_quality_record(self, identity_sha256: str) -> dict[str, Any]:
+        return self._quality_store().load(identity_sha256)
+
+    def list_quality_ids(self) -> list[str]:
+        return self._quality_store().list_ids()
+
+    def quality_evidence(self) -> list[QualityEvidence]:
+        """Every readable record, diagnostics included and labelled as such."""
+        return self._quality_store().evidence()
+
+    def lookup_quality(self, identity: dict[str, Any]) -> dict[str, Any] | None:
+        """Reusable evidence for this exact identity, or nothing."""
+        return self._quality_store().lookup(identity)
+
+    def run_quality_evaluation(
+        self, request: QualityRunRequest, *, is_cancelled: CancelCheck | None = None,
+    ) -> Path:
+        from jaull.runtime.quality_eval_runner import run_quality_evaluation
+
+        record = run_quality_evaluation(request, is_cancelled=is_cancelled)
+        if is_cancelled is not None and is_cancelled():
+            from jaull.runtime.quality_eval_runner import QualityEvaluationCancelled
+
+            raise QualityEvaluationCancelled("Evaluation cancelled; no result imported.")
+        return self.save_quality_record(record)
+
+    def quality_evaluation_setup(self) -> dict[str, str]:
+        from jaull.runtime.quality_eval_runner import load_quality_setup, quality_setup_defaults
+
+        setup = quality_setup_defaults() | load_quality_setup()
+        if "server" not in setup:
+            cli = self._resolved_llama_cpp_installation().llama_cli
+            if cli is not None:
+                server = Path(cli).with_name("llama-server")
+                if server.is_file():
+                    setup["server"] = str(server)
+        return setup
+
+    def remember_quality_evaluation_setup(self, request: QualityRunRequest) -> None:
+        from jaull.runtime.quality_eval_runner import save_quality_setup
+
+        save_quality_setup(request)
+
+    def prepare_quality_evaluation_setup(
+        self, request: QualityRunRequest, *,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> None:
+        from jaull.runtime.quality_eval_runner import prepare_quality_setup
+
+        prepare_quality_setup(request, is_cancelled=is_cancelled, on_progress=on_progress)
+
+    def run_quality_evaluation_for_plan(
+        self, plan: ExecutionPlan, request: QualityRunRequest, *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> Path:
+        """Prepare only the selected GGUF, then use the unchanged quality pilot."""
+        import re
+        from tempfile import TemporaryDirectory
+
+        from jaull.advisor.quality import check_selected_artifact
+        from jaull.runtime.quality_eval_runner import QualityEvaluationError, _check_cancel
+
+        selected = plan.artifact
+        artifact = selected.to_model_artifact().model_copy(update={"sha256": selected.sha256})
+        check_selected_artifact(artifact, selected)
+        if request.output.expanduser().exists():
+            raise FileExistsError(request.output)
+
+        def report(message: str) -> None:
+            _check_cancel(is_cancelled)
+            if on_progress is not None:
+                on_progress(message)
+
+        # The same infrastructure checks apply to CLI, TUI and standalone setup.
+        self.prepare_quality_evaluation_setup(
+            request, is_cancelled=is_cancelled, on_progress=on_progress,
+        )
+        report("Preparing selected GGUF")
+        if re.fullmatch(r"[0-9a-f]{40}", artifact.revision) is None:
+            if selected.revision not in (None, "main"):
+                raise QualityEvaluationError(
+                    "Quality preparation requires a commit revision or main."
+                )
+            # Resolve published metadata before local promotion: a sidecar is not
+            # evidence that this file belongs to the repository's current commit.
+            artifact = self._artifacts().resolver.resolve(
+                selected.repo_id, quantization=selected.quantization, revision=None,
+            )
+            check_selected_artifact(artifact, selected)
+        if re.fullmatch(r"[0-9a-f]{40}", artifact.revision) is None:
+            raise QualityEvaluationError("The repository did not provide an immutable revision.")
+        if not artifact.sha256 or artifact.size_bytes is None or artifact.size_bytes <= 0:
+            raise QualityEvaluationError(
+                "Automatic preparation requires a published SHA256 and file size."
+            )
+        if artifact.local_path is None:
+            artifact = artifact.model_copy(update={
+                "local_path": self._artifacts().storage.path_for(artifact),
+            })
+        assert artifact.local_path is not None
+        if not artifact.local_path.is_file():
+            if not allow_download:
+                raise QualityEvaluationError(
+                    "Selected GGUF is not local. Enable download permission or download it first."
+                )
+            report(f"Downloading {artifact.filename}")
+            artifact = self.download_artifact(artifact)
+        report("Fully verifying selected GGUF")
+        artifact = self.verify_artifact(artifact, full=True)
+        check_selected_artifact(artifact, selected)
+        report("Starting fixed quality protocol")
+        with TemporaryDirectory(prefix="jaull-quality-") as directory:
+            manifest = Path(directory) / "artifact.json"
+            manifest.write_text(artifact.model_dump_json(indent=2), encoding="utf-8")
+            return self.run_quality_evaluation(
+                replace(request, artifact_json=manifest), is_cancelled=is_cancelled,
+            )
+
+    def compare_quality(self, left_id: str, right_id: str) -> dict[str, Any]:
+        from jaull.evaluation.quality_comparison import compare_quality_records
+
+        return compare_quality_records(
+            self.load_quality_record(left_id), self.load_quality_record(right_id),
+            left_source=str(self._quality_store().path_for(left_id)),
+            right_source=str(self._quality_store().path_for(right_id)),
+        )
+
+    def prepare_quality_candidates(
+        self, state: RecommendationWorkflowState, *,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> QualityCandidateSelection:
+        from jaull.advisor.quality_candidates import prepare_candidates
+
+        return prepare_candidates(self, state, is_cancelled=is_cancelled, on_progress=on_progress)
+
+    def run_quality_candidates(
+        self, candidates: tuple[QualityCandidate, ...], request: QualityRunRequest, *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> tuple[QualityCandidateOutcome, ...]:
+        from jaull.advisor.quality_candidates import run_candidates
+
+        return run_candidates(
+            self, candidates, request, allow_download=allow_download,
+            is_cancelled=is_cancelled, on_progress=on_progress,
+        )
 
     def save_case_manifest(self, manifest: ExperimentalCaseManifest) -> Path:
         return self._case_store().save(manifest)
@@ -1246,6 +1453,15 @@ class AdvisorService:
             python_executable=installation.python_executable,
         )
         object.__setattr__(self, "transformers_benchmark_runner", fresh)
+        return fresh
+
+    def _quality_store(self) -> QualityEvidenceStore:
+        if self.quality_store is not None:
+            return self.quality_store
+        from jaull.evaluation.quality_storage import QualityEvidenceStore
+
+        fresh = QualityEvidenceStore()
+        object.__setattr__(self, "quality_store", fresh)
         return fresh
 
     def _benchmark_store(self) -> BenchmarkStore:

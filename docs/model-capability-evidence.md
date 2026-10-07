@@ -1,6 +1,6 @@
 # General model capability evidence v1
 
-Status: diagnostic data contract and offline lookup. No ranking integration.
+Status: diagnostic catalog, strict offline lookup and TUI references. No quality-based ranking.
 Catalog 0.2.0 contains eleven transcribed publisher results, reviewed 2026-10-01.
 This verifies the source contents, not independent execution or model superiority.
 Test fixtures are synthetic (`.invalid` URLs); shipped-data tests pin the real claims.
@@ -169,6 +169,34 @@ behavior, not endorsement of their quality or confirmation that their selected
 paths can execute. No numeric score, task match, eligibility rule or hardware
 formula was changed on the basis of this sample.
 
+### Catalog coverage of the observed recommendations (2026-10-06)
+
+An offline check intersected the ten exact repository IDs in the two final lists
+above with the repository IDs in shipped catalog `0.2.0` (11 entries). It did not
+query the Hub, infer lineage or match names/families. A repository match would
+only be a first check: variant, evaluated revision and precision still need
+separate confirmation before evidence can describe an execution plan.
+
+| Recorded workflow (2026-10-01) | Final recommendations | Repository IDs in catalog |
+|---|---:|---:|
+| Chat | 5 | 0 |
+| Coding | 5 | 0 |
+| Combined, distinct | 10 | 0 |
+
+The catalog covers only `Qwen/Qwen2.5-32B-Instruct` (six entries) and
+`Qwen/Qwen3-32B` (five). Neither was a final recommendation in that hardware
+sample. The first reached the chat eligible pool but not its shortlist; the
+second was absent from the fetched pages. These are coverage and discovery
+observations, not negative quality findings about the ten recommended models.
+In particular, a Qwen3-4B or Qwen2.5-Coder result cannot inherit the 32B
+reference by family name. This dated sample used the recorded RTX 2060 machine;
+it is not a fresh recommendation run on the current laptop.
+
+Current production code loads the catalog for diagnostic references in Results
+and Paths, separately from locally persisted evaluations for exact artifact
+bytes. Published references do not certify the selected artifact or execution
+protocol, and neither source changes recommendation ordering.
+
 `application/recommendation/service.py` consumes the analyzer's numeric score;
 `recommendation/engine_v2.py` also constructs the metadata analyzer when assessing
 plans. This implementation changes neither path. It attaches optional sourced
@@ -178,9 +206,10 @@ reasons and every ranking input unchanged.
 `domain/recommendation.py` already defines `ExternalEvaluationEvidence`.
 `CapabilityEvaluation` extends it as a strict catalog entry, reusing `benchmark`,
 `task`, `value`, `metric`, `source`, `revision` and `date`. Existing legacy records
-remain valid under their original type. The engine's `external_evaluations`
-context currently distributes supplied entries to all plans without model
-matching; this catalog must not be fed into that context indiscriminately.
+remain valid under their original type. The original engine distributed
+`external_evaluations` to every plan. It now filters exact subjects per plan
+and requires a confirmed canonical repository; unattributable entries are dropped.
+The service loads the catalog once and preserves its version, digest and diagnostics.
 
 ## Contract and matching
 
@@ -297,15 +326,29 @@ Independent replication, exact revisions/precision, benchmark/scorer versions,
 full baseline conditions and uncertainty intervals remain unavailable in this
 small example. The data is not a general-quality verdict and never feeds ranking.
 
-## Next review boundary
+## Product display and next review boundary
 
-The ordinary report and persisted recommendation schema remain unchanged.
-The existing execution-plan `ModelIdentity` identifies repositories/base models,
-not the exact evaluated representation and protocol. Ordinary reports have
-byte-identical snapshot contracts. Automatically matching
-candidate family or the chosen local precision would make unsupported claims.
-For now, callers explicitly supply `CapabilitySubject`; lookup is separate from
-default reporting. With an already-computed signal, the diagnostic lookup is:
+Results and Paths now separate **Published model references** from **Measured
+on this artifact**. The reference view is a bibliography of entries naming an
+exact repository, not an assertion that their variants or protocols match the
+current plan. It can show Qwen3's non-thinking profile while keeping its original
+variant label and generation settings. References to a base repository require
+declared metadata naming that exact repository; suffix/name heuristics cannot
+confirm lineage. Missing catalog data and missing entries remain explicit.
+Source kinds, conflicting observations and protocol gaps remain visible.
+
+Artifact measurements still require the exact GGUF SHA256 and show historical
+placement, sample coverage and classification. They do not replace unrelated
+published results or imply a general-capability verdict. Neither section changes
+scores, ranking, suitability or eligibility. The display does not fetch models
+or start evaluations; evaluation remains explicit and subject to pilot preflight.
+
+Recommendation exports retain concrete catalog fields through `SerializeAsAny`.
+This is an export guarantee, not a new import/persistence contract: reloading
+through the legacy base-type parser does not reconstruct a catalog entry.
+
+`attach_capability_evidence` remains a separate strict-subject lookup. With an
+already-computed signal, the diagnostic lookup is:
 
 ```python
 from pathlib import Path
@@ -324,11 +367,29 @@ diagnostic = attach_capability_evidence(existing_signal, subject, catalog)
 ```
 
 This queries an unpinned published representation, not a recommendation or a
-confirmation of the user's selected artifact. A future presentation change must
-first resolve exact identity/provenance without broadening matching.
+confirmation of the user's selected artifact. Bibliographic display does not
+broaden this matching contract.
 
 Before ranking integration, decide which independently reviewed comparisons
 justify a broad capability claim, how protocol gaps and conflicting dimensions
-are presented, and how discovery recall is measured. A user-facing diagnostic
-surface remains deferred at the explicit lookup boundary above. No new GPU campaign
-or HFA calibration is required for this contract.
+are presented, and how discovery recall is measured. Broader catalog coverage and
+an import contract remain separate follow-ups. No new GPU campaign or HFA
+calibration is required for this diagnostic display.
+
+## Priority policy for human review (proposal only)
+
+The current catalog has no overlap with the ten observed final recommendations,
+so these modes cannot yet justify a new automatic ordering. Any future policy
+would use the existing fit and task eligibility decisions unchanged and keep
+missing evidence explicitly unknown:
+
+| Priority | Evidence to consider after existing eligibility | When evidence is missing or incompatible |
+|---|---|---|
+| Quality | Reviewed, model-specific results for the requested task under stated, comparable protocols; show dimension and source, not a single general score. | Abstain from quality ordering; keep the model eligible and mark quality unknown. |
+| Fastest | Local measurements of complete execution plans on the relevant machine and comparable workload, with methodology and backend visible. | Abstain from a speed claim; never treat tok/s as quality. |
+| Balanced | Present supported quality, local speed and memory as separate trade-offs for human choice. | Show the gaps and avoid a forced winner or hidden weighted total. |
+
+Smoke and 100-example HellaSwag results remain protocol diagnostics, not broad
+quality evidence. Published results for an unpinned representation must not be
+silently attached to a different quantization, fine-tune or current revision.
+No ranking, score, task-match or placement rule is changed by this proposal.

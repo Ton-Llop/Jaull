@@ -48,6 +48,7 @@ def variant_from_recommendation(
             revision="main",
             format=ArtifactVariantFormat.GGUF,
             filename=gguf.files[0].path if gguf and gguf.files else None,
+            sha256=gguf.sha256 if gguf is not None else None,
             size_bytes=gguf.total_bytes if gguf is not None else None,
             file_count=len(gguf.files) if gguf is not None else None,
             quantization=quantization,

@@ -15,6 +15,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
+from jaull.tui import palette
+
 
 class ContextBar(Vertical):
     """Title (plus an optional right-aligned aside) over a status line."""
@@ -36,7 +38,7 @@ class ContextBar(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="context-title-row"):
-            yield Static(self._title, classes="context-title")
+            yield Static(f"[{palette.ACCENT}]JAULL[/]  |  {self._title}", classes="context-title")
             if self._aside:
                 yield Static(self._aside, classes="context-aside")
         if self._status:

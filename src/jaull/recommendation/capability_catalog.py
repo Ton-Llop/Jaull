@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from jaull.domain.capability_evidence import CapabilityCatalog, CapabilitySubject
+from jaull.domain.execution_plans import ModelIdentity, ModelIdentityEvidenceKind
 from jaull.recommendation.capability import CapabilitySignal
 
 
@@ -22,11 +23,31 @@ class CatalogReadResult:
     diagnostic: str | None = None
 
 
+def canonical_repo_is_confirmed(identity: ModelIdentity) -> bool:
+    """Confirm an exact repository claim, not a suffix-based grouping key."""
+    canonical = identity.canonical_repo_id
+    if canonical is None:
+        return False
+    return any(
+        item.kind in {
+            ModelIdentityEvidenceKind.REPOSITORY_ID,
+            ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+        }
+        and item.value.strip().casefold() == canonical.strip().casefold()
+        for item in identity.evidence
+    )
+
+
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result = dict(pairs)
     if len(result) != len(pairs):
         raise ValueError("Duplicate JSON object keys")
     return result
+
+
+def default_catalog_path() -> Path:
+    """The catalogue shipped with the package, beside this module."""
+    return Path(__file__).with_name("capability_catalog.json")
 
 
 def load_capability_catalog(path: Path) -> CatalogReadResult:

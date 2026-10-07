@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution_plans import ExecutionPlan
@@ -120,7 +120,13 @@ class PlanAssessment(BaseModel):
     language_fit: AssessmentLevel = AssessmentLevel.UNKNOWN
     confidence: EstimationConfidence = EstimationConfidence.UNKNOWN
     evidence: list[RecommendationEvidence] = Field(default_factory=list)
-    external_evaluations: list[ExternalEvaluationEvidence] = Field(default_factory=list)
+    # Serialized as the concrete type it holds, not as the declared base: a
+    # catalogue entry carries the repository, the variant, who reported it and
+    # under what protocol, and pydantic would drop all of that on export. A
+    # published score with its attribution removed is worse than no score.
+    external_evaluations: list[SerializeAsAny[ExternalEvaluationEvidence]] = Field(
+        default_factory=list
+    )
     reasons: list[str] = Field(default_factory=list)
     trade_offs: list[str] = Field(default_factory=list)
     rejection_reasons: list[str] = Field(default_factory=list)

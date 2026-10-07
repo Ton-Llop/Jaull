@@ -220,7 +220,11 @@ def test_benchmark_screen_keeps_partial_failure_results(
             text = _visible_text(screen)
             assert "tok/s" in text
             assert "Vulkan run failed" in text
-            assert screen.query_one("#benchmark-details", Button).disabled is False
+            # The reproducibility fields used to live behind a button on their
+            # own screen; they are a tab in the inspector now, so a failed
+            # configuration and its detail can be read at the same time.
+            assert screen.query_one("#benchmark-detail-0")
+            assert all(tab in text for tab in ("Performance", "Memory", "Technical"))
 
     _run(scenario())
 

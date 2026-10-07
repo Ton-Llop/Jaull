@@ -24,6 +24,7 @@ from jaull.domain.inference import (
     WeightPrecision,
 )
 from jaull.domain.model import ModelAnalysis
+from jaull.estimator.gguf_selection import select_variant
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
@@ -36,11 +37,14 @@ from jaull.exceptions import (
     ModelNotFoundError,
     QuantizationNotFoundError,
 )
+from jaull.tui.evidence import EvidenceIndex, EvidenceState, PlanEvidence
 from jaull.tui.widgets.assessment_badge import AssessmentBadge
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
 from jaull.tui.widgets.memory_usage_bar import MemoryUsageBar
+from jaull.tui.widgets.metric_list import MetricRow
 from jaull.tui.widgets.summary_card import SummaryCard
+from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.tui.widgets.warnings_panel import WarningsPanel
 
 _GIB = 1024 * 1024 * 1024
@@ -73,18 +77,24 @@ class EstimateScreen(Screen[None]):
             "Estimate model memory",
             "Guided flow — enter a model, pick options, get a full breakdown.",
         )
-        with Vertical(classes="card"):
-            yield Static("1. Model", classes="card-title")
-            yield Input(placeholder="user/model or huggingface.co URL", id="est-input")
-            with Horizontal():
-                yield Button("Detect", id="est-detect", classes="-primary")
         yield LoadingIndicator(id="est-loading")
-        yield VerticalScroll(Vertical(id="est-form"))
-        yield VerticalScroll(Vertical(id="est-result"))
+        with VerticalScroll(id="est-body"):
+            with Vertical(id="est-parameters"):
+                with Vertical(classes="card"):
+                    yield Static("1. Model", classes="card-title")
+                    yield Input(placeholder="user/model or huggingface.co URL", id="est-input")
+                    with Horizontal():
+                        yield Button("Detect", id="est-detect", classes="-primary")
+                yield Vertical(id="est-form")
+            with Vertical(id="est-output"):
+                yield Vertical(id="est-result")
+                with Horizontal():
+                    yield Button("Adjust parameters", id="est-edit")
         yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#est-loading", LoadingIndicator).display = False
+        self.query_one("#est-output", Vertical).display = False
         self.query_one("#est-input", Input).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -92,6 +102,11 @@ class EstimateScreen(Screen[None]):
             self._start_detect()
         elif event.button.id == "est-run":
             self._start_estimate()
+        elif event.button.id == "est-edit":
+            self.query_one("#est-output", Vertical).display = False
+            self.query_one("#est-parameters", Vertical).display = True
+            self.query_one("#est-input", Input).focus()
+            self.query_one("#est-body", VerticalScroll).scroll_home(animate=False, immediate=True)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "est-input":
@@ -117,7 +132,7 @@ class EstimateScreen(Screen[None]):
 
     def _detect_worker(self, repo_id: str) -> None:
         try:
-            analysis = _advisor(self).inspect_model(repo_id)
+            analysis = _advisor(self).inspect_model(repo_id, refresh=True)
         except (
             ModelNotFoundError,
             ModelAccessDeniedError,
@@ -237,13 +252,14 @@ class EstimateScreen(Screen[None]):
                 pass
 
     def _start_estimate(self) -> None:
-        if self.state.analysis is None:
+        if self.state.analysis is None or self.query_one("#est-loading", LoadingIndicator).display:
             return
         self.query_one("#est-loading", LoadingIndicator).display = True
         self.run_worker(self._estimate_worker, thread=True)
 
     def _estimate_worker(self) -> None:
         assert self.state.analysis is not None
+        analysis = self.state.analysis
         cfg = InferenceConfiguration(
             context_length=self.state.context,
             batch_size=self.state.batch_size,
@@ -257,7 +273,7 @@ class EstimateScreen(Screen[None]):
         hardware = advisor.scan_hardware()
         try:
             estimate = advisor.estimate_model(
-                analysis=self.state.analysis,
+                analysis=analysis,
                 hardware=hardware,
                 inference_cfg=cfg,
             )
@@ -267,14 +283,29 @@ class EstimateScreen(Screen[None]):
         except JaullError as exc:
             self.app.call_from_thread(self._render_error, str(exc))
             return
-        self.app.call_from_thread(self._render_estimate, estimate)
+        evidence = PlanEvidence(state=EvidenceState.ESTIMATED)
+        if analysis.classification.gguf_variants:
+            variant = select_variant(
+                analysis.classification.gguf_variants, cfg.quantization,
+            ).variant
+            evidence = PlanEvidence(
+                state=EvidenceState.ESTIMATED,
+                quality_records=EvidenceIndex.load(advisor).quality_for_sha(variant.sha256),
+            )
+        self.app.call_from_thread(self.call_next, self._render_estimate, estimate, evidence)
 
-    def _render_estimate(self, estimate: MemoryEstimate) -> None:
-        self.query_one("#est-loading", LoadingIndicator).display = False
+    async def _render_estimate(
+        self, estimate: MemoryEstimate, evidence: PlanEvidence | None = None,
+    ) -> None:
         result = self.query_one("#est-result", Vertical)
-        result.remove_children()
+        await result.remove_children()
+        self.query_one("#est-loading", LoadingIndicator).display = False
+
+        if evidence is not None and evidence.quality_records:
+            result.mount(_QualitySection(evidence))
 
         breakdown_rows: list[tuple[str, str]] = [
+            ("Estimation context", f"{estimate.inference_configuration.context_length} tokens"),
             ("Weights", _fmt(estimate.weights.component.bytes)),
             ("KV cache", _fmt(estimate.kv_cache.component.bytes)),
             ("Runtime overhead", _fmt(estimate.runtime_overhead.component.bytes)),
@@ -322,6 +353,11 @@ class EstimateScreen(Screen[None]):
             result.mount(WarningsPanel(estimate.warnings))
 
         result.mount(CliEquivalent(_equivalent_cli(estimate)))
+        self.query_one("#est-parameters", Vertical).display = False
+        self.query_one("#est-output", Vertical).display = True
+        body = self.query_one("#est-body", VerticalScroll)
+        body.focus()
+        body.scroll_home(animate=False, immediate=True)
 
     def _get_state(self) -> _EstimateFormState:
         # Test helper.
@@ -356,6 +392,45 @@ class _RunCard(Vertical):
     def compose(self) -> ComposeResult:
         yield Static("6. Run estimation", classes="card-title")
         yield Button("Estimate", id="est-run", classes="-primary")
+
+
+class _QualitySection(Vertical):
+    def __init__(self, evidence: PlanEvidence) -> None:
+        super().__init__(id="est-quality", classes="section")
+        self._evidence = evidence
+
+    def compose(self) -> ComposeResult:
+        yield Static("Measured evaluation", classes="section-title")
+        yield Static(
+            "Historical results for this exact artifact. "
+            "The current execution and protocol have not been verified.",
+            classes="text-muted", markup=False,
+        )
+        for record in self._evidence.quality_records:
+            yield MetricRow("Benchmark", record.dataset)
+            yield MetricRow("Evaluation", f"{record.classification.capitalize()} evaluation")
+            yield MetricRow("Samples", f"{record.samples_used} of {record.samples_available}")
+            context = f"{record.context_length} tokens" if record.context_length else "unknown"
+            yield MetricRow("Evaluation context", context)
+            for metric in record.metrics:
+                label = {
+                    "acc": "Accuracy", "acc_norm": "Length-normalized accuracy",
+                }.get(metric.name, metric.name)
+                yield MetricRow(
+                    label,
+                    f"{metric.value:.1%} ({metric.correct}/{metric.samples})",
+                    emphasis="measured",
+                )
+            for limitation in record.limitations:
+                yield Static(limitation, classes="text-muted", markup=False)
+        yield Static(
+            "These benchmark results are not a general capability assessment.",
+            classes="text-muted", markup=False,
+        )
+        yield TechnicalDetails(
+            title="Evaluation provenance",
+            extra=[Static(self._evidence.quality_details(), markup=False)],
+        )
 
 
 class _AssessmentCard(Vertical):

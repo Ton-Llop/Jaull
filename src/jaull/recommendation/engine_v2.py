@@ -7,11 +7,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from pydantic import ValidationError
+
 from jaull.domain.benchmarks import (
     BenchmarkMeasurementKind,
     BenchmarkRecord,
 )
 from jaull.domain.candidates import EvaluatedCandidate
+from jaull.domain.capability_evidence import CapabilitySubject
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityStatus,
@@ -151,6 +154,71 @@ def generate_execution_plans(
     ]
 
 
+
+
+#: How the canonical repository was arrived at. A published result may be shown
+#: for a repository the candidate *is*, or for a base model its own metadata
+#: names. A repository guessed by stripping a suffix off a name is neither.
+def _canonical_repo_is_confirmed(identity: ModelIdentity) -> bool:
+    """Whether some evidence confirms *this* canonical repository by name.
+
+    `logical_model_repo_id` will happily turn `org/Thing-7B-GGUF` into
+    `org/Thing-7B`, and that guess is right often enough to be dangerous: it
+    would hand a publisher's numbers to a repack nobody checked the lineage of.
+    Metadata that names the base model, or a candidate that is the repository
+    itself, are claims; a stripped suffix is a hunch.
+
+    Three things this has to get right. The evidence must name the repository
+    actually being matched, since metadata pointing at some *other* base model
+    confirms nothing here. The answer cannot depend on the order the evidence
+    happens to be in, because the list is ordinary model data that anything may
+    append to. And the comparison must not strip suffixes: declaring
+    `org/Thing-7B-GGUF` says the repack is the base, not that `org/Thing-7B`
+    is — matching through `logical_model_repo_key` would let the very guess
+    this rule rejects back in through the comparison.
+
+    Casing is folded and nothing else. Two spellings of one repository are the
+    same claim; two different names are two different claims.
+    """
+    from jaull.recommendation.capability_catalog import canonical_repo_is_confirmed
+
+    return canonical_repo_is_confirmed(identity)
+
+
+def _matching_evaluations(
+    plan: ExecutionPlan,
+    evaluations: Sequence[ExternalEvaluationEvidence],
+) -> list[ExternalEvaluationEvidence]:
+    """The published evidence that belongs to *this* plan's model, and no other.
+
+    The context carries one catalogue for the whole ranking, so without this
+    every plan would claim every result: a Qwen3 score would appear under a
+    Mistral candidate, which is worse than showing nothing.
+
+    Matching is on the logical model, not on the artifact. A publisher measured
+    a model; a Q4_K_M repack of it is a different set of bytes that nobody
+    evaluated, so what is attached here is evidence *about the model this plan
+    would run*, and the interface has to say so. An entry that carries no
+    subject cannot be attributed to anything and is dropped rather than
+    spread across every row.
+    """
+    identity = plan.model_identity
+    if identity.canonical_repo_id is None or not _canonical_repo_is_confirmed(identity):
+        return []
+    try:
+        subject = CapabilitySubject(
+            repo_id=identity.canonical_repo_id,
+            variant=identity.variant,
+        )
+    except ValidationError:
+        return []
+    return [
+        evaluation
+        for evaluation in evaluations
+        if getattr(evaluation, "subject", None) == subject
+    ]
+
+
 def assess_plan(
     evaluated: EvaluatedCandidate,
     plan: ExecutionPlan,
@@ -203,7 +271,7 @@ def assess_plan(
 
     measured_memory = _measured_memory(local_experiment, local_benchmark)
     measured_tps = _measured_generation_tps(local_benchmark)
-    external = list(ctx.external_evaluations)
+    external = _matching_evaluations(plan, ctx.external_evaluations)
     evidence.extend(_external_evidence(external))
 
     if plan.execution_readiness is not None:
@@ -299,6 +367,7 @@ def _gguf_plans(
             revision="main",
             format=ArtifactVariantFormat.GGUF,
             filename=variant.files[0].path if variant.files else None,
+            sha256=variant.sha256,
             size_bytes=variant.total_bytes,
             file_count=len(variant.files),
             quantization=variant.quantization,

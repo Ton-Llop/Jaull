@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from huggingface_hub.hf_api import ModelInfo
@@ -22,7 +23,7 @@ def inspect_model(repo_id: str, client: HfClientProtocol | None = None) -> Model
     info = hf_client.model_info(repo_id)
 
     repo = _build_repository_info(info, repo_id=repo_id)
-    files = _build_files(info)
+    files = files_from_metadata(info)
     classification = classify_repository(files)
 
     analyzer = get_analyzer(classification.primary_type)
@@ -80,7 +81,8 @@ def _build_repository_info(info: ModelInfo, repo_id: str) -> ModelRepositoryInfo
     )
 
 
-def _build_files(info: ModelInfo) -> list[ModelFile]:
+def files_from_metadata(info: object) -> list[ModelFile]:
+    """Preserve LFS content digests; git blob IDs are not artifact SHA256s."""
     siblings = getattr(info, "siblings", None) or []
     files: list[ModelFile] = []
     for sibling in siblings:
@@ -88,8 +90,15 @@ def _build_files(info: ModelInfo) -> list[ModelFile]:
         if not path:
             continue
         size = getattr(sibling, "size", None)
-        lfs = getattr(sibling, "lfs", None) is not None
-        files.append(ModelFile(path=path, size_bytes=size, lfs=lfs))
+        metadata = getattr(sibling, "lfs", None)
+        sha256 = metadata.get("sha256") if isinstance(metadata, dict) else getattr(
+            metadata, "sha256", None
+        )
+        if not isinstance(sha256, str) or re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
+            sha256 = None
+        files.append(ModelFile(
+            path=path, size_bytes=size, lfs=metadata is not None, sha256=sha256,
+        ))
     return files
 
 

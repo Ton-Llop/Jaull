@@ -13,6 +13,9 @@ The records exist; nothing was reading them. Validation writes an
 persisted as JSON under the user data directory. This module loads them and
 matches them back to plans.
 
+Quality records are historical results for exact artifact bytes, not evidence
+that the current execution plan or evaluation protocol was validated.
+
 It only reads. No metric is recomputed, no methodology is reinterpreted, and a
 record that fails to load is skipped rather than guessed at. Because the stores
 are flat directories with no index, building the index is O(records) disk I/O
@@ -22,19 +25,27 @@ and must run on a worker thread, never on the event loop.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 from jaull.advisor.service import AdvisorService
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.benchmarks import BenchmarkRecord
 from jaull.domain.execution_plans import (
+    ArtifactVariantFormat,
     ExecutionPlan,
     ModelIdentity,
     logical_model_repo_key,
 )
+from jaull.domain.experiments import ExperimentRecord
 from jaull.domain.runtime import RuntimeName
+from jaull.evaluation.hardware_fingerprint import machine_fingerprint
+from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
+from jaull.presentation.published_evaluations import published_reference_text
+from jaull.recommendation.capability_catalog import CatalogReadResult
 
 _log = logging.getLogger(__name__)
 
@@ -84,11 +95,14 @@ def state_class(state: EvidenceState) -> str:
 
 @dataclass(frozen=True)
 class PlanEvidence:
-    """Every stored record that belongs to one plan."""
+    """Execution evidence for a plan and historical quality for its artifact."""
 
     state: EvidenceState
     experiment_ids: tuple[str, ...] = ()
     benchmark_ids: tuple[str, ...] = ()
+    quality_records: tuple[QualityEvidence, ...] = ()
+    published_summary: str = "No published references loaded."
+    published_provenance: str = ""
 
     @property
     def validated(self) -> bool:
@@ -109,6 +123,69 @@ class PlanEvidence:
             parts.append("✓ Benchmarked")
         return " · ".join(parts)
 
+    def quality_summary(self) -> str:
+        if not self.quality_records:
+            return ""
+        lines = ["Quality · historical artifact results; current execution/protocol not verified"]
+        for record in self.quality_records:
+            placement = ", ".join(f"{key} {value}" for key, value in record.placement.items())
+            lines.append(
+                f"{record.suite} · {record.classification} · {record.summary} · "
+                f"{record.samples_used}/{record.samples_available} samples · "
+                f"ctx {record.context_length or 'unknown'} · {placement or 'placement unknown'}"
+            )
+        return "\n".join(lines)
+
+    def quality_details(self) -> str:
+        return "\n\n".join(
+            "\n".join([
+                f"Suite: {record.suite}",
+                "Placement: " + (
+                    ", ".join(f"{key} {value}" for key, value in record.placement.items())
+                    or "unknown"
+                ),
+                f"Artifact SHA256: {record.artifact_sha256}",
+                f"Record identity: {record.identity_sha256}",
+                f"Dataset: {record.dataset}@{record.dataset_revision}",
+                f"Evaluator: {record.evaluator_commit}",
+                f"Runtime: {record.runtime_fingerprint}",
+                f"Hardware: {record.hardware or 'unknown'}",
+                "Evaluated: " + (
+                    record.evaluated_at.isoformat() if record.evaluated_at else "unknown"
+                ),
+                *record.limitations,
+            ])
+            for record in self.quality_records
+        )
+
+    def quality_readout(self) -> str:
+        """Readable metrics with their scope, never an aggregate quality score."""
+        if not self.quality_records:
+            return ""
+        sections = [
+            "Historical results for this exact artifact; "
+            "current execution/protocol not verified."
+        ]
+        for record in self.quality_records:
+            lines = [
+                f"Benchmark: {record.dataset}",
+                f"Evaluation: {record.classification} evaluation",
+                f"Samples: {record.samples_used} of {record.samples_available}",
+                f"Evaluation context: {record.context_length or 'unknown'}",
+                "",
+            ]
+            for metric in record.metrics:
+                label = {
+                    "acc": "Accuracy", "acc_norm": "Length-normalized accuracy",
+                }.get(metric.name, metric.name)
+                lines.append(
+                    f"{label}: {metric.value:.1%} ({metric.correct}/{metric.samples})"
+                )
+            lines.extend(["", *record.limitations])
+            sections.append("\n".join(lines))
+        sections.append("These results are not a general capability assessment.")
+        return "\n\n".join(sections)
+
 
 @dataclass(frozen=True)
 class EvidenceIndex:
@@ -117,8 +194,10 @@ class EvidenceIndex:
     Build it once per screen load with :meth:`load`, then query it per plan.
     """
 
-    _experiments: dict[str, list[str]] = field(default_factory=dict)
-    _benchmarks: dict[str, list[str]] = field(default_factory=dict)
+    _experiments: dict[str, list[tuple[str, ExperimentRecord]]] = field(default_factory=dict)
+    _benchmarks: dict[str, list[tuple[str, BenchmarkRecord]]] = field(default_factory=dict)
+    _quality: dict[str, list[QualityEvidence]] = field(default_factory=dict)
+    _catalog: CatalogReadResult | None = None
 
     @classmethod
     def empty(cls) -> EvidenceIndex:
@@ -130,20 +209,22 @@ class EvidenceIndex:
         advisor: AdvisorService,
         identity: ModelIdentity | None = None,
     ) -> EvidenceIndex:
-        """Read both stores. Blocking: call from a worker thread.
+        """Read the evidence stores. Blocking: call from a worker thread.
 
         With no ``identity`` every record is indexed, which is what a screen
         showing several models wants: the stores are scanned once rather than
         once per model, and the artifact key already carries the repository so
-        two models cannot collide.
+        two models cannot collide. Quality records use the exact content SHA256
+        instead, independent of repository labels and the current protocol.
 
         Evidence enriches a screen; it never gates one. Anything unreadable —
         a missing store, an unwritable data directory, a half-written file —
         degrades to "no evidence" rather than to an error, because a plan the
         user can still run must not disappear because a log could not be read.
         """
-        experiments: dict[str, list[str]] = {}
-        benchmarks: dict[str, list[str]] = {}
+        experiments: dict[str, list[tuple[str, ExperimentRecord]]] = {}
+        benchmarks: dict[str, list[tuple[str, BenchmarkRecord]]] = {}
+        quality: dict[str, list[QualityEvidence]] = {}
 
         for experiment_id in _safe_ids(advisor.list_experiment_ids):
             record = _safe_load(advisor.load_experiment_record, experiment_id)
@@ -152,7 +233,7 @@ class EvidenceIndex:
             if identity is not None and not _matches_model(record.artifact, identity):
                 continue
             key = _artifact_key(record.artifact, record.runtime.runtime)
-            experiments.setdefault(key, []).append(experiment_id)
+            experiments.setdefault(key, []).append((experiment_id, record))
 
         for benchmark_id in _safe_ids(advisor.list_benchmark_ids):
             benchmark = _safe_load(advisor.load_benchmark_record, benchmark_id)
@@ -161,14 +242,35 @@ class EvidenceIndex:
             if identity is not None and not _matches_model(benchmark.artifact, identity):
                 continue
             key = _artifact_key(benchmark.artifact, benchmark.runtime.runtime)
-            benchmarks.setdefault(key, []).append(benchmark_id)
+            benchmarks.setdefault(key, []).append((benchmark_id, benchmark))
 
-        return cls(_experiments=experiments, _benchmarks=benchmarks)
+        for quality_id in _safe_ids(advisor.list_quality_ids):
+            result = _safe_load(
+                lambda record_id: describe_record(advisor.load_quality_record(record_id)),
+                quality_id,
+            )
+            if result is not None:
+                quality.setdefault(result.artifact_sha256, []).append(result)
+
+        # Older injected facades may expose only the record-store methods.
+        catalog_reader = getattr(advisor, "capability_catalog", None)
+        catalog = catalog_reader() if catalog_reader is not None else None
+        return cls(
+            _experiments=experiments, _benchmarks=benchmarks, _quality=quality, _catalog=catalog,
+        )
 
     def for_plan(self, plan: ExecutionPlan) -> PlanEvidence:
         key = _plan_key(plan)
-        experiments = tuple(self._experiments.get(key, ()))
-        benchmarks = tuple(self._benchmarks.get(key, ()))
+        experiments = tuple(
+            experiment_id
+            for experiment_id, record in self._experiments.get(key, ())
+            if _experiment_matches_plan(record, plan)
+        )
+        benchmarks = tuple(
+            benchmark_id
+            for benchmark_id, record in self._benchmarks.get(key, ())
+            if _benchmark_matches_plan(record, plan)
+        )
         if benchmarks:
             state = EvidenceState.BENCHMARKED
         elif experiments:
@@ -177,11 +279,28 @@ class EvidenceIndex:
             state = EvidenceState.READY
         else:
             state = EvidenceState.ESTIMATED
+        artifact = plan.artifact
+        quality = (
+            self.quality_for_sha(artifact.sha256)
+            if artifact.sha256 is not None
+            and artifact.format is ArtifactVariantFormat.GGUF
+            and artifact.file_count == 1
+            and plan.runtime_family is RuntimeName.LLAMA_CPP
+            else ()
+        )
+        published, provenance = published_reference_text(plan.model_identity, self._catalog)
         return PlanEvidence(
             state=state,
             experiment_ids=experiments,
             benchmark_ids=benchmarks,
+            quality_records=quality,
+            published_summary=published,
+            published_provenance=provenance,
         )
+
+    def quality_for_sha(self, sha256: str | None) -> tuple[QualityEvidence, ...]:
+        """Historical content matches, not a current execution/protocol match."""
+        return tuple(self._quality.get(sha256, ())) if sha256 is not None else ()
 
 
 def _safe_ids(list_ids: Callable[[], list[str]]) -> list[str]:
@@ -239,6 +358,59 @@ def _plan_key(plan: ExecutionPlan) -> str:
     return (
         f"{artifact.repo_id.casefold()}|{plan.runtime_family.value}|"
         f"{artifact.format.value.casefold()}|{variant}"
+    )
+
+
+def _same_execution_context(
+    record: ExperimentRecord | BenchmarkRecord, plan: ExecutionPlan
+) -> bool:
+    if plan.hardware is None or plan.memory_prediction is None or plan.backend_selection is None:
+        return False
+    if machine_fingerprint(record.hardware) != machine_fingerprint(plan.hardware):
+        return False
+    if record.runtime.runtime is not plan.runtime_family:
+        return False
+    if tuple((flag.name, flag.value) for flag in record.runtime.flags) != tuple(
+        (flag.name, flag.value) for flag in plan.runtime.flags
+    ):
+        return False
+    artifact = plan.artifact
+    measured = record.artifact
+    if artifact.sha256 is not None:
+        if measured.sha256 != artifact.sha256:
+            return False
+    elif not (
+        artifact.revision is not None
+        and re.fullmatch(r"[0-9a-f]{40}", artifact.revision)
+        and measured.revision == artifact.revision
+        and measured.filename == artifact.filename
+    ):
+        # A mutable branch name or an unpinned discovery result cannot identify
+        # the exact bytes of an earlier run.
+        return False
+    return True
+
+
+def _experiment_matches_plan(record: ExperimentRecord, plan: ExecutionPlan) -> bool:
+    if not _same_execution_context(record, plan):
+        return False
+    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    return (
+        record.preflight.execution_readiness.selection.selected_backend
+        is plan.backend_selection.selected_backend
+        and record.prediction.inference_configuration.context_length
+        == plan.memory_prediction.inference_configuration.context_length
+    )
+
+
+def _benchmark_matches_plan(record: BenchmarkRecord, plan: ExecutionPlan) -> bool:
+    if not _same_execution_context(record, plan):
+        return False
+    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    return (
+        record.request.backend is plan.backend_selection.selected_backend
+        and record.request.context_length
+        == plan.memory_prediction.inference_configuration.context_length
     )
 
 

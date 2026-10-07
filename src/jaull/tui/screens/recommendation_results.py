@@ -13,11 +13,12 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Input, Static
+from textual.widgets import Button, DataTable, Footer, Input, Static, TabbedContent, TabPane
 
+from jaull.advisor.quality import quality_evaluation_block_reason
 from jaull.domain.benchmarks import BenchmarkMeasurementKind
 from jaull.domain.estimation import CompatibilityStatus
-from jaull.domain.execution_plans import ModelIdentity, model_identity_key
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, model_identity_key
 from jaull.evaluation.benchmark_comparison import (
     BenchmarkComparison,
     BenchmarkPlanMetricComparison,
@@ -25,6 +26,7 @@ from jaull.evaluation.benchmark_comparison import (
 )
 from jaull.presentation.plan_labels import (
     format_gib,
+    is_gguf_plan,
     model_display_name,
     plan_backend,
     plan_summary_line,
@@ -36,13 +38,15 @@ from jaull.reporting.writer import (
     default_reports_dir,
     write_recommendation_report,
 )
-from jaull.tui.evidence import EvidenceIndex, state_class
+from jaull.tui.evidence import EvidenceIndex, PlanEvidence, state_class
 from jaull.tui.screens.execution_paths import ExecutionPathsScreen
+from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
 from jaull.tui.widgets.memory_usage_bar import MemoryUsageBar
 from jaull.tui.widgets.metric_list import MetricRow
+from jaull.tui.widgets.selection_workspace import SelectionWorkspace
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -56,23 +60,22 @@ if TYPE_CHECKING:
 
 
 class _RecommendationRow(Vertical):
-    """One recommendation, in the same shape whether or not it is selected.
-
-    The screen used to render #1 as a bordered card and the rest as a single
-    dense line each, which made the list impossible to scan as a list: two
-    layouts, two typographies, and four buttons repeated on every row. Here
-    every row reads the same and the selected one expands in place.
-
-    The expanded parts stay mounted and are hidden with ``display``. Mounting
-    and removing them per selection would churn widget ids — the thing three
-    separate tests exist to prevent.
-    """
+    """A compact choice; its stable inspector lives in the adjacent pane."""
 
     DEFAULT_CLASSES = "rec-row selectable"
 
     can_focus = True
 
-    BINDINGS = [("enter", "choose", "Select")]
+    BINDINGS = [
+        ("enter", "choose", "Select"),
+        Binding("down,j", "move(1)", "Next", show=False),
+        Binding("up,k", "move(-1)", "Previous", show=False),
+    ]
+
+    class Moved(Message):
+        def __init__(self, delta: int) -> None:
+            super().__init__()
+            self.delta = delta
 
     class Chosen(Message):
         def __init__(self, index: int) -> None:
@@ -90,31 +93,152 @@ class _RecommendationRow(Vertical):
         self._index = index
         self._rec = recommendation
         self._selected = selected
-        # Filled in once the evidence scan lands; until then the row simply
-        # does not claim anything about prior runs.
-        self._evidence_summary = ""
+        self.detail = _RecommendationInspector(index, recommendation)
         self.set_class(selected, "-selected")
 
     def compose(self) -> ComposeResult:
         rec = self._rec
         with Horizontal(classes="rec-headline"):
-            yield Static(f"{self._index + 1}", classes="rec-rank")
-            yield Static(_model_title(rec), classes="rec-name")
             yield Static(
-                f"{_status_label(rec)} · {_memory_label(rec)}",
-                classes=f"rec-fit {_fit_class(rec)}",
+                "•"
+                if rec.displayed_status is CompatibilityStatus.UNKNOWN
+                else f"{self._index + 1}",
+                classes="rec-rank -top" if self._index == 0 else "rec-rank",
             )
-        yield Static(_plan_line(rec), classes="rec-plan")
+            yield Static(_model_title(rec), classes="rec-name")
         yield Static(
-            "",
-            id=f"rec-evidence-{self._index}",
-            classes="rec-evidence status-estimated",
+            f"{_status_label(rec)} · {_memory_label(rec)}",
+            classes=f"rec-list-fit {_fit_class(rec)}",
         )
-        if rec.reasons and not rec.unknown_reason:
-            yield Static(rec.reasons[0], classes="rec-reason -expanded")
+        yield Static(_plan_line(rec), classes="rec-plan")
         if rec.unknown_reason:
             yield Static(rec.unknown_reason, classes="rec-unknown-reason")
-        with Horizontal(classes="rec-actions -expanded"):
+
+    def on_mount(self) -> None:
+        self._apply()
+
+    def set_selected(self, selected: bool) -> None:
+        self._selected = selected
+        self.set_class(selected, "-selected")
+        self._apply()
+
+    def show_evidence(self, evidence: PlanEvidence) -> None:
+        self.detail.show_evidence(evidence)
+
+    def _apply(self) -> None:
+        self.detail.display = self._selected
+
+    def on_click(self) -> None:
+        self.post_message(self.Chosen(self._index))
+
+    def action_choose(self) -> None:
+        self.post_message(self.Chosen(self._index))
+
+    def action_move(self, delta: int) -> None:
+        self.post_message(self.Moved(delta))
+
+
+class _RecommendationInspector(Vertical):
+    DEFAULT_CLASSES = "recommendation-inspector"
+
+    def __init__(self, index: int, rec: ModelRecommendation) -> None:
+        super().__init__(id=f"rec-detail-{index}")
+        self._index = index
+        self._rec = rec
+
+    def compose(self) -> ComposeResult:
+        rec = self._rec
+        yield Static(_model_title(rec), classes="inspector-title", markup=False)
+        yield Static(_plan_line(rec), classes="inspector-subtitle")
+        yield from self._compose_actions()
+        with TabbedContent():
+            with TabPane("Plan"), VerticalScroll():
+                yield SummaryCard(
+                    "Hardware fit",
+                    [
+                        ("Assessment", _status_label(rec)),
+                        ("Required memory", _memory_label(rec)),
+                    ],
+                )
+                yield Static(
+                    rec.unknown_reason or "\n".join(rec.reasons),
+                    classes="text-secondary",
+                    markup=False,
+                )
+                yield Static("Execution readiness", classes="section-title")
+                yield Static(
+                    _runtime_action_reason(rec) or "Execution path available",
+                    classes="text-secondary",
+                    markup=False,
+                )
+                yield Static(
+                    f"Actions unavailable: {_runtime_action_reason(rec)}"
+                    if _runtime_action_reason(rec) else "",
+                    id=f"rec-actions-reason-{self._index}",
+                    classes="warning-line rec-actions-reason",
+                )
+                yield Static("Saved execution evidence", classes="section-title")
+                yield Static("", id=f"rec-evidence-{self._index}", classes="status-estimated")
+            with TabPane("Memory"), VerticalScroll():
+                estimate = rec.evaluated.memory_estimate
+                if estimate is None:
+                    yield Static("Memory breakdown unavailable.", classes="text-secondary")
+                else:
+                    yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
+            with TabPane("Evaluation"), VerticalScroll():
+                yield Static("Published model references", classes="section-title")
+                yield Static(
+                    "Loading published references...", id=f"rec-published-{self._index}",
+                    classes="text-secondary", markup=False,
+                )
+                yield TechnicalDetails(
+                    title="Published reference provenance",
+                    extra=[Static("", id=f"rec-published-details-{self._index}", markup=False)],
+                    id=f"rec-published-provenance-{self._index}",
+                )
+                yield Static("Measured on this artifact", classes="section-title")
+                quality_plan = _quality_plan(rec)
+                quality_reason = (
+                    quality_evaluation_block_reason(quality_plan) if quality_plan is not None
+                    else None
+                )
+                evaluate = ActionButton(
+                    "Evaluate quality" if quality_plan is not None
+                    else "Choose GGUF to evaluate",
+                    id=f"res-evaluate-{self._index}",
+                    disabled=quality_reason is not None,
+                )
+                evaluate.tooltip = quality_reason or (
+                    "Open evaluation setup; preflight is required before running."
+                )
+                yield evaluate
+                yield Static(
+                    quality_reason or "", id=f"rec-evaluate-reason-{self._index}",
+                    classes="warning-line", markup=False,
+                )
+                yield Static(
+                    "No measured evaluation for this exact artifact.",
+                    id=f"rec-quality-empty-{self._index}",
+                    classes="text-secondary",
+                )
+                yield Static(
+                    "", id=f"rec-quality-{self._index}", classes="text-secondary", markup=False
+                )
+                yield Static(
+                    "", id=f"rec-quality-alternatives-{self._index}",
+                    classes="text-secondary", markup=False,
+                )
+                yield TechnicalDetails(
+                    title="Artifact measurement provenance",
+                    extra=[Static(
+                        "", id=f"rec-quality-details-{self._index}", markup=False,
+                    )],
+                    id=f"rec-quality-provenance-{self._index}",
+                )
+
+    def _compose_actions(self) -> ComposeResult:
+        rec = self._rec
+        with Horizontal(classes="rec-actions"):
             action_reason = _runtime_action_reason(rec)
             run = Button(
                 "Run",
@@ -136,40 +260,61 @@ class _RecommendationRow(Vertical):
                 button.tooltip = action_reason
                 yield button
             yield ActionButton("Paths", id=f"res-paths-{self._index}")
-        yield Static(
-            f"Actions unavailable: {action_reason}" if action_reason else "",
-            id=f"rec-actions-reason-{self._index}",
-            classes="warning-line rec-actions-reason -expanded",
-        )
 
     def on_mount(self) -> None:
-        self._apply()
+        self.query_one(f"#rec-actions-reason-{self._index}").display = (
+            _runtime_action_reason(self._rec) is not None
+        )
+        self.query_one(f"#rec-quality-{self._index}").display = False
+        self.query_one(f"#rec-quality-details-{self._index}").display = False
+        self.query_one(f"#rec-quality-provenance-{self._index}").display = False
+        self.query_one(f"#rec-quality-alternatives-{self._index}").display = False
+        self.query_one(f"#rec-published-provenance-{self._index}").display = False
+        self.query_one(f"#rec-evaluate-reason-{self._index}").display = bool(
+            self.query_one(f"#res-evaluate-{self._index}", Button).disabled
+        )
 
-    def set_selected(self, selected: bool) -> None:
-        self._selected = selected
-        self.set_class(selected, "-selected")
-        self._apply()
-
-    def show_evidence(self, summary: str, state_class: str) -> None:
-        self._evidence_summary = summary
+    def show_evidence(self, evidence: PlanEvidence) -> None:
+        self.query_one(f"#rec-published-{self._index}", Static).update(evidence.published_summary)
+        self.query_one(f"#rec-published-details-{self._index}", Static).update(
+            evidence.published_provenance
+        )
+        self.query_one(f"#rec-published-provenance-{self._index}").display = bool(
+            evidence.published_provenance
+        )
         widget = self.query_one(f"#rec-evidence-{self._index}", Static)
-        widget.update(summary)
-        widget.set_classes(f"rec-evidence {state_class}")
-        widget.display = bool(summary) and self._selected
+        widget.update(evidence.summary())
+        widget.set_classes(state_class(evidence.state))
+        quality = self.query_one(f"#rec-quality-{self._index}", Static)
+        quality.update(evidence.quality_readout())
+        quality.tooltip = evidence.quality_details() or None
+        quality.display = bool(evidence.quality_records)
+        self.query_one(f"#rec-quality-empty-{self._index}").display = not bool(
+            evidence.quality_records
+        )
+        details = self.query_one(f"#rec-quality-details-{self._index}", Static)
+        details.update(evidence.quality_details())
+        details.display = bool(evidence.quality_records)
+        self.query_one(f"#rec-quality-provenance-{self._index}").display = (
+            bool(evidence.quality_records)
+        )
 
-    def _apply(self) -> None:
-        for widget in self.query(".-expanded"):
-            widget.display = self._selected
-        evidence = self.query_one(f"#rec-evidence-{self._index}", Static)
-        evidence.display = self._selected and bool(self._evidence_summary)
-        reason = self.query_one(f"#rec-actions-reason-{self._index}", Static)
-        reason.display = self._selected and _runtime_action_reason(self._rec) is not None
-
-    def on_click(self) -> None:
-        self.post_message(self.Chosen(self._index))
-
-    def action_choose(self) -> None:
-        self.post_message(self.Chosen(self._index))
+    def show_alternative_quality(
+        self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],
+    ) -> None:
+        widget = self.query_one(f"#rec-quality-alternatives-{self._index}", Static)
+        sections = [
+            f"{plan.artifact.repo_id}\n{plan.artifact.filename}\n{evidence.quality_readout()}"
+            for plan, evidence in alternatives
+        ]
+        widget.update(
+            "Evaluated GGUF alternatives (not the selected artifact):\n\n"
+            + "\n\n".join(sections) if sections else ""
+        )
+        widget.tooltip = "\n\n".join(
+            evidence.quality_details() for _, evidence in alternatives
+        ) or None
+        widget.display = bool(sections)
 
 
 class _RecommendationEvidenceLoaded(Message):
@@ -192,29 +337,57 @@ class RecommendationResultsScreen(Screen[None]):
         super().__init__()
         self._state = state
         self._selected = 0
+        self._rows = [
+            _RecommendationRow(index, rec, selected=index == 0)
+            for index, rec in enumerate(state.recommendations)
+        ]
         self._evidence_closing = Event()
         self._evidence_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="jaull-results-evidence",
         )
         self._evidence_future: Future[None] | None = None
+        self._known_paths: dict[int, tuple[ExecutionPlan, ...]] = {}
+        self._paths_view: tuple[int, ExecutionPathsScreen] | None = None
 
     def compose(self) -> ComposeResult:
         yield WorkflowHeader(
             WorkflowStep.RANKING,
             "Results",
         )
-        with VerticalScroll(id="results-body"):
-            if not self._state.recommendations:
+        requirements = self._state.requirements
+        if requirements is not None:
+            users = requirements.concurrent_users
+            yield Static(
+                f"{requirements.use_case.value.replace('_', ' ').capitalize()}  ·  "
+                f"{requirements.priority.value.capitalize()}  ·  "
+                f"Context {requirements.desired_context}  ·  "
+                f"{users} concurrent {'request' if users == 1 else 'requests'}",
+                classes="results-criteria", markup=False,
+            )
+        if not self._state.recommendations:
+            with VerticalScroll(id="results-body"):
                 yield from self._compose_no_results()
-            else:
-                yield from self._compose_results()
+        else:
+            yield SelectionWorkspace(
+                self._compose_results,
+                self._compose_inspectors,
+                list_label="Models",
+                master_id="results-body",
+                detail_id="results-inspector",
+            )
+        with Vertical(classes="results-toolbar"):
             yield from _results_actions(bool(self._state.recommendations))
         yield Footer()
 
     def _compose_no_results(self) -> ComposeResult:
         yield Static("No compatible models found", classes="section-title")
         yield WarningsPanel(self._state.no_results_reason or ["No candidates could be evaluated."])
+
+    def _compose_inspectors(self) -> ComposeResult:
+        for row in self._rows:
+            row.detail.display = row._index == self._selected
+            yield row.detail
 
     def _compose_results(self) -> ComposeResult:
         recommendations = self._state.recommendations
@@ -241,12 +414,12 @@ class RecommendationResultsScreen(Screen[None]):
                     else "rec-list-aside text-muted-tight"
                 ),
             )
-        for index, rec in confirmed:
-            yield _RecommendationRow(index, rec, selected=index == 0)
+        for index, _rec in confirmed:
+            yield self._rows[index]
         if unconfirmed:
             yield Static("Unconfirmed alternatives", classes="section-title")
-        for index, rec in unconfirmed:
-            yield _RecommendationRow(index, rec, selected=index == 0)
+        for index, _rec in unconfirmed:
+            yield self._rows[index]
 
     def on_mount(self) -> None:
         if not self._state.recommendations:
@@ -264,6 +437,19 @@ class RecommendationResultsScreen(Screen[None]):
             self._evidence_future = None
         self._evidence_executor.shutdown(wait=False, cancel_futures=True)
 
+    def on_screen_resume(self) -> None:
+        # Returning from evaluation/Paths must see newly persisted evidence.
+        # The first resume precedes on_mount and has no future yet.
+        if self._evidence_future is None or self._evidence_closing.is_set():
+            return
+        if self._paths_view is not None:
+            index, paths = self._paths_view
+            self._known_paths[index] = paths.execution_plans
+            self._paths_view = None
+        self._evidence_future = self._evidence_executor.submit(
+            self._evidence_worker, self._app().advisor,
+        )
+
     def _evidence_worker(self, advisor: AdvisorService) -> None:
         """One scan of both record stores, shared by every row."""
         try:
@@ -278,24 +464,33 @@ class RecommendationResultsScreen(Screen[None]):
         if self._evidence_closing.is_set():
             return
         for row in self.query(_RecommendationRow):
-            summary, state_class = _evidence_for_recommendation(
+            found = _evidence_for_recommendation(
                 message.evidence,
                 self._state.recommendations[row._index],
             )
-            row.show_evidence(summary, state_class)
+            if found is not None:
+                row.show_evidence(found)
+            rec = self._state.recommendations[row._index]
+            row.detail.show_alternative_quality(_alternative_quality(
+                message.evidence, rec, self._known_paths.get(row._index, ()),
+            ))
 
     @on(_RecommendationRow.Chosen)
     def _row_chosen(self, message: _RecommendationRow.Chosen) -> None:
         self._select(message.index)
+        self.query_one(SelectionWorkspace).show_detail()
+
+    @on(_RecommendationRow.Moved)
+    def _row_moved(self, message: _RecommendationRow.Moved) -> None:
+        self.action_move(message.delta)
 
     def action_move(self, delta: int) -> None:
         if not self._state.recommendations:
             return
         count = len(self._state.recommendations)
         self._select((self._selected + delta) % count)
-        rows = list(self.query(_RecommendationRow))
-        if 0 <= self._selected < len(rows):
-            rows[self._selected].focus()
+        if self.query_one("#results-body").display:
+            self.query_one(f"#rec-row-{self._selected}").focus()
 
     def _select(self, index: int) -> None:
         self._selected = index
@@ -326,12 +521,24 @@ class RecommendationResultsScreen(Screen[None]):
         if button_id.startswith("res-paths-"):
             index = int(button_id.removeprefix("res-paths-"))
             if 0 <= index < len(self._state.recommendations):
-                self.app.push_screen(
-                    ExecutionPathsScreen(self._state.recommendations[index])
-                )
+                self._open_paths(index)
+            return
+        if button_id.startswith("res-evaluate-"):
+            index = int(button_id.removeprefix("res-evaluate-"))
+            if 0 <= index < len(self._state.recommendations):
+                plan = _quality_plan(self._state.recommendations[index])
+                if plan is not None:
+                    self.app.push_screen(QualityEvaluationScreen(plan))
+                else:
+                    self._open_paths(index, evaluation=True)
             return
 
         match button_id:
+            case "res-candidate-evaluation":
+                screen = QualityEvaluationScreen(search_state=self._state)
+                self.app.push_screen(
+                    screen, lambda _: self._candidate_evaluations_finished(screen),
+                )
             case "res-compare":
                 self.app.push_screen(RecommendationCompareScreen(self._state))
             case "res-compare-paths":
@@ -357,6 +564,26 @@ class RecommendationResultsScreen(Screen[None]):
                 app.restart_workflow()
             case "res-advanced":
                 app.goto_advanced_tools()
+
+    def _open_paths(self, index: int, *, evaluation: bool = False) -> None:
+        screen = ExecutionPathsScreen(self._state.recommendations[index], evaluation=evaluation)
+        self._paths_view = (index, screen)
+        self.app.push_screen(screen)
+
+    def _candidate_evaluations_finished(self, screen: QualityEvaluationScreen) -> None:
+        for index, rec in enumerate(self._state.recommendations):
+            identity = rec.plan.model_identity if rec.plan is not None else None
+            if identity is None:
+                continue
+            matching = tuple(
+                plan for plan in screen.candidate_plans
+                if model_identity_key(plan.model_identity) == model_identity_key(identity)
+            )
+            self._known_paths[index] = (*self._known_paths.get(index, ()), *matching)
+        if not self._evidence_closing.is_set():
+            self._evidence_future = self._evidence_executor.submit(
+                self._evidence_worker, self._app().advisor,
+            )
 
     def _app(self) -> JaullApp:
         from jaull.tui.app import JaullApp
@@ -450,9 +677,7 @@ class ExecutionPathBenchmarkCompareScreen(Screen[None]):
 
     def _load_worker(self, advisor: AdvisorService) -> None:
         try:
-            comparison = advisor.compare_saved_benchmarks_for_recommendation(
-                self._recommendation
-            )
+            comparison = advisor.compare_saved_benchmarks_for_recommendation(self._recommendation)
         except Exception as exc:
             if not self._comparison_closing.is_set():
                 self.post_message(_BenchmarkComparisonFailed(str(exc)))
@@ -497,9 +722,7 @@ class ExecutionPathBenchmarkCompareScreen(Screen[None]):
         # `same_hardware` was computed and then ignored: the screen said "This
         # machine" even when the records came from different machines, which is
         # the one thing that would invalidate the whole comparison.
-        machine = (
-            "same machine" if comparison.same_hardware else "machines differ"
-        )
+        machine = "same machine" if comparison.same_hardware else "machines differ"
         await container.mount(
             Static(
                 f"{model_display_name(comparison.model_identity)} · {machine}",
@@ -513,9 +736,7 @@ class ExecutionPathBenchmarkCompareScreen(Screen[None]):
                 await container.mount(widget)
         if comparison.warnings:
             await container.mount(_comparison_notes(comparison.warnings))
-        await container.mount(
-            TechnicalDetails(_comparison_technical_rows(comparison))
-        )
+        await container.mount(TechnicalDetails(_comparison_technical_rows(comparison)))
 
     def _app(self) -> JaullApp:
         from jaull.tui.app import JaullApp
@@ -690,6 +911,8 @@ def _results_actions(has_results: bool) -> ComposeResult:
             yield ActionButton("Details", id="res-details")
             yield ActionButton("Export", id="res-export")
     with Horizontal(id="results-actions-secondary"):
+        if has_results:
+            yield ActionButton("Evaluate candidates", id="res-candidate-evaluation")
         yield Button("Start again", id="res-restart", classes="-quiet")
         yield Button("Advanced tools", id="res-advanced", classes="-quiet")
 
@@ -714,7 +937,7 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
             rec.confidence.value,
             rec.evaluated.candidate.license or "not declared",
             rec.reasons[0] if rec.reasons else "-",
-    )
+        )
     return table
 
 
@@ -939,13 +1162,10 @@ def _comparison_notes(warnings: list[str]) -> Widget:
     would shout louder than the measurements it qualifies.
     """
     children: list[Widget] = [Static("Comparison notes", classes="section-title")]
-    children.extend(
-        Static(f"⚠ {warning}", classes="comparison-note") for warning in warnings
-    )
+    children.extend(Static(f"⚠ {warning}", classes="comparison-note") for warning in warnings)
     children.append(
         Static(
-            "Results compare complete execution plans, not runtime engines in "
-            "isolation.",
+            "Results compare complete execution plans, not runtime engines in isolation.",
             classes="text-muted-tight",
         )
     )
@@ -967,9 +1187,7 @@ def _comparison_technical_rows(
         if plan.model_load_seconds is not None:
             rows.append((f"{label} model load", f"{plan.model_load_seconds:.2f} s"))
         if plan.time_to_first_token_seconds is not None:
-            rows.append(
-                (f"{label} TTFT", f"{plan.time_to_first_token_seconds:.2f} s")
-            )
+            rows.append((f"{label} TTFT", f"{plan.time_to_first_token_seconds:.2f} s"))
     return rows
 
 
@@ -986,12 +1204,12 @@ def _benchmark_metric_values(
 ) -> dict[tuple[str, BenchmarkMeasurementKind, int], float]:
     values: dict[tuple[str, BenchmarkMeasurementKind, int], float] = {}
     for metric in comparison.metrics:
-        values[
-            (metric.baseline_label, metric.kind, metric.tokens)
-        ] = metric.baseline_tokens_per_second
-        values[
-            (metric.candidate_label, metric.kind, metric.tokens)
-        ] = metric.candidate_tokens_per_second
+        values[(metric.baseline_label, metric.kind, metric.tokens)] = (
+            metric.baseline_tokens_per_second
+        )
+        values[(metric.candidate_label, metric.kind, metric.tokens)] = (
+            metric.candidate_tokens_per_second
+        )
     return values
 
 
@@ -1057,8 +1275,12 @@ def _plan_line(rec: ModelRecommendation) -> str:
         plan = execution_plan_for_recommendation(rec)
     except ValueError:
         return " · ".join(_recommendation_metadata(rec))
-    from jaull.presentation.plan_labels import readiness_detail
+    from jaull.presentation.plan_labels import is_ready_plan, readiness_detail
 
+    if is_ready_plan(plan):
+        # The evidence line below already opens with "Ready"; saying it twice
+        # per row teaches nothing and reads like a bug.
+        return plan_summary_line(plan)
     return f"{plan_summary_line(plan)} · {readiness_detail(plan)}"
 
 
@@ -1069,8 +1291,7 @@ def _list_aside(recommendations: list[ModelRecommendation]) -> str:
     the screen used to hard-code the strongest wording regardless.
     """
     confirmed = [
-        rec for rec in recommendations
-        if rec.displayed_status is not CompatibilityStatus.UNKNOWN
+        rec for rec in recommendations if rec.displayed_status is not CompatibilityStatus.UNKNOWN
     ]
     unconfirmed_count = len(recommendations) - len(confirmed)
     if not confirmed:
@@ -1101,16 +1322,53 @@ def _tier_class(rec: ModelRecommendation) -> str:
 def _evidence_for_recommendation(
     evidence: EvidenceIndex,
     rec: ModelRecommendation,
-) -> tuple[str, str]:
+) -> PlanEvidence | None:
     """The evidence line for a recommendation's default execution plan."""
     from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 
     try:
         plan = execution_plan_for_recommendation(rec)
     except ValueError:
-        return "", "rec-evidence"
-    found = evidence.for_plan(plan)
-    return found.summary(), state_class(found.state)
+        return None
+    return evidence.for_plan(plan)
+
+
+def _quality_plan(rec: ModelRecommendation) -> ExecutionPlan | None:
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
+
+    try:
+        plan = execution_plan_for_recommendation(rec)
+    except ValueError:
+        return None
+    return (
+        plan if is_gguf_plan(plan)
+        else None
+    )
+
+
+def _alternative_quality(
+    evidence: EvidenceIndex, rec: ModelRecommendation, known: tuple[ExecutionPlan, ...],
+) -> list[tuple[ExecutionPlan, PlanEvidence]]:
+    """Exact-byte evidence for other known paths, never evidence for the primary."""
+    from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
+
+    try:
+        primary = execution_plan_for_recommendation(rec)
+    except ValueError:
+        return []
+    seen = {primary.artifact.sha256} if is_gguf_plan(primary) else set()
+    found: list[tuple[ExecutionPlan, PlanEvidence]] = []
+    for plan in (*rec.alternative_plans, *known):
+        if model_identity_key(plan.model_identity) != model_identity_key(primary.model_identity):
+            continue
+        digest = plan.artifact.sha256
+        if digest in seen:
+            continue
+        match = evidence.for_plan(plan)
+        if match.quality_records:
+            seen.add(digest)
+            found.append((plan, match))
+    return found
 
 
 def _recommendation_metadata(rec: ModelRecommendation) -> list[str]:

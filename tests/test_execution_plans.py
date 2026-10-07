@@ -31,6 +31,7 @@ from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate, SearchQu
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence
 from jaull.domain.execution_plans import (
+    ArtifactVariant,
     ArtifactVariantFormat,
     IdentityMatchStatus,
     PlanCompatibilityStatus,
@@ -416,6 +417,32 @@ def test_gguf_recommendation_variant_lists_all_quantization_metadata() -> None:
     assert variant.file_count == 1
     assert variant.quantization == "Q4_K_M"
     assert variant.compatible_runtimes == [RuntimeName.LLAMA_CPP]
+
+
+def test_digest_survives_recommendation_and_discovery_without_using_a_shard_digest() -> None:
+    rec = _gguf_recommendation()
+    analysis = rec.evaluated.analysis
+    assert analysis is not None
+    gguf = next(
+        item for item in analysis.classification.gguf_variants if item.quantization == "Q4_K_M"
+    )
+    gguf.files[0] = gguf.files[0].model_copy(update={"sha256": "a" * 64})
+    selected = variant_from_recommendation(rec)
+    assert selected.sha256 == "a" * 64
+    assert ArtifactVariant.model_validate_json(selected.model_dump_json()) == selected
+    legacy = selected.model_dump(exclude={"sha256"})
+    assert ArtifactVariant.model_validate(legacy).sha256 is None
+
+    variants = discover_artifact_variants(
+        identity=selected.model_identity,
+        current=None,
+        search_client=_Search([rec.evaluated.candidate]),
+        inspect_model=_Inspector({rec.repo_id: analysis}),
+    )
+    assert next(item for item in variants if item.quantization == "Q4_K_M").sha256 == "a" * 64
+    gguf.files.append(gguf.files[0].model_copy(update={"path": "second-shard.gguf"}))
+    assert gguf.sha256 is None
+    assert variant_from_recommendation(rec).sha256 is None
 
 
 def test_execution_plan_transformers_cpu_ready() -> None:
