@@ -43,6 +43,7 @@ from tests.test_execution_plans import _gguf_recommendation
 from tests.test_published_evaluation_presentation import _catalog, _identity
 from tests.test_tui_evidence import _FakeStoreAdvisor
 from tests.test_tui_evidence import _plan as _evidence_plan
+from tests.test_tui_recommendation_execution import _wait_until
 
 
 def _plan(**kwargs: Any) -> ExecutionPlan:
@@ -282,6 +283,9 @@ async def _screen_opt_in(
         assert screen.query_one("#quality-cancel", Button).disabled
         assert screen.query_one("#quality-cancel", Button).tooltip
         await pilot.click("#quality-start")
+        await _wait_until(
+            pilot, lambda: app.focused is screen.query_one("#quality-artifact", Input),
+        )
         assert advisor.calls == []  # Empty inputs must never launch Docker.
         text = str(screen.query_one("#quality-status", Static).render())
         assert "Missing:" in text
@@ -509,7 +513,9 @@ async def _paths_quality_action() -> None:
     async with app.run_test(size=(160, 50)) as pilot:
         screen = ExecutionPathsScreen(_gguf_recommendation())
         await app.push_screen(screen)
-        await pilot.pause()
+        await _wait_until(
+            pilot, lambda: not screen.query_one("#paths-status", Static).display,
+        )
         gguf = _plan()
         transformers = _plan(runtime=RuntimeName.TRANSFORMERS).model_copy(
             update={"plan_id": "transformers", "artifact": gguf.artifact.model_copy(
@@ -524,7 +530,7 @@ async def _paths_quality_action() -> None:
         screen._selected_plan_id = gguf.plan_id
         screen._apply_selection()
         screen.query_one("#paths-evaluate", Button).press()
-        await pilot.pause()
+        await _wait_until(pilot, lambda: isinstance(app.screen, QualityEvaluationScreen))
         assert isinstance(app.screen, QualityEvaluationScreen)
         assert app.screen._plan == gguf
 
@@ -575,11 +581,18 @@ def test_results_evaluation_action_opens_exact_gguf_or_chooser(
             button = results.query_one("#res-evaluate-0", Button)
             assert button.region.right <= size[0]
             button.press()
-            await pilot.pause()
             if gguf_primary:
+                await _wait_until(
+                    pilot, lambda: isinstance(app.screen, QualityEvaluationScreen),
+                )
                 assert isinstance(app.screen, QualityEvaluationScreen)
                 assert app.screen._plan == gguf
             else:
+                await _wait_until(
+                    pilot, lambda: isinstance(app.screen, ExecutionPathsScreen)
+                    and bool(app.screen.query(TabbedContent))
+                    and app.screen.query_one(TabbedContent).active == "paths-evaluation",
+                )
                 assert isinstance(app.screen, ExecutionPathsScreen)
                 assert app.screen.query_one(TabbedContent).active == "paths-evaluation"
 
@@ -611,23 +624,18 @@ def test_results_refreshes_exact_and_alternative_evidence_after_returning(
             )
             await app.push_screen(results)
             results.query_one("#res-evaluate-0", Button).press()
-            await pilot.pause()
+            target_screen = QualityEvaluationScreen if gguf_primary else ExecutionPathsScreen
+            await _wait_until(pilot, lambda: isinstance(app.screen, target_screen))
             if not gguf_primary:
                 paths = app.screen
                 assert isinstance(paths, ExecutionPathsScreen)
-                for _ in range(100):
-                    await pilot.pause(0.02)
-                    if paths.execution_plans:
-                        break
+                await _wait_until(pilot, lambda: bool(paths.execution_plans))
                 assert paths.execution_plans
             advisor._quality[record["identity_sha256"]] = record
             await app.pop_screen()
             target = "#rec-quality-0" if gguf_primary else "#rec-quality-alternatives-0"
             alternative = results.query_one(target, Static)
-            for _ in range(100):
-                await pilot.pause(0.02)
-                if alternative.display:
-                    break
+            await _wait_until(pilot, lambda: alternative.display)
             assert alternative.display
             if not gguf_primary:
                 assert "not the selected artifact" in str(alternative.content)

@@ -45,6 +45,7 @@ from tests.test_benchmarks import _record as _benchmark_record
 from tests.test_execution_plans import _gguf_recommendation
 from tests.test_experiment_store import _sample_record
 from tests.test_quality_eval_records import synthetic_full_record, synthetic_limited_record
+from tests.test_tui_recommendation_execution import _wait_until
 
 
 class _FakeStoreAdvisor:
@@ -526,18 +527,14 @@ def test_manual_estimate_displays_only_quality_for_the_selected_exact_gguf(
             assert isinstance(screen, EstimateScreen)
 
             async def wait_for(selector: str) -> None:
-                async with asyncio.timeout(10):
-                    while not screen.query(selector):
-                        await pilot.pause(0)
-                        await asyncio.sleep(0.01)
-                await pilot.pause(0)
+                await _wait_until(pilot, lambda: bool(screen.query(selector)))
 
             screen.query_one("#est-input", Input).value = rec.repo_id
             screen._start_detect()
             await wait_for("#est-variant")
             picker = screen.query_one("#est-variant", Select)
             picker.value = "Q5_K_M"
-            await pilot.pause(0)
+            await _wait_until(pilot, lambda: screen.state.quantization == "Q5_K_M")
             screen._start_estimate()
             screen._start_estimate()
             await wait_for("#est-quality")
@@ -576,28 +573,29 @@ def test_manual_estimate_displays_only_quality_for_the_selected_exact_gguf(
             body.scroll_to_widget(screen.query_one("#est-edit"), animate=False, immediate=True)
             await pilot.pause()
             await pilot.click("#est-edit")
+            await _wait_until(pilot, lambda: screen.query_one("#est-parameters").display)
             assert screen.query_one("#est-parameters").display
             assert not screen.query_one("#est-output").display
             assert picker.value == "Q5_K_M"
             assert screen.query_one("#est-input", Input).value == rec.repo_id
             screen._start_estimate()
-            async with asyncio.timeout(10):
-                while len(requests) < 2:
-                    await pilot.pause(0)
-                    await asyncio.sleep(0.01)
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(requests) == 2 and screen.query_one("#est-output").display,
+            )
             assert screen.query_one("#est-quality", Vertical).display
             assert not screen.query_one("#est-parameters").display
             screen.query_one("#est-edit", Button).press()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: screen.query_one("#est-parameters").display)
             picker.value = "Q4_K_M"
-            await pilot.pause(0)
+            await _wait_until(pilot, lambda: screen.state.quantization == "Q4_K_M")
             screen._start_estimate()
-            async with asyncio.timeout(10):
-                while len(requests) < 3 or screen.query("#est-quality"):
-                    await pilot.pause(0)
-                    await asyncio.sleep(0.01)
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: len(requests) == 3
+                and screen.query_one("#est-output").display
+                and not screen.query("#est-quality"),
+            )
             assert not screen.query("#est-quality")
             assert [cfg.quantization for cfg in requests] == ["Q5_K_M", "Q5_K_M", "Q4_K_M"]
 

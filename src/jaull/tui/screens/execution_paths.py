@@ -223,7 +223,7 @@ class ExecutionPathsScreen(Screen[None]):
             yield Button("Run", id="paths-run", classes="-primary", disabled=True)
             yield ActionButton("Validate", id="paths-validate", disabled=True)
             yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
-        with TabbedContent():
+        with TabbedContent(initial="paths-evaluation" if self._open_evaluation else ""):
             with TabPane("Plan"), VerticalScroll():
                 yield Static("", id="paths-warnings", classes="warning-line")
                 yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
@@ -263,8 +263,6 @@ class ExecutionPathsScreen(Screen[None]):
         ):
             self.query_one(widget_id).display = False
         self._paths_closing.clear()
-        if self._open_evaluation:
-            self.query_one(TabbedContent).active = "paths-evaluation"
         self._future = self._executor.submit(self._load_worker, self._app().advisor)
 
     @property

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Collapsible
 
@@ -35,19 +34,12 @@ class TechnicalDetails(Collapsible):
         collapsed: bool = True,
         id: str | None = None,
     ) -> None:
-        super().__init__(title=title, collapsed=collapsed, id=id)
-        self._rows = list(rows)
-        self._extra = list(extra)
-
-    def compose(self) -> ComposeResult:
-        # Collapsible.compose builds the title bar and the contents container;
-        # composing our own children on top of it would leave them unparented.
-        yield from super().compose()
-
-    def on_mount(self) -> None:
-        contents = self.query_one(Collapsible.Contents)
-        contents.mount_all(
-            [MetricRow(label, value) for label, value in self._rows] + self._extra
+        super().__init__(
+            *(MetricRow(label, value) for label, value in rows),
+            *extra,
+            title=title,
+            collapsed=collapsed,
+            id=id,
         )
 
 
