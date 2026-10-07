@@ -936,11 +936,16 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --offline --python 3.12 jaull quality compare 
 
 The pilot comparison command and this CLI share the same per-task comparison
 function. Matching suite, dataset, samples/prompts, evaluator, runtime,
-effective protocol and grade produce diagnostic accuracy/counts; a mismatch
-produces `NOT_COMPARABLE` with reasons and no paired metrics. Placement flags
-remain part of runtime identity. Hardware is provenance, not inference-speed
-evidence. These commands neither infer an overall winner nor compare local
-tok/s; use Jaull's existing performance benchmark records for that axis.
+effective protocol and grade produce diagnostic accuracy/counts, the paired
+left-minus-right difference and discordant outcomes; a mismatch produces
+`NOT_COMPARABLE` with reasons and no paired metrics. Limited runs with observed
+variation also show a deterministic paired percentile-bootstrap 95% interval
+from 2,000 resamples. It is exploratory and does not rank models. Plumbing runs
+and full fixed splits do not get an interval: plumbing is not quality evidence,
+and the full split's score is exact for that benchmark. Placement flags remain
+part of runtime identity. Hardware is provenance, not inference-speed evidence.
+These commands neither infer an overall winner nor compare local tok/s; use
+Jaull's existing performance benchmark records for that axis.
 
 This CLI integration was validated with offline synthetic fixtures, including
 producer failure, corrupted/misattributed snapshots, cancellation, sequential

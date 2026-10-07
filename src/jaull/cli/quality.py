@@ -118,6 +118,24 @@ def _render_comparison(report: dict[str, Any]) -> None:
             f"right {row['right']['value']:.1%} "
             f"({row['right']['correct']}/{row['right']['samples']})", markup=False,
         )
+        outcomes = row["paired_outcomes"]
+        console.print(
+            f"  left - right: {row['difference']['percentage_points']:+.2f} pp · "
+            f"paired wins {outcomes['left_only_correct']}-"
+            f"{outcomes['right_only_correct']}", markup=False,
+        )
+        uncertainty = row["uncertainty"]
+        if uncertainty["status"] == "estimated":
+            interval = uncertainty["left_minus_right"]
+            console.print(
+                f"  paired bootstrap 95% interval: "
+                f"[{interval['lower'] * 100:+.2f}, {interval['upper'] * 100:+.2f}] pp "
+                f"({uncertainty['replicates']} resamples; exploratory)", markup=False,
+            )
+        else:
+            console.print(
+                f"  uncertainty not estimated: {uncertainty['reason']}", markup=False,
+            )
     if report["status"] == "NOT_COMPARABLE":
         for reason in report["reasons"]:
             console.print(reason, markup=False)

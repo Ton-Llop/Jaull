@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from typing import Any
 
 from jaull.evaluation.quality_records import (
@@ -10,6 +11,8 @@ from jaull.evaluation.quality_records import (
     digest,
     validate_record,
 )
+
+_BOOTSTRAP_REPLICATES = 2_000
 
 
 def compare_quality_records(
@@ -39,15 +42,46 @@ def compare_quality_records(
     per_task = []
     if comparable:
         task = identities[0]["suite"]["name"]
+        seed = int(digest(sorted(record["identity_sha256"] for record in records))[:16], 16)
         for metric in ("acc", "acc_norm"):
             values = []
+            paired_differences: list[int] = []
             for record in records:
                 samples = record["result"]["samples"][task]
                 correct = int(sum(sample[metric] for sample in samples))
                 value = record["result"]["results"][task][metric + ",none"]
                 values.append({"value": value, "correct": correct, "samples": len(samples)})
-            per_task.append({"task": task, "metric": metric,
-                             "left": values[0], "right": values[1]})
+            left_samples, right_samples = (
+                record["result"]["samples"][task] for record in records
+            )
+            paired_differences = [
+                left_sample[metric] - right_sample[metric]
+                for left_sample, right_sample in zip(
+                    left_samples, right_samples, strict=True,
+                )
+            ]
+            difference = sum(paired_differences) / len(paired_differences)
+            per_task.append({
+                "task": task,
+                "metric": metric,
+                "left": values[0],
+                "right": values[1],
+                "difference": {
+                    "left_minus_right": difference,
+                    "percentage_points": difference * 100,
+                },
+                "paired_outcomes": {
+                    "left_only_correct": paired_differences.count(1),
+                    "right_only_correct": paired_differences.count(-1),
+                    "both_same": paired_differences.count(0),
+                },
+                "uncertainty": _uncertainty(
+                    paired_differences,
+                    limited=limited,
+                    plumbing=plumbing,
+                    seed=seed,
+                ),
+            })
     return {
         "schema_version": 1, "purpose": "diagnostic_only",
         "status": ("COMPARABLE_PLUMBING" if plumbing else
@@ -75,4 +109,40 @@ def compare_quality_records(
             )
         ],
         "per_task": per_task,
+    }
+
+
+def _uncertainty(
+    paired_differences: list[int], *, limited: bool, plumbing: bool, seed: int,
+) -> dict[str, Any]:
+    if plumbing:
+        return {"status": "not_estimated", "reason": "plumbing evaluation"}
+    if not limited:
+        return {
+            "status": "not_estimated",
+            "reason": "full fixed benchmark split; score is exact for this split",
+        }
+
+    rng = random.Random(seed)
+    sample_count = len(paired_differences)
+    if sample_count < 2 or len(set(paired_differences)) < 2:
+        return {
+            "status": "not_estimated",
+            "reason": "paired outcomes have too little variation for bootstrap resampling",
+        }
+    estimates = sorted(
+        sum(rng.choices(paired_differences, k=sample_count)) / sample_count
+        for _ in range(_BOOTSTRAP_REPLICATES)
+    )
+    return {
+        "status": "estimated",
+        "method": "paired percentile bootstrap",
+        "confidence_level": 0.95,
+        "replicates": _BOOTSTRAP_REPLICATES,
+        "seed": seed,
+        "left_minus_right": {
+            "lower": estimates[int(0.025 * _BOOTSTRAP_REPLICATES)],
+            "upper": estimates[int(0.975 * _BOOTSTRAP_REPLICATES)],
+        },
+        "limitation": "Exploratory interval for this sample; not a general-quality verdict.",
     }
