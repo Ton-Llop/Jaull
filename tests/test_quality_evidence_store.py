@@ -263,6 +263,49 @@ def test_lookup_refuses_an_identity_that_is_not_the_one_stored(tmp_path: Path) -
     assert store.lookup(other) is None
 
 
+def test_lookup_rejects_record_with_incorrect_record_digest_suffix(tmp_path: Path) -> None:
+    store = QualityEvidenceStore(tmp_path)
+    record = synthetic_full_record()
+    invalid_id = f"{record['identity_sha256']}-{'0' * 64}"
+    invalid_path = store.path_for(invalid_id)
+    invalid_path.write_text(
+        json.dumps({"record": record, "record_sha256": digest(record)}), encoding="utf-8",
+    )
+    before = invalid_path.read_bytes()
+
+    assert store.lookup(record["identity"]) is None
+    assert store.records() == []
+    assert invalid_path.read_bytes() == before
+
+
+def test_lookup_ignores_bad_suffix_when_one_valid_record_exists(tmp_path: Path) -> None:
+    store = QualityEvidenceStore(tmp_path)
+    record = synthetic_full_record()
+    valid_path = store.save(record)
+    invalid_id = f"{record['identity_sha256']}-{'0' * 64}"
+    invalid_path = store.path_for(invalid_id)
+    invalid_path.write_bytes(valid_path.read_bytes())
+
+    assert store.lookup(record["identity"]) == record["result"]
+    assert store.records() == [record]
+
+
+def test_lookup_reuses_a_valid_repeat_when_primary_record_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    store = QualityEvidenceStore(tmp_path)
+    record = synthetic_full_record()
+    primary = store.save(record)
+    repeated = deepcopy(record)
+    repeated["result"]["date"] = 1790943344.0
+    repeated_path = store.save(repeated)
+    primary.write_text("{", encoding="utf-8")
+
+    assert store.lookup(record["identity"]) == repeated["result"]
+    assert primary.read_text(encoding="utf-8") == "{"
+    assert store.load(repeated_path.stem) == repeated
+
+
 def test_the_display_projection_carries_the_grade_and_the_limits() -> None:
     limited = synthetic_limited_record()
     limited["identity"]["runtime"]["backend_flags"] = [

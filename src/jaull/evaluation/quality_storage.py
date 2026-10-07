@@ -15,9 +15,10 @@ from jaull.evaluation.quality_records import (
     QualityEvidence,
     describe_record,
     digest,
+    is_reusable_evidence,
     load_record,
-    quality_lookup,
     save_record,
+    validate_identity,
 )
 from jaull.exceptions import JaullError
 from jaull.paths import user_data_dir
@@ -168,16 +169,21 @@ class QualityEvidenceStore:
     def lookup(self, identity: dict[str, Any]) -> dict[str, Any] | None:
         """Strict: one reusable run for this identity, or no unchosen aggregate."""
         try:
+            validate_identity(identity)
             identity_sha256 = digest(identity)
             self.path_for(identity_sha256)
-        except (InvalidQualityIdError, ValueError, TypeError):
+        except (InvalidQualityIdError, ValueError, KeyError, TypeError, AttributeError):
             return None
-        matches = [
-            quality_lookup(self.path_for(record_id), identity)
-            for record_id in self.list_ids()
-            if record_id == identity_sha256 or record_id.startswith(f"{identity_sha256}-")
-        ]
-        reusable = [result for result in matches if result is not None]
+        reusable: list[dict[str, Any]] = []
+        for record_id in self.list_ids():
+            if record_id != identity_sha256 and not record_id.startswith(f"{identity_sha256}-"):
+                continue
+            try:
+                record = self.load(record_id)
+            except QualityStoreError:
+                continue
+            if record["identity_sha256"] == identity_sha256 and is_reusable_evidence(record):
+                reusable.append(record["result"])
         return reusable[0] if len(reusable) == 1 else None
 
     @staticmethod
