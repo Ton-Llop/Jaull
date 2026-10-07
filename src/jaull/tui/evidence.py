@@ -25,19 +25,23 @@ and must run on a worker thread, never on the event loop.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 from jaull.advisor.service import AdvisorService
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.benchmarks import BenchmarkRecord
 from jaull.domain.execution_plans import (
     ArtifactVariantFormat,
     ExecutionPlan,
     ModelIdentity,
     logical_model_repo_key,
 )
+from jaull.domain.experiments import ExperimentRecord
 from jaull.domain.runtime import RuntimeName
+from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
 from jaull.presentation.published_evaluations import published_reference_text
@@ -190,8 +194,8 @@ class EvidenceIndex:
     Build it once per screen load with :meth:`load`, then query it per plan.
     """
 
-    _experiments: dict[str, list[str]] = field(default_factory=dict)
-    _benchmarks: dict[str, list[str]] = field(default_factory=dict)
+    _experiments: dict[str, list[tuple[str, ExperimentRecord]]] = field(default_factory=dict)
+    _benchmarks: dict[str, list[tuple[str, BenchmarkRecord]]] = field(default_factory=dict)
     _quality: dict[str, list[QualityEvidence]] = field(default_factory=dict)
     _catalog: CatalogReadResult | None = None
 
@@ -218,8 +222,8 @@ class EvidenceIndex:
         degrades to "no evidence" rather than to an error, because a plan the
         user can still run must not disappear because a log could not be read.
         """
-        experiments: dict[str, list[str]] = {}
-        benchmarks: dict[str, list[str]] = {}
+        experiments: dict[str, list[tuple[str, ExperimentRecord]]] = {}
+        benchmarks: dict[str, list[tuple[str, BenchmarkRecord]]] = {}
         quality: dict[str, list[QualityEvidence]] = {}
 
         for experiment_id in _safe_ids(advisor.list_experiment_ids):
@@ -229,7 +233,7 @@ class EvidenceIndex:
             if identity is not None and not _matches_model(record.artifact, identity):
                 continue
             key = _artifact_key(record.artifact, record.runtime.runtime)
-            experiments.setdefault(key, []).append(experiment_id)
+            experiments.setdefault(key, []).append((experiment_id, record))
 
         for benchmark_id in _safe_ids(advisor.list_benchmark_ids):
             benchmark = _safe_load(advisor.load_benchmark_record, benchmark_id)
@@ -238,7 +242,7 @@ class EvidenceIndex:
             if identity is not None and not _matches_model(benchmark.artifact, identity):
                 continue
             key = _artifact_key(benchmark.artifact, benchmark.runtime.runtime)
-            benchmarks.setdefault(key, []).append(benchmark_id)
+            benchmarks.setdefault(key, []).append((benchmark_id, benchmark))
 
         for quality_id in _safe_ids(advisor.list_quality_ids):
             result = _safe_load(
@@ -257,8 +261,16 @@ class EvidenceIndex:
 
     def for_plan(self, plan: ExecutionPlan) -> PlanEvidence:
         key = _plan_key(plan)
-        experiments = tuple(self._experiments.get(key, ()))
-        benchmarks = tuple(self._benchmarks.get(key, ()))
+        experiments = tuple(
+            experiment_id
+            for experiment_id, record in self._experiments.get(key, ())
+            if _experiment_matches_plan(record, plan)
+        )
+        benchmarks = tuple(
+            benchmark_id
+            for benchmark_id, record in self._benchmarks.get(key, ())
+            if _benchmark_matches_plan(record, plan)
+        )
         if benchmarks:
             state = EvidenceState.BENCHMARKED
         elif experiments:
@@ -346,6 +358,59 @@ def _plan_key(plan: ExecutionPlan) -> str:
     return (
         f"{artifact.repo_id.casefold()}|{plan.runtime_family.value}|"
         f"{artifact.format.value.casefold()}|{variant}"
+    )
+
+
+def _same_execution_context(
+    record: ExperimentRecord | BenchmarkRecord, plan: ExecutionPlan
+) -> bool:
+    if plan.hardware is None or plan.memory_prediction is None or plan.backend_selection is None:
+        return False
+    if machine_fingerprint(record.hardware) != machine_fingerprint(plan.hardware):
+        return False
+    if record.runtime.runtime is not plan.runtime_family:
+        return False
+    if tuple((flag.name, flag.value) for flag in record.runtime.flags) != tuple(
+        (flag.name, flag.value) for flag in plan.runtime.flags
+    ):
+        return False
+    artifact = plan.artifact
+    measured = record.artifact
+    if artifact.sha256 is not None:
+        if measured.sha256 != artifact.sha256:
+            return False
+    elif not (
+        artifact.revision is not None
+        and re.fullmatch(r"[0-9a-f]{40}", artifact.revision)
+        and measured.revision == artifact.revision
+        and measured.filename == artifact.filename
+    ):
+        # A mutable branch name or an unpinned discovery result cannot identify
+        # the exact bytes of an earlier run.
+        return False
+    return True
+
+
+def _experiment_matches_plan(record: ExperimentRecord, plan: ExecutionPlan) -> bool:
+    if not _same_execution_context(record, plan):
+        return False
+    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    return (
+        record.preflight.execution_readiness.selection.selected_backend
+        is plan.backend_selection.selected_backend
+        and record.prediction.inference_configuration.context_length
+        == plan.memory_prediction.inference_configuration.context_length
+    )
+
+
+def _benchmark_matches_plan(record: BenchmarkRecord, plan: ExecutionPlan) -> bool:
+    if not _same_execution_context(record, plan):
+        return False
+    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    return (
+        record.request.backend is plan.backend_selection.selected_backend
+        and record.request.context_length
+        == plan.memory_prediction.inference_configuration.context_length
     )
 
 

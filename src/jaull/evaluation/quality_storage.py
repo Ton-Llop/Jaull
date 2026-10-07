@@ -1,11 +1,7 @@
-"""Filesystem store for immutable quality-evaluation records.
+"""Filesystem store for immutable quality-evaluation runs.
 
-Keyed by ``identity_sha256``, not by the artifact digest and certainly not by
-the model name. The placement replay measured that the same artifact under a
-different offload split disagrees on every token logprob, so the key has to
-cover the runtime as well as the weights — which ``identity_sha256`` already
-does, since it digests artifact, suite, dataset, samples, evaluator, runtime
-and protocol together.
+The identity digest groups a protocol and exact artifact. A repeated run with
+different evidence gets a distinct record ID; neither run replaces the other.
 """
 
 from __future__ import annotations
@@ -29,7 +25,7 @@ from jaull.paths import user_data_dir
 logger = logging.getLogger(__name__)
 
 _RECORD_SUFFIX = ".json"
-_IDENTITY_RE = re.compile(r"^[0-9a-f]{64}$")
+_IDENTITY_RE = re.compile(r"^[0-9a-f]{64}(?:-[0-9a-f]{64})?$")
 
 
 class QualityStoreError(JaullError):
@@ -49,7 +45,7 @@ def _default_quality_dir() -> Path:
 
 
 class QualityEvidenceStore:
-    """Persist one validated quality record per JSON file."""
+    """Persist validated quality records without overwriting prior runs."""
 
     def __init__(self, root: Path | None = None) -> None:
         self._root = (root or _default_quality_dir()).expanduser()
@@ -58,9 +54,9 @@ class QualityEvidenceStore:
     def root(self) -> Path:
         return self._root
 
-    def path_for(self, identity_sha256: str) -> Path:
-        self._validate_identity_id(identity_sha256)
-        candidate = (self._root / f"{identity_sha256}{_RECORD_SUFFIX}").resolve()
+    def path_for(self, record_id: str) -> Path:
+        self._validate_identity_id(record_id)
+        candidate = (self._root / f"{record_id}{_RECORD_SUFFIX}").resolve()
         try:
             candidate.relative_to(self._root.resolve())
         except ValueError as exc:
@@ -70,7 +66,7 @@ class QualityEvidenceStore:
         return candidate
 
     def save(self, record: dict[str, Any]) -> Path:
-        """Store a record under its own identity digest, once.
+        """Store one completed run, preserving earlier runs of the same identity.
 
         The caller is expected to have validated with the strongest check it
         has; this re-validates with the shared contract, because a record that
@@ -79,34 +75,48 @@ class QualityEvidenceStore:
         identity_sha256 = record["identity_sha256"]
         if identity_sha256 != digest(record["identity"]):
             raise QualityStoreError("Record identity digest does not match its identity.")
-        path = self.path_for(identity_sha256)
-        if path.is_file():
-            if self.load(identity_sha256) != record:
-                raise QualityStoreError(
-                    "Quality identity already stored with different record content: "
-                    f"{identity_sha256}."
-                )
-            return path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            save_record(path, record)
-        except FileExistsError:
-            # Another writer won the race; the content check above applies.
-            if self.load(identity_sha256) != record:
-                raise QualityStoreError(
-                    f"Quality identity already stored with different content: {identity_sha256}."
-                ) from None
-        except OSError as exc:
-            raise QualityStoreError(f"Could not save quality record {path}: {exc}") from exc
-        except ValueError as exc:
-            raise QualityStoreError(f"Refusing to store an invalid record: {exc}") from exc
-        return path
+        primary = self.path_for(identity_sha256)
+        repeated = self.path_for(f"{identity_sha256}-{digest(record)}")
+        for path in (primary, repeated):
+            try:
+                if path.is_file():
+                    try:
+                        existing = self.load(path.stem)
+                    except QualityStoreError:
+                        if path == primary:
+                            continue
+                        raise
+                    if existing == record:
+                        return path
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        save_record(path, record)
+                    except FileExistsError:
+                        # A concurrent writer published before us.
+                        try:
+                            existing = self.load(path.stem)
+                        except QualityStoreError:
+                            if path == primary:
+                                continue
+                            raise
+                        if existing == record:
+                            return path
+                    else:
+                        return path
+            except OSError as exc:
+                raise QualityStoreError(f"Could not save quality record {path}: {exc}") from exc
+            except ValueError as exc:
+                raise QualityStoreError(f"Refusing to store an invalid record: {exc}") from exc
+        raise QualityStoreError(
+            f"Quality record ID already stored with different content: {repeated.stem}."
+        )
 
-    def load(self, identity_sha256: str) -> dict[str, Any]:
-        path = self.path_for(identity_sha256)
+    def load(self, record_id: str) -> dict[str, Any]:
+        path = self.path_for(record_id)
         if not path.is_file():
             raise QualityRecordNotFoundError(
-                f"Quality record not found: {identity_sha256}."
+                f"Quality record not found: {record_id}."
             )
         try:
             record = load_record(path)
@@ -116,14 +126,17 @@ class QualityEvidenceStore:
             raise QualityStoreError(f"Could not read quality record {path}: {exc}") from exc
         except (ValueError, KeyError, TypeError) as exc:
             raise QualityStoreError(f"Quality record is invalid: {path} ({exc}).") from exc
-        if record["identity_sha256"] != identity_sha256:
+        identity_sha256 = record_id[:64]
+        if record["identity_sha256"] != identity_sha256 or (
+            len(record_id) > 64 and digest(record) != record_id[65:]
+        ):
             raise QualityStoreError(
-                f"Quality record identity does not match requested id {identity_sha256!r}."
+                f"Quality record identity does not match requested id {record_id!r}."
             )
         return record
 
-    def exists(self, identity_sha256: str) -> bool:
-        return self.path_for(identity_sha256).is_file()
+    def exists(self, record_id: str) -> bool:
+        return self.path_for(record_id).is_file()
 
     def list_ids(self) -> list[str]:
         if not self._root.is_dir():
@@ -153,18 +166,26 @@ class QualityEvidenceStore:
         return [describe_record(record) for record in self.records()]
 
     def lookup(self, identity: dict[str, Any]) -> dict[str, Any] | None:
-        """Strict: reusable evidence for this exact identity, or nothing."""
+        """Strict: one reusable run for this identity, or no unchosen aggregate."""
         try:
-            path = self.path_for(digest(identity))
+            identity_sha256 = digest(identity)
+            self.path_for(identity_sha256)
         except (InvalidQualityIdError, ValueError, TypeError):
             return None
-        return quality_lookup(path, identity)
+        matches = [
+            quality_lookup(self.path_for(record_id), identity)
+            for record_id in self.list_ids()
+            if record_id == identity_sha256 or record_id.startswith(f"{identity_sha256}-")
+        ]
+        reusable = [result for result in matches if result is not None]
+        return reusable[0] if len(reusable) == 1 else None
 
     @staticmethod
-    def _validate_identity_id(identity_sha256: str) -> None:
-        if not isinstance(identity_sha256, str) or not _IDENTITY_RE.fullmatch(identity_sha256):
+    def _validate_identity_id(record_id: str) -> None:
+        if not isinstance(record_id, str) or not _IDENTITY_RE.fullmatch(record_id):
             raise InvalidQualityIdError(
-                f"Invalid identity digest {identity_sha256!r}: expected 64 lowercase hex chars."
+                f"Invalid quality record id {record_id!r}: expected an identity digest "
+                "with an optional record digest suffix."
             )
 
 

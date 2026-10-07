@@ -27,7 +27,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -212,10 +214,26 @@ def save_record(
     """
     validate(record)
     envelope = {"record": record, "record_sha256": digest(record)}
-    # Serialize before exclusive creation; interrupted/truncated files are lookup misses.
-    with path.open("x", encoding="utf-8") as handle:
-        json.dump(envelope, handle, indent=2, ensure_ascii=False, allow_nan=False, default=str)
-        handle.write("\n")
+    # A hard link publishes the fully flushed temporary file without replacing
+    # an existing immutable record, including when another writer wins a race.
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(envelope, handle, indent=2, ensure_ascii=False, allow_nan=False, default=str)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+    if os.name == "posix":
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
 
 def load_record(

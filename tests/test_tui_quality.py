@@ -18,7 +18,7 @@ from jaull.advisor.quality_candidates import (
     run_candidates,
 )
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.execution_plans import ArtifactVariantFormat
+from jaull.domain.execution_plans import ArtifactVariantFormat, ExecutionPlan
 from jaull.domain.runtime import RuntimeName
 from jaull.recommendation.capability_catalog import CatalogReadResult
 from jaull.runtime.quality_eval_runner import (
@@ -41,7 +41,13 @@ from tests._workflow_fixtures import hardware
 from tests.test_cli_quality import _record, _request
 from tests.test_execution_plans import _gguf_recommendation
 from tests.test_published_evaluation_presentation import _catalog, _identity
-from tests.test_tui_evidence import _FakeStoreAdvisor, _plan
+from tests.test_tui_evidence import _FakeStoreAdvisor
+from tests.test_tui_evidence import _plan as _evidence_plan
+
+
+def _plan(**kwargs: Any) -> ExecutionPlan:
+    # Evidence-store fixtures use CPU; this UI pilot requires one CUDA GPU.
+    return _evidence_plan(**kwargs).model_copy(update={"hardware": hardware()})
 
 
 class FakeAdvisor:
