@@ -163,6 +163,69 @@ This is how a change to the estimator can be checked against evidence that alrea
 instead of re-running every measurement. See
 [offline re-evaluation](evidence.md#offline-re-evaluation).
 
+### `experiments case` — one experiment with its evidence
+
+A case groups one experiment, its benchmark records and its raw evidence files so a
+result can travel as a single reviewable unit.
+
+```bash
+uv run jaull experiments case create --experiment EXPERIMENT_ID --benchmark BENCHMARK_ID
+uv run jaull experiments case list
+uv run jaull experiments case show CASE_ID
+uv run jaull experiments case validate CASE_ID --json
+uv run jaull experiments case export CASE_ID
+uv run jaull experiments case bundle validate BUNDLE_DIRECTORY --json
+```
+
+`validate` checks that the records and files a case names actually agree with each
+other, rather than trusting that they were assembled correctly. `bundle validate`
+does the same for an exported directory **without** the local experiment stores, so a
+case received from another machine can be checked before it is believed.
+
+## `quality` — the GGUF evaluation pilot
+
+Explicit, opt-in and bounded. These commands never download a model, build an image
+or pull one. They need a trusted source checkout: `scripts/quality_eval_smoke.py` and
+`pilot/quality_eval/` do not ship in the wheel. Full protocol and limits in
+[the pilot](quality-evaluation-pilot.md).
+
+```bash
+uv run jaull quality setup --allow-dataset-download --json
+```
+
+Verifies the pinned `llama-server` by SHA256, inspects the already-local evaluator
+image and its contract label, and verifies the pinned dataset — downloading it only
+with that explicit flag. Dataset consent is separate from GGUF download consent.
+Setup remembers the shared paths and image; it never remembers consent, runs a model
+or creates a record.
+
+```bash
+uv run jaull quality run \
+  --artifact ARTIFACT.json --dataset-file validation.parquet \
+  --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
+  --image jaull-quality-eval:gguf-v1 --output FRESH_DIR \
+  --profile hellaswag100 --json
+```
+
+Repeat `--artifact` to evaluate several GGUFs **sequentially**, one server and
+container at a time, each into its own `run-NN/`. Existing output directories are
+refused, never overwritten. Each completed, HTTP-validated snapshot is stored before
+the next run begins; a failure stops later runs but keeps earlier records. Ctrl+C
+lets the pilot finish cleaning up its own server and container first.
+
+`--profile smoke` is a three-example plumbing check. `--profile hellaswag100` is
+limited evidence. Neither is a general-quality verdict, and neither changes
+recommendation ordering.
+
+```bash
+uv run jaull quality compare LEFT_ID RIGHT_ID --json
+```
+
+Compares two stored record IDs offline — no Docker, no GPU. Matching suite, dataset,
+samples, evaluator, runtime, protocol and classification give accuracy, counts, the
+paired difference and discordant outcomes. Any mismatch gives `NOT_COMPARABLE` with
+reasons and no paired metrics. It never names a winner.
+
 ## `doctor` — environment health
 
 ```bash
@@ -193,8 +256,8 @@ compare recommendations, open technical details, export a JSON + Markdown report
 on to the execution paths of a recommendation — where a plan can be run, validated or
 benchmarked.
 
-Advanced tools keeps the **Scan**, **Inspect**, **Estimate** and **Doctor** screens. Same
-services, same numbers as the CLI.
+Advanced tools keeps the **Scan**, **Inspect**, **Estimate**, **Doctor** and
+**Evaluate local GGUF quality** screens. Same services, same numbers as the CLI.
 
 Global bindings: `h` home, `s` scan, `i` inspect, `e` estimate, `d` doctor, `esc` back,
 `q` quit.

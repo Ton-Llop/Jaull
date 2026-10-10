@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny
 
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.requirements import UseCase
 
 
 class RecommendationEvidenceCategory(StrEnum):
@@ -83,6 +86,8 @@ class HardConstraintCode(StrEnum):
     LANGUAGE_INCOMPATIBLE = "language_incompatible"
     RUNTIME_NOT_READY = "runtime_not_ready"
     ARTIFACT_RUNTIME_INCOMPATIBLE = "artifact_runtime_incompatible"
+    # No runtime was planned at all, e.g. the memory estimate is incomplete.
+    RUNTIME_UNDETERMINED = "runtime_undetermined"
     UNSUPPORTED_TASK = "unsupported_task"
 
 
@@ -92,6 +97,114 @@ class HardConstraint(BaseModel):
     code: HardConstraintCode
     message: str
     evidence_key: str | None = None
+
+
+class LocalQualityReference(BaseModel):
+    """Diagnostic pointer to an immutable run, not a current-plan quality verdict."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    identity_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    suite: str
+    classification: str = Field(pattern=r"^(plumbing|limited|full)$")
+    samples_used: int = Field(gt=0)
+    samples_available: int = Field(gt=0)
+    metrics: dict[str, float] = Field(default_factory=dict)
+    blockers: tuple[str, ...] = ()
+
+
+QualityTargetProfile = Literal["ifeval-instructions-en-v1", "humaneval-python-en-v1"]
+
+
+class ApplicableQuality(BaseModel):
+    """One measured figure that may order this exact artifact against its cohort.
+
+    Scope is ``controlled_artifact``: the bytes under the evaluation's own fixed
+    protocol, not the configuration proposed to the user. Equal ``cohort`` means
+    the comparator would accept the two records as comparable.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    suite: str
+    metric: str
+    value: float = Field(ge=0.0, le=1.0)
+    correct: int = Field(ge=0)
+    samples: int = Field(gt=0)
+    cohort: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope: str = (
+        "This exact artifact under the fixed evaluation protocol, not the proposed "
+        "context, placement or runtime configuration."
+    )
+
+
+class QualityAssessment(BaseModel):
+    """Separate metadata prior from historical evidence; never an aggregate score.
+
+    Published provenance remains in PlanAssessment.external_evaluations. Local
+    references resolve to full immutable records, including protocol and hardware.
+    Neither source is automatically applicable to the requested task/plan.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    use_case: UseCase | None = None
+    languages: tuple[str, ...] = ()
+    requested_profile: QualityTargetProfile | None = None
+    # `controlled_artifact` only for a complete audited run of the requested
+    # profile's suite on these exact bytes; see `applicable`.
+    applicability: Literal["absent", "reference_only", "controlled_artifact"] = "absent"
+    applicable: ApplicableQuality | None = None
+    metadata_prior: AssessmentLevel = AssessmentLevel.UNKNOWN
+    confidence: EstimationConfidence = EstimationConfidence.LOW
+    local_references: tuple[LocalQualityReference, ...] = ()
+    limitations: tuple[str, ...] = (
+        "Parameter count is a scale prior, not measured quality.",
+        "No audited comparable quality protocol is enabled for this assessment.",
+    )
+
+
+class LocalSpeedReference(BaseModel):
+    """Diagnostic pointer to a stored benchmark of this exact artifact, not a speed verdict.
+
+    tg128 and pp512 stay separate: a maximum across lengths would let a prefill
+    figure stand in for generation speed. Either is absent when the record does
+    not carry exactly one such measurement.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    benchmark_id: str
+    created_at: datetime
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    tg128_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    tg128_stddev_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    pp512_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    pp512_stddev_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    repetitions: int | None = Field(default=None, ge=1)
+    blockers: tuple[str, ...] = ()
+
+
+class SpeedAssessment(BaseModel):
+    """Stored measurements of this plan's artifact, kept apart from the ranking.
+
+    The counterpart of ``QualityAssessment`` for Fastest. ``performance_evidence``
+    says how well a plan is backed; this says what was measured and why it cannot
+    yet be compared. Only reference states exist until a run's effective protocol
+    can be audited: reported llama-bench settings are requests, not applied values.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    applicability: Literal["absent", "reference_only"] = "absent"
+    # Newest first, benchmark ID breaking ties: the order Fastest v1 would read.
+    references: tuple[LocalSpeedReference, ...] = ()
+    limitations: tuple[str, ...] = (
+        "No benchmark's effective runtime protocol is audited, so none is comparable.",
+    )
 
 
 class PlanAssessment(BaseModel):
@@ -106,6 +219,8 @@ class PlanAssessment(BaseModel):
     plan_id: str
     hard_constraints: list[HardConstraint] = Field(default_factory=list)
     capability: AssessmentLevel = AssessmentLevel.UNKNOWN
+    quality: QualityAssessment = Field(default_factory=QualityAssessment)
+    speed: SpeedAssessment = Field(default_factory=SpeedAssessment)
     suitability: AssessmentLevel = AssessmentLevel.UNKNOWN
     execution_fitness: AssessmentLevel = AssessmentLevel.UNKNOWN
     feasibility: AssessmentLevel = AssessmentLevel.UNKNOWN
@@ -153,14 +268,20 @@ class ExecutionPlanRecommendation(BaseModel):
 
 
 __all__ = [
+    "ApplicableQuality",
     "AssessmentLevel",
     "ExecutionPlanRecommendation",
     "ExternalEvaluationEvidence",
     "HardConstraint",
     "HardConstraintCode",
+    "LocalQualityReference",
+    "LocalSpeedReference",
     "PlanAssessment",
+    "QualityAssessment",
+    "QualityTargetProfile",
     "RecommendationEvidence",
     "RecommendationEvidenceCategory",
     "RecommendationEvidenceSource",
     "RecommendationPosition",
+    "SpeedAssessment",
 ]

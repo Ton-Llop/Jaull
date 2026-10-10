@@ -158,20 +158,39 @@ Every key ends with the same tail — performance evidence, confidence, `repo_id
 quantization, runtime name — so ties break deterministically and identical inputs always
 produce an identical report.
 
+**Measured quality (Quality priority only).** After the key, `apply_quality_policy`
+(`recommendation/shadow.py`) lets stored quality reorder plans, under strict limits.
+It only acts on plans that have an applicable measurement: one complete audited IFEval
+run of their exact GGUF bytes. Those plans can only trade places with each other, and
+only inside one comparable cohort and one contiguous stratum (confirmed fit, constraints,
+suitability, license and language). Every other plan keeps its base position, so with no
+applicable evidence the order is exactly the key order. The report separates
+`ranking.criteria` (the base order) from `ranking.quality_policy` (the measured-quality
+stage). The latter carries the measurement, cohort, record digest and pool positions
+before and after Quality, before diversity. Missing saved-pool positions remain unknown;
+a measurement alone does not prove a move. Markdown preserves the same separation.
+The pool before this step is what Search saves for Recompare. Recompare calculates on
+that pool but reports proposed changes against the saved visible recommendations, so
+an already-applied Quality swap is not announced as a new move. Speed and Balanced do
+not use it yet: no speed
+measurement applies, and Balanced needs both axes.
+
 ### What removes a plan from the list
 
-A plan carrying any `HardConstraint` is rejected before ordering begins. Four codes do that,
-and all four are genuine incompatibilities rather than states of this particular machine:
+A plan carrying any `HardConstraint` is rejected before ordering begins. These codes do that:
 
 | Code | Meaning |
 |---|---|
 | `ARTIFACT_RUNTIME_INCOMPATIBLE` | That runtime cannot load that artifact format |
+| `RUNTIME_UNDETERMINED` | No runtime could be planned, usually because the memory estimate is incomplete |
 | `MEMORY_INSUFFICIENT` | The model does not fit, offload included |
 | `LICENSE_INCOMPATIBLE` | Commercial use is required and the license forbids it |
 | `LANGUAGE_INCOMPATIBLE` | A required language the model does not declare |
 
 Compatibility therefore remains a hard gate: a plan assessed `insufficient` never appears at
-all, and one assessed `unknown` can only ever be a flagged low-confidence alternative.
+all. A plan whose fit is unknown because no runtime could be planned is also rejected, under
+`RUNTIME_UNDETERMINED` — which records "could not confirm", never "shown not to fit". Today
+that is every Mixture-of-Experts model, whose KV footprint the estimator does not model.
 
 ### Ranking does not depend on what you have installed
 

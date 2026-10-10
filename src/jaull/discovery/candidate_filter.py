@@ -181,6 +181,12 @@ def _rejection_reason(
 
     if tags & _ADAPTER_TAGS and not candidate.base_model_repo_id:
         return "Adapter without a resolvable base model."
+    # Inspection rejects every adapter, base model or not, so one that declares
+    # its relation here would only spend a deep-inspection slot to be rejected.
+    # This Hub tag states the relation itself; a bare `lora`/`peft` tag does not,
+    # since a merged fine-tune can carry those and still be a complete model.
+    if any(tag.startswith("base_model:adapter:") for tag in tags):
+        return "Repository is an adapter, not a standalone model."
 
     if requirements.commercial_use_required:
         category = licenses.classify_license(candidate.license)

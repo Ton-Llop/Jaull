@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserAnswers, UserRequirements
+from jaull.recommendation.engine_v2 import RankedPlan
 from jaull.recommendation.models import ModelRecommendation
+from jaull.recommendation.shadow import ShadowReport
 from jaull.workflow.models import WorkflowProgress, WorkflowStep
 
 
@@ -55,6 +57,11 @@ class RecommendationWorkflowState(BaseModel):
     no_results_reason: list[str] = Field(default_factory=list)
     telemetry: dict[str, float | int] = Field(default_factory=dict)
     candidate_latency: list[CandidateLatency] = Field(default_factory=list)
+    # The proposed policy evaluated on the same ranked pool. Never shown as the
+    # result and never exported by the report; None when it could not be built.
+    shadow: ShadowReport | None = None
+    # Search-time order, plans and constraint assessments; reuse without rediscovery.
+    ranked_plans: tuple[RankedPlan, ...] = ()
 
     @property
     def failed(self) -> bool:

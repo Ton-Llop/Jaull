@@ -13,6 +13,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+import httpx
 from huggingface_hub import HfApi
 from huggingface_hub.errors import HfHubHTTPError
 from huggingface_hub.hf_api import ModelInfo
@@ -73,7 +74,7 @@ class HfSearchClient:
             raise HuggingFaceUnavailableError(
                 f"Hugging Face returned HTTP {status} while searching for models."
             ) from exc
-        except OSError as exc:
+        except (OSError, httpx.TransportError) as exc:
             raise HuggingFaceUnavailableError(
                 "Unable to reach Hugging Face while searching for models."
             ) from exc

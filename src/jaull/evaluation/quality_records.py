@@ -46,7 +46,7 @@ CLASSIFICATIONS = ("plumbing", "limited", "full")
 REUSABLE_CLASSIFICATION = "full"
 
 #: Suites whose purpose is to prove the plumbing works.
-PLUMBING_SUITES = frozenset({"jaull-quality-smoke-v1"})
+PLUMBING_SUITES = frozenset({"jaull-quality-smoke-v1", "jaull-ifeval-chat-smoke-v1"})
 #: Suites that by construction run a sample selection, never the whole split.
 #: Belt and braces: a record claiming ``full`` on one of these contradicts
 #: itself, and ``classification`` alone would already have refused it.
@@ -69,6 +69,23 @@ SUPPORTED_PROTOCOL = {
     "temperature": 0, "max_tokens": 1, "logprobs": 2, "id_slot": 0,
     "target_logit_bias": 100, "cached_prompt_tokens": 0,
 }
+#: Schema 2: free-text generation scored by instruction checkers (IFEval).
+#: Separate from loglikelihood on purpose; a record never switches between them.
+GENERATION_SCHEMA_VERSION = 2
+GENERATION_EVALUATOR_FIELDS = {
+    "evaluator_commit", "source_sha256", "suite_sha256", "sample_ids", "num_fewshot",
+    "context", "apply_chat_template", "chat_template_source", "chat_template_sha256",
+    "reasoning", "system_instruction", "generation", "langdetect_seed", "use_cache",
+    "cache_requests", "python", "packages",
+}
+GENERATION_SETTINGS = {"until": [], "temperature": 0, "max_gen_toks": 1280, "seed": 1234}
+GENERATION_PROTOCOL = {
+    "mode": "chat_generation", "chat_template": "gguf", "reasoning": "off",
+    "temperature": 0, "max_tokens": 1280, "stop": [], "seed": 1234, "cached_prompt_tokens": 0,
+}
+#: Prompt-level metrics count prompts; instruction-level ones count instructions.
+PROMPT_METRICS = ("prompt_level_strict_acc", "prompt_level_loose_acc")
+INSTRUCTION_METRICS = ("inst_level_strict_acc", "inst_level_loose_acc")
 #: Flags that select where the layers run. A record measured under one of these
 #: does not describe a run under another.
 PLACEMENT_FLAGS = ("--n-gpu-layers", "--device")
@@ -91,6 +108,10 @@ def known(value: Any) -> bool:
 
 
 def validate_identity(identity: dict[str, Any]) -> None:
+    protocol = identity.get("protocol")
+    if isinstance(protocol, dict) and protocol.get("mode") == GENERATION_PROTOCOL["mode"]:
+        _validate_generation_identity(identity)
+        return
     if set(identity) != IDENTITY_FIELDS:
         raise ValueError("Missing/unknown identity fields")
     evaluator = identity["evaluator"]
@@ -105,19 +126,89 @@ def validate_identity(identity: dict[str, Any]) -> None:
         or not known({key: value for key, value in identity.items() if key != "evaluator"})
     ):
         raise ValueError("Unknown identity or unsupported chat/generation/cache mode")
+    _validate_shared_identity(identity, SUPPORTED_PROTOCOL, (evaluator["backend_sha256"],))
+
+
+def _validate_generation_identity(identity: dict[str, Any]) -> None:
+    """Chat generation: the GGUF's own template, reasoning off, greedy, full budget."""
+    if set(identity) != IDENTITY_FIELDS:
+        raise ValueError("Missing/unknown identity fields")
+    evaluator = identity["evaluator"]
+    if set(evaluator) != GENERATION_EVALUATOR_FIELDS:
+        raise ValueError("Incomplete evaluator identity")
+    absent = {"system_instruction", "use_cache"}
+    # Compared with exact constants below; their empty stop lists are deliberate,
+    # and `known` would read an empty list as unknown.
+    exact = absent | {"generation"}
+    sources = evaluator["source_sha256"]
+    if (
+        any(evaluator[key] is not None for key in absent)
+        or evaluator["apply_chat_template"] is not True
+        or evaluator["chat_template_source"] != "gguf"
+        or evaluator["reasoning"] != "off"
+        or evaluator["cache_requests"] is not False
+        or evaluator["generation"] != GENERATION_SETTINGS
+        or type(evaluator["langdetect_seed"]) is not int
+        or evaluator["num_fewshot"] != 0
+        or not isinstance(sources, dict) or not sources
+        or not known({key: value for key, value in evaluator.items() if key not in exact})
+        # Sample arguments carry the task's gen_kwargs (`until: []`); each sample is
+        # checked structurally below and compared exactly with the saved results.
+        or not known({key: value for key, value in identity.items()
+                      if key not in {"evaluator", "protocol", "samples"}})
+    ):
+        raise ValueError("Unknown identity or unsupported chat/generation/cache mode")
+    _validate_shared_identity(
+        identity, GENERATION_PROTOCOL, (evaluator["chat_template_sha256"], *sources.values()),
+    )
+    for sample in identity["samples"]:
+        _generation_messages(sample)
+
+
+def _generation_messages(sample: dict[str, Any]) -> list[dict[str, str]]:
+    arguments = sample["arguments"]
+    if (
+        not isinstance(arguments, list) or len(arguments) != 1
+        or not isinstance(arguments[0], list) or len(arguments[0]) != 2
+        # The pinned harness serializes JsonChatStr as a one-element list.
+        or not isinstance(arguments[0][0], list) or len(arguments[0][0]) != 1
+        or not isinstance(arguments[0][0][0], str)
+        or arguments[0][1] != {
+            "until": [], "do_sample": False, "temperature": 0.0, "max_gen_toks": 1280,
+        }
+    ):
+        raise ValueError("Missing/inconsistent generation arguments")
+    prompt = arguments[0][0][0]
+    messages = json.loads(prompt)
+    if (
+        not isinstance(messages, list) or len(messages) != 1
+        or not isinstance(messages[0], dict) or set(messages[0]) != {"role", "content"}
+        or messages[0]["role"] != "user"
+        or not isinstance(messages[0]["content"], str) or not messages[0]["content"].strip()
+        or hashlib.sha256(prompt.encode()).hexdigest() != sample["prompt_hash"]
+        or hashlib.sha256(b"0").hexdigest() != sample["target_hash"]
+    ):
+        raise ValueError("Unknown/mismatched generation prompt identity")
+    return messages
+
+
+def _validate_shared_identity(
+    identity: dict[str, Any], protocol: dict[str, Any], evaluator_digests: tuple[Any, ...],
+) -> None:
+    evaluator = identity["evaluator"]
     suite, dataset, runtime = (identity[key] for key in ("suite", "dataset", "runtime"))
     if (
         set(suite) != {"name", "sha256"}
         or set(dataset) != DATASET_FIELDS
         or set(runtime) != RUNTIME_FIELDS
-        or identity["protocol"] != SUPPORTED_PROTOCOL
+        or identity["protocol"] != protocol
     ):
         raise ValueError("Unsupported identity schema/protocol")
     image_id = runtime["image_id"]
     if not isinstance(image_id, str):
         raise ValueError("Unknown exact image digest")
     for sha in (identity["artifact_sha256"], suite["sha256"], dataset["sha256"],
-                runtime["server_sha256"], evaluator["backend_sha256"],
+                runtime["server_sha256"], *evaluator_digests,
                 runtime["server_defaults_sha256"],
                 image_id.removeprefix("sha256:")):
         if not isinstance(sha, str) or re.fullmatch("[0-9a-f]{64}", sha) is None:
@@ -149,8 +240,13 @@ def validate_identity(identity: dict[str, Any]) -> None:
 
 
 def validate_record(record: dict[str, Any]) -> None:
+    if record.get("schema_version") == GENERATION_SCHEMA_VERSION:
+        _validate_generation_record(record)
+        return
     if record["schema_version"] != 1 or record["status"] != "completed":
         raise ValueError("Unsupported/unfinished result record")
+    if identity_mode(record["identity"]) != "loglikelihood":
+        raise ValueError("A schema 1 record must describe loglikelihood scoring")
     identity = record["identity"]
     validate_identity(identity)
     if not record["provenance"]["hardware"]:
@@ -202,6 +298,101 @@ def validate_record(record: dict[str, Any]) -> None:
             raise ValueError("Saved metric differs from completed per-sample results")
 
 
+def identity_mode(identity: dict[str, Any]) -> str | None:
+    protocol = identity.get("protocol") if isinstance(identity, dict) else None
+    mode = protocol.get("mode") if isinstance(protocol, dict) else None
+    return mode if isinstance(mode, str) else None
+
+
+def _validate_generation_record(record: dict[str, Any]) -> None:
+    """Every aggregate is recomputed from per-sample checker outcomes, as in schema 1."""
+    if record["status"] != "completed":
+        raise ValueError("Unsupported/unfinished result record")
+    identity = record["identity"]
+    if identity_mode(identity) != GENERATION_PROTOCOL["mode"]:
+        raise ValueError("A schema 2 record must describe chat generation")
+    validate_identity(identity)
+    if not record["provenance"]["hardware"]:
+        raise ValueError("Missing hardware provenance")
+    if record["identity_sha256"] != digest(identity):
+        raise ValueError("Identity checksum mismatch")
+    result, task = record["result"], identity["suite"]["name"]
+    ids = identity["dataset"]["sample_ids"]
+    samples = result["samples"][task]
+    if (
+        record["classification"] not in CLASSIFICATIONS
+        or (task in PLUMBING_SUITES and record["classification"] != "plumbing")
+        or result["n-samples"][task] != {
+            "original": identity["dataset"]["total_samples"], "effective": len(ids),
+        }
+        or [sample["doc_id"] for sample in samples] != ids
+        or not result["results"][task] or not result["configs"][task]
+        or any(
+            {key: sample[key] for key in expected} != expected
+            for sample, expected in zip(samples, identity["samples"], strict=True)
+        )
+    ):
+        raise ValueError("Incomplete/mismatched raw results")
+    for sample in samples:
+        messages = _generation_messages(sample)
+        document = sample["doc"]
+        # Match the pinned harness's document serialization, not just digest shape.
+        document_hash = hashlib.sha256(
+            json.dumps(document, indent=2, ensure_ascii=False).encode()
+        ).hexdigest()
+        if (
+            document_hash != sample["doc_hash"]
+            or document.get("prompt") != messages[0]["content"]
+        ):
+            raise ValueError("Generation document differs from its prompt identity")
+        replies = sample["resps"]
+        instructions = sample["doc"]["instruction_id_list"]
+        if (
+            "error" in sample
+            or not isinstance(replies, list) or len(replies) != 1
+            or not isinstance(replies[0], list) or len(replies[0]) != 1
+            or not isinstance(replies[0][0], str)
+            or sample["filtered_resps"] != [replies[0][0]]
+            or not isinstance(instructions, list) or not instructions
+        ):
+            raise ValueError("Incomplete sample responses")
+        for prompt_metric, instruction_metric in zip(
+            PROMPT_METRICS, INSTRUCTION_METRICS, strict=True,
+        ):
+            followed = sample[instruction_metric]
+            if (
+                not isinstance(followed, list) or len(followed) != len(instructions)
+                or any(type(item) is not bool for item in followed)
+                or type(sample[prompt_metric]) is not bool
+                or sample[prompt_metric] != all(followed)
+            ):
+                raise ValueError("Incomplete/inconsistent instruction outcomes")
+    for name, expected in _generation_aggregates(samples).items():
+        value = result["results"][task][name + ",none"]
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
+            raise ValueError("Invalid/missing task metric")
+        if not math.isclose(value, expected, rel_tol=0, abs_tol=1e-12):
+            raise ValueError("Saved metric differs from completed per-sample results")
+    outcome = record["outcome"]
+    if (
+        set(outcome) != {"responses", "truncated"}
+        or outcome["responses"] != len(ids)
+        or type(outcome["truncated"]) is not int
+        or not 0 <= outcome["truncated"] <= outcome["responses"]
+    ):
+        raise ValueError("Missing/inconsistent generation outcome")
+
+
+def _generation_aggregates(samples: list[dict[str, Any]]) -> dict[str, float]:
+    aggregates = {
+        name: sum(sample[name] for sample in samples) / len(samples) for name in PROMPT_METRICS
+    }
+    for name in INSTRUCTION_METRICS:
+        flat = [item for sample in samples for item in sample[name]]
+        aggregates[name] = sum(flat) / len(flat)
+    return aggregates
+
+
 def save_record(
     path: Path, record: dict[str, Any], *, validate: RecordValidator = validate_record
 ) -> None:
@@ -245,6 +436,21 @@ def load_record(
     if envelope["record_sha256"] != digest(record):
         raise ValueError("Result record checksum mismatch")
     return record
+
+
+def repeat_key(record: dict[str, Any]) -> str:
+    """Equal for repeated runs that gave the same answers under the same identity.
+
+    Identity plus every per-sample response and score; only lm-eval's run date
+    is left out. The audited contract is deterministic, so a repeat that matches
+    here adds no information and cannot be a choice between results.
+    """
+    result = record["result"]
+    return digest({
+        "identity_sha256": record["identity_sha256"],
+        "samples": result["samples"], "results": result["results"],
+        "outcome": record.get("outcome"),
+    })
 
 
 def is_reusable_evidence(record: dict[str, Any]) -> bool:
@@ -320,6 +526,8 @@ class QualityEvidence:
     reusable: bool
     limitations: tuple[str, ...] = field(default=())
     context_length: int | None = None
+    #: ``quality_comparison.comparison_fields``: what must match for two runs to compare.
+    comparison: tuple[tuple[str, str], ...] = field(default=())
 
     @property
     def summary(self) -> str:
@@ -362,21 +570,55 @@ def _evaluated_at(result: dict[str, Any]) -> datetime | None:
 
 def describe_record(record: dict[str, Any]) -> QualityEvidence:
     """Project a validated record onto what an interface may show about it."""
+    # The comparator imports this module; the reverse import waits until here.
+    from jaull.evaluation.quality_comparison import comparison_fields
+
     validate_record(record)
     identity = record["identity"]
     dataset, result = identity["dataset"], record["result"]
     task = identity["suite"]["name"]
     samples = result["samples"][task]
-    metrics = tuple(
-        QualityMetric(
-            name=name,
-            value=float(result["results"][task][f"{name},none"]),
-            correct=int(sum(sample[name] for sample in samples)),
-            samples=len(samples),
+    generation = record["schema_version"] == GENERATION_SCHEMA_VERSION
+    if generation:
+        metrics = tuple(
+            QualityMetric(
+                name=name,
+                value=float(result["results"][task][f"{name},none"]),
+                correct=int(sum(flat)),
+                samples=len(flat),
+            )
+            for name in (*PROMPT_METRICS, *INSTRUCTION_METRICS)
+            for flat in ([
+                item for sample in samples
+                for item in (sample[name] if name in INSTRUCTION_METRICS else [sample[name]])
+            ],)
         )
-        for name in ("acc", "acc_norm")
-    )
+    else:
+        metrics = tuple(
+            QualityMetric(
+                name=name,
+                value=float(result["results"][task][f"{name},none"]),
+                correct=int(sum(sample[name] for sample in samples)),
+                samples=len(samples),
+            )
+            for name in ("acc", "acc_norm")
+        )
     limitations: list[str] = []
+    if generation:
+        limitations.append(
+            "Scored under this artifact's own chat template with reasoning off; whatever "
+            "that template adds, such as a default system prompt, is part of the result."
+        )
+        truncated = record["outcome"]["truncated"]
+        if truncated:
+            limitations.append(
+                f"{truncated} of {record['outcome']['responses']} replies reached the "
+                "1280-token cap and are scored as written."
+            )
+        limitations.append(
+            "Language checks use a seeded detector: Jaull's IFEval, not comparable with "
+            "published IFEval figures."
+        )
     if task in PLUMBING_SUITES:
         limitations.append(
             "Plumbing suite: this run proves the protocol executes, not model quality."
@@ -416,6 +658,7 @@ def describe_record(record: dict[str, Any]) -> QualityEvidence:
         reusable=is_reusable_evidence(record),
         limitations=tuple(limitations),
         context_length=identity["evaluator"]["context"],
+        comparison=comparison_fields(record),
     )
 
 

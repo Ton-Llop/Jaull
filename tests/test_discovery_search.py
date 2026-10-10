@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import pytest
 from huggingface_hub.errors import HfHubHTTPError
 
@@ -152,6 +153,16 @@ def test_gated_repositories_are_excluded_server_side() -> None:
     assert api.calls[0]["gated"] is False
 
 
+@pytest.mark.parametrize("error", [
+    httpx.ConnectError("DNS unavailable"), httpx.ReadTimeout("Hub timed out"),
+])
+def test_transport_failure_uses_the_workflows_recoverable_search_error(error: Exception) -> None:
+    client = HfSearchClient(api=_StubApi(error=error))  # type: ignore[arg-type]
+    with pytest.raises(HuggingFaceUnavailableError, match="Unable to reach") as caught:
+        client.search(_query())
+    assert caught.value.__cause__ is error
+
+
 def test_model_without_card_data_gets_low_confidence() -> None:
     info = _Info(id="org/bare", card_data={})
     result = candidate_from_model_info(info, "q")  # type: ignore[arg-type]
@@ -281,6 +292,30 @@ def test_known_adapter_is_rejected_even_with_a_declared_base_model() -> None:
 
     assert outcome.kept == []
     assert "standalone model" in outcome.rejected[0][1]
+
+
+def test_declared_adapter_relation_does_not_spend_an_inspection_slot() -> None:
+    # Reproduces yusifnuri/*_code_generation in the 2026-10-07 code captures: the
+    # Hub tagged them as adapters of a named base, the filter kept them because a
+    # base existed, and inspection then rejected them - 2 of 12 deep-inspection
+    # slots in every coding scenario, spent on candidates that could never run.
+    tags = ["peft", "lora", "base_model:adapter:mistralai/Mistral-7B-v0.3",
+            "base_model:mistralai/Mistral-7B-v0.3"]
+    outcome = filter_candidates(
+        [candidate(repo_id="org/coder-lora", tags=tags, base_model="mistralai/Mistral-7B-v0.3")],
+        _requirements(),
+    )
+    assert outcome.kept == []
+    assert "standalone model" in outcome.rejected[0][1]
+
+
+def test_a_finetune_relation_is_not_mistaken_for_an_adapter() -> None:
+    # A merged fine-tune names its base too, and may still carry a `lora` tag.
+    tags = ["lora", "base_model:finetune:org/base", "base_model:org/base"]
+    outcome = filter_candidates(
+        [candidate(repo_id="org/merged", tags=tags, base_model="org/base")], _requirements(),
+    )
+    assert len(outcome.kept) == 1
 
 
 def test_adapter_with_base_model_survives() -> None:

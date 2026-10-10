@@ -214,8 +214,7 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
     payload = report_to_dict(state)
     axes = [c["axis"] for c in payload["recommendations"][0]["ranking"]["criteria"]]
 
-    # The full effective order: the viability partition that runs after the
-    # sort, then the quality branch of the ranking key, then its tie-breaks.
+    # Base criteria only; measured-quality swaps are a separate policy stage.
     assert axes == [
         "viability",
         "plan_constraints",
@@ -227,6 +226,65 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "performance_evidence",
         "plan_confidence",
     ]
+    assert payload["recommendations"][0]["ranking"]["quality_policy"]["measurement"] is None
+
+
+def test_export_separates_measured_quality_from_the_base_criteria() -> None:
+    from jaull.application.recommendation.service import recommend
+    from jaull.domain.model import ModelConfig
+    from jaull.recommendation.engine_v2 import PlanRankingContext
+    from tests.test_ifeval_applicability import _full_record, _gguf
+    from tests.test_recommendation_engine_v2 import _requirements
+
+    requirements = _requirements(RecommendationPriority.QUALITY, use_case=UseCase.GENERAL_CHAT)
+    records = [_full_record(), _full_record(stronger=True)]
+    larger = _gguf("org/A-7B-GGUF", "a" * 64)
+    smaller = _gguf("org/B-0.5B-GGUF", "9" * 64)
+    assert smaller.analysis is not None
+    smaller = smaller.model_copy(update={"analysis": smaller.analysis.model_copy(update={
+        "config": ModelConfig(hidden_size=512, num_hidden_layers=12, intermediate_size=2048,
+                              vocab_size=32000, num_attention_heads=8),
+    })})
+    pools: list = []
+    shown = recommend(
+        [larger, smaller], requirements, hardware=hardware(),
+        plan_context=PlanRankingContext(hardware=hardware(), quality_records=records),
+        on_ranked_plans=pools.append,
+    )
+    state = RecommendationWorkflowState(requirements=requirements, recommendations=shown,
+                                        ranked_plans=tuple(pools[0]))
+    before = state.model_dump_json()
+    payload = report_to_dict(state)
+    first, second = payload["recommendations"]
+    assert [rec.repo_id for rec in shown] == [smaller.repo_id, larger.repo_id]
+    assert [item.evaluated.repo_id for item in pools[0]] == [larger.repo_id, smaller.repo_id]
+    assert next(c["value"] for c in first["ranking"]["criteria"] if c["axis"] == "capability") \
+        == "weak"
+    assert next(c["value"] for c in second["ranking"]["criteria"] if c["axis"] == "capability") \
+        == "strong"
+    policy = first["ranking"]["quality_policy"]
+    assert policy["base_pool_position"] == 2 and policy["quality_pool_position"] == 1
+    assert policy["artifact_sha256"] == "9" * 64
+    assert shown[0].plan_assessment is not None
+    measured = shown[0].plan_assessment.quality.applicable
+    assert measured is not None
+    assert policy["measurement"] == measured.model_dump(mode="json")
+    assert "measured_quality" not in [c["axis"] for c in first["ranking"]["criteria"]]
+    assert "Base order" in first["ranking"]["note"]
+    markdown = report_to_markdown(state)
+    assert "Base criteria" in markdown and "Measured-quality policy" in markdown
+    assert "pool #2 -> #1" in markdown
+    assert measured.record_sha256 in markdown and measured.cohort in markdown
+    assert state.model_dump_json() == before
+    # Missing or pre-activation snapshots must not claim the current policy's swaps happened.
+    for historical in (
+        state.model_copy(update={"ranked_plans": ()}),
+        state.model_copy(update={"recommendations": shown[::-1]}),
+    ):
+        for rec in report_to_dict(historical)["recommendations"]:
+            stage = rec["ranking"]["quality_policy"]
+            assert stage["base_pool_position"] is None
+            assert stage["quality_pool_position"] is None
 
 
 # ---------------------------------------------------------------------------

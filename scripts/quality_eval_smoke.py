@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import socket
@@ -21,6 +22,7 @@ from pilot.quality_eval.evaluate import (
     validate_artifact_identity,
     write_json,
 )
+from pilot.quality_eval.ifeval import CONTEXT as IFEVAL_CONTEXT
 from pilot.quality_eval.setup import prepare_infrastructure
 
 from jaull.artifacts.service import ArtifactService
@@ -56,14 +58,45 @@ class OfflineResolver:
         raise RuntimeError("The quality smoke never resolves or downloads a model")
 
 
-def artifact_memory_estimate(artifact: ModelArtifact, hardware: HardwareProfile) -> MemoryEstimate:
+def embedded_chat_template(raw_kv: dict[str, object]) -> str:
+    template = raw_kv.get("tokenizer.chat_template")
+    # llama.cpp substitutes built-in ChatML for missing/empty/'chatml' metadata.
+    if not isinstance(template, str) or not template.strip() or template == "chatml":
+        raise ValueError("IFEval requires an embedded GGUF chat template, not a runtime fallback")
+    return template
+
+
+def chat_template_evidence(path: Path) -> dict[str, str]:
+    """Digests the importer compares with the template the server reports.
+
+    llama-server was observed serving the embedded template with trailing
+    whitespace stripped, so both forms are recorded; nothing else is accepted.
+    """
+    with path.open("rb") as model:
+        header = parse_header(model.read(32 * 1024**2))
+    if header is None:
+        raise ValueError("Local GGUF header could not be read")
+    template = embedded_chat_template(header.raw_kv)
+    return {
+        "source": "gguf",
+        "embedded_sha256": hashlib.sha256(template.encode()).hexdigest(),
+        "embedded_stripped_sha256": hashlib.sha256(template.strip().encode()).hexdigest(),
+    }
+
+
+def artifact_memory_estimate(
+    artifact: ModelArtifact, hardware: HardwareProfile, *, context: int = CONTEXT,
+    require_chat_template: bool = False,
+) -> MemoryEstimate:
     assert artifact.local_path is not None and artifact.size_bytes is not None
     # ponytail: retain the bounded 32 MiB metadata parser; larger headers fail closed.
     with artifact.local_path.open("rb") as model:
         header = parse_header(model.read(32 * 1024**2))
     enriched = merge(header, None)
-    if enriched is None or header is None or (header.context_length or 0) < CONTEXT:
+    if enriched is None or header is None or (header.context_length or 0) < context:
         raise ValueError("Local GGUF lacks the required configuration/context")
+    if require_chat_template:
+        embedded_chat_template(header.raw_kv)
     if (
         type(header.raw_kv.get("split.count", 1)) is not int
         or header.raw_kv.get("split.count", 1) != 1
@@ -86,7 +119,7 @@ def artifact_memory_estimate(artifact: ModelArtifact, hardware: HardwareProfile)
     estimate = estimate_memory(
         analysis, hardware,
         InferenceConfiguration(
-            context_length=CONTEXT,
+            context_length=context,
             target_device=TargetDevice.AUTO,
             quantization=artifact.quantization,
             device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
@@ -104,6 +137,8 @@ def server_command(
     n_gpu_layers: int = -1,
     device: str | None = "CUDA0",
     threads: int = 4,
+    context: int = CONTEXT,
+    chat: bool = False,
 ) -> list[str]:
     # The defaults are the pilot's own launch, so its recorded flags do not move.
     # Only the placement replay passes anything else, and only these three.
@@ -116,7 +151,7 @@ def server_command(
         "--port",
         "18083",
         "--ctx-size",
-        str(CONTEXT),
+        str(context),
         "--parallel",
         "1",
         "--n-gpu-layers",
@@ -128,6 +163,8 @@ def server_command(
         "0",
         "--no-context-shift",
         "--no-cache-prompt",
+        # Chat suites: the GGUF's own template, and reasoning off (verified per reply).
+        *(["--jinja", "--reasoning", "off"] if chat else []),
         "--verbosity",
         "4",
     ]
@@ -183,7 +220,7 @@ def docker_command(
         "--mount",
         f"type=bind,source={artifact},target=/artifact/model.gguf,readonly",
         "--mount",
-        f"type=bind,source={dataset},target=/dataset/validation.parquet,readonly",
+        f"type=bind,source={dataset},target={_dataset_target(profile)},readonly",
         image,
         "--base-url",
         "http://host.docker.internal:18083",
@@ -192,8 +229,22 @@ def docker_command(
     ]
 
 
+def _suite(profile: str) -> str:
+    return str(PROFILES[profile].get("suite", "hellaswag"))
+
+
+def _dataset_target(profile: str) -> str:
+    return "/dataset/ifeval.jsonl" if _suite(profile) == "ifeval" else "/dataset/validation.parquet"
+
+
+# Owned-process bounds. Full IFEval is 541 generations of up to 1280 tokens each.
+TIMEOUTS = {"smoke": 300, "hellaswag100": 600, "ifeval-smoke": 900, "ifeval": 6 * 3600}
+
+
 def run(args: argparse.Namespace) -> None:
     profile = PROFILES[args.profile]
+    suite = _suite(args.profile)
+    context = IFEVAL_CONTEXT if suite == "ifeval" else CONTEXT
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     server = None
@@ -208,10 +259,17 @@ def run(args: argparse.Namespace) -> None:
         artifact = service.verify(artifact, full=True)
         artifact_verified = True
         write_json(output / "verified-artifact.json", artifact.model_dump(mode="json"))
-        image = prepare_infrastructure(args.dataset_file, args.llama_server, args.image)
+        image = prepare_infrastructure(
+            args.dataset_file, args.llama_server, args.image, suite=suite,
+        )
         hardware = detect_hardware()
-        estimate = artifact_memory_estimate(artifact, hardware)
+        estimate = artifact_memory_estimate(
+            artifact, hardware, context=context, require_chat_template=suite == "ifeval",
+        )
         write_json(output / "memory-preflight.json", estimate.model_dump(mode="json"))
+        if suite == "ifeval":
+            assert artifact.local_path is not None
+            write_json(output / "chat-template.json", chat_template_evidence(artifact.local_path))
         selection = select_runtime_backend(hardware)
         capability = inspect_llama_cpp_runtime(
             backend=HostExecutionBackend(),
@@ -233,7 +291,10 @@ def run(args: argparse.Namespace) -> None:
             raise ValueError("The explicit full-offload smoke requires a full-device memory fit")
         write_json(output / "image.json", {"id": image["Id"], "digests": image["RepoDigests"]})
         assert artifact.local_path is not None
-        launch = server_command(args.llama_server.resolve(), artifact.local_path)
+        launch = server_command(
+            args.llama_server.resolve(), artifact.local_path,
+            context=context, chat=suite == "ifeval",
+        )
         evaluate = docker_command(
             image["Id"], container_name, output, artifact.local_path, args.dataset_file.resolve(),
             profile=args.profile,
@@ -253,7 +314,7 @@ def run(args: argparse.Namespace) -> None:
             container_attempted = True
             subprocess.run(
                 evaluate, stdout=eval_log, stderr=subprocess.STDOUT,
-                timeout=300 if args.profile == "smoke" else 600, check=True,
+                timeout=TIMEOUTS[args.profile], check=True,
             )
             container_attempted = False  # Successful --rm already removed our container.
         if json.loads((output / "smoke-status.json").read_text()) != {

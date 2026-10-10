@@ -130,6 +130,18 @@ Footer > .footer--key {
    --------------------------------------------------------------------- */
 .text-secondary { color: $ink-2; }
 
+QualityEvaluationScreen .quality-row { border-left: solid $line-2; }
+QualityEvaluationScreen .quality-row.-selected { border-left: solid $accent; }
+QualityEvaluationScreen .quality-storage { color: $warn; }
+QualityEvaluationScreen .quality-storage.-local { color: $ok; }
+QualityEvaluationScreen .quality-alternative { color: $accent; padding-left: 2; }
+QualityEvaluationScreen .quality-measured { color: $success; padding-left: 2; }
+QualityEvaluationScreen #quality-comparison { height: auto; margin-bottom: 1; }
+QualityEvaluationScreen .quality-row Checkbox:focus {
+    border: none;
+    background: $surface-3;
+}
+
 /* Secondary information, not decoration: readable, but clearly below the
    primary level. */
 .text-muted {

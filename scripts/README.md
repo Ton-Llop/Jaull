@@ -4,6 +4,9 @@ Small development and validation tools. Production entry points remain the `jaul
 
 | Script | Purpose | Notes |
 |---|---|---|
+| [`audit_recommendation_pool.py`](audit_recommendation_pool.py) | Capture/replay query results, filters and candidate/inspection budgets. | Public HF metadata only, or offline `--replay`; requires answers/hardware JSON and a new output file. Does not inspect, download or rank models. |
+| [`audit_quality_recompare.py`](audit_quality_recompare.py) | Compare a pinned measured pair and audit a captured search's GGUF coverage. | Metadata/header requests only; reads existing user evidence, forbids weight downloads/evaluation, and leaves searches unchanged. Optional paths have not passed a fit check. |
+| [`shadow_review_matrix.py`](shadow_review_matrix.py) | Review Quality/Speed/Balanced across captured hardware/task scenarios. | Uses saved discovery/metadata and real stored records; synthetic hardware is not physical validation. Does not activate a policy. |
 | [`bake_shark_frames.py`](bake_shark_frames.py) | Convert source GIF frames to compact Python sprite data for the TUI. | Requires Pillow; writes under `src/jaull/tui/widgets/` unless `--output` is set. |
 | [`capture_screenshots.py`](capture_screenshots.py) | Regenerate deterministic TUI SVG screenshots with fake services. | Offline; defaults to `docs/assets/`. |
 | [`check_dist.py`](check_dist.py) | Check wheel and sdist contents after `uv build`. | Reads `dist/`; no writes. |

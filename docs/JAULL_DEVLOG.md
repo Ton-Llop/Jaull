@@ -172,10 +172,50 @@ Repeteixo HellaSwag amb 100 exemples fixos i els dos models en seqüència a la 
 
 Mesuro `pp512` i `tg128` amb `llama-bench`, cinc repeticions, quatre threads i tot a CUDA0. TinyLlama genera 190,73 tok/s i Qwen 123,94: en aquestes proves, un dona més velocitat i l'altre més encerts. Guardo les mostres, els flags efectius i els records immutables. És throughput amb la GPU compartida amb l'escriptori, no latència fins al primer token. 28 tests de benchmark/arquitectura, Ruff i mypy verds; cap canvi al ranking ni a l'HFA.
 
+## 04/10 — Avaluar des de la interfície
+
+Porto el pilot dins la TUI: una acció explícita que prepara i llança l'avaluació d'un GGUF concret, amb preflight de Docker, runtime i artefacte. Res s'executa sol en obrir Jaull — una avaluació es dispara perquè algú la demana, no perquè s'hagi carregat una pantalla.
+
+## 05/10 — Separar el que diu l'editor del que hem mesurat
+
+La pestanya d'avaluació passa a ensenyar dues coses que fins ara es confonien: el que un publisher ha publicat sobre el model, i el que hem mesurat nosaltres sobre l'artefacte exacte. Cada bloc amb la seva etiqueta, i el publicat avisa que és «no mesurat en aquest artefacte» i en quin mode es va avaluar.
+
+També reordeno Hardware i Your needs. La RAM i la VRAM passen a ser xifres grans de set segments, perquè tot el que diu Jaull és una afirmació sobre aquests dos números. El wizard passa de sis preguntes en una columna —amb el botó d'enviar sempre fora de pantalla— a dues columnes alineades: el bloc baixa de 37 files a 24 i el botó puja de la fila 41 a la 28. Per sota de 100 columnes es plega a una.
+
+## 07/10 — El catàleg l'heretava tothom
+
+Enganxo el catàleg de resultats publicats al ranking i descobreixo que `engine_v2` copiava la llista sencera a tots els plans sense filtrar. Tal com estava, l'MMLU de Qwen hauria aparegut sota un candidat de Mistral. Ara cada pla només rep l'evidència que anomena el seu model.
+
+Tres errors més pel camí, tots trobats revisant-ho:
+
+L'exportació perdia l'atribució. `PlanAssessment.external_evaluations` està tipat amb la classe base, i pydantic serialitzava **19 camps com a 10**: desapareixien `repo_id`, `variant`, `source_kind`, `protocol` i la precisió. Una puntuació publicada sense dir de qui és, és pitjor que no dir-ne res.
+
+El linatge es confirmava pel tipus d'evidència, no pel repositori. Metadata que apuntava a `org/Other` donava per bo un match contra `org/Target`, i canviar l'ordre de dues entrades canviava el resultat.
+
+I quan ho vaig arreglar comparant amb `logical_model_repo_key`, vaig tornar a colar la heurística per la porta del darrere: aquesta clau retalla sufixos, així que metadata que declara `org/Thing-7B-GGUF` confirmava `org/Thing-7B`. Ara la comparació exigeix el nom exacte, només plegant majúscules.
+
+## 07/10 — Dotze candidats reals
+
+Em pensava que els repacks típics no portarien `base_model` a la metadata i que la regla estricta ens deixaria sense cobertura. Ho mesuro amb una cerca real: 6 consultes, 40 candidats, auditoria dels 12 primers.
+
+De linatge: **7 amb base declarada, 2 repositori directe, 3 sense linatge i cap per heurística de nom**. O sea que la regla estricta no costa cobertura. El coll d'ampolla és un altre: **8 dels 12 no tenen entrada al catàleg** i només 1 passa sencer. `bartowski/Qwen2.5-32B-Instruct-GGUF` hereta l'MMLU-Redux de Qwen2.5 per metadata declarada, que és exactament el cas que volia permetre.
+
+Escric la política de Quality, Fastest i Balanced com a esborrany per revisar, sense implementar-ne res. Balanced queda com a porta sobre `min_generation_tps` i no com a pesos: sumar qualitat i velocitat en un número tornaria a muntar el score global que vaig treure a propòsit.
+
+## 07/10 — Un test que només fallava a Windows
+
+CI en vermell amb un sol test, i només a 80×24 sense mesura. El botó sortia a la fila 33 amb un viewport de set files començant a la 13. Traço la geometria pas a pas i la causa no era el contingut: **`scroll_visible` és diferit**, no mou l'offset a la crida sinó en un refresc posterior. La fila que vaig mesurar just després de la crida és exactament la que reportava CI.
+
+El test comptava refrescos —un `pause` i a córrer— i això codifica el scheduling d'una màquina. Ara espera la condició que li importa de debò: que el botó estigui dins del viewport. 32 execucions seguides sense fallar. 2289 tests, Ruff i mypy verds.
+
 ---
 
 ## Ara mateix
 
-El contracte ja conserva l'assignació que reporta llama.cpp, separada de NVML, i la comparació aplica els seus gates metodològics. El RSS amb `mmap` no prova la memòria host del placement, i NVML per procés continua bloquejat pel WDDM local.
+El catàleg publicat ja arriba al ranking, però només com a referència: s'ensenya, no ordena. Cada pla rep únicament l'evidència que anomena el seu model, i el linatge ha d'estar confirmat per metadata o ser el repositori mateix — una heurística de nom no val. Les 11 entrades del catàleg no declaren revisió ni precisió avaluades, així que es queden en «mostrar».
 
-El pilot ja separa qualitat limitada i rendiment local, amb evidència verificada. El següent pas proposat és mostrar aquests records a la TUI en mode lectura; llançar avaluacions des de la interfície queda per després de provar preflight, cancel·lació i errors. No hi ha score nou ni integració al ranking. Els benchmarks Transformers v2 continuen sense comptar com a evidència vigent, i no ajusto marges ni overhead sense més mesures. Les proves amb documents de Biosfer queden aparcades fins que torni a l'empresa.
+La TUI ja separa visualment el publicat del mesurat, i l'avaluació es llança a mà des de la interfície. El ranking continua sense tocar: no hi ha eix de qualitat que ordeni, ni score nou.
+
+La política de Quality/Fastest/Balanced és un esborrany per revisar. El que la bloqueja és que avui cap mètrica dels records porta interval, i sense interval «no distingibles» és una intenció i no un càlcul.
+
+El RSS amb `mmap` continua sense provar la memòria host del placement, i NVML per procés segueix bloquejat pel WDDM local. No ajusto marges ni overhead sense més mesures. Les proves amb documents de Biosfer queden aparcades fins que torni a l'empresa.

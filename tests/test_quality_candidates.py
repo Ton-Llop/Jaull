@@ -81,6 +81,9 @@ class SelectionAdvisor:
     def quality_evidence(self) -> list[Any]:
         return []
 
+    def _stored_quality_records(self) -> list[Any]:
+        return []
+
     def resolve_model_identity(self, rec: Any) -> Any:
         return rec.plan.model_identity
 

@@ -30,6 +30,7 @@ from jaull.execution.errors import (
 )
 from jaull.execution.ports import ExecutionBackendProtocol
 from jaull.runtime.llama_bench_capability import resolve_llama_bench_binary
+from jaull.runtime.llama_bench_jsonl import parse_llama_bench_protocol
 from jaull.runtime.llama_bench_parser import parse_llama_bench_output
 
 
@@ -156,7 +157,12 @@ class LlamaBenchRunner:
             measurements=measurements,
             repetitions=request.repetitions,
             duration_seconds=result.duration_seconds,
+            # Extra output does not change the requested workload. Whether two
+            # records are comparable is a separate applicability decision.
             methodology="llama_bench_v1",
+            protocol=parse_llama_bench_protocol(
+                raw_output, warmup="--no-warmup" not in command,
+            ),
             command=command,
             exit_code=result.exit_code,
             peak_ram_bytes=result.observation.peak_ram_bytes,
@@ -186,6 +192,12 @@ def build_llama_bench_command(
         ",".join(str(size) for size in request.generation_sizes),
         "-r",
         str(request.repetitions),
+        # Restate the test-instance settings on stderr. The markdown table on stdout
+        # drops every column still at its default, so this is the only way to
+        # record the reported threads, batching, cache types and load mode. It
+        # changes nothing about how the benchmark is measured.
+        "-oe",
+        "jsonl",
     )
 
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import NamedTuple
+from functools import cached_property
+from typing import Any, NamedTuple
 
 from pydantic import ValidationError
 
@@ -56,9 +57,18 @@ from jaull.estimator.configuration import select_configuration
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
-from jaull.recommendation.local_evidence import matching_benchmark, matching_experiment
+from jaull.recommendation.local_evidence import (
+    assess_speed,
+    matching_benchmark,
+    matching_experiment,
+)
 from jaull.recommendation.policies import (
     has_confirmed_memory_compatibility,
+)
+from jaull.recommendation.quality import (
+    QualityRecordIndex,
+    assess_quality,
+    index_quality_records,
 )
 
 EstimatePlanFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
@@ -72,6 +82,12 @@ class PlanRankingContext:
     benchmark_records: Sequence[BenchmarkRecord] = ()
     experiment_records: Sequence[ExperimentRecord] = ()
     external_evaluations: Sequence[ExternalEvaluationEvidence] = ()
+    quality_records: Sequence[dict[str, Any]] = ()
+
+    @cached_property
+    def quality_index(self) -> QualityRecordIndex:
+        """Validate and digest each record once per ranking, not once per plan."""
+        return index_quality_records(self.quality_records)
 
 
 @dataclass(frozen=True)
@@ -293,6 +309,11 @@ def assess_plan(
         plan_id=plan.plan_id,
         hard_constraints=hard,
         capability=_capability_level(capability),
+        quality=assess_quality(
+            plan, requirements, _capability_level(capability), ctx.quality_index,
+            published=external,
+        ),
+        speed=assess_speed(plan, requirements, ctx.benchmark_records),
         suitability=_suitability(evaluated, requirements),
         execution_fitness=_execution_fitness(plan),
         feasibility=_feasibility(plan),
@@ -561,7 +582,25 @@ def _hard_constraints(
     requirements: UserRequirements,
 ) -> list[HardConstraint]:
     constraints: list[HardConstraint] = []
-    if plan.runtime.runtime not in plan.artifact.compatible_runtimes:
+    memory_insufficient = (
+        plan.memory_prediction is not None
+        and plan.memory_prediction.assessment.status is CompatibilityStatus.INSUFFICIENT
+    )
+    if plan.runtime.runtime is RuntimeName.UNKNOWN:
+        # No runtime was chosen, so nothing is "incompatible" with the artifact:
+        # the planner stopped earlier, and its own warning says why. Unknown fit
+        # still stays out of the ranking - it is not evidence that the model fits.
+        # When memory is already shown insufficient, that constraint says it all.
+        if not memory_insufficient:
+            reason = next(iter(plan.runtime.warnings), "No runtime recommendation was available.")
+            constraints.append(
+                HardConstraint(
+                    code=HardConstraintCode.RUNTIME_UNDETERMINED,
+                    message=f"No runtime could be planned: {reason}",
+                    evidence_key="runtime.recommendation",
+                )
+            )
+    elif plan.runtime.runtime not in plan.artifact.compatible_runtimes:
         constraints.append(
             HardConstraint(
                 code=HardConstraintCode.ARTIFACT_RUNTIME_INCOMPATIBLE,
@@ -569,10 +608,7 @@ def _hard_constraints(
                 evidence_key="artifact.runtime",
             )
         )
-    if (
-        plan.memory_prediction is not None
-        and plan.memory_prediction.assessment.status is CompatibilityStatus.INSUFFICIENT
-    ):
+    if memory_insufficient:
         constraints.append(
             HardConstraint(
                 code=HardConstraintCode.MEMORY_INSUFFICIENT,
@@ -1120,7 +1156,7 @@ def ranking_criteria(
     *,
     commercial_use_required: bool = False,
 ) -> tuple[RankingCriterion, ...]:
-    """The ordered criteria that decided this plan's position.
+    """The ordered criteria that decided this plan's base position.
 
     The report needs to say *why* a plan sits where it does. The composite
     ``ScoreBreakdown`` cannot answer that — with hardware it does not order
@@ -1140,6 +1176,9 @@ def ranking_criteria(
     criterion, and leaving it out made the explanation disagree with the list:
     on ``quality`` a 14B with an UNKNOWN estimate beats a 1.5B COMFORTABLE on
     capability, yet the engine shows the 1.5B first.
+
+    Quality's measured-evidence policy runs after this base ordering and before
+    diversity. It is a separate stage, not another lexicographic criterion.
     """
 
     assessment = item.assessment

@@ -17,6 +17,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+from pilot.quality_eval import ifeval
 from pilot.quality_eval.evaluate import (
     DATASET_SIZE,
     LIMITED_TASK,
@@ -28,6 +29,8 @@ from pilot.quality_eval.evaluate import (
 )
 
 from jaull.evaluation.quality_records import (
+    GENERATION_PROTOCOL,
+    GENERATION_SCHEMA_VERSION,
     digest,
     known,
     validate_identity,
@@ -52,11 +55,28 @@ JSON_FILES = (
     "dataset.json", "lm-eval-results.json", "smoke-status.json", "runner-status.json",
 )
 TEXT_FILES = ("http.jsonl", "server.log", "evaluator.log")
+LOG_FILES = ("server.log", "evaluator.log")  # Stored, never parsed: decoded leniently.
 def validate_record(record: dict[str, Any]) -> None:
     """The shared contract, plus the two things only the producer can verify."""
     _validate_record_contract(record)
     identity = record["identity"]
     task = identity["suite"]["name"]
+    if record["schema_version"] == GENERATION_SCHEMA_VERSION:
+        profile = profile_for_task(task)
+        if (
+            profile.get("suite") != "ifeval"
+            or identity["dataset"]["sample_ids"] != profile["sample_ids"]
+            or record["classification"] != profile["classification"]
+        ):
+            raise ValueError("Generation record does not match its fixed IFEval profile")
+        if "evidence" in record["provenance"]:
+            evidence = record["provenance"]["evidence"]
+            fingerprint, outcome = validate_generation_http(
+                evidence["http.jsonl"], record["result"]["samples"][task],
+            )
+            if fingerprint != identity["runtime"]["fingerprint"] or outcome != record["outcome"]:
+                raise ValueError("HTTP evidence differs from record identity or outcome")
+        return
     if task == LIMITED_TASK and (
         identity["dataset"]["sample_ids"] != profile_for_task(task)["sample_ids"]
         or identity["dataset"]["total_samples"] != DATASET_SIZE
@@ -128,6 +148,111 @@ def validate_http_coverage(text: str, samples: list[dict[str, Any]]) -> str:
     return next(iter(fingerprints))
 
 
+def validate_generation_http(
+    text: str, samples: list[dict[str, Any]],
+) -> tuple[str, dict[str, int]]:
+    """Every scored reply must be the exact text one audited exchange returned."""
+    replies: dict[str, tuple[str, str]] = {}
+    fingerprints = set()
+    for line in text.splitlines():
+        exchange = json.loads(line)
+        if "error" in exchange or "response" not in exchange:
+            raise ValueError("Failed HTTP evidence")
+        if not exchange["url"].endswith("/v1/chat/completions"):
+            raise ValueError("Unknown HTTP protocol")
+        request, response = exchange["request"], exchange["response"]
+        ifeval.validate_chat_request(request)
+        finish = ifeval.validate_chat_response(response)
+        rendered = exchange.get("rendered_prompt")
+        if not isinstance(rendered, str) or not rendered.strip():
+            raise ValueError("Missing rendered chat prompt")
+        prompt = request["messages"][0]["content"]
+        if prompt in replies:
+            raise ValueError("Duplicate generation for one prompt")
+        replies[prompt] = (response["choices"][0]["message"]["content"], finish)
+        fingerprints.add(response["system_fingerprint"])
+    finishes = []
+    for sample in samples:
+        prompt = sample["doc"]["prompt"]
+        if prompt not in replies:
+            raise ValueError("Missing generation evidence for a selected prompt")
+        reply, finish = replies.pop(prompt)
+        if sample["resps"] != [[reply]] or sample["filtered_resps"] != [reply]:
+            raise ValueError("Scored reply differs from the HTTP response")
+        finishes.append(finish)
+    if replies or len(fingerprints) != 1:
+        raise ValueError("Missing/mismatched generation coverage")
+    return next(iter(fingerprints)), {
+        "responses": len(finishes), "truncated": finishes.count("length"),
+    }
+
+
+def _snapshot_generation(
+    bundle: Path, evidence: dict[str, Any], raw: dict[str, str], profile: dict[str, Any],
+) -> dict[str, Any]:
+    artifact, result = evidence["verified-artifact.json"], evidence["lm-eval-results.json"]
+    task = profile["task"]
+    for name in ("chat-template.json", "generation-summary.json"):
+        raw[name] = (bundle / name).read_text(encoding="utf-8")
+        evidence[name] = json.loads(raw[name])
+    dataset_bytes = ifeval.verified_dataset_bytes(bundle / "dataset-ifeval.jsonl")
+    evaluator, dataset, commands, props, template = (
+        evidence[name] for name in ("evaluator-config.json", "dataset.json", "commands.json",
+                                   "server-props.json", "chat-template.json")
+    )
+    samples = result["samples"][task]
+    fingerprint, outcome = validate_generation_http(raw["http.jsonl"], samples)
+    served = props.get("chat_template")
+    served_sha256 = hashlib.sha256(served.encode()).hexdigest() if isinstance(served, str) else ""
+    server = commands["server"]
+    if (
+        dataset["sample_ids"] != profile["sample_ids"]
+        or dataset["sha256"] != hashlib.sha256(dataset_bytes).hexdigest()
+        or props["total_slots"] != 1
+        or props["default_generation_settings"]["n_ctx"] != evaluator["context"]
+        or props["model_path"] != artifact["local_path"]
+        or server[1:3] != ["--model", artifact["local_path"]]
+        or "--jinja" not in server
+        or server[server.index("--reasoning") + 1:server.index("--reasoning") + 2] != ["off"]
+        or template.get("source") != "gguf"
+        or evaluator["chat_template_sha256"] != served_sha256
+        # The server strips the template's trailing whitespace; nothing else is accepted.
+        or served_sha256 not in {template.get("embedded_sha256"),
+                                 template.get("embedded_stripped_sha256")}
+        or evidence["generation-summary.json"] != outcome
+    ):
+        raise ValueError("Missing/mismatched effective protocol evidence")
+    identity = {
+        "artifact_sha256": artifact["sha256"],
+        "suite": {"name": task, "sha256": evaluator["suite_sha256"]},
+        "dataset": {key: dataset[key] for key in ("repo", "revision", "sha256", "sample_ids")}
+        | {"total_samples": result["n-samples"][task]["original"]},
+        "samples": [{key: sample[key] for key in (
+            "doc_id", "doc_hash", "prompt_hash", "target_hash", "arguments",
+        )} for sample in samples],
+        "evaluator": evaluator,
+        "runtime": {
+            "server_sha256": commands["server_sha256"], "image_id": evidence["image.json"]["id"],
+            "fingerprint": fingerprint, "backend_flags": server[3:],
+            "server_defaults_sha256": digest(props["default_generation_settings"]),
+        },
+        "protocol": dict(GENERATION_PROTOCOL),
+    }
+    record = {
+        "schema_version": GENERATION_SCHEMA_VERSION, "status": "completed",
+        "classification": profile["classification"],
+        "identity": identity, "identity_sha256": digest(identity), "result": result,
+        "outcome": outcome,
+        "provenance": {
+            "source_bundle": str(bundle.resolve()), "hardware": evidence["hardware.json"],
+            "evidence": raw,
+            "dataset_file": {"sha256": dataset["sha256"], "size_bytes": len(dataset_bytes)},
+        },
+    }
+    validate_record(record)
+    return record
+
+
 def save_record(path: Path, record: dict[str, Any]) -> None:
     _save_record_contract(path, record, validate=validate_record)
 
@@ -143,7 +268,13 @@ def quality_lookup(path: Path, identity: dict[str, Any]) -> dict[str, Any] | Non
 def snapshot_bundle(bundle: Path) -> dict[str, Any]:
     if list(bundle.glob("*-error.json")):
         raise ValueError("Failed bundle cannot become a completed record")
-    raw = {name: (bundle / name).read_text(encoding="utf-8") for name in JSON_FILES + TEXT_FILES}
+    raw = {name: (bundle / name).read_text(encoding="utf-8") for name in JSON_FILES + TEXT_FILES
+           if name not in LOG_FILES}
+    # llama.cpp truncates its GGUF metadata previews by bytes, splitting a UTF-8
+    # character in some tokenizers (LFM2.5 merges). The logs are diagnostics that
+    # nothing parses, so the stray bytes are kept as \xNN rather than dropped.
+    raw |= {name: (bundle / name).read_bytes().decode("utf-8", "backslashreplace")
+            for name in LOG_FILES}
     evidence = {name: json.loads(raw[name]) for name in JSON_FILES}
     artifact = evidence["verified-artifact.json"]
     validate_artifact_identity(artifact)
@@ -163,6 +294,9 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         }
     ):
         raise ValueError("Incomplete execution/artifact verification")
+    if profile.get("suite") == "ifeval":
+        # Generation has its own record shape; it never passes the HellaSwag checks.
+        return _snapshot_generation(bundle, evidence, raw, profile)
     dataset_bytes = verified_dataset_bytes(bundle / "dataset-validation.parquet")
     evaluator, dataset, commands, props = (
         evidence[name] for name in ("evaluator-config.json", "dataset.json",

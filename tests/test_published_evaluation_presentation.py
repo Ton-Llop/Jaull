@@ -126,9 +126,14 @@ def test_service_caches_catalog_with_provenance_and_failure_diagnostics(
     assert service.capability_catalog().status == "missing"
     assert not service._published_evaluations()
     path.write_text(_catalog().catalog.model_dump_json(), encoding="utf-8")  # type: ignore[union-attr]
-    assert service.capability_catalog().status == "missing"  # A service reads once.
-    loaded = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
-    result = loaded.capability_catalog()
+    assert service.capability_catalog().status == "missing"  # Cached until the next request.
+    evaluations = service._published_evaluations()
+    result = service.capability_catalog()
     assert result.status == "loaded" and result.sha256
-    assert loaded._published_evaluations() == result.catalog.evaluations  # type: ignore[union-attr]
-    assert loaded.capability_catalog() is result
+    assert evaluations == result.catalog.evaluations  # type: ignore[union-attr]
+    assert service.capability_catalog() is result
+    path.write_text("not JSON", encoding="utf-8")
+    assert service.capability_catalog() is result
+    assert not service._published_evaluations()
+    invalid = service.capability_catalog()
+    assert invalid.status == "invalid" and invalid.diagnostic

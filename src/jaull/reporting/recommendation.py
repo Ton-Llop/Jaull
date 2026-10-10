@@ -31,8 +31,10 @@ from typing import Any
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
 from jaull.domain.requirements import RecommendationPriority
+from jaull.recommendation.diversity import diversify_ranked_plans
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
+from jaull.recommendation.shadow import POLICY_VERSION, apply_quality_policy
 from jaull.reporting.estimation import estimate_to_json_dict
 from jaull.workflow.state import RecommendationWorkflowState
 
@@ -41,6 +43,7 @@ REPORT_SCHEMA_VERSION = 3
 
 def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
     """Serialise a run into a stable, JSON-safe dictionary."""
+    quality_positions = _quality_policy_positions(state)
     return {
         "schema_version": REPORT_SCHEMA_VERSION,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -60,6 +63,7 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
                 rec,
                 _priority(state),
                 commercial_use_required=_commercial_use_required(state),
+                quality_position=quality_positions.get(rec.plan.plan_id) if rec.plan else None,
             )
             for rec in state.recommendations
         ],
@@ -78,6 +82,7 @@ def report_to_json(state: RecommendationWorkflowState, indent: int = 2) -> str:
 
 def report_to_markdown(state: RecommendationWorkflowState) -> str:
     """A human-readable summary for pasting into notes or a thesis appendix."""
+    quality_positions = _quality_policy_positions(state)
     lines: list[str] = ["# jaull recommendation report", ""]
     lines.append(f"Generated: {datetime.now(UTC).isoformat()}")
     lines.append("")
@@ -206,21 +211,48 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 + (f" — {readiness.message}" if readiness.message else "")
             )
         lines.append("")
-        criteria = _ranking_to_dict(
+        ranking = _ranking_to_dict(
             rec,
             _priority(state),
             commercial_use_required=_commercial_use_required(state),
-        )["criteria"]
+            quality_position=quality_positions.get(rec.plan.plan_id) if rec.plan else None,
+        )
+        criteria = ranking["criteria"]
         if criteria:
             lines += [
-                f"**Why this position?** Compared in order, for "
-                f"`{_priority(state).value}`:",
+                "**Why this position?** "
+                + ("Base criteria, compared in order, for " if "quality_policy" in ranking
+                   else "Compared in order, for ")
+                + f"`{_priority(state).value}`:",
                 "",
             ]
             lines += [
                 f"{index}. {item['axis'].replace('_', ' ')}: {item['value']}"
                 for index, item in enumerate(criteria, start=1)
             ]
+            if "quality_policy" in ranking:
+                policy = ranking["quality_policy"]
+                measured = policy["measurement"]
+                lines += [
+                    "", "**Measured-quality policy** (after base criteria, before diversity):",
+                ]
+                if measured is None:
+                    lines.append("- No applicable measurement; this plan keeps its base-pool slot.")
+                else:
+                    lines += [
+                        f"- {measured['suite']} / {measured['metric']}: {measured['value']:.1%} "
+                        f"({measured['correct']}/{measured['samples']}).",
+                        f"- Cohort: `{measured['cohort']}`.",
+                        f"- Record SHA256: `{measured['record_sha256']}`.",
+                        f"- Scope: {measured['scope']}",
+                    ]
+                if policy["base_pool_position"] is not None:
+                    lines.append(f"- Quality order: pool #{policy['base_pool_position']} -> "
+                                 f"#{policy['quality_pool_position']} (before diversity).")
+                else:
+                    lines.append(
+                        "- Pool positions unavailable; a measurement alone proves no move."
+                    )
             lines += [
                 "",
                 f"Diagnostic composite score: {rec.score.out_of_100}/100 "
@@ -455,6 +487,12 @@ _PLAN_RANKING_NOTE = (
     "weighted composite kept for compatibility and for comparing candidates "
     "without hardware; it does not determine the order shown here."
 )
+_QUALITY_RANKING_NOTE = (
+    "Base order comes from `ranking.criteria`, compared in order. "
+    "`ranking.quality_policy` then swaps comparable measured plans within one stratum; "
+    "diversity selects the displayed recommendations afterwards. `score` is diagnostic "
+    "and does not determine the order shown here."
+)
 _COMPOSITE_RANKING_NOTE = (
     "No hardware profile was available, so no execution plans were assessed. "
     "This run fell back to the legacy ranker, where `score` *is* what ordered "
@@ -462,11 +500,31 @@ _COMPOSITE_RANKING_NOTE = (
 )
 
 
+def _quality_policy_positions(state: RecommendationWorkflowState) -> dict[str, tuple[int, int]]:
+    if (state.requirements is None
+            or state.requirements.priority is not RecommendationPriority.QUALITY):
+        return {}
+    base = {item.plan.plan_id: i + 1 for i, item in enumerate(state.ranked_plans)}
+    active = apply_quality_policy(state.ranked_plans, state.requirements)
+    expected = [item.primary.plan.plan_id for item in diversify_ranked_plans(
+        active, limit=len(state.recommendations),
+    )]
+    shown = [rec.plan.plan_id for rec in state.recommendations if rec.plan is not None]
+    # Older snapshots may predate activation; never attribute a swap they did not show.
+    if expected != shown:
+        return {}
+    return {
+        item.plan.plan_id: (base[item.plan.plan_id], i + 1)
+        for i, item in enumerate(active)
+    }
+
+
 def _ranking_to_dict(
     rec: ModelRecommendation,
     priority: RecommendationPriority,
     *,
     commercial_use_required: bool = False,
+    quality_position: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     # Without a plan there is no v2 assessment and the composite genuinely
     # ordered the list. Labelling that run "diagnostic" would be the same class
@@ -481,7 +539,7 @@ def _ranking_to_dict(
     ranked = RankedPlan(
         evaluated=rec.evaluated, plan=rec.plan, assessment=rec.plan_assessment
     )
-    return {
+    payload: dict[str, Any] = {
         "ordered_by": priority.value,
         "criteria": [
             {"axis": criterion.axis, "value": criterion.value}
@@ -494,6 +552,17 @@ def _ranking_to_dict(
         "ranked_by": "plan_criteria",
         "note": _PLAN_RANKING_NOTE,
     }
+    if priority is RecommendationPriority.QUALITY:
+        measured = rec.plan_assessment.quality.applicable
+        payload["note"] = _QUALITY_RANKING_NOTE
+        payload["quality_policy"] = {
+            "version": POLICY_VERSION,
+            "artifact_sha256": rec.plan.artifact.sha256,
+            "measurement": measured.model_dump(mode="json") if measured is not None else None,
+            "base_pool_position": quality_position[0] if quality_position is not None else None,
+            "quality_pool_position": quality_position[1] if quality_position is not None else None,
+        }
+    return payload
 
 
 def _recommendation_to_dict(
@@ -501,11 +570,13 @@ def _recommendation_to_dict(
     priority: RecommendationPriority,
     *,
     commercial_use_required: bool = False,
+    quality_position: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     ranking = _ranking_to_dict(
         rec,
         priority,
         commercial_use_required=commercial_use_required,
+        quality_position=quality_position,
     )
     payload: dict[str, Any] = {
         "rank": rec.rank,

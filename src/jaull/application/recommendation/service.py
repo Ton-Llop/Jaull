@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
+
 from jaull.application.recommendation import policies as workflow_policies
 from jaull.discovery import series
 from jaull.discovery.grouping import collapse_families
@@ -30,6 +32,7 @@ from jaull.recommendation.models import (
     ScoreBreakdown,
     SeriesSibling,
 )
+from jaull.recommendation.shadow import apply_quality_policy
 
 _RankedRecommendation = tuple[
     EvaluatedCandidate,
@@ -81,8 +84,13 @@ def recommend(
     capability_analyzer: capability.CapabilityAnalyzer | None = None,
     hardware: HardwareProfile | None = None,
     plan_context: PlanRankingContext | None = None,
+    on_ranked_plans: Callable[[Sequence[RankedPlan]], None] | None = None,
 ) -> list[ModelRecommendation]:
-    """Produce at most ``limit`` explained recommendations."""
+    """Produce at most ``limit`` explained recommendations.
+
+    ``on_ranked_plans`` sees the full plan order before diversity, so a caller
+    can evaluate another policy on the very pool this result came from.
+    """
     analyzer = capability_analyzer or capability.MetadataCapabilityAnalyzer()
     enriched = enrich_candidate_features(
         evaluated,
@@ -99,10 +107,14 @@ def recommend(
             requirements,
             context=context,
         )
-        diversified_items = diversify_ranked_plans(ranked_plans, limit=limit)
+        if on_ranked_plans is not None:
+            # The base order: Recompare and the fallback baseline start from it.
+            on_ranked_plans(ranked_plans)
+        active_plans = apply_quality_policy(ranked_plans, requirements)
+        diversified_items = diversify_ranked_plans(active_plans, limit=limit)
         v2_priority = {
-            item.evaluated.repo_id: float(len(ranked_plans) - index)
-            for index, item in enumerate(ranked_plans)
+            item.evaluated.repo_id: float(len(active_plans) - index)
+            for index, item in enumerate(active_plans)
         }
         _collapsed, siblings = collapse_families(enriched, v2_priority)
         ranked: list[_RankedRecommendation] = [

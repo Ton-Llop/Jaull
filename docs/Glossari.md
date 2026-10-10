@@ -6,6 +6,14 @@ Diccionari de consulta ràpida per recordar els conceptes principals del project
 
 ## A
 
+### acc / acc_norm
+Les dues mètriques de les tasques de resposta múltiple.
+
+`acc` escull la continuació amb la log-probabilitat més alta. `acc_norm` la normalitza per
+la llargada de la continuació, perquè una resposta llarga acumula més penalització només per
+ser llarga. Poden discrepar sobre la mateixa mostra, i justament per això existeixen totes
+dues.
+
 ### Actionability / actionabilitat
 Fins a quin punt un pla **arrencaria de veritat**, i no només sobre el paper.
 
@@ -182,6 +190,13 @@ Hi ha dos nivells:
 ### Candidate discovery
 Procés de cercar, deduplicar, filtrar i seleccionar models del Hugging Face Hub.
 
+### CapabilitySubject
+La clau amb què es busca una evidència publicada: repositori, variant, revisió i precisió.
+
+Les tres últimes poden ser nul·les, i **nul vol dir desconegut, mai comodí**. Un
+`CapabilitySubject` amb revisió nul·la no coincideix amb qualsevol revisió: coincideix amb
+una altra revisió desconeguda, i només com a evidència no fixada.
+
 ### CLI
 **Command-Line Interface**.
 
@@ -192,6 +207,14 @@ jaull estimate MODEL
 ```
 
 És adequada per scripting, automatització i resultats reproduïbles.
+
+### Classificació d’una avaluació
+El grau d’una mesura de qualitat: `plumbing` (3 mostres), `limited` (100) o `full` (el
+split sencer).
+
+Només `full` és reutilitzable. Reetiquetar un record `limited` com a `full` no habilita la
+reutilització, perquè la classificació es comprova i no es confia. Veure
+[identity_sha256](#identity_sha256).
 
 ### Compatibility / compatibilitat
 Classificació de si la memòria estimada cap als recursos detectats.
@@ -289,6 +312,14 @@ Els plans ja ordenats es col·lapsen per [model identity](#model-identity--ident
 el millor pla de cada model és el primari i els altres queden com a alternatives, sense
 gastar cap dels cinc llocs. Si el següent candidat té la mateixa signatura d’avaluació que el
 líder, es prefereix un que canviï de família, de mida o de perfil d’execució.
+
+### Docker
+El pilot d’avaluació executa l’avaluador dins d’un contenidor amb dependències fixades,
+mentre el model se serveix des de l’amfitrió.
+
+La imatge ha de portar l’etiqueta `io.jaull.quality.artifact-contract`, i el seu ID resolt
+forma part de la identitat del record: una imatge reconstruïda no és automàticament
+comparable amb l’antiga. `uv run jaull` mai no construeix ni descarrega imatges.
 
 ### Download count
 Nombre de descàrregues declarat per Hugging Face.
@@ -489,6 +520,13 @@ Camps relacionats:
 - `num_key_value_heads`;
 - `head_dim`.
 
+### HellaSwag
+La tasca de sentit comú que utilitza el pilot de qualitat.
+
+Es tria per ser de resposta múltiple i puntuable per log-probabilitats, sense generació ni
+plantilla de xat. Una puntuació d’HellaSwag no és una mesura de capacitat general: és una
+tasca, i el pilot només en cobreix una.
+
 ### Hidden size
 Mida principal de les representacions internes del model.
 
@@ -513,6 +551,15 @@ Plataforma on es publiquen models, datasets, demos i metadades.
 ---
 
 ## I
+
+### identity_sha256
+El resum que identifica les condicions completes d’una avaluació: artefacte, suite, dataset,
+mostres, avaluador, runtime i protocol efectiu.
+
+És la clau de cerca del magatzem de qualitat, **no el SHA de l’artefacte**. Els indicadors de
+col·locació formen part de la identitat del runtime, així que un resultat de CPU no satisfà
+mai la cerca d’un de GPU. Quan diversos resultats comparteixen una identitat, la cerca
+estricta s’absté en comptes de triar-ne un o fer-ne la mitjana.
 
 ### Inference / inferència
 Procés d’utilitzar un model ja entrenat per generar una resposta.
@@ -589,6 +636,13 @@ Nombre de “m’agrada” d’un repositori al Hub.
 
 És una senyal secundària de popularitat.
 
+### Linatge / lineage
+La relació entre un repositori i el model base del qual deriva.
+
+Jaull només la dona per confirmada per identitat del repositori o per metadades que declaren
+aquell repositori exacte com a base. **Una heurística de nom no val**: que un repo es digui
+`org/Cosa-7B-GGUF` no demostra que vingui de `org/Cosa-7B`.
+
 ### llama.cpp
 Runtime C/C++ optimitzat per executar models GGUF en CPU, GPU o combinació de totes dues.
 
@@ -600,6 +654,19 @@ Runtime C/C++ optimitzat per executar models GGUF en CPU, GPU o combinació de t
 Model de llenguatge amb molts paràmetres capaç de generar o transformar text.
 
 El terme no implica una mida exacta.
+
+### lm-evaluation-harness
+L’avaluador extern que executa les tasques de qualitat.
+
+Es fixa per commit i no per número de versió, perquè el seu backend de GGUF va canviant
+quines crides implementa de debò. El commit fixat encara no implementa plantilles de xat,
+així que xat, multiturn, eines i perplexitat es **rebutgen** en comptes d’aproximar-se.
+
+### Logprob
+El logaritme de la probabilitat que el model assigna a un token.
+
+El pilot no mesura text generat: força cada token objectiu i llegeix la seva log-probabilitat
+abans del mostreig. Sumades sobre una continuació, són el que decideix la resposta.
 
 ### LoRA
 Tècnica d’adaptació eficient que entrena matrius petites en lloc de modificar tots els pesos.
@@ -815,6 +882,14 @@ Text d’entrada enviat al model.
 
 Els tokens del prompt també ocupen KV cache.
 
+### Published reference vs measured
+Les dues menes d’evidència de qualitat, que no s’han de barrejar mai.
+
+Una **referència publicada** és una xifra que ha publicat algú altre sobre un repositori:
+bibliografia, amb la seva variant i el seu protocol a la vista, i sense cap garantia que el
+pla actual la reprodueixi. Una **mesura** és una execució de Jaull sobre uns bytes concrets,
+identificada pel SHA256 del fitxer. Una publicada no omple mai la secció de mesurades.
+
 ### Pydantic
 Biblioteca utilitzada per definir i validar els models de domini.
 
@@ -836,6 +911,15 @@ Orientació general:
 - `S`, `M` o altres sufixos indiquen variants internes.
 
 No s’ha d’ordenar la qualitat únicament pel nom sense validar el model i el runtime.
+
+### Quality evidence / evidència de qualitat
+El que Jaull sap sobre com respon un model, separat del que sap sobre si hi cap i si va
+ràpid.
+
+**No ordena el rànquing.** Es mostra amb la seva classificació, cobertura de mostres i
+límits, i no hi ha cap puntuació de qualitat agregada. Veure
+[Classificació](#classificació-duna-avaluació) i el
+[pilot](quality-evaluation-pilot.md).
 
 ### Quantization / quantització
 Reducció de la precisió dels pesos per disminuir memòria i, segons el backend, accelerar la inferència.
