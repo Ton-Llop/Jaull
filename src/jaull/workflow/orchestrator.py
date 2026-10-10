@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,7 +44,8 @@ from jaull.huggingface.client import HfClientProtocol
 from jaull.observability.telemetry import PerformanceTelemetry
 from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.recommendation import explanations
-from jaull.recommendation.engine_v2 import PlanRankingContext
+from jaull.recommendation.engine_v2 import PlanRankingContext, RankedPlan
+from jaull.recommendation.shadow import ShadowReport, build_shadow_report
 from jaull.workflow.cache import RunCache
 from jaull.workflow.models import WorkflowStep
 from jaull.workflow.progress import (
@@ -213,6 +214,8 @@ def run_workflow(
             "answers": answers,
             "hardware": hardware,
             "current_step": WorkflowStep.REQUIREMENTS,
+            "shadow": None,
+            "ranked_plans": (),
         }
     )
 
@@ -319,6 +322,7 @@ def run_workflow(
                     started_at,
                 )
 
+            ranked_pool: list[Sequence[RankedPlan]] = []
             recommendations = recommendation_service.recommend(
                 usable,
                 requirements,
@@ -326,7 +330,9 @@ def run_workflow(
                 capability_analyzer=services.capability_analyzer,
                 hardware=hardware,
                 plan_context=plan_context,
+                on_ranked_plans=ranked_pool.append,
             )
+            shadow = _shadow_report(ranked_pool, requirements)
         if not recommendations:
             return _finish_without_results(
                 current,
@@ -343,6 +349,8 @@ def run_workflow(
         return current.model_copy(
             update={
                 "recommendations": recommendations,
+                "shadow": shadow,
+                "ranked_plans": tuple(ranked_pool[0]) if ranked_pool else (),
                 "progress": reporter.progress,
                 "warnings": warnings,
                 "telemetry": telemetry.snapshot(wall_seconds=time.perf_counter() - started_at),
@@ -682,6 +690,21 @@ def _analysis_run_key(candidate: ModelCandidate) -> str:
     if revision is None and candidate.last_modified is not None:
         revision = candidate.last_modified.isoformat()
     return f"{candidate.repo_id}|{revision or 'unknown'}"
+
+
+def _shadow_report(
+    ranked_pool: list[Sequence[RankedPlan]], requirements: UserRequirements,
+) -> ShadowReport | None:
+    """The proposed policy on the pool just ranked; it must never cost the real result."""
+    if not ranked_pool:
+        return None  # The no-hardware path ranks without execution plans.
+    try:
+        return build_shadow_report(
+            ranked_pool[0], requirements, limit=policies.MAX_RECOMMENDATIONS,
+        )
+    except Exception:  # ponytail: shadow mode is an experiment; log and keep the result
+        logger.exception("Shadow recommendation policy failed; active ranking unaffected.")
+        return None
 
 
 def _finish_without_results(

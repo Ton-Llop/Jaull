@@ -176,7 +176,7 @@ permissions are not. Opening Jaull never starts a download or evaluator.
 inspected search pool, not just the displayed top five. Review the selection,
 download sizes and omissions, then start sequential diagnostics. This does not
 find a general-quality winner or change the recommendation order.
-→ [CLI quality pilot](docs/quality-evaluation-pilot.md#phase-c-explicit-cli-execution)
+→ [CLI quality pilot](docs/quality-evaluation-pilot.md#running-it)
 
 **Prediction vs observation.** `compare_prediction` puts a `MemoryEstimate` next to an
 `ExecutionObservation` and reports the signed error under a single convention

@@ -9,9 +9,22 @@ from threading import Event
 from typing import Any
 
 import pytest
-from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Collapsible,
+    DataTable,
+    Input,
+    Select,
+    Static,
+    TabbedContent,
+)
 
-from jaull.advisor.quality import check_selected_artifact, quality_evaluation_block_reason
+from jaull.advisor.quality import (
+    QualityReadiness,
+    check_selected_artifact,
+    quality_evaluation_block_reason,
+)
 from jaull.advisor.quality_candidates import (
     QualityCandidate,
     QualityCandidateSelection,
@@ -22,6 +35,7 @@ from jaull.domain.execution_plans import ArtifactVariantFormat, ExecutionPlan
 from jaull.domain.runtime import RuntimeName
 from jaull.recommendation.capability_catalog import CatalogReadResult
 from jaull.runtime.quality_eval_runner import (
+    PROFILE_GRADE,
     QualityEvaluationCancelled,
     QualityEvaluationError,
     QualityProfile,
@@ -63,9 +77,15 @@ class FakeAdvisor:
         self.plan_calls: list[tuple[Any, bool]] = []
         self.remembered: list[QualityRunRequest] = []
         self.preparations: list[QualityRunRequest] = []
+        self.readiness_profiles: list[Any] = []
 
     def quality_evaluation_setup(self) -> dict[str, str]:
         return self.setup
+
+    def quality_readiness(self, profile: Any, values: Any, **kwargs: Any) -> QualityReadiness:
+        # A ready synthetic environment; no Docker or file inspection in UI tests.
+        self.readiness_profiles.append(profile)
+        return QualityReadiness((("ok", "Evaluator image", "synthetic"),))
 
     def remember_quality_evaluation_setup(self, request: QualityRunRequest) -> None:
         self.remembered.append(request)
@@ -103,8 +123,8 @@ class FakeAdvisor:
 
     def load_quality_record(self, record_id: str) -> dict[str, Any]:
         record = _record()
-        if self.calls[-1].profile is QualityProfile.HELLASWAG100:
-            record["classification"] = "limited"
+        # The grade each profile produces, as the real bridge enforces it.
+        record["classification"] = PROFILE_GRADE[self.calls[-1].profile]
         return record
 
 
@@ -295,6 +315,12 @@ async def _screen_opt_in(
         status = screen.query_one("#quality-status", Static)
         assert status.region.y >= 0
         assert status.region.bottom <= screen.query_one("#quality-actions").region.y
+        screen.query_one("#quality-prepare", Button).press()
+        await _wait_until(
+            pilot, lambda: app.focused is screen.query_one("#quality-dataset", Input),
+        )
+        assert screen.query_one("#quality-tabs", TabbedContent).active == "quality-setup-tab"
+        assert not advisor.calls
         _fill(screen, _request(tmp_path))
         screen.query_one("#quality-profile", Select).value = profile.value
         await pilot.pause(0.6)  # Textual debounces two successive button clicks.
@@ -305,9 +331,25 @@ async def _screen_opt_in(
         assert advisor.calls[0].profile is profile
         assert "Saved:" in str(screen.query_one("#quality-status", Static).render())
         result = str(screen.query_one("#quality-result", Static).render())
-        grade = "plumbing" if profile is QualityProfile.SMOKE else "limited"
+        grade = {QualityProfile.SMOKE: "plumbing", QualityProfile.HELLASWAG100: "limited",
+                 QualityProfile.IFEVAL: "full"}[profile]
         assert f"Evaluation: {grade} evaluation" in result
         assert "not a general capability assessment" in result
+        assert screen.query_one("#quality-tabs", TabbedContent).active == "quality-results-tab"
+        assert screen.query_one("#quality-report", Collapsible).collapsed
+        metrics = screen.query_one("#quality-measurements")
+        # Models sit side by side in one table; the grade travels with every column.
+        table = metrics.query_one("#quality-comparison", DataTable)
+        cells = [str(cell) for row in range(table.row_count) for cell in table.get_row_at(row)]
+        metric_text = "\n".join(
+            [*(str(widget.content) for widget in metrics.query(Static)), *cells],
+        )
+        assert grade.capitalize() in metric_text
+        assert "Samples" in metric_text and "Accuracy" in metric_text
+        assert "Not a general capability assessment." in metric_text
+        await pilot.pause()
+        pane = screen.query_one("#quality-results-tab")
+        assert pane.region.y <= table.region.y < pane.region.bottom
         app.save_screenshot(f"jaull-quality-{size[0]}-{profile.value}.svg", path="/tmp")
 
 

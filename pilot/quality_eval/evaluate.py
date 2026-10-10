@@ -25,6 +25,15 @@ PROFILES = {
         "sample_ids": sorted(random.Random(20261002).sample(range(DATASET_SIZE), 100)),
         "classification": "limited", "status": "limited_passed",
     },
+    # Generation through the GGUF's chat template; see pilot/quality_eval/ifeval.py.
+    "ifeval-smoke": {
+        "task": "jaull-ifeval-chat-smoke-v1", "sample_ids": [0, 1, 2],
+        "classification": "plumbing", "status": "ifeval_plumbing_passed", "suite": "ifeval",
+    },
+    "ifeval": {
+        "task": "jaull-ifeval-chat-v1", "sample_ids": list(range(541)),
+        "classification": "full", "status": "ifeval_full_passed", "suite": "ifeval",
+    },
 }
 
 
@@ -323,7 +332,12 @@ def main() -> None:
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
     args = parser.parse_args()
     try:
-        run(args.output, args.base_url, args.profile)
+        if PROFILES[args.profile].get("suite") == "ifeval":
+            from pilot.quality_eval import ifeval
+
+            ifeval.run(args.output, args.base_url, args.profile)
+        else:
+            run(args.output, args.base_url, args.profile)
     except Exception as exc:
         write_json(
             args.output / "evaluator-error.json", {"type": type(exc).__name__, "error": str(exc)}

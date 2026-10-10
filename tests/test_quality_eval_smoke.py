@@ -275,7 +275,9 @@ def test_quality_rejects_split_headers_even_with_a_single_file_name(tmp_path: Pa
         artifact_memory_estimate(artifact, qwen_hardware())
 
 
-@pytest.mark.parametrize("failure", ["revision", "size", "sha", "image", "fit", "metadata"])
+@pytest.mark.parametrize(
+    "failure", ["revision", "size", "sha", "image", "fit", "metadata", "chat_template"],
+)
 @pytest.mark.skipif(os.name != "posix", reason="Host preflight requires Linux/WSL local paths")
 def test_quality_generic_preflight_fails_before_launching_server_or_container(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
@@ -331,18 +333,22 @@ def test_quality_generic_preflight_fails_before_launching_server_or_container(
                         pytest.fail("Preflight must not execute a container"))
 
     def image_inspect(*args, **kwargs):
-        assert failure in ("image", "fit", "metadata")
+        assert failure in ("image", "fit", "metadata", "chat_template")
         labels = {} if failure == "image" else {ARTIFACT_CONTRACT_LABEL: ARTIFACT_CONTRACT}
+        if failure == "chat_template":
+            labels["io.jaull.quality.suites"] = "hellaswag-v1,ifeval-chat-v1"
         return json.dumps([{"Id": "sha256:" + "c" * 64, "RepoDigests": [],
                             "Config": {"Labels": labels}}])
 
     monkeypatch.setattr(smoke.subprocess, "check_output", image_inspect)
-    args = SimpleNamespace(profile="smoke", output=tmp_path / "run", artifact_json=artifact_json,
+    profile = "ifeval-smoke" if failure == "chat_template" else "smoke"
+    args = SimpleNamespace(profile=profile, output=tmp_path / "run", artifact_json=artifact_json,
                            dataset_file=tmp_path / "data.parquet", llama_server=server,
                            image="synthetic:old")
     reason = {"revision": "revision", "size": "Size mismatch", "sha": "SHA-256 mismatch",
               "image": "rebuild", "fit": "full-device memory fit",
-              "metadata": "full-device memory fit"}[failure]
+              "metadata": "full-device memory fit",
+              "chat_template": "embedded GGUF chat template"}[failure]
     with pytest.raises((ValueError, ArtifactVerificationError), match=reason):
         smoke.run(args)
     assert (args.output / "runner-error.json").is_file()

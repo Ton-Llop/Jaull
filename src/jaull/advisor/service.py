@@ -10,7 +10,8 @@ front-end modules free of ``HfClient()``/``detect_hardware`` construction.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+import shutil
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -22,7 +23,7 @@ from jaull.application.execution import (
     plan_launch,
 )
 from jaull.artifacts.service import ArtifactService
-from jaull.artifacts.storage import ArtifactStorage
+from jaull.artifacts.storage import ArtifactStorage, LocalModelFile
 from jaull.bootstrap.container import (
     DetectHardwareFn,
     EstimateMemoryFn,
@@ -96,6 +97,7 @@ from jaull.workflow.state import RecommendationWorkflowState
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from jaull.advisor.quality import QualityReadiness
     from jaull.advisor.quality_candidates import (
         QualityCandidate,
         QualityCandidateOutcome,
@@ -118,16 +120,24 @@ if TYPE_CHECKING:
     from jaull.experiments.storage import ExperimentStore
     from jaull.recommendation.capability_catalog import CatalogReadResult
     from jaull.recommendation.models import ModelRecommendation
+    from jaull.recommendation.shadow import ShadowReport
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
     from jaull.runtime.locator import RuntimeLocator
-    from jaull.runtime.quality_eval_runner import QualityRunRequest
+    from jaull.runtime.quality_eval_runner import QualityProfile, QualityRunRequest
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
     from jaull.runtime.transformers_runner import TransformersRunner
 
 DiagnosticsFn = Callable[[], list[DiagnosticResult]]
 CancelCheck = Callable[[], bool]
 logger = logging.getLogger(__name__)
+
+
+
+def _quality_runs_root() -> Path:
+    from jaull.paths import user_data_dir
+
+    return user_data_dir("quality-runs")
 
 
 @dataclass(frozen=True)
@@ -259,7 +269,15 @@ class AdvisorService:
             benchmark_records=self._stored_benchmark_records(),
             external_evaluations=self._published_evaluations(),
             experiment_records=self._stored_experiment_records(),
+            quality_records=self._stored_quality_records(),
         )
+
+    def _stored_quality_records(self) -> list[dict[str, Any]]:
+        try:
+            return self._quality_store().records()
+        except OSError:
+            logger.debug("Could not read local quality records.", exc_info=True)
+            return []
 
     def _plan_backend_selection(
         self,
@@ -308,23 +326,23 @@ class AdvisorService:
         return readiness or None
 
     def _published_evaluations(self) -> Sequence[ExternalEvaluationEvidence]:
-        """The shipped catalogue, read once per service.
+        """The shipped catalogue, refreshed at each recommendation request.
 
         These are publisher-reported results about a model, never a measurement
         of the artifact a plan would run, and never a score. `assess_plan`
         attaches each one only to the plan whose model it names; a missing or
         unreadable catalogue costs the ranking nothing.
         """
-        result = self.capability_catalog()
+        result = self.capability_catalog(refresh=True)
         return (
             result.catalog.evaluations
             if result.status == "loaded" and result.catalog is not None else ()
         )
 
-    def capability_catalog(self) -> CatalogReadResult:
+    def capability_catalog(self, *, refresh: bool = False) -> CatalogReadResult:
         """Cached diagnostic data, retaining version, digest and read failures."""
         cached = self._catalog_result
-        if cached is not None:
+        if cached is not None and not refresh:
             return cached
         from jaull.recommendation.capability_catalog import (
             default_catalog_path,
@@ -719,6 +737,18 @@ class AdvisorService:
         """Reusable evidence for this exact identity, or nothing."""
         return self._quality_store().lookup(identity)
 
+    def recompare_quality(self, state: RecommendationWorkflowState) -> ShadowReport:
+        """Explicit new shadow proposal from stored quality; no search or execution."""
+        from jaull.application.recommendation.policies import MAX_RECOMMENDATIONS
+        from jaull.recommendation.shadow import recompare_quality
+
+        if not state.completed or state.requirements is None or not state.ranked_plans:
+            raise ValueError("Recompare requires a completed search with a saved plan pool.")
+        return recompare_quality(
+            state.ranked_plans, state.requirements, self._stored_quality_records(),
+            limit=MAX_RECOMMENDATIONS,
+        )
+
     def run_quality_evaluation(
         self, request: QualityRunRequest, *, is_cancelled: CancelCheck | None = None,
     ) -> Path:
@@ -747,6 +777,17 @@ class AdvisorService:
         from jaull.runtime.quality_eval_runner import save_quality_setup
 
         save_quality_setup(request)
+
+    def quality_readiness(
+        self, profile: QualityProfile, values: Mapping[str, str], *,
+        is_cancelled: Callable[[], bool] | None = None,
+    ) -> QualityReadiness:
+        """What the evaluator needs for this suite, resolved and verified locally."""
+        from jaull.advisor.quality import check_quality_readiness
+
+        return check_quality_readiness(
+            self.prepare_quality_evaluation_setup, profile, values, is_cancelled=is_cancelled,
+        )
 
     def prepare_quality_evaluation_setup(
         self, request: QualityRunRequest, *,
@@ -826,6 +867,34 @@ class AdvisorService:
                 replace(request, artifact_json=manifest), is_cancelled=is_cancelled,
             )
 
+    # ------------------------------------------------------------------
+    # Disk space. Deleting a model never touches stored results: evidence is
+    # keyed by digest and stays valid; the file can be downloaded again.
+    # ------------------------------------------------------------------
+    def local_models(self) -> list[tuple[LocalModelFile, bool]]:
+        """Downloaded files, each with whether stored quality results measured it."""
+        measured = {item.artifact_sha256 for item in self.quality_evidence()}
+        return [(item, item.sha256 in measured)
+                for item in self._artifacts().storage.local_files()]
+
+    def delete_local_model(self, repo_id: str, filename: str) -> int:
+        return self._artifacts().storage.delete(repo_id, filename)
+
+    def quality_run_folders(self) -> tuple[int, int]:
+        """(folders, bytes) of finished evaluation runs: logs and raw bundles only."""
+        folders = [path for path in _quality_runs_root().glob("*") if path.is_dir()]
+        size = sum(item.stat().st_size for folder in folders
+                   for item in folder.rglob("*") if item.is_file())
+        return len(folders), size
+
+    def delete_quality_run_folders(self) -> int:
+        """Remove run folders; a stored record already embeds the evidence it needs."""
+        _, size = self.quality_run_folders()
+        for folder in _quality_runs_root().glob("*"):
+            if folder.is_dir():
+                shutil.rmtree(folder, ignore_errors=True)
+        return size
+
     def compare_quality(self, left_id: str, right_id: str) -> dict[str, Any]:
         from jaull.evaluation.quality_comparison import compare_quality_records
 
@@ -837,12 +906,17 @@ class AdvisorService:
 
     def prepare_quality_candidates(
         self, state: RecommendationWorkflowState, *,
+        profile: QualityProfile | None = None,
         is_cancelled: Callable[[], bool] | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> QualityCandidateSelection:
         from jaull.advisor.quality_candidates import prepare_candidates
+        from jaull.runtime.quality_eval_runner import QualityProfile as Profile
 
-        return prepare_candidates(self, state, is_cancelled=is_cancelled, on_progress=on_progress)
+        return prepare_candidates(
+            self, state, profile=profile or Profile.SMOKE,
+            is_cancelled=is_cancelled, on_progress=on_progress,
+        )
 
     def run_quality_candidates(
         self, candidates: tuple[QualityCandidate, ...], request: QualityRunRequest, *,

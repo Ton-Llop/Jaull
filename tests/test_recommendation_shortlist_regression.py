@@ -19,8 +19,11 @@ never the state of the Hugging Face Hub on the day the test ran.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -33,7 +36,9 @@ from _workflow_fixtures import (
     hardware,
 )
 from jaull.domain.requirements import RecommendationPriority, UseCase
+from jaull.recommendation.engine_v2 import PlanRankingContext, rank_execution_plans
 from jaull.workflow import orchestrator
+from jaull.workflow.state import RecommendationWorkflowState
 from test_workflow_orchestrator import _container
 
 # An 8 GiB card, like the machine the regression was found on.
@@ -66,8 +71,10 @@ SMALL_MODELS = frozenset(
 )
 
 
-def _shortlist(priority: RecommendationPriority) -> list[str]:
-    """Run the whole guided workflow offline and return the displayed order."""
+def _shortlist_state(
+    priority: RecommendationPriority, *, reverse_candidates: bool = False,
+) -> RecommendationWorkflowState:
+    """Shared synthetic baseline; no search metadata or measurements are live."""
     search = FakeSearchClient(
         default=[
             candidate(
@@ -80,13 +87,15 @@ def _shortlist(priority: RecommendationPriority) -> list[str]:
             for repo_id, _bytes, downloads, likes, languages in SHORTLIST
         ]
     )
+    if reverse_candidates:
+        search.default.reverse()
     analyses = {
         repo_id: gguf_analysis(
             repo_id=repo_id, quantizations=("Q4_K_M",), base_bytes=size
         )
         for repo_id, size, *_rest in SHORTLIST
     }
-    state = orchestrator.run_workflow(
+    return orchestrator.run_workflow(
         answers(
             use_case=UseCase.GENERAL_CHAT,
             priority=priority,
@@ -95,7 +104,11 @@ def _shortlist(priority: RecommendationPriority) -> list[str]:
         hardware(vram_gib=8, ram_gib=32),
         _container(search, analyses=analyses, vram_budget=VRAM_BYTES),
     )
-    return [recommendation.repo_id for recommendation in state.recommendations]
+
+
+def _shortlist(priority: RecommendationPriority) -> list[str]:
+    """Run the whole guided workflow offline and return the displayed order."""
+    return [rec.repo_id for rec in _shortlist_state(priority).recommendations]
 
 
 def test_balanced_shortlist_is_ordered_by_capability() -> None:
@@ -159,3 +172,53 @@ def test_a_model_that_does_not_fit_is_never_displayed() -> None:
     """20 GiB on an 8 GiB card, with RAM offload still short of it."""
     for priority in RecommendationPriority:
         assert "org/Giant-32B-Instruct-GGUF" not in _shortlist(priority)
+
+
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_vfinal_baseline_preserves_orders_and_plan_ids(
+    priority: RecommendationPriority,
+) -> None:
+    """Freeze fallback, including repeat runs and reversed synthetic search input."""
+    baseline = json.loads(
+        (Path(__file__).parent / "snapshots/recommendation-policy-baseline.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    assert baseline["data_kind"] == "synthetic_offline"
+    assert json.loads(json.dumps(SHORTLIST)) == baseline["input"]["candidates"]
+    expected = baseline["orders"][priority.value]
+    ids = baseline["plans"]
+    for reverse in (False, False, True):
+        state = _shortlist_state(priority, reverse_candidates=reverse)
+        assert state.requirements is not None and state.hardware is not None
+        assert state.completed and state.answers is not None
+        assert state.answers.languages == baseline["input"]["languages"]
+        assert state.requirements.priority is priority
+        assert state.requirements.use_case.value == baseline["input"]["use_case"]
+        assert state.hardware.memory.total_bytes == baseline["input"]["ram_gib"] * GIB
+        assert state.hardware.gpus[0].vram_total_bytes == baseline["input"]["vram_gib"] * GIB
+        assert {item.repo_id for item in state.evaluated_candidates} == {
+            item[0] for item in baseline["input"]["candidates"]
+        }
+        plans = rank_execution_plans(
+            state.evaluated_candidates,
+            state.requirements,
+            context=PlanRankingContext(hardware=state.hardware),
+        )
+        assert [item.plan.plan_id for item in plans] == [
+            ids[key] for key in expected["before_diversity"]
+        ]
+        assert [rec.plan.plan_id for rec in state.recommendations if rec.plan is not None] == [
+            ids[key] for key in expected["top_five"]
+        ]
+        assert [item.plan.plan_id for item in plans if item.assessment.rejected] == [
+            ids[key] for key in baseline["rejected_plans"]
+        ]
+        assert all(item.plan.artifact.quantization == baseline["input"]["quantization"]
+                   for item in plans)
+        assert all(
+            item.assessment.local_benchmark_id is None
+            and item.assessment.measured_generation_tokens_per_second is None
+            and not item.assessment.external_evaluations
+            for item in plans
+        )

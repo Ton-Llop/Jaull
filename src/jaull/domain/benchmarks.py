@@ -6,7 +6,7 @@ import platform
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -91,6 +91,36 @@ class BenchmarkMeasurement(BaseModel):
     raw_ngl: str | None = None
 
 
+class LlamaBenchProtocol(BaseModel):
+    """The test-instance settings llama-bench reported for one invocation.
+
+    Every field is optional because an absent value is unknown, never a default:
+    the markdown table omits any column still at its default, so this is read
+    from the tool's own JSONL output instead.
+
+    These are not all runtime-applied values: batch/microbatch limits may be
+    clamped when the context is created. Keep them as reported configuration.
+    ``flash_attn`` echoes what was *requested* (``on``/``off``/``auto``), so an
+    unresolved ``auto`` stays ``auto_unresolved`` rather than pretending to be a
+    value. Even ``on`` can be disabled by the runtime. ``warmup`` is derived
+    from the command Jaull issued, not an independent observation, because the
+    output reports no warmup field at all.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    build_commit: str | None = None
+    build_number: int | None = Field(default=None, ge=0)
+    n_threads: int | None = Field(default=None, gt=0)
+    n_batch: int | None = Field(default=None, gt=0)
+    n_ubatch: int | None = Field(default=None, gt=0)
+    cache_type_k: str | None = None
+    cache_type_v: str | None = None
+    flash_attn: Literal["on", "off", "auto_unresolved"] | None = None
+    load_mode: str | None = None
+    warmup: Literal["ran", "skipped"] | None = None
+
+
 class BenchmarkObservation(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
@@ -98,6 +128,8 @@ class BenchmarkObservation(BaseModel):
     measurements: list[BenchmarkMeasurement] = Field(default_factory=list)
     repetitions: int = Field(ge=1)
     duration_seconds: float = Field(ge=0.0)
+    # Absent on every record written before protocol capture existed.
+    protocol: LlamaBenchProtocol | None = None
     methodology: str | None = None
     model_load_seconds: float | None = Field(default=None, ge=0.0)
     warmup_seconds: float | None = Field(default=None, ge=0.0)
@@ -315,4 +347,5 @@ __all__ = [
     "BenchmarkRunResult",
     "LlamaBenchBinaryStatus",
     "LlamaBenchCapability",
+    "LlamaBenchProtocol",
 ]

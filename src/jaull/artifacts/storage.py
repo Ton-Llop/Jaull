@@ -8,7 +8,10 @@ stay under the root.
 
 from __future__ import annotations
 
+import contextlib
 import re
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from jaull.artifacts.errors import ArtifactError, ArtifactVerificationError
@@ -16,6 +19,16 @@ from jaull.domain.artifacts import ModelArtifact
 from jaull.paths import user_data_dir
 
 _SHA256_SUFFIX = ".sha256"
+
+
+@dataclass(frozen=True)
+class LocalModelFile:
+    repo_id: str
+    filename: str
+    path: Path
+    size_bytes: int
+    #: The verified digest from the sidecar, or None if it was never verified.
+    sha256: str | None
 
 
 def _default_models_dir() -> Path:
@@ -62,6 +75,45 @@ class ArtifactStorage:
 
     def ensure_parent(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+
+    def local_files(self) -> list[LocalModelFile]:
+        """Every downloaded file under ``<owner>/<repo>/``, largest first."""
+        if not self._root.is_dir():
+            return []
+        files = []
+        for path in self._root.glob("*/*/*"):
+            if not path.is_file() or path.name.endswith(_SHA256_SUFFIX):
+                continue
+            owner, repo = path.parent.parent.name, path.parent.name
+            try:
+                digest = self.load_sha256(path)
+            except ArtifactVerificationError:
+                digest = None
+            files.append(LocalModelFile(
+                f"{owner}/{repo}", path.name, path, path.stat().st_size, digest,
+            ))
+        return sorted(files, key=lambda item: (-item.size_bytes, item.repo_id, item.filename))
+
+    def delete(self, repo_id: str, filename: str) -> int:
+        """Remove one downloaded file with its sidecar and download metadata.
+
+        Returns the bytes freed. The path goes through the same traversal checks
+        as a download, so nothing outside the models root can be removed.
+        """
+        path = self._safe_path(repo_id, filename)
+        freed = path.stat().st_size if path.is_file() else 0
+        path.unlink(missing_ok=True)
+        self._sidecar(path).unlink(missing_ok=True)
+        download = path.parent / ".cache" / "huggingface" / "download"
+        for leftover in (download / f"{filename}.metadata", download / f"{filename}.lock"):
+            leftover.unlink(missing_ok=True)
+        # A repository folder with no model left holds only download bookkeeping.
+        if not any(item.is_file() and not item.name.endswith(_SHA256_SUFFIX)
+                   for item in path.parent.iterdir()):
+            shutil.rmtree(path.parent, ignore_errors=True)
+            with contextlib.suppress(OSError):
+                path.parent.parent.rmdir()  # Only if the owner folder is now empty.
+        return freed
 
     # ------------------------------------------------------------------
     # Internals
@@ -111,4 +163,4 @@ class ArtifactStorage:
         return path.with_name(path.name + _SHA256_SUFFIX)
 
 
-__all__ = ["ArtifactStorage"]
+__all__ = ["ArtifactStorage", "LocalModelFile"]

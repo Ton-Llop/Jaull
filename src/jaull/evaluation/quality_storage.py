@@ -17,6 +17,7 @@ from jaull.evaluation.quality_records import (
     digest,
     is_reusable_evidence,
     load_record,
+    repeat_key,
     save_record,
     validate_identity,
 )
@@ -183,8 +184,13 @@ class QualityEvidenceStore:
             except QualityStoreError:
                 continue
             if record["identity_sha256"] == identity_sha256 and is_reusable_evidence(record):
-                reusable.append(record["result"])
-        return reusable[0] if len(reusable) == 1 else None
+                reusable.append(record)
+        # Repeats with the same answers are one result; disagreeing ones are none.
+        if len({repeat_key(record) for record in reusable}) != 1:
+            return None
+        # The same representative as the shadow: the lowest record digest.
+        result: dict[str, Any] = min(reusable, key=digest)["result"]
+        return result
 
     @staticmethod
     def _validate_identity_id(record_id: str) -> None:

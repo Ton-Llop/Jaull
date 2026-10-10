@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,17 +26,29 @@ from jaull.estimator.policies import (
 )
 from jaull.exceptions import JaullError
 from jaull.recommendation.policies import CONFIRMED_MEMORY_STATUSES
-from jaull.runtime.quality_eval_runner import QualityEvaluationCancelled, QualityRunRequest
+from jaull.recommendation.quality import (
+    StoredQuality,
+    index_quality_records,
+    requested_profile,
+    stored_quality,
+)
+from jaull.runtime.quality_eval_runner import (
+    PROFILE_CONTEXT,
+    QualityEvaluationCancelled,
+    QualityProfile,
+    QualityRunRequest,
+)
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.domain.hardware import HardwareProfile
     from jaull.domain.requirements import UserRequirements
     from jaull.evaluation.quality_records import QualityEvidence
+    from jaull.recommendation.engine_v2 import RankedPlan
     from jaull.workflow.state import RecommendationWorkflowState
 
 MAX_QUALITY_CANDIDATES = 3
-EVALUATION_CONTEXT = 2048
+EVALUATION_CONTEXT = PROFILE_CONTEXT[QualityProfile.SMOKE]
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,14 @@ class QualityCandidate:
     reason: str
     downloaded: bool
     historical_records: int = 0
+    #: The shadow's own reading of the store for this artifact: one applicable
+    #: result, a conflict between repeats, or nothing applicable.
+    stored: StoredQuality = field(default_factory=StoredQuality)
+
+    @property
+    def settled(self) -> bool:
+        """A rerun cannot change what applies: it repeats a result or joins a conflict."""
+        return self.stored.applicable is not None or self.stored.conflict
 
 
 @dataclass(frozen=True)
@@ -64,6 +84,7 @@ class QualityCandidateOutcome:
 def _prepare_candidate(
     advisor: AdvisorService, plan: ExecutionPlan, hardware: HardwareProfile,
     requirements: UserRequirements, seen: set[str], evidence: list[QualityEvidence],
+    context: int = EVALUATION_CONTEXT,
 ) -> QualityCandidate:
     variant = plan.artifact
     if not variant.filename or variant.file_count != 1:
@@ -78,6 +99,11 @@ def _prepare_candidate(
     if not artifact.sha256 or not artifact.size_bytes or artifact.sha256 in seen:
         raise ValueError("missing digest/size or duplicate artifact")
     analysis = advisor.inspect_model(artifact.repo_id)
+    # Refuse here what the host preflight would refuse after a download; unknown
+    # stays unknown and that preflight still fails closed on the GGUF header.
+    limit = analysis.config.max_position_embeddings if analysis.config is not None else None
+    if limit is not None and limit < context:
+        raise ValueError(f"model context {limit} is below the evaluation context {context}")
     exact = [item for item in analysis.classification.gguf_variants
              if item.quantization == artifact.quantization
              and len(item.files) == 1 and item.files[0].path == artifact.filename
@@ -88,7 +114,7 @@ def _prepare_candidate(
         "classification": analysis.classification.model_copy(update={"gguf_variants": exact}),
     })
     config = InferenceConfiguration(
-        context_length=EVALUATION_CONTEXT, quantization=artifact.quantization,
+        context_length=context, quantization=artifact.quantization,
         device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
         safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
     )
@@ -99,7 +125,7 @@ def _prepare_candidate(
                 CompatibilityStatus.COMFORTABLE, CompatibilityStatus.COMPATIBLE,
                 CompatibilityStatus.TIGHT,
             }):
-        raise ValueError("full-device fit unconfirmed at evaluation context 2048")
+        raise ValueError(f"full-device fit unconfirmed at evaluation context {context}")
     workload_config = config.model_copy(update={
         "context_length": requirements.desired_context,
         "concurrent_users": requirements.concurrent_users,
@@ -116,7 +142,8 @@ def _prepare_candidate(
         }), "memory_prediction": workload_estimate,
     })
     return QualityCandidate(
-        pinned, "Search priority/diversity; workload fits; full-device evaluation fit at ctx 2048.",
+        pinned,
+        f"Search priority/diversity; workload fits; full-device evaluation fit at ctx {context}.",
         advisor._artifacts().is_downloaded(artifact),
         sum(item.artifact_sha256 == artifact.sha256 for item in evidence),
     )
@@ -124,6 +151,7 @@ def _prepare_candidate(
 
 def prepare_candidates(
     advisor: AdvisorService, state: RecommendationWorkflowState, *,
+    profile: QualityProfile = QualityProfile.SMOKE,
     is_cancelled: Callable[[], bool] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> QualityCandidateSelection:
@@ -136,14 +164,12 @@ def prepare_candidates(
 
     if state.hardware is None or state.requirements is None:
         return QualityCandidateSelection(notices=("Search hardware/requirements unavailable.",))
+    if profile is QualityProfile.IFEVAL:
+        return _prepare_shown_plans(advisor, state, report)
     report("Preparing candidates from the inspected search pool")
     context = advisor._plan_ranking_context(state.hardware)
-    selection = context.backend_selection
-    if (selection is None or selection.selected_backend is not ComputeBackend.CUDA
-            or len(state.hardware.gpus) != 1):
-        return QualityCandidateSelection(notices=(
-            "Quality evaluation requires one CUDA GPU; multi-device selection is unsupported.",
-        ))
+    if (blocker := _cuda_blocker(context.backend_selection, state.hardware)) is not None:
+        return QualityCandidateSelection(notices=(blocker,))
     # Request every inspected logical model, not just the displayed top five.
     # Existing eligibility, ordering and diversity stay owned by recommendation.
     pool = service.recommend(
@@ -207,6 +233,111 @@ def prepare_candidates(
             f"{len(pool) - inspected} models not inspected: selection budget reached."
         )
     return QualityCandidateSelection(tuple(chosen), tuple(notices), len(pool))
+
+
+def _cuda_blocker(selection: object, hardware: HardwareProfile) -> str | None:
+    if (selection is None
+            or getattr(selection, "selected_backend", None) is not ComputeBackend.CUDA
+            or len(hardware.gpus) != 1):
+        return "Quality evaluation requires one CUDA GPU; multi-device selection is unsupported."
+    return None
+
+
+def _prepare_shown_plans(
+    advisor: AdvisorService, state: RecommendationWorkflowState,
+    report: Callable[[str], None],
+) -> QualityCandidateSelection:
+    """IFEval measures plans of this search's own pool, so Recompare can apply them.
+
+    Evidence attaches by artifact digest. Picking another quantization of the same
+    repository - what the HellaSwag queue does - would measure bytes no plan in the
+    pool runs, and the result could never order this search. A shown model whose
+    shown plan is not a GGUF (often safetensors) is measured through the best GGUF
+    path of that same logical model already in the saved pool; the result then
+    attaches to that path, never to the shown plan.
+    """
+    assert state.hardware is not None and state.requirements is not None
+    profile = requested_profile(state.requirements)
+    if profile != "ifeval-instructions-en-v1":
+        return QualityCandidateSelection(notices=(
+            "IFEval applies only to English general-chat requests.",
+        ))
+    ranking = advisor._plan_ranking_context(state.hardware)
+    if (blocker := _cuda_blocker(ranking.backend_selection, state.hardware)) is not None:
+        return QualityCandidateSelection(notices=(blocker,))
+    report("Preparing the exact plans this search showed")
+    shown = [rec.plan for rec in state.recommendations if rec.plan is not None]
+    if not state.ranked_plans:
+        return QualityCandidateSelection(notices=(
+            "This search kept no plan pool; run it again to evaluate.",
+        ), considered=len(shown))
+    evidence = advisor.quality_evidence()
+    # The index the shadow ranks with, so "measured" here means applicable there.
+    index = index_quality_records(advisor._stored_quality_records())
+    chosen: list[QualityCandidate] = []
+    notices: list[str] = []
+    seen: set[str] = set()
+    for shown_plan in shown:
+        name = f"{shown_plan.artifact.repo_id} / {shown_plan.artifact.label}"
+        if len(chosen) == MAX_QUALITY_CANDIDATES:
+            notices.append(f"{name}: not offered, {MAX_QUALITY_CANDIDATES} candidates at most.")
+            continue
+        report(f"Checking {name}")
+        plan = _gguf_path(shown_plan, state.ranked_plans)
+        if plan is None:
+            notices.append(
+                f"{name}: no single-file GGUF path with a published digest for this model "
+                "in the saved search pool."
+            )
+            continue
+        variant = plan.artifact
+        assert variant.sha256 is not None
+        try:
+            candidate = _prepare_candidate(
+                advisor, plan, state.hardware, state.requirements, seen, evidence,
+                context=PROFILE_CONTEXT[QualityProfile.IFEVAL],
+            )
+        except QualityEvaluationCancelled:
+            raise
+        except (JaullError, OSError, ValueError) as exc:
+            notices.append(f"{name}: {exc}")
+            continue
+        candidate = replace(candidate, stored=stored_quality(
+            index, candidate.plan.artifact.sha256, profile,
+        ))
+        if plan is not shown_plan:
+            candidate = replace(candidate, reason=(
+                f"GGUF path of the shown model, not its shown {shown_plan.artifact.label} "
+                f"plan; the result attaches to this path. {candidate.reason}"
+            ))
+        chosen.append(candidate)
+        seen.add(variant.sha256)
+    report("Candidate selection ready; no models downloaded")
+    return QualityCandidateSelection(tuple(chosen), tuple(notices), len(shown))
+
+
+def _gguf_path(shown: ExecutionPlan, pool: tuple[RankedPlan, ...]) -> ExecutionPlan | None:
+    """The shown plan if it is measurable, else the best GGUF path of its model in the pool.
+
+    Best means first in the saved order: the pool is already ranked, and choosing
+    again here would be a second ranker. Rejected plans are never offered.
+    """
+    if _measurable(shown):
+        return shown
+    key = model_identity_key(shown.model_identity)
+    return next((
+        ranked.plan for ranked in pool
+        if not ranked.assessment.rejected and _measurable(ranked.plan)
+        and model_identity_key(ranked.plan.model_identity) == key
+    ), None)
+
+
+def _measurable(plan: ExecutionPlan) -> bool:
+    artifact = plan.artifact
+    return bool(
+        artifact.format is ArtifactVariantFormat.GGUF and artifact.file_count == 1
+        and artifact.sha256 and artifact.identity_match is IdentityMatchStatus.CONFIRMED
+    )
 
 
 def run_candidates(

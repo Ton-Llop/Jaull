@@ -29,6 +29,83 @@ from jaull.paths import user_data_dir
 class QualityProfile(StrEnum):
     SMOKE = "smoke"
     HELLASWAG100 = "hellaswag100"
+    # Full IFEval split through the GGUF's own chat template; see pilot/quality_eval/ifeval.py.
+    IFEVAL = "ifeval"
+
+
+#: Pilot suite, produced record grade and evaluation context of each profile.
+PROFILE_SUITE = {
+    QualityProfile.SMOKE: "hellaswag", QualityProfile.HELLASWAG100: "hellaswag",
+    QualityProfile.IFEVAL: "ifeval",
+}
+PROFILE_GRADE = {
+    QualityProfile.SMOKE: "plumbing", QualityProfile.HELLASWAG100: "limited",
+    QualityProfile.IFEVAL: "full",
+}
+PROFILE_CONTEXT = {
+    QualityProfile.SMOKE: 2048, QualityProfile.HELLASWAG100: 2048, QualityProfile.IFEVAL: 4096,
+}
+
+
+#: Image labels the pilot's Dockerfile declares (pilot/quality_eval/Dockerfile).
+_CONTRACT_LABEL = ("io.jaull.quality.artifact-contract", "exact-local-gguf-v1")
+_SUITES_LABEL = "io.jaull.quality.suites"
+#: The suite capability an image must declare; HellaSwag predates the label.
+_SUITE_CAPABILITY = {"hellaswag": None, "ifeval": "ifeval-chat-v1"}
+EVALUATOR_REPOSITORY = "jaull-quality-eval"
+BUILD_COMMAND = (
+    "docker build --platform linux/amd64 --tag jaull-quality-eval:ifeval-chat-v1 "
+    "pilot/quality_eval"
+)
+
+
+def find_evaluator_image(profile: QualityProfile, preferred: str | None = None) -> str | None:
+    """A local evaluator image whose labels serve this profile's suite, or None.
+
+    Local only: lists and inspects existing images, never pulls or builds. The
+    remembered image wins when it qualifies; otherwise the newest that does.
+    """
+    def run(*args: str) -> str:
+        return subprocess.check_output(
+            ["docker", "image", *args], text=True, timeout=15, stderr=subprocess.DEVNULL,
+        )
+
+    try:
+        listed = run("ls", "--format", "{{.Repository}}:{{.Tag}}", EVALUATOR_REPOSITORY).split()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    names = [name for name in listed if not name.endswith(":<none>")]
+    if preferred and preferred not in names:
+        names.insert(0, preferred)
+    names.sort(key=lambda name: name != preferred)
+    capability = _SUITE_CAPABILITY[PROFILE_SUITE[profile]]
+    for name in names:
+        try:
+            labels = json.loads(run("inspect", "--format", "{{json .Config.Labels}}", name))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            continue
+        if not isinstance(labels, dict) or labels.get(_CONTRACT_LABEL[0]) != _CONTRACT_LABEL[1]:
+            continue
+        if capability is None or capability in str(labels.get(_SUITES_LABEL, "")).split(","):
+            return name
+    return None
+
+
+#: Bytes of each suite's pinned dataset file, for telling a person what downloads.
+DATASET_BYTES = {"hellaswag": 6315951, "ifeval": 207111}
+
+
+def pilot_checkout_complete(root: Path) -> bool:
+    """Whether this directory holds every pilot file the bridge would execute."""
+    root = root.expanduser()
+    return all((root / name).is_file() for name in _PILOT_FILES)
+
+
+def default_dataset(profile: QualityProfile) -> Path:
+    """Where the pinned dataset of this profile's suite is prepared by default."""
+    if PROFILE_SUITE[profile] == "ifeval":
+        return user_data_dir("quality-datasets") / "ifeval-v1" / "ifeval_input_data.jsonl"
+    return user_data_dir("quality-datasets") / "hellaswag-v1" / "validation.parquet"
 
 
 class QualityEvaluationError(JaullError):
@@ -55,7 +132,8 @@ _SETUP_KEYS = ("dataset", "server", "root", "image")
 _PILOT_FILES = (
     "scripts/quality_eval_smoke.py", "pilot/quality_eval/evaluate.py",
     "pilot/quality_eval/records.py", "pilot/quality_eval/suite.yaml",
-    "pilot/quality_eval/setup.py",
+    "pilot/quality_eval/setup.py", "pilot/quality_eval/ifeval.py",
+    "pilot/quality_eval/suite_ifeval.yaml",
 )
 
 
@@ -63,7 +141,7 @@ def quality_setup_defaults() -> dict[str, str]:
     """Local suggestions only: no network, Docker inspection or CWD execution."""
     root = Path(__file__).resolve().parents[3]
     defaults = {
-        "dataset": str(user_data_dir("quality-datasets") / "hellaswag-v1" / "validation.parquet"),
+        "dataset": str(default_dataset(QualityProfile.SMOKE)),
         "image": "jaull-quality-eval:gguf-v1",
     }
     if all((root / name).is_file() for name in _PILOT_FILES):
@@ -101,9 +179,20 @@ def load_quality_setup() -> dict[str, str]:
 
 
 def save_quality_setup(request: QualityRunRequest) -> None:
-    """Remember infrastructure only, never artifact, output, consent or results."""
+    """Remember infrastructure only, never artifact, output, consent or results.
+
+    The remembered dataset is the HellaSwag one; an IFEval run keeps it rather than
+    overwrite it with a file the HellaSwag profiles would then reject.
+    """
+    dataset = request.dataset_file.expanduser().resolve()
+    if PROFILE_SUITE[request.profile] == "ifeval":
+        try:
+            remembered = load_quality_setup().get("dataset")
+        except (OSError, ValueError, QualityEvaluationError):
+            remembered = None
+        dataset = Path(remembered) if remembered else default_dataset(QualityProfile.SMOKE)
     payload = {
-        "schema_version": 1, "dataset": str(request.dataset_file.expanduser().resolve()),
+        "schema_version": 1, "dataset": str(dataset),
         "server": str(request.llama_server.expanduser().resolve()),
         "root": str(request.pilot_root.expanduser().resolve()), "image": request.image,
     }
@@ -188,6 +277,7 @@ def prepare_quality_setup(
         "--dataset-file", str(request.dataset_file.expanduser().resolve()),
         "--llama-server", str(request.llama_server.expanduser().resolve()),
         "--image", request.image, "--output", str(report),
+        "--suite", PROFILE_SUITE[request.profile],
     ]
     if request.allow_dataset_download:
         command.append("--allow-dataset-download")
@@ -274,8 +364,7 @@ def run_quality_evaluation(
     record = load_record(snapshot)
     if record["identity"]["artifact_sha256"] != artifact.sha256:
         raise QualityEvaluationError("Produced record belongs to a different artifact.")
-    expected_grade = "plumbing" if request.profile is QualityProfile.SMOKE else "limited"
-    if record["classification"] != expected_grade:
+    if record["classification"] != PROFILE_GRADE[request.profile]:
         raise QualityEvaluationError("Produced record belongs to a different evaluation profile.")
     _check_cancel(is_cancelled)
     return record

@@ -200,6 +200,11 @@ Evidence:
   selection from the inspected search pool and bounded sequential diagnostics.
   Reuses existing eligibility/diversity and the same per-artifact runner; keeps
   results separate from recommendation ordering and performance evidence.
+- `recompare_quality(state)` — refresh quality evidence on the saved search-time
+  plan pool and return a separate shadow proposal. No rediscovery, replanning or
+  execution; the original recommendations and constraint assessments stay intact.
+  The evaluation screen exposes this as an explicit Recompare action; opening
+  the screen never executes an evaluation or applies the proposal.
 
 Two factories:
 

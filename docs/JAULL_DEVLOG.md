@@ -172,10 +172,72 @@ Repeteixo HellaSwag amb 100 exemples fixos i els dos models en seqüència a la 
 
 Mesuro `pp512` i `tg128` amb `llama-bench`, cinc repeticions, quatre threads i tot a CUDA0. TinyLlama genera 190,73 tok/s i Qwen 123,94: en aquestes proves, un dona més velocitat i l'altre més encerts. Guardo les mostres, els flags efectius i els records immutables. És throughput amb la GPU compartida amb l'escriptori, no latència fins al primer token. 28 tests de benchmark/arquitectura, Ruff i mypy verds; cap canvi al ranking ni a l'HFA.
 
+## 04/10 — Avaluar des de la interfície
+
+Porto el pilot dins la TUI: una acció explícita que prepara i llança l'avaluació d'un GGUF concret, amb preflight de Docker, runtime i artefacte. Res s'executa sol en obrir Jaull — una avaluació es dispara perquè algú la demana, no perquè s'hagi carregat una pantalla.
+
+## 05/10 — Separar el que diu l'editor del que hem mesurat
+
+La pestanya d'avaluació passa a ensenyar dues coses que fins ara es confonien: el que un publisher ha publicat sobre el model, i el que hem mesurat nosaltres sobre l'artefacte exacte. Cada bloc amb la seva etiqueta, i el publicat avisa que és «no mesurat en aquest artefacte» i en quin mode es va avaluar.
+
+També reordeno Hardware i Your needs. La RAM i la VRAM passen a ser xifres grans de set segments, perquè tot el que diu Jaull és una afirmació sobre aquests dos números. El wizard passa de sis preguntes en una columna —amb el botó d'enviar sempre fora de pantalla— a dues columnes alineades: el bloc baixa de 37 files a 24 i el botó puja de la fila 41 a la 28. Per sota de 100 columnes es plega a una.
+
+## 07/10 — El catàleg l'heretava tothom
+
+Enganxo el catàleg de resultats publicats al ranking i descobreixo que `engine_v2` copiava la llista sencera a tots els plans sense filtrar. Tal com estava, l'MMLU de Qwen hauria aparegut sota un candidat de Mistral. Ara cada pla només rep l'evidència que anomena el seu model.
+
+Tres errors més pel camí, tots trobats revisant-ho:
+
+L'exportació perdia l'atribució. `PlanAssessment.external_evaluations` està tipat amb la classe base, i pydantic serialitzava **19 camps com a 10**: desapareixien `repo_id`, `variant`, `source_kind`, `protocol` i la precisió. Una puntuació publicada sense dir de qui és, és pitjor que no dir-ne res.
+
+El linatge es confirmava pel tipus d'evidència, no pel repositori. Metadata que apuntava a `org/Other` donava per bo un match contra `org/Target`, i canviar l'ordre de dues entrades canviava el resultat.
+
+I quan ho vaig arreglar comparant amb `logical_model_repo_key`, vaig tornar a colar la heurística per la porta del darrere: aquesta clau retalla sufixos, així que metadata que declara `org/Thing-7B-GGUF` confirmava `org/Thing-7B`. Ara la comparació exigeix el nom exacte, només plegant majúscules.
+
+## 07/10 — Dotze candidats reals
+
+Em pensava que els repacks típics no portarien `base_model` a la metadata i que la regla estricta ens deixaria sense cobertura. Ho mesuro amb una cerca real: 6 consultes, 40 candidats, auditoria dels 12 primers.
+
+De linatge: **7 amb base declarada, 2 repositori directe, 3 sense linatge i cap per heurística de nom**. O sea que la regla estricta no costa cobertura. El coll d'ampolla és un altre: **8 dels 12 no tenen entrada al catàleg** i només 1 passa sencer. `bartowski/Qwen2.5-32B-Instruct-GGUF` hereta l'MMLU-Redux de Qwen2.5 per metadata declarada, que és exactament el cas que volia permetre.
+
+Escric la política de Quality, Fastest i Balanced com a esborrany per revisar, sense implementar-ne res. Balanced queda com a porta sobre `min_generation_tps` i no com a pesos: sumar qualitat i velocitat en un número tornaria a muntar el score global que vaig treure a propòsit.
+
+## 07/10 — Un test que només fallava a Windows
+
+CI en vermell amb un sol test, i només a 80×24 sense mesura. El botó sortia a la fila 33 amb un viewport de set files començant a la 13. Traço la geometria pas a pas i la causa no era el contingut: **`scroll_visible` és diferit**, no mou l'offset a la crida sinó en un refresc posterior. La fila que vaig mesurar just després de la crida és exactament la que reportava CI.
+
+El test comptava refrescos —un `pause` i a córrer— i això codifica el scheduling d'una màquina. Ara espera la condició que li importa de debò: que el botó estigui dins del viewport. 32 execucions seguides sense fallar. 2289 tests, Ruff i mypy verds.
+
+## 08/10 — Un IFEval que es pot repetir
+
+HellaSwag mesura si un model tria la continuació bona; per a un xat el que importa és si segueix instruccions. Monto IFEval amb un contracte tancat: `lm-eval` fixat, `llama-server` amb la plantilla del mateix GGUF i el raonament apagat, context 4096, fins a 1280 tokens i llavor fixa. Cada registre guarda el SHA exacte de l'artefacte i cada resposta.
+
+Faig les 541 preguntes amb Qwen2.5-1.5B: 222/541 en estricte (41,0 %). TinyLlama queda fora pel camí: amb context 2048 no hi cap el protocol, i ara la selecció ho rebutja abans de descarregar res. Les polítiques Quality/Fastest/Balanced passen d'esborrany a codi, però en **shadow**: calculen una proposta al costat del ranking i no el toquen.
+
+## 09/10 — Mateix contracte, mateixa resposta
+
+Repeteixo sense voler el Qwen2.5-0.5B Q5_K_M i surt el millor resultat del dia: **541 de 541 respostes idèntiques**. El contracte és determinista de debò. A partir d'aquí, dues execucions amb les mateixes respostes compten com una, i si mai discrepen no se n'aplica cap.
+
+LFM2.5-1.2B fa 434/541 (80,2 %), però el primer intent no es va poder importar: llama.cpp talla per bytes una línia del seu tokenitzador i deixa un caràcter UTF-8 a mitges al log. Els logs ara toleren aquests bytes; el que es valida segueix sent estricte.
+
+La pantalla d'avaluació es configura sola: troba la imatge Docker que toca, comprova servidor i dataset, i ho pinta amb ✓ ! ✗. Results posa els models costat a costat i només marca guanyador si els protocols són comparables. Afegeixo una pantalla per alliberar espai, perquè els models i les execucions ja ocupaven gairebé 5 GB.
+
+Recompare amb un parell controlat: Qwen2.5-1.5B (41,0 %) puja del #2 al #1 per sobre del 0.5B (25,9 %), mateixa cohort i mateix estrat. LFM2.5 no s'hi ordena perquè la seva llicència el posa en un altre estrat, que és el que toca. Però la matriu de 27 casos amb cerques normals dona **zero moviments**: amb prioritat Quality el pool no conté cap dels GGUF mesurats, i els models visibles solen ser safetensors sense SHA. El camí funciona; la cobertura és gairebé nul·la.
+
+De passada, descobreixo que els tests llegien les meves dades reals de `~/.local/share/jaull`: amb 300 MB de registres, les captures passaven de 17 s a 55 s. Ara cada test té les seves carpetes.
+
+## 10/10 — Quality activat
+
+Activo Quality amb el fallback a la vista. Només intercanvia plans amb qualitat mesurada, comparables i del mateix estrat; sense evidència, l'ordre és exactament el d'abans. La cerca continua desant l'ordre base, i l'informe separa els criteris base del pas de qualitat, amb la mesura, el SHA i les posicions abans i després.
+
+Speed i Balanced es queden en shadow: Balanced necessita qualitat **i** velocitat, i encara no hi ha cap mesura de velocitat aplicable. Els bloquejos de la suite dins del sandbox de Codex eren del sandbox: un exemple mínim sense Jaull es queda igual, i fora passa tot.
+
 ---
 
 ## Ara mateix
 
-El contracte ja conserva l'assignació que reporta llama.cpp, separada de NVML, i la comparació aplica els seus gates metodològics. El RSS amb `mmap` no prova la memòria host del placement, i NVML per procés continua bloquejat pel WDDM local.
+Quality ja ordena amb qualitat mesurada, però en una cerca normal gairebé mai té res a aplicar: la cobertura de GGUF mesurats dins del pool és el coll d'ampolla, no la regla. El parell controlat demostra que el camí funciona amb dades reals.
 
-El pilot ja separa qualitat limitada i rendiment local, amb evidència verificada. El següent pas proposat és mostrar aquests records a la TUI en mode lectura; llançar avaluacions des de la interfície queda per després de provar preflight, cancel·lació i errors. No hi ha score nou ni integració al ranking. Els benchmarks Transformers v2 continuen sense comptar com a evidència vigent, i no ajusto marges ni overhead sense més mesures. Les proves amb documents de Biosfer queden aparcades fins que torni a l'empresa.
+Speed i Balanced segueixen en shadow fins que la velocitat sigui aplicable. El que ho bloqueja és el batching efectiu de `llama-bench`, i és el següent pas: Balanced és la prioritat per defecte i avui no pot fer servir res de tot això.
+
+Queda pendent confirmar la CI de Linux i Windows. Per a la campanya final: ampliar la cobertura GGUF del pool i comparar configuracions del mateix model (BF16/Q8/Q5/Q4) en velocitat, memòria i qualitat.

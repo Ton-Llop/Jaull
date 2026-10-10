@@ -68,7 +68,8 @@ def test_repeated_runs_keep_distinct_records_without_overwriting(tmp_path: Path)
     assert store.load(first.stem) == record
     assert store.load(second.stem) == repeated
     assert store.list_ids() == sorted([first.stem, second.stem])
-    assert store.lookup(record["identity"]) is None
+    # Same answers, only the run date moved: one result, not a choice.
+    assert store.lookup(record["identity"]) == record["result"]
 
     differing_measurement = deepcopy(record)
     task = record["identity"]["suite"]["name"]
@@ -78,6 +79,7 @@ def test_repeated_runs_keep_distinct_records_without_overwriting(tmp_path: Path)
     assert third not in (first, second)
     assert store.load(third.stem) == differing_measurement
     assert len(store.evidence()) == 3
+    assert store.lookup(record["identity"]) is None  # Disagreeing repeats: no result.
 
 
 def test_concurrent_first_run_publication_falls_back_to_a_distinct_record_id(

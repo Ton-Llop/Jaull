@@ -326,6 +326,97 @@ def test_hard_memory_failure_rejects_plan() -> None:
     }
 
 
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_quality_and_speed_projections_never_reach_the_ranking_key(priority) -> None:
+    """Step 2 gate: diagnostic evidence is carried, never ordered on."""
+    from jaull.domain.recommendation import (
+        LocalQualityReference,
+        LocalSpeedReference,
+        QualityAssessment,
+        SpeedAssessment,
+    )
+    from jaull.recommendation.engine_v2 import RankedPlan, _ranking_key
+
+    evaluated = _evaluated_gguf(priority=priority)
+    plan = generate_execution_plans(evaluated, _requirements(priority))[0]
+    item = RankedPlan(evaluated=evaluated, plan=plan,
+                      assessment=assess_plan(evaluated, plan, _requirements(priority)))
+    loud = item.assessment.model_copy(update={
+        "speed": SpeedAssessment(applicability="reference_only", references=(LocalSpeedReference(
+            benchmark_id="bench-fast", created_at=datetime(2026, 10, 7, tzinfo=UTC),
+            artifact_sha256="a" * 64, tg128_tokens_per_second=9999.0,
+        ),)),
+        "quality": QualityAssessment(applicability="reference_only", local_references=(
+            LocalQualityReference(
+                identity_sha256="b" * 64, record_sha256="c" * 64, artifact_sha256="a" * 64,
+                suite="synthetic", classification="full", samples_used=100,
+                samples_available=100, metrics={"acc": 1.0},
+            ),
+        )),
+    })
+    changed = RankedPlan(evaluated=evaluated, plan=plan, assessment=loud)
+
+    for commercial in (False, True):
+        assert _ranking_key(item, priority, commercial_use_required=commercial) == (
+            _ranking_key(changed, priority, commercial_use_required=commercial)
+        )
+
+
+def _unplanned(plan, reason: str):
+    """A plan the planner could not attach a runtime to, as the estimator leaves it."""
+    return plan.model_copy(update={"runtime": RuntimeRecommendation(
+        runtime=RuntimeName.UNKNOWN, confidence=EstimationConfidence.UNKNOWN,
+        warnings=[reason],
+    )})
+
+
+def test_an_unplanned_runtime_is_rejected_for_its_real_reason() -> None:
+    # Reproduces unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF in the 2026-10-07 pool
+    # trace: a llama.cpp-compatible GGUF whose MoE estimate is incomplete was
+    # reported as "not compatible with the selected runtime" when none was chosen.
+    evaluated = _evaluated_gguf()
+    reason = "Not enough information to pick a runtime (memory estimate is incomplete)."
+    plan = _unplanned(generate_execution_plans(evaluated, _requirements())[0], reason)
+    assert RuntimeName.LLAMA_CPP in plan.artifact.compatible_runtimes
+
+    assessment = assess_plan(evaluated, plan, _requirements())
+
+    # Still out of the ranking: an unknown fit is not evidence that it fits.
+    assert assessment.rejected
+    assert [c.code for c in assessment.hard_constraints] == [
+        HardConstraintCode.RUNTIME_UNDETERMINED,
+    ]
+    assert reason in assessment.hard_constraints[0].message
+
+
+def test_insufficient_memory_is_not_restated_as_an_unplanned_runtime() -> None:
+    evaluated = _evaluated_gguf(status=CompatibilityStatus.INSUFFICIENT)
+    plan = _unplanned(
+        generate_execution_plans(evaluated, _requirements())[0],
+        "No runtime can run this model on the current hardware: memory is insufficient.",
+    )
+
+    assessment = assess_plan(evaluated, plan, _requirements())
+
+    assert [c.code for c in assessment.hard_constraints] == [
+        HardConstraintCode.MEMORY_INSUFFICIENT,
+    ]
+
+
+def test_a_real_artifact_runtime_mismatch_is_still_reported_as_one() -> None:
+    evaluated = _evaluated_gguf()
+    plan = generate_execution_plans(evaluated, _requirements())[0]
+    mismatched = plan.model_copy(update={"runtime": plan.runtime.model_copy(
+        update={"runtime": RuntimeName.TRANSFORMERS},
+    )})
+
+    assessment = assess_plan(evaluated, mismatched, _requirements())
+
+    assert HardConstraintCode.ARTIFACT_RUNTIME_INCOMPATIBLE in {
+        c.code for c in assessment.hard_constraints
+    }
+
+
 def test_missing_runtime_is_operational_not_a_rejection() -> None:
     evaluated = _evaluated_gguf()
     selection = _selection()

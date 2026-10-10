@@ -181,6 +181,10 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
         "128",
         "-r",
         "5",
+        # Restates the test-instance settings on stderr so the record can hold them.
+        # It is an extra output format, not a change to what gets measured.
+        "-oe",
+        "jsonl",
     )
     forbidden_llama_cli_flags = {
         "--ctx-size",
@@ -248,6 +252,22 @@ def test_runner_parses_successful_process(tmp_path: Path) -> None:
     assert observation.success is True
     assert len(observation.measurements) == 4
     assert backend.requests[0].command[0] == str(runner._llama_bench)
+
+
+def test_malformed_optional_protocol_does_not_lose_completed_measurements(tmp_path: Path) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    raw = CPU_OUTPUT + '\n{"build_commit": "689e227db", "n_threads": -1}'
+    runner = LlamaBenchRunner(
+        backend=_FakeExecutionBackend(stdout=raw), llama_bench_path=_executable(tmp_path),
+    )
+    observation = runner.run(BenchmarkRequest(
+        artifact=_artifact(model), runtime=_runtime(ngl=0), backend=ComputeBackend.CPU,
+        device="none", gpu_layers=BenchmarkGpuLayers.count_layers(0),
+    ))
+    assert observation.success and len(observation.measurements) == 4
+    assert observation.protocol is None
+    assert observation.raw_stdout == raw
 
 
 def test_runner_failed_process_preserves_argv_exit_code_and_output(

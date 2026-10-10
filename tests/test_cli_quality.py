@@ -22,6 +22,7 @@ from jaull.evaluation.quality_records import digest, save_record
 from jaull.evaluation.quality_storage import QualityEvidenceStore
 from jaull.runtime import quality_eval_runner as runner
 from jaull.runtime.quality_eval_runner import (
+    _PILOT_FILES,
     QualityEvaluationError,
     QualityProfile,
     QualityRunRequest,
@@ -31,9 +32,8 @@ from tests.test_quality_eval_records import synthetic_full_record
 
 def _request(tmp_path: Path) -> QualityRunRequest:
     root = tmp_path / "trusted checkout"
-    for name in ("scripts/quality_eval_smoke.py", "pilot/quality_eval/evaluate.py",
-                 "pilot/quality_eval/records.py", "pilot/quality_eval/suite.yaml",
-                 "pilot/quality_eval/setup.py"):
+    # Whatever the bridge requires of a trusted checkout, so the two never drift.
+    for name in _PILOT_FILES:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("synthetic placeholder, never executed", encoding="utf-8")

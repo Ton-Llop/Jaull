@@ -447,7 +447,8 @@ def quality_run_command(
         Path(), "--pilot-root", help="Trusted Jaull source-checkout root.",
     ),
     profile: QualityProfile = typer.Option(
-        QualityProfile.SMOKE, "--profile", help="Fixed smoke or limited 100-sample profile.",
+        QualityProfile.SMOKE, "--profile",
+        help="Fixed smoke, limited 100-sample or full IFEval chat profile.",
     ),
     as_json: bool = typer.Option(
         False, "--json", help="Emit completion ids or an explicit failure.",

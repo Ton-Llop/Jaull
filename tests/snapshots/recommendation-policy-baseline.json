@@ -1,0 +1,48 @@
+{
+  "baseline_version": "engine-v2-7aac979",
+  "data_kind": "synthetic_offline",
+  "fixture_source": "tests/test_recommendation_shortlist_regression.py::_shortlist_state",
+  "input": {
+    "use_case": "general_chat",
+    "languages": ["English"],
+    "ram_gib": 32,
+    "vram_gib": 8,
+    "quantization": "Q4_K_M",
+    "evidence": {"quality": [], "performance": [], "published": []},
+    "candidates": [
+      ["org/Tiny-0.5B-Instruct-GGUF", 644245094, 8000000, 900, ["en"]],
+      ["org/Mini-1.1B-Instruct-GGUF", 1181116006, 1500000, 1200, ["en"]],
+      ["org/Small-1.5B-Instruct-GGUF", 1503238553, 400000, 300, ["en"]],
+      ["org/Medium-4B-Instruct-GGUF", 6979321856, 3600000, 500, []],
+      ["org/Large-8B-Instruct-GGUF", 8160437862, 300000, 800, ["en"]],
+      ["org/Giant-32B-Instruct-GGUF", 21474836480, 100000, 400, ["en"]]
+    ]
+  },
+  "plans": {
+    "tiny": "plan-org-tiny-0-5b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "mini": "plan-org-mini-1-1b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "small": "plan-org-small-1-5b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "medium": "plan-org-medium-4b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "large": "plan-org-large-8b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp",
+    "giant": "plan-org-giant-32b-instruct-gguf-model-q4-k-m-gguf-gguf-q4-k-m-llama-cpp"
+  },
+  "orders": {
+    "quality": {
+      "before_diversity": ["large", "medium", "mini", "small", "tiny", "giant"],
+      "top_five": ["large", "medium", "mini", "small", "tiny"]
+    },
+    "balanced": {
+      "before_diversity": ["large", "medium", "mini", "small", "tiny", "giant"],
+      "top_five": ["large", "medium", "mini", "small", "tiny"]
+    },
+    "speed": {
+      "before_diversity": ["tiny", "mini", "small", "medium", "large", "giant"],
+      "top_five": ["tiny", "mini", "small", "medium", "large"]
+    },
+    "memory": {
+      "before_diversity": ["tiny", "mini", "small", "medium", "large", "giant"],
+      "top_five": ["tiny", "mini", "small", "medium", "large"]
+    }
+  },
+  "rejected_plans": ["giant"]
+}
