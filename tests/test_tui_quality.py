@@ -144,6 +144,7 @@ async def _settled(pilot: Any, screen: QualityEvaluationScreen) -> None:
     # The selector shows the quality profile, or "speed" / "balanced" for those suites.
     await _wait_until(pilot, lambda: (
         not screen._busy
+        and not screen._selecting
         and screen.query_one("#quality-profile", Select).value
         in (screen._profile.value, screen._measure)
     ))

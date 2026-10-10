@@ -68,6 +68,107 @@ def _state(use_case: UseCase = UseCase.GENERAL_CHAT) -> RecommendationWorkflowSt
     ))
 
 
+async def _recompare(pilot, screen) -> None:
+    screen.query_one("#quality-tabs", TabbedContent).active = "quality-results-tab"
+    await pilot.pause()
+    button = screen.query_one("#quality-recompare", Button)
+    button.scroll_visible(animate=False)
+    await pilot.pause()
+    assert not button.disabled
+    assert await pilot.click("#quality-recompare")
+    # Idle also describes a press still bubbling through the widgets.
+    await _wait_until(pilot, lambda: (
+        not screen._busy
+        and screen.query_one("#quality-report", Collapsible).title == "Ranking proposal"
+    ))
+
+
+def test_settled_waits_for_candidate_selection_to_start(monkeypatch) -> None:
+    from tests import test_tui_quality
+
+    async def scenario() -> None:
+        release = asyncio.Event()
+        pending = None
+        start_selection = QualityEvaluationScreen._start_selection
+        wait_until = test_tui_quality._wait_until
+
+        def delayed_selection(screen):
+            nonlocal pending
+
+            async def start():
+                await release.wait()
+                start_selection(screen)
+
+            pending = asyncio.create_task(start())
+
+        async def wait_for_selection(pilot, predicate):
+            # Mount has finished, but selection has not started its worker yet.
+            assert not predicate()
+            release.set()
+            await wait_until(pilot, predicate)
+
+        monkeypatch.setattr(QualityEvaluationScreen, "_start_selection", delayed_selection)
+        monkeypatch.setattr(test_tui_quality, "_wait_until", wait_for_selection)
+        app = JaullApp(advisor=ProfileAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = QualityEvaluationScreen(search_state=_state())
+            try:
+                await app.push_screen(screen)
+                await _settled(pilot, screen)
+                assert not screen._selecting
+                assert not screen.query_one("#quality-recompare", Button).disabled
+            finally:
+                release.set()
+                if pending is not None:
+                    await pending
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+def test_recompare_waits_for_a_delayed_pressed_message(size, monkeypatch) -> None:
+    async def scenario() -> None:
+        release = asyncio.Event()
+        pending = None
+        app = JaullApp(advisor=ProfileAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            screen = QualityEvaluationScreen(search_state=_state())
+            await app.push_screen(screen)
+            await _settled(pilot, screen)
+            post_message = screen.post_message
+            wait_until = _wait_until
+
+            def delayed_press(message):
+                nonlocal pending
+                if isinstance(message, Button.Pressed) and message.button.id == "quality-recompare":
+                    async def deliver():
+                        await release.wait()
+                        post_message(message)
+                    pending = asyncio.create_task(deliver())
+                    return True
+                return post_message(message)
+
+            async def wait_for_report(pilot, predicate):
+                assert pending is not None
+                await _settled(pilot, screen)
+                assert not screen._busy  # The old idle wait returns before delivery.
+                assert not predicate()
+                release.set()
+                await wait_until(pilot, predicate)
+
+            monkeypatch.setattr(screen, "post_message", delayed_press)
+            monkeypatch.setattr("tests.test_tui_ifeval._wait_until", wait_for_report)
+            try:
+                await _recompare(pilot, screen)
+                assert "Proposal only" in str(screen.query_one("#quality-result", Static).content)
+            finally:
+                release.set()
+                if pending is not None:
+                    await pending
+
+    asyncio.run(scenario())
+
+
 def test_english_chat_defaults_to_ifeval_and_selects_for_it() -> None:
     async def scenario() -> None:
         advisor = ProfileAdvisor()
@@ -191,13 +292,8 @@ def test_recompare_shows_a_proposal_and_leaves_the_search_untouched() -> None:
             screen = QualityEvaluationScreen(search_state=state)
             await app.push_screen(screen)
             await _settled(pilot, screen)
-            screen.query_one("#quality-tabs", TabbedContent).active = "quality-results-tab"
-            button = screen.query_one("#quality-recompare", Button)
-            button.scroll_visible(animate=False)
-            await pilot.pause()
-            assert button.region.right <= 80
-            await pilot.click("#quality-recompare")
-            await _settled(pilot, screen)
+            await _recompare(pilot, screen)
+            assert screen.query_one("#quality-recompare", Button).region.right <= 80
             text = str(screen.query_one("#quality-result", Static).render())
             assert "Proposal only; the search result stays as it was" in text
             assert "#2 -> #1  org/B" in text
@@ -281,8 +377,7 @@ def test_recompare_does_not_propose_quality_moves_already_shown(size) -> None:
             screen = QualityEvaluationScreen(search_state=state)
             await app.push_screen(screen)
             await _settled(pilot, screen)
-            screen.query_one("#quality-recompare", Button).press()
-            await _settled(pilot, screen)
+            await _recompare(pilot, screen)
             text = str(screen.query_one("#quality-result", Static).content)
             assert "No changes to the shown recommendations" in text
             assert "#2 -> #1" not in text and "Top 5 entered" not in text
@@ -335,10 +430,7 @@ def test_recompare_lists_each_plan_and_keeps_actions_visible(size) -> None:
             screen = QualityEvaluationScreen(search_state=_state())
             await app.push_screen(screen)
             await _settled(pilot, screen)
-            screen.query_one("#quality-recompare", Button).press()
-            await _wait_until(pilot, lambda: (
-                not screen._busy and bool(screen.query("#quality-plan-diagnostics Static"))
-            ))
+            await _recompare(pilot, screen)
             text = str(screen.query_one("#quality-result", Static).content)
             assert "plans kept their fallback positions" in text
             assert "SHA256" not in text
