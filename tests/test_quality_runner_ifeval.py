@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ def test_ifeval_is_a_full_profile_with_its_own_context() -> None:
 @pytest.mark.parametrize("profile,suite", [
     (QualityProfile.SMOKE, "hellaswag"), (QualityProfile.IFEVAL, "ifeval"),
 ])
+@pytest.mark.skipif(os.name != "posix", reason="Pilot bridge requires Linux or WSL")
 def test_setup_checks_the_dataset_and_image_of_the_profiles_suite(
     tmp_path: Path, user_data: Path, monkeypatch: pytest.MonkeyPatch,
     profile: QualityProfile, suite: str,

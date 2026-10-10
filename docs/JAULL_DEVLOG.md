@@ -208,14 +208,36 @@ CI en vermell amb un sol test, i només a 80×24 sense mesura. El botó sortia a
 
 El test comptava refrescos —un `pause` i a córrer— i això codifica el scheduling d'una màquina. Ara espera la condició que li importa de debò: que el botó estigui dins del viewport. 32 execucions seguides sense fallar. 2289 tests, Ruff i mypy verds.
 
+## 08/10 — Un IFEval que es pot repetir
+
+HellaSwag mesura si un model tria la continuació bona; per a un xat el que importa és si segueix instruccions. Monto IFEval amb un contracte tancat: `lm-eval` fixat, `llama-server` amb la plantilla del mateix GGUF i el raonament apagat, context 4096, fins a 1280 tokens i llavor fixa. Cada registre guarda el SHA exacte de l'artefacte i cada resposta.
+
+Faig les 541 preguntes amb Qwen2.5-1.5B: 222/541 en estricte (41,0 %). TinyLlama queda fora pel camí: amb context 2048 no hi cap el protocol, i ara la selecció ho rebutja abans de descarregar res. Les polítiques Quality/Fastest/Balanced passen d'esborrany a codi, però en **shadow**: calculen una proposta al costat del ranking i no el toquen.
+
+## 09/10 — Mateix contracte, mateixa resposta
+
+Repeteixo sense voler el Qwen2.5-0.5B Q5_K_M i surt el millor resultat del dia: **541 de 541 respostes idèntiques**. El contracte és determinista de debò. A partir d'aquí, dues execucions amb les mateixes respostes compten com una, i si mai discrepen no se n'aplica cap.
+
+LFM2.5-1.2B fa 434/541 (80,2 %), però el primer intent no es va poder importar: llama.cpp talla per bytes una línia del seu tokenitzador i deixa un caràcter UTF-8 a mitges al log. Els logs ara toleren aquests bytes; el que es valida segueix sent estricte.
+
+La pantalla d'avaluació es configura sola: troba la imatge Docker que toca, comprova servidor i dataset, i ho pinta amb ✓ ! ✗. Results posa els models costat a costat i només marca guanyador si els protocols són comparables. Afegeixo una pantalla per alliberar espai, perquè els models i les execucions ja ocupaven gairebé 5 GB.
+
+Recompare amb un parell controlat: Qwen2.5-1.5B (41,0 %) puja del #2 al #1 per sobre del 0.5B (25,9 %), mateixa cohort i mateix estrat. LFM2.5 no s'hi ordena perquè la seva llicència el posa en un altre estrat, que és el que toca. Però la matriu de 27 casos amb cerques normals dona **zero moviments**: amb prioritat Quality el pool no conté cap dels GGUF mesurats, i els models visibles solen ser safetensors sense SHA. El camí funciona; la cobertura és gairebé nul·la.
+
+De passada, descobreixo que els tests llegien les meves dades reals de `~/.local/share/jaull`: amb 300 MB de registres, les captures passaven de 17 s a 55 s. Ara cada test té les seves carpetes.
+
+## 10/10 — Quality activat
+
+Activo Quality amb el fallback a la vista. Només intercanvia plans amb qualitat mesurada, comparables i del mateix estrat; sense evidència, l'ordre és exactament el d'abans. La cerca continua desant l'ordre base, i l'informe separa els criteris base del pas de qualitat, amb la mesura, el SHA i les posicions abans i després.
+
+Speed i Balanced es queden en shadow: Balanced necessita qualitat **i** velocitat, i encara no hi ha cap mesura de velocitat aplicable. Els bloquejos de la suite dins del sandbox de Codex eren del sandbox: un exemple mínim sense Jaull es queda igual, i fora passa tot.
+
 ---
 
 ## Ara mateix
 
-El catàleg publicat ja arriba al ranking, però només com a referència: s'ensenya, no ordena. Cada pla rep únicament l'evidència que anomena el seu model, i el linatge ha d'estar confirmat per metadata o ser el repositori mateix — una heurística de nom no val. Les 11 entrades del catàleg no declaren revisió ni precisió avaluades, així que es queden en «mostrar».
+Quality ja ordena amb qualitat mesurada, però en una cerca normal gairebé mai té res a aplicar: la cobertura de GGUF mesurats dins del pool és el coll d'ampolla, no la regla. El parell controlat demostra que el camí funciona amb dades reals.
 
-La TUI ja separa visualment el publicat del mesurat, i l'avaluació es llança a mà des de la interfície. El ranking continua sense tocar: no hi ha eix de qualitat que ordeni, ni score nou.
+Speed i Balanced segueixen en shadow fins que la velocitat sigui aplicable. El que ho bloqueja és el batching efectiu de `llama-bench`, i és el següent pas: Balanced és la prioritat per defecte i avui no pot fer servir res de tot això.
 
-La política de Quality/Fastest/Balanced és un esborrany per revisar. El que la bloqueja és que avui cap mètrica dels records porta interval, i sense interval «no distingibles» és una intenció i no un càlcul.
-
-El RSS amb `mmap` continua sense provar la memòria host del placement, i NVML per procés segueix bloquejat pel WDDM local. No ajusto marges ni overhead sense més mesures. Les proves amb documents de Biosfer queden aparcades fins que torni a l'empresa.
+Queda pendent confirmar la CI de Linux i Windows. Per a la campanya final: ampliar la cobertura GGUF del pool i comparar configuracions del mateix model (BF16/Q8/Q5/Q4) en velocitat, memòria i qualitat.

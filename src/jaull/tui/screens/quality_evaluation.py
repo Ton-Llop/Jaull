@@ -86,7 +86,7 @@ def recompare_readout(
     """Say what the proposal would change, and that the shown result does not."""
     lines = [
         f"{report.priority.value.capitalize()} / {report.policy_version}. "
-        "The shown recommendations are unchanged."
+        "Proposal only; the search result stays as it was."
     ]
     no_swaps = "No pool swaps" if shown_order is not None else "No moves"
     if shown_order is not None:
@@ -700,6 +700,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
                     Checkbox(
                         f"{index + 1}. {plan.model_identity.model_name}",
                         value=not candidate.settled, id=f"quality-candidate-{index}",
+                        tooltip=plan.model_identity.model_name,
                     ),
                     Static(
                         f"{'Local' if candidate.downloaded else 'Download'} / {size}",
@@ -726,9 +727,6 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 classes="quality-row" + ("" if candidate.settled else " -selected"),
                 id=f"quality-row-{index}",
             ))
-            self.query_one(f"#quality-candidate-{index}", Checkbox).tooltip = (
-                plan.model_identity.model_name
-            )
         # Replaced even when empty: an earlier suite's table must not linger.
         await self._show_measurements(stored_records(message.selection.candidates))
         if message.selection.notices:

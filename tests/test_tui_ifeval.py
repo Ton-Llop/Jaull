@@ -8,6 +8,7 @@ from threading import Event
 from typing import Any
 
 import pytest
+from textual.containers import Vertical
 from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent
 
 from jaull.domain.requirements import RecommendationPriority, UseCase, UserRequirements
@@ -26,7 +27,11 @@ from jaull.runtime.quality_eval_runner import (
     default_dataset,
 )
 from jaull.tui.app import JaullApp
-from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen, recompare_readout
+from jaull.tui.screens.quality_evaluation import (
+    QualityEvaluationScreen,
+    _QualityCandidatesReady,
+    recompare_readout,
+)
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.workflow.state import RecommendationWorkflowState
 from tests.test_shadow_policies import _pool
@@ -79,6 +84,45 @@ def test_english_chat_defaults_to_ifeval_and_selects_for_it() -> None:
             protocol = str(screen.query_one("#quality-protocol", Static).render())
             assert "IFEval" in protocol and "chat template" in protocol
             assert not advisor.calls  # Opening the screen never evaluates.
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+def test_candidates_do_not_require_nested_controls_to_mount_immediately(size, monkeypatch) -> None:
+    async def scenario() -> None:
+        advisor = ProfileAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            screen = QualityEvaluationScreen(search_state=_state())
+            await app.push_screen(screen)
+            await _settled(pilot, screen)
+            container = screen.query_one("#quality-candidates", Vertical)
+            mount = container.mount
+            pending = []
+
+            async def delayed_mount(*widgets, **kwargs):
+                # Awaiting a parent mount need not make its descendants queryable yet.
+                for widget in widgets:
+                    if (widget.id or "").startswith("quality-row-"):
+                        pending.append(widget)
+                    else:
+                        await mount(widget, **kwargs)
+
+            monkeypatch.setattr(container, "mount", delayed_mount)
+            selection = advisor.prepare_quality_candidates(_state(), profile=QualityProfile.IFEVAL)
+            await screen._candidates_ready(_QualityCandidatesReady(selection))
+            assert len(pending) == len(selection.candidates)
+            assert not screen.query("#quality-candidates Checkbox")
+            monkeypatch.setattr(container, "mount", mount)
+            await mount(*pending)
+            await pilot.pause()
+            for index, candidate in enumerate(selection.candidates):
+                checkbox = screen.query_one(f"#quality-candidate-{index}", Checkbox)
+                assert checkbox.tooltip == candidate.plan.model_identity.model_name
+                assert checkbox.value
+            assert screen._checked() == selection.candidates
+            assert not screen.query_one("#quality-start", Button).disabled
+            assert not advisor.calls
     asyncio.run(scenario())
 
 
@@ -136,7 +180,7 @@ def test_recompare_shows_a_proposal_and_leaves_the_search_untouched() -> None:
             await pilot.click("#quality-recompare")
             await _settled(pilot, screen)
             text = str(screen.query_one("#quality-result", Static).render())
-            assert "The shown recommendations are unchanged" in text
+            assert "Proposal only; the search result stays as it was" in text
             assert "#2 -> #1  org/B" in text
             assert advisor.recompared == [state] and not advisor.calls
             assert state.model_dump_json() == before
@@ -153,7 +197,7 @@ def test_recompare_readout_says_why_nothing_moved(applied, moves, expected) -> N
     report = ShadowReport(priority=RecommendationPriority.MEMORY, applied=applied,
                           base_order=("p",), shadow_order=("p",), moves=moves)
     text = recompare_readout(report, {})
-    assert expected in text and "unchanged" in text
+    assert expected in text and "Proposal only" in text
 
 
 def test_balanced_without_speed_says_so_instead_of_blaming_quality() -> None:
@@ -296,7 +340,7 @@ def test_recompare_lists_each_plan_and_keeps_actions_visible(size) -> None:
             details[0].collapsed = False
             await pilot.pause()
             assert not details[0].collapsed
-            assert "shown recommendations are unchanged" in text
+            assert "the search result stays as it was" in text
             for name in ("start", "prepare", "cancel", "back"):
                 button = screen.query_one(f"#quality-{name}", Button)
                 assert button.region.right <= size[0]

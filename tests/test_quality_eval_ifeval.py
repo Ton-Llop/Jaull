@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -212,6 +213,7 @@ def test_chat_suites_add_template_and_reasoning_flags_only_when_asked() -> None:
     ]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Docker host command uses Linux/WSL UID/GID")
 def test_ifeval_mounts_its_own_dataset_and_names_its_profile() -> None:
     command = docker_command("img", "name", Path("/out"), Path("/m.gguf"), Path("/d.jsonl"),
                              profile="ifeval-smoke")
