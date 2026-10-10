@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from shlex import join as shell_join
 
+import psutil
+
 from jaull.benchmarks.errors import (
     BenchmarkConfigurationError,
     BenchmarkRunnerError,
@@ -13,6 +15,8 @@ from jaull.benchmarks.errors import (
 )
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.benchmarks import (
+    LLAMA_BENCH_V2,
+    LLAMA_BENCH_V2_FLAGS,
     BenchmarkFailureReason,
     BenchmarkGpuLayers,
     BenchmarkMeasurementKind,
@@ -32,6 +36,16 @@ from jaull.execution.ports import ExecutionBackendProtocol
 from jaull.runtime.llama_bench_capability import resolve_llama_bench_binary
 from jaull.runtime.llama_bench_jsonl import parse_llama_bench_protocol
 from jaull.runtime.llama_bench_parser import parse_llama_bench_output
+
+
+def physical_core_threads() -> int:
+    """The v2 thread rule: every physical core, never SMT siblings or the tool default."""
+    count = psutil.cpu_count(logical=False)
+    if not count:
+        raise BenchmarkConfigurationError(
+            "Physical core count is unknown; llama_bench_v2 fixes threads to it."
+        )
+    return count
 
 
 @dataclass(frozen=True)
@@ -55,7 +69,8 @@ class LlamaBenchRunner:
         object.__setattr__(self, "_llama_bench", resolved.binary_path)
 
     def run(self, request: BenchmarkRequest) -> BenchmarkObservation:
-        command = build_llama_bench_command(self._llama_bench, request)
+        threads = physical_core_threads()
+        command = build_llama_bench_command(self._llama_bench, request, threads=threads)
         try:
             result = self.backend.execute(
                 ExecutionRequest(
@@ -152,6 +167,11 @@ class LlamaBenchRunner:
                 peak_ram_bytes=result.observation.peak_ram_bytes,
                 peak_vram_bytes=result.observation.peak_vram_bytes,
             )
+        protocol = parse_llama_bench_protocol(raw_output, warmup="--no-warmup" not in command)
+        # A completed measurement is kept even if the reported settings are missing or
+        # differ from v2: applicability (llama_bench_v2_mismatches) then keeps it as a reference.
+        if protocol is not None:
+            protocol = protocol.model_copy(update={"thread_policy": "physical_cores"})
         return BenchmarkObservation(
             success=True,
             measurements=measurements,
@@ -159,10 +179,8 @@ class LlamaBenchRunner:
             duration_seconds=result.duration_seconds,
             # Extra output does not change the requested workload. Whether two
             # records are comparable is a separate applicability decision.
-            methodology="llama_bench_v1",
-            protocol=parse_llama_bench_protocol(
-                raw_output, warmup="--no-warmup" not in command,
-            ),
+            methodology=LLAMA_BENCH_V2,
+            protocol=protocol,
             command=command,
             exit_code=result.exit_code,
             peak_ram_bytes=result.observation.peak_ram_bytes,
@@ -175,6 +193,8 @@ class LlamaBenchRunner:
 def build_llama_bench_command(
     llama_bench: str,
     request: BenchmarkRequest,
+    *,
+    threads: int,
 ) -> tuple[str, ...]:
     model_path = _validate_artifact(request.artifact)
     device = _device_arg(request)
@@ -192,6 +212,9 @@ def build_llama_bench_command(
         ",".join(str(size) for size in request.generation_sizes),
         "-r",
         str(request.repetitions),
+        *LLAMA_BENCH_V2_FLAGS,
+        "-t",
+        str(threads),
         # Restate the test-instance settings on stderr. The markdown table on stdout
         # drops every column still at its default, so this is the only way to
         # record the reported threads, batching, cache types and load mode. It
@@ -254,7 +277,7 @@ def _failed_observation(
         measurements=[],
         repetitions=request.repetitions,
         duration_seconds=duration_seconds,
-        methodology="llama_bench_v1",
+        methodology=LLAMA_BENCH_V2,
         peak_ram_bytes=peak_ram_bytes,
         peak_vram_bytes=peak_vram_bytes,
         command=command,
@@ -316,4 +339,4 @@ def _last_useful_line(text: str) -> str | None:
     return None
 
 
-__all__ = ["LlamaBenchRunner", "build_llama_bench_command"]
+__all__ = ["LlamaBenchRunner", "build_llama_bench_command", "physical_core_threads"]

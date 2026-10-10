@@ -214,7 +214,8 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
     payload = report_to_dict(state)
     axes = [c["axis"] for c in payload["recommendations"][0]["ranking"]["criteria"]]
 
-    # Base criteria only; measured-quality swaps are a separate policy stage.
+    # Base criteria only; measured quality and speed act in a separate policy stage,
+    # so neither is an axis here (performance_evidence used to leak speed into it).
     assert axes == [
         "viability",
         "plan_constraints",
@@ -223,7 +224,6 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "capability",
         "quantization_quality",
         "execution_fitness",
-        "performance_evidence",
         "plan_confidence",
     ]
     assert payload["recommendations"][0]["ranking"]["quality_policy"]["measurement"] is None

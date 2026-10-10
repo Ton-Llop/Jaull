@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from textual.containers import Vertical
 from textual.widgets import Button, Checkbox, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.artifacts.storage import ArtifactStorage, LocalModelFile
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.storage import StorageScreen
-from tests.test_tui_quality import FakeAdvisor
+from tests.test_tui_quality import FakeAdvisor, _wait_until
 
 
 def _download(root: Path, repo: str, name: str, size: int) -> Path:
@@ -82,10 +83,7 @@ def test_nothing_is_deleted_until_the_second_press() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
             screen = StorageScreen()
             await app.push_screen(screen)
-            for _ in range(50):
-                await pilot.pause(0.02)
-                if not screen._busy:
-                    break
+            await _wait_until(pilot, lambda: not screen._busy)
             delete = screen.query_one("#storage-delete", Button)
             status = screen.query_one("#storage-status", Static)
             assert delete.disabled  # Nothing chosen yet.
@@ -100,12 +98,43 @@ def test_nothing_is_deleted_until_the_second_press() -> None:
             await pilot.pause()
             assert advisor.deleted == [] and "Press Delete again" in str(status.render())
             delete.press()
-            for _ in range(50):
-                await pilot.pause(0.02)
-                if advisor.deleted and not screen._busy:
-                    break
+            await _wait_until(pilot, lambda: advisor.deleted and not screen._busy)
             assert advisor.deleted == ["a.gguf", "runs"]
             assert "Freed 2.29 GiB" in str(status.render())
             assert not screen.query("#storage-runs")  # The list shows what is left.
 
+    asyncio.run(scenario())
+
+
+def test_storage_stays_busy_until_the_list_and_status_are_updated(monkeypatch) -> None:
+    async def scenario() -> None:
+        app = JaullApp(advisor=StorageAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            container = screen.query_one("#storage-list", Vertical)
+            remove_children = container.remove_children
+            entered, release = asyncio.Event(), asyncio.Event()
+
+            async def delayed_remove():
+                entered.set()
+                await release.wait()
+                await remove_children()
+
+            monkeypatch.setattr(container, "remove_children", delayed_remove)
+            screen._load("Updated local files.")
+            try:
+                async with asyncio.timeout(10):
+                    await entered.wait()
+                assert screen._busy
+                assert str(screen.query_one("#storage-status", Static).render()) != (
+                    "Updated local files."
+                )
+            finally:
+                release.set()
+            await _wait_until(pilot, lambda: not screen._busy)
+            assert "Updated local files." in str(
+                screen.query_one("#storage-status", Static).render(),
+            )
     asyncio.run(scenario())

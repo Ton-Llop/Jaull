@@ -738,7 +738,7 @@ class AdvisorService:
         return self._quality_store().lookup(identity)
 
     def recompare_quality(self, state: RecommendationWorkflowState) -> ShadowReport:
-        """Explicit new shadow proposal from stored quality; no search or execution."""
+        """Explicit new shadow proposal from stored quality and speed; no search or execution."""
         from jaull.application.recommendation.policies import MAX_RECOMMENDATIONS
         from jaull.recommendation.shadow import recompare_quality
 
@@ -746,7 +746,7 @@ class AdvisorService:
             raise ValueError("Recompare requires a completed search with a saved plan pool.")
         return recompare_quality(
             state.ranked_plans, state.requirements, self._stored_quality_records(),
-            limit=MAX_RECOMMENDATIONS,
+            limit=MAX_RECOMMENDATIONS, benchmark_records=self._stored_benchmark_records(),
         )
 
     def run_quality_evaluation(
@@ -805,11 +805,10 @@ class AdvisorService:
         on_progress: Callable[[str], None] | None = None,
     ) -> Path:
         """Prepare only the selected GGUF, then use the unchanged quality pilot."""
-        import re
         from tempfile import TemporaryDirectory
 
         from jaull.advisor.quality import check_selected_artifact
-        from jaull.runtime.quality_eval_runner import QualityEvaluationError, _check_cancel
+        from jaull.runtime.quality_eval_runner import _check_cancel
 
         selected = plan.artifact
         artifact = selected.to_model_artifact().model_copy(update={"sha256": selected.sha256})
@@ -826,6 +825,30 @@ class AdvisorService:
         self.prepare_quality_evaluation_setup(
             request, is_cancelled=is_cancelled, on_progress=on_progress,
         )
+        artifact = self._prepare_selected_gguf(plan, allow_download=allow_download, report=report)
+        report("Starting fixed quality protocol")
+        with TemporaryDirectory(prefix="jaull-quality-") as directory:
+            manifest = Path(directory) / "artifact.json"
+            manifest.write_text(artifact.model_dump_json(indent=2), encoding="utf-8")
+            return self.run_quality_evaluation(
+                replace(request, artifact_json=manifest), is_cancelled=is_cancelled,
+            )
+
+    def _prepare_selected_gguf(
+        self, plan: ExecutionPlan, *, allow_download: bool, report: Callable[[str], None],
+    ) -> ModelArtifact:
+        """Pin, fetch only with permission, and fully rehash exactly the plan's GGUF.
+
+        Shared by quality and speed measurement, so both name the same bytes.
+        """
+        import re
+
+        from jaull.advisor.quality import check_selected_artifact
+        from jaull.runtime.quality_eval_runner import QualityEvaluationError
+
+        selected = plan.artifact
+        artifact = selected.to_model_artifact().model_copy(update={"sha256": selected.sha256})
+        check_selected_artifact(artifact, selected)
         report("Preparing selected GGUF")
         if re.fullmatch(r"[0-9a-f]{40}", artifact.revision) is None:
             if selected.revision not in (None, "main"):
@@ -859,13 +882,62 @@ class AdvisorService:
         report("Fully verifying selected GGUF")
         artifact = self.verify_artifact(artifact, full=True)
         check_selected_artifact(artifact, selected)
-        report("Starting fixed quality protocol")
-        with TemporaryDirectory(prefix="jaull-quality-") as directory:
-            manifest = Path(directory) / "artifact.json"
-            manifest.write_text(artifact.model_dump_json(indent=2), encoding="utf-8")
-            return self.run_quality_evaluation(
-                replace(request, artifact_json=manifest), is_cancelled=is_cancelled,
-            )
+        return artifact
+
+    def benchmark_plan_speed(
+        self, plan: ExecutionPlan, *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> BenchmarkRunResult:
+        """Fastest v1 for exactly this plan: its GGUF, runtime, offload and device.
+
+        llama_bench_v2 with the Fastest workload; the record is stored, and whether
+        it applies is assess_speed's decision, never this method's.
+        """
+        from jaull.benchmarks.errors import BenchmarkConfigurationError
+        from jaull.domain.benchmarks import (
+            FASTEST_GENERATION_SIZES,
+            FASTEST_PREFILL_SIZES,
+            FASTEST_REPETITIONS,
+            BenchmarkGpuLayers,
+            BenchmarkRequest,
+        )
+        from jaull.runtime.quality_eval_runner import _check_cancel
+
+        def report(message: str) -> None:
+            _check_cancel(is_cancelled)
+            if on_progress is not None:
+                on_progress(message)
+
+        if plan.hardware is None or plan.backend_selection is None:
+            raise BenchmarkConfigurationError("The plan has no hardware or backend selection.")
+        flags = {flag.name: flag.value for flag in plan.runtime.flags}
+        raw_ngl = flags.get("--n-gpu-layers")
+        if raw_ngl is None:
+            raise BenchmarkConfigurationError("The plan names no offload (--n-gpu-layers).")
+        artifact = self._prepare_selected_gguf(plan, allow_download=allow_download, report=report)
+        backend = plan.backend_selection.selected_backend
+        device = flags.get("--device")
+        if device is None and backend is not ComputeBackend.CPU:
+            # Search plans name no device: take the only one llama.cpp exposes.
+            capability = self.inspect_llama_cpp_runtime(selection=plan.backend_selection)
+            found = [item.runtime_id for entry in capability.backend_capabilities
+                     if entry.backend is backend for item in entry.devices]
+            if len(found) != 1:
+                raise BenchmarkConfigurationError(
+                    f"Expected one {backend.value} device; llama.cpp exposes {found}."
+                )
+            device = found[0]
+        report("Running llama_bench_v2 (pp512 / tg128, 5 repetitions)")
+        return self.run_benchmark(BenchmarkRequest(
+            artifact=artifact, runtime=plan.runtime, backend=backend,
+            device="none" if backend is ComputeBackend.CPU else device,
+            gpu_layers=(BenchmarkGpuLayers.full() if raw_ngl in {"-1", "all"}
+                        else BenchmarkGpuLayers.count_layers(int(raw_ngl))),
+            prefill_sizes=FASTEST_PREFILL_SIZES, generation_sizes=FASTEST_GENERATION_SIZES,
+            repetitions=FASTEST_REPETITIONS, timeout_seconds=900.0,
+        ), hardware=plan.hardware)
 
     # ------------------------------------------------------------------
     # Disk space. Deleting a model never touches stored results: evidence is
@@ -915,6 +987,51 @@ class AdvisorService:
 
         return prepare_candidates(
             self, state, profile=profile or Profile.SMOKE,
+            is_cancelled=is_cancelled, on_progress=on_progress,
+        )
+
+    def prepare_speed_candidates(
+        self, state: RecommendationWorkflowState, *,
+        with_quality_profile: QualityProfile | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> QualityCandidateSelection:
+        """Speed candidates; with a quality profile (Balanced), that profile's candidates.
+
+        Either way each candidate carries assess_speed's verdict on stored benchmarks.
+        """
+        from dataclasses import replace as replace_candidate
+
+        from jaull.advisor.quality_candidates import prepare_candidates, prepare_speed_candidates
+        from jaull.recommendation.local_evidence import assess_speed
+
+        if with_quality_profile is None:
+            return prepare_speed_candidates(
+                self, state, is_cancelled=is_cancelled, on_progress=on_progress,
+            )
+        selection = prepare_candidates(
+            self, state, profile=with_quality_profile,
+            is_cancelled=is_cancelled, on_progress=on_progress,
+        )
+        if state.requirements is None:
+            return selection
+        records = self._stored_benchmark_records()
+        return replace_candidate(selection, candidates=tuple(
+            replace_candidate(candidate, speed=assess_speed(
+                candidate.plan, state.requirements, records,
+            )) for candidate in selection.candidates
+        ))
+
+    def run_speed_candidates(
+        self, candidates: tuple[QualityCandidate, ...], *,
+        allow_download: bool = False,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> tuple[QualityCandidateOutcome, ...]:
+        from jaull.advisor.quality_candidates import run_speed_candidates
+
+        return run_speed_candidates(
+            self, candidates, allow_download=allow_download,
             is_cancelled=is_cancelled, on_progress=on_progress,
         )
 

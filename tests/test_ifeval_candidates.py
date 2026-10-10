@@ -249,3 +249,42 @@ def test_selection_reads_the_store_exactly_as_the_shadow_does(no_reranking) -> N
         assert second.applicable is None and second.conflict and second.distinct == 2
         assert third.applicable is None and not third.conflict  # Reference only.
         assert [c.settled for c in result.candidates] == [True, True, False]
+
+
+# --- Speed candidates: same shown GGUF plans, any task, with assess_speed's verdict ---
+
+
+def test_speed_candidates_are_the_shown_plans_for_any_task(monkeypatch) -> None:
+    from jaull.advisor import quality_candidates
+    from jaull.advisor.quality_candidates import prepare_speed_candidates
+    from jaull.domain.recommendation import ApplicableSpeed, SpeedAssessment
+
+    advisor = SelectionAdvisor()
+    advisor._stored_benchmark_records = lambda: ["stored"]  # type: ignore[method-assign]
+    seen: list[Any] = []
+
+    def assess(plan, requirements, records):
+        seen.append(records)
+        if plan.artifact.sha256 != advisor.models[0].plan.artifact.sha256:
+            return SpeedAssessment()
+        return SpeedAssessment(applicability="measured_plan", applicable=ApplicableSpeed(
+            tokens_per_second=272.0, repetitions=5, cohort="c" * 64, benchmark_id="b",
+        ))
+
+    monkeypatch.setattr(quality_candidates, "assess_speed", assess)
+    state = _english_chat(advisor, use_case=UseCase.CODING, languages=["es"])
+    result = prepare_speed_candidates(advisor, state)  # type: ignore[arg-type]
+    shown = [rec.plan for rec in state.recommendations]
+    # No language or suite rule: speed is measured for any task.
+    assert [c.plan.plan_id for c in result.candidates] == [p.plan_id for p in shown[:3]]
+    assert [c.speed_settled for c in result.candidates] == [True, False, False]
+    assert seen and all(records == ["stored"] for records in seen)
+
+
+def test_speed_candidates_need_the_saved_pool() -> None:
+    from jaull.advisor.quality_candidates import prepare_speed_candidates
+
+    advisor = SelectionAdvisor()
+    result = prepare_speed_candidates(advisor, advisor.state())  # type: ignore[arg-type]
+    assert result.candidates == ()
+    assert result.notices == ("This search kept no plan pool; run it again to evaluate.",)

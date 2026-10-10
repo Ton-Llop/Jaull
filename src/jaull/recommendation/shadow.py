@@ -29,10 +29,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from jaull.domain.benchmarks import BenchmarkRecord
 from jaull.domain.recommendation import PlanAssessment
 from jaull.domain.requirements import RecommendationPriority, UserRequirements
 from jaull.recommendation.diversity import diversify_ranked_plans
 from jaull.recommendation.engine_v2 import RankedPlan, _requirement_confirmation_rank
+from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
 from jaull.recommendation.quality import assess_quality, index_quality_records
 
@@ -116,7 +118,9 @@ def production_evidence(assessment: PlanAssessment) -> PlanEvidence:
     """Applicable evidence from what ranking already attached, with why where there is none.
 
     Quality applies only as ``controlled_artifact``: one complete audited run of
-    the requested profile's suite on these exact bytes. Speed never applies yet.
+    the requested profile's suite on these exact bytes. Speed applies as the plan's
+    own llama_bench_v2 tg128 (``SpeedAssessment.applicable``); its cohort keeps
+    figures from other machines, builds or protocols apart.
     """
     reasons = []
     quality = None
@@ -135,27 +139,39 @@ def production_evidence(assessment: PlanAssessment) -> PlanEvidence:
         reasons.append("Quality: no evidence for this artifact.")
     else:
         reasons.append("Quality: references only; none passes task/protocol applicability.")
-    if assessment.speed.applicability == "absent":
+    speed = None
+    applicable_speed = assessment.speed.applicable
+    if applicable_speed is not None:
+        speed = Measured(
+            cohort=applicable_speed.cohort, value=applicable_speed.tokens_per_second,
+            label=f"{applicable_speed.metric} tok/s",
+            evidence_ids=(applicable_speed.benchmark_id,),
+        )
+        reasons.append(
+            "Speed: measured, but it orders only against other measured plans in its "
+            "comparable cohort and stratum."
+        )
+    elif assessment.speed.applicability == "absent":
         reasons.append("Speed: no benchmark of this exact artifact.")
     else:
         newest = assessment.speed.references[0]
         reasons.append(f"Speed: {newest.benchmark_id} is blocked: {newest.blockers[0]}"
                        if newest.blockers else f"Speed: {newest.benchmark_id} is reference only.")
-    return PlanEvidence(quality=quality, fallback_reasons=tuple(reasons))
+    return PlanEvidence(quality=quality, speed=speed, fallback_reasons=tuple(reasons))
 
 
-def apply_quality_policy(
+def apply_measured_policy(
     ranked: Sequence[RankedPlan], requirements: UserRequirements,
 ) -> list[RankedPlan]:
-    """The active order for the Quality priority: shadow-v1 Quality, activated in Step 6.
+    """The active order: shadow-v1 for the request's priority, activated in step 6.
 
-    Only plans with applicable measured quality, in one comparable cohort and one
-    contiguous stratum run, swap the positions they already held; every other
-    plan keeps its base place, so with no applicable evidence this is the base
-    order. Other priorities are returned unchanged: Speed and Balanced stay in
-    shadow until speed evidence applies.
+    Quality reads applicable measured quality, Fastest applicable llama_bench_v2
+    tg128, Balanced both (Pareto fronts, base order within a front). Only plans
+    in one comparable cohort and one contiguous stratum run swap the positions
+    they already held; every other plan keeps its base place, so with no
+    applicable evidence this is the base order. Memory has no measured policy.
     """
-    if requirements.priority is not RecommendationPriority.QUALITY:
+    if _policy(requirements.priority) is None:
         return list(ranked)
     order, _, _ = _shadow_order(
         ranked, requirements.priority, requirements.commercial_use_required is True,
@@ -262,22 +278,25 @@ def _fallback_reasons(
 def recompare_quality(
     ranked: Sequence[RankedPlan], requirements: UserRequirements,
     records: Sequence[dict[str, Any]], *, limit: int,
+    benchmark_records: Sequence[BenchmarkRecord] | None = None,
 ) -> ShadowReport:
-    """Refresh only quality evidence on the saved pool; never re-plan or re-rank it.
+    """Refresh stored quality (and speed, given benchmarks) on the saved pool only.
 
-    Hardware, readiness, task/eligibility strata, speed and the fallback order stay
-    as observed during Search. The proposal is separate from that original result.
+    Hardware, readiness, task/eligibility strata and the fallback order stay as
+    observed during Search; the pool itself is never re-planned or re-ranked.
+    Without ``benchmark_records`` speed stays as Search saw it. The proposal is
+    separate from that original result.
     """
     index = index_quality_records(records)
-    refreshed = [
-        replace(item, assessment=item.assessment.model_copy(update={
-            "quality": assess_quality(
-                item.plan, requirements, item.assessment.quality.metadata_prior, index,
-                published=item.assessment.external_evaluations,
-            ),
-        }))
-        for item in ranked
-    ]
+    refreshed = []
+    for item in ranked:
+        update: dict[str, Any] = {"quality": assess_quality(
+            item.plan, requirements, item.assessment.quality.metadata_prior, index,
+            published=item.assessment.external_evaluations,
+        )}
+        if benchmark_records is not None:
+            update["speed"] = assess_speed(item.plan, requirements, benchmark_records)
+        refreshed.append(replace(item, assessment=item.assessment.model_copy(update=update)))
     return build_shadow_report(refreshed, requirements, limit=limit)
 
 
@@ -423,7 +442,7 @@ __all__ = [
     "Measured",
     "PlanEvidence",
     "ShadowReport",
-    "apply_quality_policy",
+    "apply_measured_policy",
     "build_shadow_report",
     "production_evidence",
     "recompare_quality",

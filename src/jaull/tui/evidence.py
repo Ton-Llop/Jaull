@@ -41,7 +41,10 @@ from jaull.domain.execution_plans import (
 )
 from jaull.domain.experiments import ExperimentRecord
 from jaull.domain.runtime import RuntimeName
-from jaull.evaluation.hardware_fingerprint import machine_fingerprint
+from jaull.evaluation.hardware_fingerprint import (
+    EVIDENCE_MEMORY_GRANULARITY,
+    machine_fingerprint,
+)
 from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
 from jaull.presentation.published_evaluations import published_reference_text
@@ -366,7 +369,9 @@ def _same_execution_context(
 ) -> bool:
     if plan.hardware is None or plan.memory_prediction is None or plan.backend_selection is None:
         return False
-    if machine_fingerprint(record.hardware) != machine_fingerprint(plan.hardware):
+    if machine_fingerprint(
+        record.hardware, memory_granularity=EVIDENCE_MEMORY_GRANULARITY,
+    ) != machine_fingerprint(plan.hardware, memory_granularity=EVIDENCE_MEMORY_GRANULARITY):
         return False
     if record.runtime.runtime is not plan.runtime_family:
         return False

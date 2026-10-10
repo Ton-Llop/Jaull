@@ -34,6 +34,7 @@ from jaull.advisor.quality_candidates import QualityCandidateSelection
 from jaull.domain.requirements import RecommendationPriority
 from jaull.evaluation.quality_records import describe_record
 from jaull.paths import user_data_dir
+from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.quality import requested_profile
 from jaull.runtime.quality_eval_runner import (
     DATASET_BYTES,
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
     from jaull.advisor.quality_candidates import QualityCandidate
     from jaull.advisor.service import AdvisorService
     from jaull.domain.execution_plans import ExecutionPlan
+    from jaull.domain.recommendation import ApplicableSpeed, SpeedAssessment
     from jaull.evaluation.quality_records import QualityEvidence
     from jaull.recommendation.quality import StoredQuality
     from jaull.recommendation.shadow import ShadowReport
@@ -78,6 +80,20 @@ _PROFILE_LABELS = {
     QualityProfile.HELLASWAG100: "HellaSwag - 100 samples / limited",
     QualityProfile.IFEVAL: "IFEval - 541 prompts / full split",
 }
+#: What a search's priority measures (docs/fastest-balanced-plan.md): Quality asks
+#: for quality, Fastest for speed, Balanced for both, on the same exact GGUFs.
+SPEED_SUITE = "speed"
+BALANCED_SUITE = "balanced"
+_SUITE_LABELS = {
+    SPEED_SUITE: "Speed - llama_bench_v2 / about 1 min per model",
+    BALANCED_SUITE: "Balanced - IFEval + speed / about 25 min per model",
+}
+_SPEED_PROTOCOL = (
+    "llama_bench_v2 / pp512 + tg128 / 5 repetitions / -fa off / -b 512 -ub 512 / "
+    "threads = physical cores / each plan's own offload and device / no Docker"
+)
+#: (model name, applicable tg128 or None, note): one column of the speed table.
+SpeedRow = tuple[str, "ApplicableSpeed | None", str]
 
 
 def recompare_readout(
@@ -120,10 +136,10 @@ def recompare_readout(
     elif report.groups:
         lines.append(f"{no_swaps}: comparable evidence preserves the base order.")
     elif report.priority is RecommendationPriority.BALANCED:
-        # shadow-v1 groups Balanced plans only on both axes, and speed never applies yet.
+        # shadow-v1 groups Balanced plans only when both axes apply in one cohort.
         lines.append(
-            f"{no_swaps}: no speed measurement applies yet. "
-            "Use the Quality priority for stored quality alone."
+            f"{no_swaps}: no two plans in one stratum have both applicable quality and "
+            "applicable speed. Each plan's reasons say which axis is missing."
         )
     else:
         lines.append(
@@ -270,6 +286,58 @@ def stored_badge(stored: StoredQuality) -> tuple[str, str] | None:
     return None
 
 
+def speed_badge(speed: SpeedAssessment) -> tuple[str, str] | None:
+    """(text, class) saying what the stored benchmarks already prove for this plan."""
+    if speed.applicable is not None:
+        return (
+            f"Speed already measured (tg128 {speed.applicable.tokens_per_second:.1f} tok/s); "
+            "unchecked, its stored result is shown in Results.", "quality-measured",
+        )
+    if speed.references:
+        blocker = speed.references[0].blockers[0] if speed.references[0].blockers else ""
+        return (f"Stored benchmark is a reference only: {blocker}", "quality-alternative")
+    return None
+
+
+def stored_speed_rows(
+    candidates: tuple[QualityCandidate, ...], ran: frozenset[str] = frozenset(),
+) -> tuple[SpeedRow, ...]:
+    """The applicable stored speed of each candidate not run now."""
+    return tuple(
+        (f"{candidate.plan.model_identity.model_name} (stored)", candidate.speed.applicable,
+         "applies to this plan")
+        for candidate in candidates
+        if candidate.speed.applicable is not None and candidate.plan.plan_id not in ran
+    )
+
+
+def speed_table(rows: tuple[SpeedRow, ...]) -> DataTable[Text]:
+    """tg128 side by side; the fastest in green only when every figure shares a cohort."""
+    table: DataTable[Text] = DataTable(
+        id="quality-speed-comparison", cursor_type="none", zebra_stripes=True,
+    )
+    table.add_column(Text(""), key="metric")
+    for index, (name, _, _) in enumerate(rows):
+        table.add_column(Text(name, style="bold"), key=f"speed-{index}")
+    measured = [speed for _, speed, _ in rows if speed is not None]
+    comparable = len(measured) == len(rows) > 1 and len({s.cohort for s in measured}) == 1
+    best = max(s.tokens_per_second for s in measured) if comparable else None
+    dim = palette.INK_2
+    table.add_row(Text("tg128", style=dim), *(
+        Text("—", style=dim) if speed is None else Text(
+            f"{speed.tokens_per_second:.1f} tok/s",
+            style=f"bold {palette.OK}" if speed.tokens_per_second == best else "",
+        ) for _, speed, _ in rows
+    ))
+    table.add_row(Text("pp512", style=dim), *(
+        Text("—" if speed is None or speed.pp512_tokens_per_second is None
+             else f"{speed.pp512_tokens_per_second:.1f} tok/s")
+        for _, speed, _ in rows
+    ))
+    table.add_row(Text("Applies", style=dim), *(Text(note) for _, _, note in rows))
+    return table
+
+
 def _size(bytes_: int) -> str:
     return f"{bytes_ / 1024**3:.2f} GiB" if bytes_ >= 1024**3 // 10 else (
         f"{bytes_ / 1024**2:.1f} MB"
@@ -301,12 +369,14 @@ class _QualityFinished(Message):
     def __init__(
         self, path: Path | None, readout: str, *,
         records: tuple[tuple[str, QualityEvidence], ...] = (), errors: tuple[str, ...] = (),
+        speed_rows: tuple[SpeedRow, ...] = (),
     ) -> None:
         super().__init__()
         self.path = path
         self.readout = readout
         self.records = records
         self.errors = errors
+        self.speed_rows = speed_rows
 
 
 class _QualityProgress(Message):
@@ -395,6 +465,14 @@ class QualityEvaluationScreen(Screen[Path | None]):
             QualityProfile.IFEVAL if search_state is not None and self._ifeval_offered
             else QualityProfile.SMOKE
         )
+        # quality, speed or balanced: what the search's priority asks to measure.
+        priority = requirements.priority if requirements is not None else None
+        self._measure = (
+            SPEED_SUITE if priority is RecommendationPriority.SPEED
+            else BALANCED_SUITE
+            if priority is RecommendationPriority.BALANCED and self._ifeval_offered
+            else "quality"
+        )
         self._hellaswag_dataset = ""
         self._auto_dataset: str | None = None
         # Filled by the automatic check; Start waits for it and refuses on a red row.
@@ -419,10 +497,15 @@ class QualityEvaluationScreen(Screen[Path | None]):
                     classes="section-title", markup=False,
                 )
             yield Static("Evaluation suite", classes="field-label")
+            options = [(_PROFILE_LABELS[profile], profile.value) for profile in QualityProfile
+                       if profile is not QualityProfile.IFEVAL or self._ifeval_offered]
+            if self._search_state is not None:
+                options.append((_SUITE_LABELS[SPEED_SUITE], SPEED_SUITE))
+                if self._ifeval_offered:
+                    options.append((_SUITE_LABELS[BALANCED_SUITE], BALANCED_SUITE))
             yield Select(
-                [(_PROFILE_LABELS[profile], profile.value) for profile in QualityProfile
-                 if profile is not QualityProfile.IFEVAL or self._ifeval_offered],
-                value=self._profile.value, allow_blank=False, id="quality-profile",
+                options, allow_blank=False, id="quality-profile",
+                value=self._profile.value if self._measure == "quality" else self._measure,
             )
         with TabbedContent(id="quality-tabs", initial="quality-selection-tab"):
             with TabPane(
@@ -536,10 +619,21 @@ class QualityEvaluationScreen(Screen[Path | None]):
             self._start_selection()
 
     def _protocol_text(self) -> str:
+        if self._measure == SPEED_SUITE:
+            return f"{_SPEED_PROTOCOL}\nSpeed is measured at each plan's own configuration."
+        speed = f"\n{_SPEED_PROTOCOL}" if self._measure == BALANCED_SUITE else ""
         return (
-            f"{_PROTOCOL[self._profile]}\n"
+            f"{_PROTOCOL[self._profile]}{speed}\n"
             "Evaluation protocol is separate from the selected execution plan."
         )
+
+    def _settled(self, candidate: QualityCandidate) -> bool:
+        """Nothing a rerun could add for what this suite measures."""
+        if self._measure == SPEED_SUITE:
+            return candidate.speed_settled
+        if self._measure == BALANCED_SUITE:
+            return candidate.settled and candidate.speed_settled
+        return candidate.settled
 
     def _apply_profile_dataset(self) -> None:
         """Point at this profile's pinned dataset, never over a path the user typed."""
@@ -560,6 +654,11 @@ class QualityEvaluationScreen(Screen[Path | None]):
         }
         self._checking = True
         self._set_busy(self._busy)
+        if self._measure == SPEED_SUITE:
+            self.post_message(_Readiness(QualityReadiness((
+                ("ok", "Speed", "llama-bench runs on this host: no Docker, dataset or server."),
+            ))))
+            return
         self.query_one("#quality-readiness", Static).update(
             f"[{palette.INK_2}]Checking the evaluator for this suite...[/]",
         )
@@ -598,7 +697,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
             (f"Not ready: {detail.split('. ')[0].rstrip('.')}. See the red row."
              for state, _, detail in readiness.rows if state == "bad"), "",
         )
-        if self._blocked and not self._busy:
+        if self._evaluator_blocks() and not self._busy:
             self._set_status(self._block_reason)
 
     def _update_downloads(self) -> None:
@@ -641,13 +740,26 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self._busy = True
         self._set_busy(True)
         self._set_status("Inspecting candidate metadata; no models downloaded")
-        self._executor.submit(self._select_candidates, self._app().advisor, self._profile)
+        self._executor.submit(
+            self._select_candidates, self._app().advisor, self._profile, self._measure,
+        )
 
     @on(Select.Changed, "#quality-profile")
     async def _profile_changed(self, event: Select.Changed) -> None:
-        profile = QualityProfile(str(event.value))
-        if profile is self._profile:
+        value = str(event.value)
+        measure = value if value in (SPEED_SUITE, BALANCED_SUITE) else "quality"
+        profile = (
+            QualityProfile.IFEVAL if measure == BALANCED_SUITE
+            else self._profile if measure == SPEED_SUITE else QualityProfile(value)
+        )
+        if (profile, measure) == (self._profile, self._measure):
             return
+        self._measure = measure
+        reselect = self._search_state is not None and not self._busy
+        if reselect:
+            self._busy = True
+            self._selecting = True
+            self._set_busy(True)
         self._profile = profile
         self.query_one("#quality-protocol", Static).update(self._protocol_text())
         self._apply_profile_dataset()
@@ -655,23 +767,33 @@ class QualityEvaluationScreen(Screen[Path | None]):
         # Results belong to the suite they ran; never leave them under another one.
         await self._show_measurements(())
         self.query_one("#quality-result", Static).update("No evaluation results in this session.")
-        if self._search_state is not None and not self._busy:
+        if reselect:
             # Candidates depend on the protocol: its context, and for IFEval the
             # exact shown plans. Never run a selection made for another profile.
             self._selection = QualityCandidateSelection()
             await self.query_one("#quality-candidates", Vertical).remove_children()
             self._start_selection()
 
-    def _select_candidates(self, advisor: AdvisorService, profile: QualityProfile) -> None:
+    def _select_candidates(
+        self, advisor: AdvisorService, profile: QualityProfile, measure: str,
+    ) -> None:
         assert self._search_state is not None
         def progress(text: str) -> None:
             if not self._quality_closing.is_set():
                 self.post_message(_QualityProgress(text))
         try:
-            selection = advisor.prepare_quality_candidates(
-                self._search_state, profile=profile, is_cancelled=self._cancel.is_set,
-                on_progress=progress,
-            )
+            if measure == "quality":
+                selection = advisor.prepare_quality_candidates(
+                    self._search_state, profile=profile, is_cancelled=self._cancel.is_set,
+                    on_progress=progress,
+                )
+            else:
+                selection = advisor.prepare_speed_candidates(
+                    self._search_state, is_cancelled=self._cancel.is_set, on_progress=progress,
+                    with_quality_profile=(
+                        QualityProfile.IFEVAL if measure == BALANCED_SUITE else None
+                    ),
+                )
         except Exception as exc:
             _log.exception("Quality candidate selection failed")
             selection = QualityCandidateSelection(notices=(f"Selection failed: {exc}",))
@@ -699,7 +821,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 Horizontal(
                     Checkbox(
                         f"{index + 1}. {plan.model_identity.model_name}",
-                        value=not candidate.settled, id=f"quality-candidate-{index}",
+                        value=not self._settled(candidate), id=f"quality-candidate-{index}",
                         tooltip=plan.model_identity.model_name,
                     ),
                     Static(
@@ -714,7 +836,11 @@ class QualityEvaluationScreen(Screen[Path | None]):
                     classes="quality-alternative", markup=False,
                 )] if candidate.reason.startswith("GGUF path of the shown model") else []),
                 *([Static(badge[0], classes=badge[1], markup=False)]
-                  if (badge := stored_badge(candidate.stored)) else []),
+                  if self._measure != SPEED_SUITE and (badge := stored_badge(candidate.stored))
+                  else []),
+                *([Static(badge[0], classes=badge[1], markup=False)]
+                  if self._measure != "quality" and (badge := speed_badge(candidate.speed))
+                  else []),
                 TechnicalDetails(
                     title="Artifact and selection details",
                     extra=[Static(
@@ -724,11 +850,15 @@ class QualityEvaluationScreen(Screen[Path | None]):
                         markup=False,
                     )],
                 ),
-                classes="quality-row" + ("" if candidate.settled else " -selected"),
+                classes="quality-row" + ("" if self._settled(candidate) else " -selected"),
                 id=f"quality-row-{index}",
             ))
         # Replaced even when empty: an earlier suite's table must not linger.
-        await self._show_measurements(stored_records(message.selection.candidates))
+        candidates = message.selection.candidates
+        await self._show_measurements(
+            stored_records(candidates) if self._measure != SPEED_SUITE else (),
+            speed_rows=stored_speed_rows(candidates) if self._measure != "quality" else (),
+        )
         if message.selection.notices:
             with_details = Collapsible(
                 Static("\n".join(message.selection.notices), markup=False),
@@ -740,7 +870,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self._set_busy(False)
         # A readiness blocker outranks the selection summary; never hide why Start is off.
         self._set_status(
-            self._block_reason if self._blocked
+            self._block_reason if self._evaluator_blocks()
             else "Review candidates before starting; execution is sequential."
             if message.selection.candidates else "No models available for this evaluation protocol."
         )
@@ -764,6 +894,22 @@ class QualityEvaluationScreen(Screen[Path | None]):
             "quality-dataset-download", "quality-download",
         }:
             self._update_downloads()
+            self._set_busy(self._busy)  # Balanced: the selection decides if IFEval runs.
+
+    def _needs_evaluator(self) -> bool:
+        """Speed never does; Balanced only while a checked plan still lacks quality."""
+        if self._measure == SPEED_SUITE:
+            return False
+        if self._measure != BALANCED_SUITE:
+            return True
+        return any(
+            not candidate.settled
+            for index, candidate in enumerate(self._selection.candidates)
+            if (box := self.query(f"#quality-candidate-{index}")) and box.first(Checkbox).value
+        )
+
+    def _evaluator_blocks(self) -> bool:
+        return self._blocked and self._needs_evaluator()
 
     def _checked(self) -> tuple[QualityCandidate, ...]:
         return tuple(
@@ -790,7 +936,8 @@ class QualityEvaluationScreen(Screen[Path | None]):
             dataset_file=Path(values["dataset"]),
             llama_server=Path(values["server"]), pilot_root=Path(values["root"]),
             image=values["image"], output=Path(values["output"]),
-            profile=QualityProfile(str(self.query_one("#quality-profile", Select).value)),
+            # Balanced shows "balanced" in the selector but evaluates its IFEval profile.
+            profile=self._profile,
             allow_dataset_download=self.query_one("#quality-dataset-download", Checkbox).value,
         )
 
@@ -818,7 +965,8 @@ class QualityEvaluationScreen(Screen[Path | None]):
             self._executor.submit(self._recompare, self._app().advisor)
         elif event.button.id == "quality-cancel":
             self._request_cancel()
-        elif event.button.id == "quality-start" and not self._busy and self._checking:
+        elif (event.button.id == "quality-start" and not self._busy and self._checking
+              and self._needs_evaluator()):
             # The check takes a moment; a red row disables Start with its reason instead.
             self._set_status("Still checking the evaluator; start again in a moment.")
         elif (event.button.id == "quality-start" and not self._busy
@@ -826,8 +974,25 @@ class QualityEvaluationScreen(Screen[Path | None]):
             # Before the path checks: with everything measured there is nothing to run.
             self._set_status(
                 "Every candidate is already measured or in conflict; see each badge."
-                if all(c.settled for c in self._selection.candidates)
+                if all(self._settled(c) for c in self._selection.candidates)
                 else "Select at least one candidate."
+            )
+        elif (event.button.id == "quality-start" and not self._busy
+              and not self._needs_evaluator() and self._search_state is not None):
+            # Speed needs no evaluator request: llama-bench on the host, plan by plan.
+            # So does Balanced once every checked plan's quality is settled.
+            self._cancel.clear()
+            self._busy = True
+            self._set_busy(True)
+            self.query_one("#quality-measurements", Vertical).display = False
+            self.query_one("#quality-report", Collapsible).collapsed = False
+            self.query_one("#quality-result", Static).update("Speed measurement in progress.")
+            self._set_status("Measuring speed with llama_bench_v2")
+            self._executor.submit(
+                self._run_speed, self._app().advisor,
+                self.query_one("#quality-download", Checkbox).value,
+                tuple(c for c in self._checked() if not c.speed_settled)
+                if self._measure == BALANCED_SUITE else self._checked(),
             )
         elif event.button.id in ("quality-start", "quality-prepare") and not self._busy:
             preparing = event.button.id == "quality-prepare"
@@ -879,6 +1044,102 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self, advisor: AdvisorService, request: QualityRunRequest, allow_download: bool,
         candidates: tuple[QualityCandidate, ...],
     ) -> None:
+        try:
+            balanced = self._measure == BALANCED_SUITE
+            # Balanced runs each axis only where it is still missing: a settled
+            # quality (applicable or in conflict) or an applicable speed is reused.
+            pending = tuple(c for c in candidates if not c.settled) if balanced else candidates
+            message = self._quality_message(advisor, request, allow_download, pending)
+            if balanced and not self._cancel.is_set():
+                speed = self._speed_message(advisor, allow_download, tuple(
+                    c for c in candidates if not c.speed_settled
+                ))
+                message = _QualityFinished(
+                    message.path, f"{message.readout}\n\n{speed.readout}",
+                    records=message.records, errors=(*message.errors, *speed.errors),
+                    speed_rows=speed.speed_rows,
+                )
+        except Exception as exc:
+            _log.exception("Candidate evaluations failed")
+            message = _QualityFinished(None, f"Evaluation failed: {exc}")
+        if not self._quality_closing.is_set():
+            self.post_message(message)
+
+    def _run_speed(
+        self, advisor: AdvisorService, allow_download: bool,
+        candidates: tuple[QualityCandidate, ...],
+    ) -> None:
+        try:
+            message = self._speed_message(advisor, allow_download, candidates)
+            if self._measure == BALANCED_SUITE:
+                # Quality was all stored: show it beside the new speed.
+                message.records = stored_records(self._selection.candidates)
+        except Exception as exc:
+            _log.exception("Speed measurement failed")
+            message = _QualityFinished(None, f"Speed measurement failed: {exc}")
+        if not self._quality_closing.is_set():
+            self.post_message(message)
+
+    def _speed_message(
+        self, advisor: AdvisorService, allow_download: bool,
+        candidates: tuple[QualityCandidate, ...],
+    ) -> _QualityFinished:
+        assert self._search_state is not None and self._search_state.requirements is not None
+        requirements = self._search_state.requirements
+
+        def progress(text: str) -> None:
+            if not self._quality_closing.is_set():
+                self.post_message(_QualityProgress(text))
+
+        rows: list[SpeedRow] = []
+        errors: list[str] = []
+        readouts: list[str] = []
+        try:
+            outcomes = advisor.run_speed_candidates(
+                candidates, allow_download=allow_download,
+                is_cancelled=self._cancel.is_set, on_progress=progress,
+            )
+        except Exception as exc:
+            _log.exception("Speed measurement failed")
+            return _QualityFinished(None, f"Speed measurement failed: {exc}")
+        for outcome in outcomes:
+            name = outcome.plan.model_identity.model_name
+            if outcome.path is None:
+                errors.append(f"{name}\nFailed: {outcome.error}")
+                readouts.append(errors[-1])
+                continue
+            try:
+                record = advisor.load_benchmark_record(outcome.path.stem)
+                # The ranking's own authority decides whether it applies, not this screen.
+                speed = assess_speed(outcome.plan, requirements, [record])
+            except Exception as exc:
+                _log.exception("Could not read benchmark %s", outcome.path)
+                errors.append(f"{name}\nSaved: {outcome.path}\nCould not read it: {exc}")
+                readouts.append(errors[-1])
+                continue
+            note = ("applies to this plan" if speed.applicable is not None
+                    else speed.references[0].blockers[0] if speed.references
+                    and speed.references[0].blockers else "reference only")
+            rows.append((name, speed.applicable, note))
+            readouts.append(f"{name}\nSaved: {outcome.path}\nSpeed: {note}")
+        rows.extend(stored_speed_rows(
+            self._selection.candidates,
+            frozenset(candidate.plan.plan_id for candidate in candidates),
+        ))
+        completed = sum(outcome.path is not None for outcome in outcomes)
+        readouts.insert(0, (
+            f"{'Cancelled. ' if self._cancel.is_set() else ''}Speed: completed "
+            f"{completed}/{len(candidates)}; failed {len(outcomes) - completed}; "
+            f"not started {len(candidates) - len(outcomes)}."
+        ))
+        return _QualityFinished(
+            None, "\n\n".join(readouts), errors=tuple(errors), speed_rows=tuple(rows),
+        )
+
+    def _quality_message(
+        self, advisor: AdvisorService, request: QualityRunRequest, allow_download: bool,
+        candidates: tuple[QualityCandidate, ...],
+    ) -> _QualityFinished:
         stored = None
         records: list[tuple[str, QualityEvidence]] = []
         errors: list[str] = []
@@ -935,8 +1196,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
             message = _QualityFinished(
                 stored, f"Evaluation failed: {exc}\nOutput: {request.output}",
             )
-        if not self._quality_closing.is_set():
-            self.post_message(message)
+        return message
 
     def _prepare(self, advisor: AdvisorService, request: QualityRunRequest) -> None:
         def progress(text: str) -> None:
@@ -1087,8 +1347,12 @@ class QualityEvaluationScreen(Screen[Path | None]):
 
     @on(_QualityFinished)
     async def _finished(self, message: _QualityFinished) -> None:
-        await self._show_measurements(message.records, message.errors)
-        self.query_one("#quality-report", Collapsible).collapsed = bool(message.records)
+        await self._show_measurements(
+            message.records, message.errors, speed_rows=message.speed_rows,
+        )
+        self.query_one("#quality-report", Collapsible).collapsed = bool(
+            message.records or message.speed_rows
+        )
         self._busy = False
         self._stored = message.path
         self._set_busy(False)
@@ -1112,6 +1376,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
 
     async def _show_measurements(
         self, records: tuple[tuple[str, QualityEvidence], ...], errors: tuple[str, ...] = (),
+        *, speed_rows: tuple[SpeedRow, ...] = (),
     ) -> None:
         await self.query_one("#quality-plan-diagnostics", Vertical).remove_children()
         self.query_one("#quality-report", Collapsible).title = "Run report"
@@ -1142,6 +1407,16 @@ class QualityEvaluationScreen(Screen[Path | None]):
                     markup=False,
                 )],
             ))
+        if speed_rows:
+            await measurements.mount(
+                Static("Speed side by side", classes="section-title"),
+                speed_table(speed_rows),
+                Static(
+                    "Controlled llama_bench_v2 protocol on this machine, not tuned "
+                    "production throughput. Fastest orders only comparable measured plans.",
+                    classes="comparison-note",
+                ),
+            )
         for error in errors:
             await measurements.mount(Static(error, classes="status-fail", markup=False))
 
@@ -1151,7 +1426,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
         for checkbox in self.query(Checkbox):
             checkbox.disabled = busy
         self.query_one("#quality-profile", Select).disabled = busy
-        self.query_one("#quality-start", Button).disabled = busy or self._blocked or (
+        self.query_one("#quality-start", Button).disabled = busy or self._evaluator_blocks() or (
             self._search_state is not None and not self._selection.candidates
         )
         self.query_one("#quality-prepare", Button).disabled = busy
@@ -1161,9 +1436,9 @@ class QualityEvaluationScreen(Screen[Path | None]):
             start_reason = (
                 "Inspecting candidate metadata." if self._selecting else "Evaluation in progress."
             )
-        elif self._checking:
+        elif self._checking and self._needs_evaluator():
             start_reason = "Checking the evaluator."
-        elif self._blocked:
+        elif self._evaluator_blocks():
             start_reason = "A readiness check failed; it says what to do."
         elif self._search_state is not None and not self._selection.candidates:
             start_reason = "No evaluation candidates available. Selection details show the reasons."

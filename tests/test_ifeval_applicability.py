@@ -210,22 +210,22 @@ def test_consumer_audit_pins_match_the_producer_sources_and_suite() -> None:
 
 def test_quality_priority_now_orders_the_active_list_by_measured_quality() -> None:
     """Step 6 activation: Quality follows comparable measurements; nothing else moves."""
-    from jaull.recommendation.shadow import apply_quality_policy
+    from jaull.recommendation.shadow import apply_measured_policy
 
     weaker, stronger = _full_record(), _full_record(stronger=True)
     requirements, ranked = _ranked([weaker, stronger])
     base = [i.evaluated.repo_id for i in ranked]
-    active = [i.evaluated.repo_id for i in apply_quality_policy(ranked, requirements)]
+    active = [i.evaluated.repo_id for i in apply_measured_policy(ranked, requirements)]
     assert base[:2] == ["org/A-7B-GGUF", "org/B-7B-GGUF"]
     assert active[:2] == ["org/B-7B-GGUF", "org/A-7B-GGUF"]  # B measured 100 %, A 50 %.
 
     # Without applicable evidence the active order is exactly the base order.
     _, unmeasured = _ranked([])
-    assert apply_quality_policy(unmeasured, requirements) == list(unmeasured)
+    assert apply_measured_policy(unmeasured, requirements) == list(unmeasured)
     # Speed and Balanced stay in shadow until speed evidence applies.
     for priority in (RecommendationPriority.SPEED, RecommendationPriority.BALANCED):
         other = requirements.model_copy(update={"priority": priority})
-        assert apply_quality_policy(ranked, other) == list(ranked)
+        assert apply_measured_policy(ranked, other) == list(ranked)
 
 
 def test_recommend_shows_the_quality_order_and_keeps_the_base_pool_for_recompare() -> None:

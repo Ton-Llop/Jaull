@@ -32,7 +32,7 @@ Generated: <redacted>
 - Artifact: native float16 — confirmed
 - Parameter count: 7B (name inference, low confidence)
 
-**Why this position?** Compared in order, for `balanced`:
+**Why this position?** Base criteria, compared in order, for `balanced`:
 
 1. viability: placement confirmed (comfortable)
 2. plan constraints: none
@@ -43,8 +43,11 @@ Generated: <redacted>
 7. execution fitness: strong
 8. executability: strong
 9. memory headroom: strong
-10. performance evidence: unknown
-11. plan confidence: medium
+10. plan confidence: medium
+
+**Measured-balanced policy** (after base criteria, before diversity):
+- No applicable measurement; this plan keeps its base-pool slot.
+- Balanced order: pool #1 -> #1 (before diversity).
 
 Diagnostic composite score: 61/100 (memory fit 75%, capability 70%). This is not what ordered the list.
 

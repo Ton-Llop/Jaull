@@ -9,9 +9,23 @@ from __future__ import annotations
 
 from jaull.domain.hardware import HardwareProfile
 
+#: For evidence matching: WSL reports total RAM a few KiB apart between boots;
+#: 256 MiB never hides a different machine but absorbs that drift.
+EVIDENCE_MEMORY_GRANULARITY = 256 * 1024 * 1024
 
-def machine_fingerprint(hardware: HardwareProfile) -> tuple[str, ...]:
-    """Return a stable fingerprint for local benchmark/experiment evidence."""
+
+def machine_fingerprint(
+    hardware: HardwareProfile, *, memory_granularity: int | None = None,
+) -> tuple[str, ...]:
+    """Return a stable fingerprint for local benchmark/experiment evidence.
+
+    ``memory_granularity`` rounds total RAM to that many bytes. The default keeps
+    the exact figure that case manifests already persist; evidence matching passes
+    a granularity because WSL reports a total that moves by a few KiB per boot.
+    """
+    memory = hardware.memory.total_bytes
+    if memory_granularity is not None and memory is not None:
+        memory = round(memory / memory_granularity) * memory_granularity
 
     gpus = tuple(
         sorted(f"{gpu.name}:{gpu.vram_total_bytes}" for gpu in hardware.gpus)
@@ -41,10 +55,10 @@ def machine_fingerprint(hardware: HardwareProfile) -> tuple[str, ...]:
         hardware.cpu.model or "",
         str(hardware.cpu.physical_cores or ""),
         str(hardware.cpu.logical_cores or ""),
-        str(hardware.memory.total_bytes),
+        str(memory),
         *gpus,
         *accelerators,
     )
 
 
-__all__ = ["machine_fingerprint"]
+__all__ = ["EVIDENCE_MEMORY_GRANULARITY", "machine_fingerprint"]

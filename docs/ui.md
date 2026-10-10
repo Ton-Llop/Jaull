@@ -118,7 +118,18 @@ Opt-in, explicit, and never started by opening the screen. **Prepare evaluator**
 checks the pinned server, image and dataset; **Start evaluation** runs the bounded
 pilot on an exact GGUF. Model and dataset download consent are separate checkboxes
 and both default to off. The protocol, its limits and the sample count stay visible
-beside the result, and a completed run changes no recommendation order.
+beside the result. A completed run changes no order on screen; a later search (or
+Recompare, as a proposal) uses it under the measured policies.
+
+From a search the suite selector also offers **Speed** and **Balanced**, and it
+starts on the suite that matches the search priority: Best quality → IFEval,
+Fast responses → Speed, Balanced → Balanced. Speed benchmarks each checked plan
+with `llama_bench_v2` (pp512 + tg128, 5 repetitions) on its own offload and device,
+needs no Docker or dataset, and shows a tg128/pp512 table that highlights a best
+value only when all rows share one comparable cohort. Balanced runs IFEval and then
+speed on the same GGUFs. A candidate is pre-checked only when the chosen suite
+still lacks an applicable result for it. **Free disk space** (end of Results) lists
+downloaded models and evaluation output folders for deletion; stored records stay.
 
 The quality workspace separates **Candidates** (or **Artifact**), **Settings**
 and **Results** into tabs. Candidate rows distinguish local bytes from required

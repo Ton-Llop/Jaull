@@ -14,15 +14,23 @@ from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import RuntimeName, runtime_capability_version
 from jaull.evaluation.hardware_fingerprint import machine_fingerprint
 
-_PREFERRED_METHODOLOGY_BY_RUNTIME = {
-    "llama.cpp": "llama_bench_v1",
-    "transformers": "transformers_isolated_inference_v3",
+#: Understood protocols per runtime, current first. Older ones still match a plan
+#: as reference evidence; they are never reinterpreted as the current protocol.
+_METHODOLOGIES_BY_RUNTIME = {
+    "llama.cpp": ("llama_bench_v2", "llama_bench_v1"),
+    "transformers": ("transformers_isolated_inference_v3",),
 }
 
 
 def preferred_benchmark_methodology(runtime: RuntimeName) -> str | None:
     """Current measurement protocol understood for this runtime."""
-    return _PREFERRED_METHODOLOGY_BY_RUNTIME.get(runtime.value)
+    known = _METHODOLOGIES_BY_RUNTIME.get(runtime.value)
+    return known[0] if known else None
+
+
+def known_benchmark_methodologies(runtime: RuntimeName) -> tuple[str, ...]:
+    """Every protocol this runtime's records may carry, current first."""
+    return _METHODOLOGIES_BY_RUNTIME.get(runtime.value, ())
 
 
 class BenchmarkPlanSummary(BaseModel):

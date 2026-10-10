@@ -148,16 +148,20 @@
             "value": "strong"
           },
           {
-            "axis": "performance_evidence",
-            "value": "unknown"
-          },
-          {
             "axis": "plan_confidence",
             "value": "medium"
           }
         ],
         "ranked_by": "plan_criteria",
-        "note": "Position comes from `ranking.criteria`, compared in order. `score` is a weighted composite kept for compatibility and for comparing candidates without hardware; it does not determine the order shown here."
+        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here.",
+        "balanced_policy": {
+          "version": "shadow-v1",
+          "artifact_sha256": null,
+          "quality_measurement": null,
+          "speed_measurement": null,
+          "base_pool_position": 1,
+          "balanced_pool_position": 1
+        }
       },
       "score": 61,
       "score_role": "diagnostic",

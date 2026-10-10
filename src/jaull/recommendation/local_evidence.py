@@ -6,24 +6,36 @@ of the user's context/concurrency workload. Artifact metadata matching is not
 cryptographic verification when the plan has no digest.
 """
 
+import hashlib
+import json
 from collections.abc import Sequence
 from re import fullmatch
 
 from jaull.domain.artifacts import ModelArtifact, artifact_identity_matches
 from jaull.domain.benchmarks import (
+    LLAMA_BENCH_V2,
+    LLAMA_BENCH_V2_FLAGS,
     BenchmarkMeasurementKind,
     BenchmarkRecord,
     LlamaBenchProtocol,
+    llama_bench_v2_mismatches,
 )
 from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.experiments import ExperimentRecord
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
-from jaull.domain.recommendation import LocalSpeedReference, SpeedAssessment
+from jaull.domain.recommendation import (
+    ApplicableSpeed,
+    LocalSpeedReference,
+    SpeedAssessment,
+)
 from jaull.domain.requirements import UserRequirements, WorkloadMode
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
-from jaull.evaluation.benchmark_comparison import preferred_benchmark_methodology
-from jaull.evaluation.hardware_fingerprint import machine_fingerprint
+from jaull.evaluation.benchmark_comparison import known_benchmark_methodologies
+from jaull.evaluation.hardware_fingerprint import (
+    EVIDENCE_MEMORY_GRANULARITY,
+    machine_fingerprint,
+)
 
 
 def matching_experiment(
@@ -59,17 +71,14 @@ def matching_benchmark(
     plan: ExecutionPlan, records: Sequence[BenchmarkRecord],
 ) -> BenchmarkRecord | None:
     compatible = []
+    methods = known_benchmark_methodologies(plan.runtime.runtime)
     for record in records:
         if not _common_matches(plan, record.artifact, record.runtime, record.hardware):
             continue
         assert plan.backend_selection is not None
         if record.requested_backend != plan.backend_selection.selected_backend:
             continue
-        method = preferred_benchmark_methodology(plan.runtime.runtime)
-        if (
-            method is None or not record.observation.success
-            or record.observation.methodology != method
-        ):
+        if not record.observation.success or record.observation.methodology not in methods:
             continue
         if not any(
             m.kind is BenchmarkMeasurementKind.GENERATION
@@ -97,9 +106,13 @@ def matching_benchmark(
         elif not _transformers_precision_matches(plan, record):
             continue
         compatible.append(record)
+    # A current-protocol record wins over any older one, then the newest run.
     return max(
         compatible,
-        key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
+        key=lambda record: (
+            bool(methods) and record.observation.methodology == methods[0],
+            record.identity.created_at, record.identity.benchmark_id,
+        ),
         default=None,
     )
 
@@ -118,7 +131,7 @@ def fastest_record_blockers(record: BenchmarkRecord) -> tuple[str, ...]:
         blockers.append("Benchmark did not complete with a confirmed successful exit.")
     if record.runtime.runtime is not RuntimeName.LLAMA_CPP or record.artifact.format != "gguf":
         blockers.append("Fastest v1 requires a llama-bench GGUF measurement.")
-    if record.observation.methodology != "llama_bench_v1":
+    if record.observation.methodology not in ("llama_bench_v1", "llama_bench_v2"):
         blockers.append("llama-bench methodology is missing or unsupported.")
     if (
         record.artifact.sha256 is None
@@ -186,8 +199,60 @@ def fastest_record_blockers(record: BenchmarkRecord) -> tuple[str, ...]:
         index = command.index(flag) + 1
         if index >= len(command) or command[index] != value:
             blockers.append(f"Recorded command {flag} differs from the recorded request.")
-    blockers.extend(_protocol_blockers(record.observation.protocol, build))
+    if record.observation.methodology == LLAMA_BENCH_V2:
+        blockers.extend(_v2_blockers(record, build))
+    else:
+        # v1 left these settings at llama-bench's defaults: a reference, never more.
+        blockers.extend(_protocol_blockers(record.observation.protocol, build))
     return tuple(blockers)
+
+
+def _v2_blockers(record: BenchmarkRecord, reported_build: str | None) -> list[str]:
+    """A v2 run proves its settings: argv carries them and llama-bench restates them.
+
+    This replaces v1's unconditional batching and flash-attention blockers. Batch
+    limits are clamped to each test's context, but deterministically: equal
+    -p/-n/-b/-ub give equal applied limits on every model. ``-fa off`` cannot be
+    turned on by the runtime, unlike ``auto`` or ``on``.
+    """
+    protocol = record.observation.protocol
+    cores = record.hardware.cpu.physical_cores
+    blockers = [
+        f"Reported setting differs from llama_bench_v2: {item}."
+        for item in llama_bench_v2_mismatches(protocol, cores)
+    ]
+    command = record.observation.command
+    pairs = list(zip(LLAMA_BENCH_V2_FLAGS[::2], LLAMA_BENCH_V2_FLAGS[1::2], strict=True))
+    for flag, value in [*pairs, ("-t", str(cores))]:
+        index = command.index(flag) + 1 if command.count(flag) == 1 else None
+        if index is None or index >= len(command) or command[index] != value:
+            blockers.append(f"Recorded command {flag} {value} is missing or differs.")
+    if (
+        protocol is not None and reported_build is not None
+        and reported_build != f"{(protocol.build_commit or '').lower()} ({protocol.build_number})"
+    ):
+        blockers.append("The recorded protocol build disagrees with the producing build.")
+    return blockers
+
+
+def speed_cohort(record: BenchmarkRecord) -> str:
+    """Everything two tg128 figures must share to be ranked, digested.
+
+    Machine, build, protocol, backend, device and workload. The artifact and its
+    offload are excluded: those are what Fastest compares between plans.
+    """
+    protocol = record.observation.protocol
+    return hashlib.sha256(json.dumps({
+        "machine": machine_fingerprint(record.hardware, memory_granularity=_MEMORY_GRANULARITY),
+        # The general fingerprint leaves drivers out; a driver change can move tok/s.
+        "gpu_environment": _gpu_environment(record.hardware),
+        "methodology": record.observation.methodology,
+        "protocol": protocol.model_dump(mode="json") if protocol is not None else None,
+        "backend": record.requested_backend.value,
+        "device": record.requested_device,
+        "workload": [list(record.request.prefill_sizes),
+                     list(record.request.generation_sizes), record.request.repetitions],
+    }, sort_keys=True).encode()).hexdigest()
 
 
 # Set once the producer asks llama-bench to restate its settings. A record
@@ -284,9 +349,55 @@ def fastest_benchmark_blockers(
         blockers.append("Historical artifact/machine/runtime/backend/offload matching failed.")
     if record.requested_backend is not ComputeBackend.CPU:
         devices = [flag.value for flag in plan.runtime.flags if flag.name == "--device"]
-        if len(devices) != 1 or devices[0] != record.requested_device:
+        implied = not devices and _runtime_device_is_the_plans_accelerator(plan, record)
+        if not implied and (len(devices) != 1 or devices[0] != record.requested_device):
             blockers.append("The plan's runtime device is unknown or differs from the measurement.")
+        environment = _gpu_environment(record.hardware)
+        if (
+            plan.hardware is None
+            or not environment
+            or any(
+                not (driver or "").strip()
+                or (record.requested_backend is ComputeBackend.CUDA and not (cuda or "").strip())
+                for _, driver, cuda in environment
+            )
+            or environment != _gpu_environment(plan.hardware)
+        ):
+            blockers.append(
+                "The GPU driver or CUDA version differs from this machine's, or is unknown."
+            )
     return tuple(blockers)
+
+
+def _runtime_device_is_the_plans_accelerator(
+    plan: ExecutionPlan, record: BenchmarkRecord,
+) -> bool:
+    """Search plans name no device: prove the measured one is the plan's accelerator.
+
+    The run's own output carries the runtime's enumeration ("Device 0: <name>, ...").
+    Only CUDA ids are read, as ``CUDA<i>`` maps to that index; anything that cannot be
+    shown to be the accelerator the plan selected stays unknown, never assumed.
+    """
+    match = fullmatch(r"CUDA(\d+)", record.requested_device or "")
+    selection = plan.backend_selection
+    accelerator = selection.selected_accelerator if selection is not None else None
+    if match is None or accelerator is None:
+        return False
+    output = "\n".join((record.observation.raw_stdout, record.observation.raw_stderr))
+    enumerated = [found.groups() for line in output.splitlines()
+                  if (found := fullmatch(r"\s*Device (\d+): ([^,]+),.*", line))]
+    # The name must point at exactly one device: two identical GPUs prove nothing.
+    holders = [index for index, name in enumerated if name == accelerator.name]
+    return holders == [match[1]]
+
+
+def _gpu_environment(hardware: HardwareProfile) -> tuple[tuple[str, str | None, str | None], ...]:
+    """What a speed figure depends on beyond the machine fingerprint: drivers and CUDA."""
+    # Preserve unknown values without comparing None with strings.
+    return tuple(sorted(
+        ((gpu.name, gpu.driver_version, gpu.cuda_version) for gpu in hardware.gpus),
+        key=lambda environment: tuple((value is not None, value or "") for value in environment),
+    ))
 
 
 def assess_speed(
@@ -303,6 +414,11 @@ def assess_speed(
     sha = plan.artifact.sha256
     if sha is None:
         return SpeedAssessment()
+    matched = [record for record in records if _exact_sha(record.artifact.sha256) == sha]
+    matched.sort(
+        key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
+        reverse=True,
+    )
     references = [
         LocalSpeedReference(
             benchmark_id=record.identity.benchmark_id,
@@ -313,12 +429,28 @@ def assess_speed(
             repetitions=record.observation.repetitions,
             blockers=fastest_benchmark_blockers(plan, requirements, record),
         )
-        for record in records
-        if _exact_sha(record.artifact.sha256) == sha
+        for record in matched
     ]
-    references.sort(key=lambda item: (item.created_at, item.benchmark_id), reverse=True)
+    # The newest reference with no blocker applies. ponytail: newest wins rather
+    # than an average of repeats; pooling runs needs its own variance rule first.
+    applicable = next((
+        ApplicableSpeed(
+            tokens_per_second=reference.tg128_tokens_per_second,
+            stddev_tokens_per_second=reference.tg128_stddev_tokens_per_second,
+            pp512_tokens_per_second=reference.pp512_tokens_per_second,
+            repetitions=record.observation.repetitions,
+            cohort=speed_cohort(record),
+            benchmark_id=reference.benchmark_id,
+        )
+        for reference, record in zip(references, matched, strict=True)
+        if not reference.blockers and reference.tg128_tokens_per_second
+    ), None)
     return SpeedAssessment(
-        applicability="reference_only" if references else "absent",
+        applicability=(
+            "measured_plan" if applicable is not None
+            else "reference_only" if references else "absent"
+        ),
+        applicable=applicable,
         references=tuple(references),
     )
 
@@ -359,6 +491,31 @@ def _transformers_precision_matches(
     )
 
 
+_MEMORY_GRANULARITY = EVIDENCE_MEMORY_GRANULARITY
+
+
+def _same_machine(left: HardwareProfile, right: HardwareProfile) -> bool:
+    return machine_fingerprint(left, memory_granularity=_MEMORY_GRANULARITY) == (
+        machine_fingerprint(right, memory_granularity=_MEMORY_GRANULARITY)
+    )
+
+
+def _same_artifact(plan: ExecutionPlan, artifact: ModelArtifact) -> bool:
+    """Identity as usual, or the same file of the same repo with the same SHA256.
+
+    A plan resolved from Search says ``main``; a run pins the immutable commit.
+    Equal digests name the same bytes, which is stronger than any revision label.
+    """
+    if artifact_identity_matches(plan.artifact.to_model_artifact(), artifact):
+        return True
+    planned, recorded = plan.artifact.sha256, artifact.sha256
+    return bool(
+        planned and recorded and planned.lower() == recorded.lower()
+        and plan.artifact.repo_id == artifact.repo_id
+        and plan.artifact.filename == artifact.filename
+    )
+
+
 def _common_matches(
     plan: ExecutionPlan, artifact: ModelArtifact,
     runtime: RuntimeRecommendation, hardware: HardwareProfile,
@@ -366,9 +523,9 @@ def _common_matches(
     return (
         plan.hardware is not None
         and plan.backend_selection is not None
-        and machine_fingerprint(plan.hardware) == machine_fingerprint(hardware)
+        and _same_machine(plan.hardware, hardware)
         and plan.runtime.runtime is runtime.runtime
-        and artifact_identity_matches(plan.artifact.to_model_artifact(), artifact)
+        and _same_artifact(plan, artifact)
     )
 
 

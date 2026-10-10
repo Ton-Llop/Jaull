@@ -19,12 +19,14 @@ from jaull.domain.execution_plans import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.recommendation import SpeedAssessment
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     QUANTIZATION_LADDERS,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 from jaull.exceptions import JaullError
+from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import CONFIRMED_MEMORY_STATUSES
 from jaull.recommendation.quality import (
     StoredQuality,
@@ -60,11 +62,18 @@ class QualityCandidate:
     #: The shadow's own reading of the store for this artifact: one applicable
     #: result, a conflict between repeats, or nothing applicable.
     stored: StoredQuality = field(default_factory=StoredQuality)
+    #: assess_speed's reading of the stored benchmarks for this exact plan.
+    speed: SpeedAssessment = field(default_factory=SpeedAssessment)
 
     @property
     def settled(self) -> bool:
         """A rerun cannot change what applies: it repeats a result or joins a conflict."""
         return self.stored.applicable is not None or self.stored.conflict
+
+    @property
+    def speed_settled(self) -> bool:
+        """A rerun only adds another applicable figure; the newest already applies."""
+        return self.speed.applicable is not None
 
 
 @dataclass(frozen=True)
@@ -314,6 +323,103 @@ def _prepare_shown_plans(
         seen.add(variant.sha256)
     report("Candidate selection ready; no models downloaded")
     return QualityCandidateSelection(tuple(chosen), tuple(notices), len(shown))
+
+
+def prepare_speed_candidates(
+    advisor: AdvisorService, state: RecommendationWorkflowState, *,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> QualityCandidateSelection:
+    """Fastest v1 candidates: the exact GGUF plans this search showed. Metadata only.
+
+    Same plans as IFEval selection (a shown safetensors model is measured through the
+    best GGUF path of that model in the saved pool), but no language or suite rule:
+    speed is measured for any task. Each carries assess_speed's verdict on what is
+    already stored, the same authority the ranking reads.
+    """
+    def report(text: str) -> None:
+        if is_cancelled is not None and is_cancelled():
+            raise QualityEvaluationCancelled("Candidate selection cancelled.")
+        if on_progress is not None:
+            on_progress(text)
+
+    if state.hardware is None or state.requirements is None:
+        return QualityCandidateSelection(notices=("Search hardware/requirements unavailable.",))
+    shown = [rec.plan for rec in state.recommendations if rec.plan is not None]
+    if not state.ranked_plans:
+        return QualityCandidateSelection(notices=(
+            "This search kept no plan pool; run it again to evaluate.",
+        ), considered=len(shown))
+    records = advisor._stored_benchmark_records()
+    chosen: list[QualityCandidate] = []
+    notices: list[str] = []
+    seen: set[str] = set()
+    for shown_plan in shown:
+        name = f"{shown_plan.artifact.repo_id} / {shown_plan.artifact.label}"
+        if len(chosen) == MAX_QUALITY_CANDIDATES:
+            notices.append(f"{name}: not offered, {MAX_QUALITY_CANDIDATES} candidates at most.")
+            continue
+        report(f"Checking {name}")
+        plan = _gguf_path(shown_plan, state.ranked_plans)
+        if plan is None or plan.artifact.sha256 in seen:
+            notices.append(
+                f"{name}: no single-file GGUF path with a published digest for this model "
+                "in the saved search pool."
+            )
+            continue
+        assert plan.artifact.sha256 is not None
+        seen.add(plan.artifact.sha256)
+        reason = "Shown plan; llama_bench_v2 at its own offload and device."
+        if plan is not shown_plan:
+            reason = (f"GGUF path of the shown model, not its shown {shown_plan.artifact.label} "
+                      f"plan; the result attaches to this path. {reason}")
+        chosen.append(QualityCandidate(
+            plan, reason, advisor._artifacts().is_downloaded(plan.artifact.to_model_artifact()),
+            speed=assess_speed(plan, state.requirements, records),
+        ))
+    report("Candidate selection ready; no models downloaded")
+    return QualityCandidateSelection(tuple(chosen), tuple(notices), len(shown))
+
+
+def run_speed_candidates(
+    advisor: AdvisorService, candidates: tuple[QualityCandidate, ...], *,
+    allow_download: bool = False, is_cancelled: Callable[[], bool] | None = None,
+    on_progress: Callable[[str], None] | None = None,
+) -> tuple[QualityCandidateOutcome, ...]:
+    """Sequential llama_bench_v2 runs; each record is stored before the next starts."""
+    if not 1 <= len(candidates) <= MAX_QUALITY_CANDIDATES:
+        raise ValueError("Select between one and three evaluation candidates.")
+    outcomes: list[QualityCandidateOutcome] = []
+    for index, candidate in enumerate(candidates, 1):
+        if is_cancelled is not None and is_cancelled():
+            break
+        prefix = f"{index}/{len(candidates)} {candidate.plan.model_identity.model_name}"
+
+        def report(text: str, prefix: str = prefix) -> None:
+            if on_progress is not None:
+                on_progress(f"{prefix}: {text}")
+
+        try:
+            result = advisor.benchmark_plan_speed(
+                candidate.plan, allow_download=allow_download,
+                is_cancelled=is_cancelled, on_progress=report,
+            )
+        except QualityEvaluationCancelled:
+            outcomes.append(QualityCandidateOutcome(candidate.plan, error="Cancelled"))
+            break
+        except (JaullError, OSError, ValueError) as exc:
+            outcomes.append(QualityCandidateOutcome(candidate.plan, error=str(exc)))
+            report(f"Failed: {exc}")
+            continue
+        observation = result.record.observation
+        if observation.success:
+            outcomes.append(QualityCandidateOutcome(candidate.plan, path=result.persisted_path))
+            report(f"Saved: {result.persisted_path}")
+        else:
+            outcomes.append(QualityCandidateOutcome(
+                candidate.plan, error=observation.message or "llama-bench failed",
+            ))
+    return tuple(outcomes)
 
 
 def _gguf_path(shown: ExecutionPlan, pool: tuple[RankedPlan, ...]) -> ExecutionPlan | None:

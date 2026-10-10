@@ -140,11 +140,13 @@ def _fill(screen: QualityEvaluationScreen, request: QualityRunRequest) -> None:
 
 
 async def _settled(pilot: Any, screen: QualityEvaluationScreen) -> None:
-    for _ in range(100):
-        await pilot.pause(0.02)
-        if not screen._busy:
-            return
-    pytest.fail("Quality screen did not finish")
+    await pilot.pause(0)
+    # The selector shows the quality profile, or "speed" / "balanced" for those suites.
+    await _wait_until(pilot, lambda: (
+        not screen._busy
+        and screen.query_one("#quality-profile", Select).value
+        in (screen._profile.value, screen._measure)
+    ))
 
 
 class CandidateAdvisor(FakeAdvisor):

@@ -21,6 +21,9 @@ from jaull.benchmarks.matrix import (
     BenchmarkMatrixResult,
 )
 from jaull.domain.benchmarks import (
+    FASTEST_GENERATION_SIZES,
+    FASTEST_PREFILL_SIZES,
+    FASTEST_REPETITIONS,
     BenchmarkGpuLayers,
     BenchmarkMeasurementKind,
     BenchmarkRecord,
@@ -369,9 +372,11 @@ class RecommendationBenchmarkScreen(Screen[None]):
             device=device,
             gpu_layers=_benchmark_gpu_layers(backend, plan.runtime),
             context_length=_plan_context_length(plan),
-            prefill_sizes=(128, 512),
-            generation_sizes=(64,),
-            repetitions=3,
+            # Fastest v1's workload, so a benchmark of the selected plan can order it
+            # (docs/fastest-balanced-plan.md): any other shape stays a reference.
+            prefill_sizes=FASTEST_PREFILL_SIZES,
+            generation_sizes=FASTEST_GENERATION_SIZES,
+            repetitions=FASTEST_REPETITIONS,
             timeout_seconds=900.0,
         )
         run = advisor.run_benchmark(request, hardware=plan.hardware)

@@ -605,7 +605,9 @@ def test_local_benchmark_requires_compatible_fingerprint_and_machine() -> None:
     )
 
     assert assessment.local_benchmark_id == matching.identity.benchmark_id
-    assert assessment.measured_generation_tokens_per_second == 55.0
+    # A llama_bench_v1 record stays linked as a reference but no longer orders plans:
+    # only speed that assess_speed declares applicable reaches the throughput axis.
+    assert assessment.measured_generation_tokens_per_second is None
 
 
 def test_local_evidence_matches_when_only_available_memory_changes() -> None:
@@ -680,7 +682,9 @@ def test_advisor_plan_context_loads_local_evidence(tmp_path: Path) -> None:
 
     assert assessment.local_experiment_id == experiment.identity.experiment_id
     assert assessment.local_benchmark_id == benchmark.identity.benchmark_id
-    assert assessment.measured_generation_tokens_per_second == 63.0
+    # A llama_bench_v1 record stays linked as a reference but no longer orders plans:
+    # only speed that assess_speed declares applicable reaches the throughput axis.
+    assert assessment.measured_generation_tokens_per_second is None
 
 
 def test_advisor_plan_context_includes_backend_selection_and_readiness(
@@ -1411,7 +1415,9 @@ def test_unknown_benchmark_methodology_cannot_displace_recognized_evidence() -> 
     )
 
     assert assessment.local_benchmark_id == new.identity.benchmark_id
-    assert assessment.measured_generation_tokens_per_second == 20.0
+    # A llama_bench_v1 record stays linked as a reference but no longer orders plans:
+    # only speed that assess_speed declares applicable reaches the throughput axis.
+    assert assessment.measured_generation_tokens_per_second is None
 
 
 def test_top3_limit_and_deterministic_reason_codes() -> None:

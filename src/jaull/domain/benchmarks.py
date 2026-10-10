@@ -119,6 +119,47 @@ class LlamaBenchProtocol(BaseModel):
     flash_attn: Literal["on", "off", "auto_unresolved"] | None = None
     load_mode: str | None = None
     warmup: Literal["ran", "skipped"] | None = None
+    #: The rule that chose ``n_threads`` (llama_bench_v2), so 6 reads as "every
+    #: physical core of this CPU", not as a number picked for one model.
+    thread_policy: Literal["physical_cores"] | None = None
+
+
+LLAMA_BENCH_V2 = "llama_bench_v2"
+#: Fastest v1's workload (docs/fastest-balanced-plan.md): a run of any other shape
+#: stays a reference. Every producer meant to order plans uses exactly this.
+FASTEST_PREFILL_SIZES = (512,)
+FASTEST_GENERATION_SIZES = (128,)
+FASTEST_REPETITIONS = 5
+#: The flags that pin llama_bench_v2 (docs/fastest-balanced-plan.md, step 0): every
+#: setting that moves throughput is explicit, never a machine-dependent default.
+#: ``-t`` follows them with the physical core count of the recording CPU.
+LLAMA_BENCH_V2_FLAGS = ("-b", "512", "-ub", "512", "-fa", "off", "-ctk", "f16",
+                        "-ctv", "f16", "-lm", "mmap")
+#: What llama-bench must report back for a llama_bench_v2 run (docs/fastest-balanced-plan.md,
+#: step 0). Threads follow a rule, not a number: every physical core of the recording CPU.
+LLAMA_BENCH_V2_SETTINGS: dict[str, object] = {
+    "n_batch": 512, "n_ubatch": 512, "flash_attn": "off", "cache_type_k": "f16",
+    "cache_type_v": "f16", "load_mode": "mmap", "warmup": "ran",
+    "thread_policy": "physical_cores",
+}
+
+
+def llama_bench_v2_mismatches(
+    protocol: LlamaBenchProtocol | None, physical_cores: int | None,
+) -> list[str]:
+    """Reported settings that differ from llama_bench_v2; empty when the run followed it.
+
+    ``physical_cores`` is the recording machine's own count: a record made on
+    another CPU is judged by the rule it followed there, not by this machine.
+    """
+    if protocol is None:
+        return ["llama-bench reported no settings"]
+    # Unknown on both sides would compare equal (None == None) and confirm nothing.
+    if physical_cores is None or physical_cores < 1:
+        return ["Physical core count is unknown or invalid."]
+    expected = {**LLAMA_BENCH_V2_SETTINGS, "n_threads": physical_cores}
+    return [f"{name}={getattr(protocol, name)!r} (expected {value!r})"
+            for name, value in expected.items() if getattr(protocol, name) != value]
 
 
 class BenchmarkObservation(BaseModel):
@@ -335,6 +376,12 @@ __all__ = [
     "DEFAULT_BENCHMARK_REPETITIONS",
     "DEFAULT_GENERATION_SIZES",
     "DEFAULT_PREFILL_SIZES",
+    "FASTEST_GENERATION_SIZES",
+    "FASTEST_PREFILL_SIZES",
+    "FASTEST_REPETITIONS",
+    "LLAMA_BENCH_V2",
+    "LLAMA_BENCH_V2_FLAGS",
+    "LLAMA_BENCH_V2_SETTINGS",
     "BenchmarkEnvironment",
     "BenchmarkFailureReason",
     "BenchmarkGpuLayers",
@@ -348,4 +395,5 @@ __all__ = [
     "LlamaBenchBinaryStatus",
     "LlamaBenchCapability",
     "LlamaBenchProtocol",
+    "llama_bench_v2_mismatches",
 ]

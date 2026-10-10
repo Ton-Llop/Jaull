@@ -11,7 +11,6 @@ from typing import Any, NamedTuple
 from pydantic import ValidationError
 
 from jaull.domain.benchmarks import (
-    BenchmarkMeasurementKind,
     BenchmarkRecord,
 )
 from jaull.domain.candidates import EvaluatedCandidate
@@ -286,7 +285,10 @@ def assess_plan(
         )
 
     measured_memory = _measured_memory(local_experiment, local_benchmark)
-    measured_tps = _measured_generation_tps(local_benchmark)
+    # One authority for "valid speed evidence": assess_speed. A matched v1 record
+    # stays visible (evidence above, references below) but never orders plans.
+    speed = assess_speed(plan, requirements, ctx.benchmark_records)
+    measured_tps = speed.applicable.tokens_per_second if speed.applicable else None
     external = _matching_evaluations(plan, ctx.external_evaluations)
     evidence.extend(_external_evidence(external))
 
@@ -313,14 +315,14 @@ def assess_plan(
             plan, requirements, _capability_level(capability), ctx.quality_index,
             published=external,
         ),
-        speed=assess_speed(plan, requirements, ctx.benchmark_records),
+        speed=speed,
         suitability=_suitability(evaluated, requirements),
         execution_fitness=_execution_fitness(plan),
         feasibility=_feasibility(plan),
         executability=_executability(plan),
         runtime_readiness=_runtime_readiness(plan),
         performance_evidence=(
-            AssessmentLevel.STRONG if local_benchmark is not None else AssessmentLevel.UNKNOWN
+            AssessmentLevel.STRONG if speed.applicable is not None else AssessmentLevel.UNKNOWN
         ),
         resource_evidence=(
             AssessmentLevel.STRONG
@@ -1041,17 +1043,6 @@ def _measured_memory(
     return max(values) if values else None
 
 
-def _measured_generation_tps(benchmark: BenchmarkRecord | None) -> float | None:
-    if benchmark is None:
-        return None
-    generation = [
-        measurement.mean_tokens_per_second
-        for measurement in benchmark.observation.measurements
-        if measurement.kind is BenchmarkMeasurementKind.GENERATION
-    ]
-    return max(generation) if generation else None
-
-
 _LEVEL_RANK = {
     AssessmentLevel.STRONG: 0,
     AssessmentLevel.ADEQUATE: 1,
@@ -1083,9 +1074,10 @@ def _ranking_key(
             _LEVEL_RANK[assessment.execution_fitness],
         )
     elif priority is RecommendationPriority.SPEED:
+        # Measured speed is not a key axis: apply_measured_policy orders it only
+        # inside comparable cohorts and strata, after this base order.
         priority_axes = (
             _LEVEL_RANK[assessment.executability],
-            _throughput_rank(assessment),
             _priority_quantization_rank(item.plan, priority),
             _memory_efficiency_rank(assessment),
         )
@@ -1112,7 +1104,6 @@ def _ranking_key(
             else 0
         ),
         *priority_axes,
-        _LEVEL_RANK[assessment.performance_evidence],
         _CONFIDENCE_RANK[assessment.confidence],
         item.evaluated.repo_id,
         item.plan.artifact.quantization or item.plan.artifact.precision or "",
@@ -1226,11 +1217,6 @@ def ranking_criteria(
         )
     trailing: tuple[tuple[str, str, int | float], ...] = (
         (
-            "performance_evidence",
-            assessment.performance_evidence.value,
-            _LEVEL_RANK[assessment.performance_evidence],
-        ),
-        (
             "plan_confidence",
             assessment.confidence.value,
             _CONFIDENCE_RANK[assessment.confidence],
@@ -1253,17 +1239,11 @@ def ranking_criteria(
             ),
         )
     elif priority is RecommendationPriority.SPEED:
-        measured = assessment.measured_generation_tokens_per_second
         axes = (
             (
                 "executability",
                 assessment.executability.value,
                 _LEVEL_RANK[assessment.executability],
-            ),
-            (
-                "measured_throughput",
-                f"{measured:.1f} tok/s" if measured is not None else "not measured",
-                _throughput_rank(assessment),
             ),
             (
                 "quantization",
@@ -1397,12 +1377,6 @@ def _priority_quantization_rank(
         return ladder.index(quant.upper())
     except ValueError:
         return len(ladder)
-
-
-def _throughput_rank(assessment: PlanAssessment) -> float:
-    if assessment.measured_generation_tokens_per_second is None:
-        return 10_000.0
-    return -assessment.measured_generation_tokens_per_second
 
 
 def _memory_efficiency_rank(assessment: PlanAssessment) -> int:

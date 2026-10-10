@@ -106,7 +106,8 @@ def _assessment_signature(plan: RankedPlan) -> tuple[object, ...]:
         assessment.execution_fitness,
         assessment.feasibility,
         assessment.executability,
-        assessment.performance_evidence,
+        # Not performance_evidence: measured speed orders only inside the measured
+        # policy's cohorts, never by making two plans look different here.
         assessment.resource_evidence,
         assessment.license_fit,
         assessment.language_fit,

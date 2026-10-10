@@ -79,8 +79,8 @@ def run_case(advisor: AdvisorService, hardware: HardwareProfile, capture: dict[s
         return {"no_results": state.no_results_reason, "queries_not_captured": replay.missing}
     require(state.shadow is not None, "Results without a shadow report: the policy raised")
     assert state.requirements is not None and state.shadow is not None
-    # The gate: only Quality (activated in Step 6) may follow stored quality, and
-    # exactly as its policy proposes; every other priority keeps the base order.
+    # The gate: Quality, Speed and Balanced follow exactly what their measured policy
+    # proposes; Memory, which has none, keeps the base order.
     without = recommend(
         state.evaluated_candidates, state.requirements, hardware=hardware,
         capability_analyzer=services.capability_analyzer,
@@ -88,7 +88,7 @@ def run_case(advisor: AdvisorService, hardware: HardwareProfile, capture: dict[s
     )
     shadow = state.shadow
     active = [rec.plan.plan_id for rec in state.recommendations if rec.plan is not None]
-    expected = (list(shadow.shadow_top5) if answers.priority is RecommendationPriority.QUALITY
+    expected = (list(shadow.shadow_top5) if answers.priority is not RecommendationPriority.MEMORY
                 else [rec.plan.plan_id for rec in without if rec.plan is not None])
     require(active == expected, "The active order is not what its priority's policy gives")
     names = {item.plan.plan_id: f"{item.evaluated.repo_id} / {item.plan.artifact.label}"
@@ -159,7 +159,7 @@ def markdown(report: dict[str, Any]) -> str:
         "# Step 6 shadow review matrix", "",
         f"Generated {report['at']} ({report['mode']}); {report['quality_records']} stored "
         "quality records. In every case the active order is what its priority's policy "
-        "gives: Quality follows comparable measurements, Speed and Balanced keep the base order.",
+        "gives: Quality, Speed and Balanced follow comparable applicable measurements.",
         "", "| Hardware | Task | Probe | Applicable | Groups | Moves | Top-5 changes |",
         "|---|---|---|---|---|---|---|",
     ]

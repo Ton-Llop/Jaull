@@ -162,12 +162,21 @@ code, runtime build, driver and external metadata, not just today's estimator.
 Two methodologies, both persisted as `BenchmarkRecord` JSON files under
 `<user data dir>/benchmarks/`:
 
-**`llama_bench_v1`** — drives `llama-bench` with prefill sizes (default 128, 512, 2048) and
-generation sizes (default 128), 5 repetitions by default, and parses per-measurement mean
-and standard deviation tokens/second along with the backend, device and `ngl` the binary
-itself reported. The matrix runner can run the same artifact on CPU and on the selected
+**`llama_bench_v2`** (current) — drives `llama-bench` with prefill sizes (default 128, 512,
+2048) and generation sizes (default 128), 5 repetitions by default, and parses
+per-measurement mean and standard deviation tokens/second along with the backend, device
+and `ngl` the binary itself reported. Every setting that moves throughput is explicit
+instead of a machine-dependent default: `-b 512 -ub 512 -fa off -ctk f16 -ctv f16 -lm mmap`
+and `-t` equal to the physical core count (`thread_policy = physical_cores`).
+llama-bench restates its settings with `-oe jsonl`; `llama_bench_v2_mismatches` checks them
+against the protocol. A completed run that departs from it keeps its measurements and stays
+a reference. The matrix runner can run the same artifact on CPU and on the selected
 backend, recording each configuration separately and reporting skips and failures instead
 of hiding them.
+
+**`llama_bench_v1`** — the earlier protocol, which left those settings at llama-bench's
+defaults. Its records still match their plans as reference evidence, but are never
+reinterpreted as v2. When both exist, a v2 record is preferred.
 
 **`transformers_isolated_inference_v3`** — runs in a separate Python process and reports
 prefill and generation throughput with standard deviations, model load and warmup

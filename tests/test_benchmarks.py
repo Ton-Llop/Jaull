@@ -136,6 +136,7 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
             device="none",
             gpu_layers=BenchmarkGpuLayers.count_layers(0),
         ),
+        threads=6,
     )
     assert cpu[cpu.index("-dev") + 1] == "none"
     assert cpu[cpu.index("-ngl") + 1] == "0"
@@ -150,6 +151,7 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
             device="Vulkan0",
             gpu_layers=BenchmarkGpuLayers.full(),
         ),
+        threads=6,
     )
     assert vulkan[vulkan.index("-dev") + 1] == "Vulkan0"
     assert vulkan[vulkan.index("-ngl") + 1] == "-1"
@@ -166,6 +168,7 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
             generation_sizes=(128,),
             repetitions=5,
         ),
+        threads=6,
     )
     assert cuda == (
         "llama-bench",
@@ -181,6 +184,9 @@ def test_command_building_cpu_vulkan_and_cuda(tmp_path: Path) -> None:
         "128",
         "-r",
         "5",
+        # llama_bench_v2: every setting that moves throughput is explicit.
+        "-b", "512", "-ub", "512", "-fa", "off", "-ctk", "f16", "-ctv", "f16",
+        "-lm", "mmap", "-t", "6",
         # Restates the test-instance settings on stderr so the record can hold them.
         # It is an extra output format, not a change to what gets measured.
         "-oe",
@@ -211,7 +217,7 @@ def test_declared_context_is_persisted_but_not_passed_to_llama_bench(
         context_length=4096,
     )
 
-    command = build_llama_bench_command("llama-bench", request)
+    command = build_llama_bench_command("llama-bench", request, threads=6)
 
     assert request.context_length == 4096
     assert "--ctx-size" not in command

@@ -188,22 +188,48 @@ class LocalSpeedReference(BaseModel):
     blockers: tuple[str, ...] = ()
 
 
+class ApplicableSpeed(BaseModel):
+    """tg128 of this plan's exact artifact and offload, under llama_bench_v2.
+
+    Equal ``cohort`` means same machine, build, protocol, backend, device and
+    workload, so two plans' figures may order them. The artifact and offload are
+    left out on purpose: they are what Fastest compares.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    metric: Literal["tg128"] = "tg128"
+    tokens_per_second: float = Field(gt=0.0)
+    stddev_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    # Secondary, never a substitute for generation speed.
+    pp512_tokens_per_second: float | None = Field(default=None, ge=0.0)
+    repetitions: int = Field(ge=1)
+    cohort: str = Field(pattern=r"^[0-9a-f]{64}$")
+    benchmark_id: str
+    scope: str = (
+        "This plan's exact artifact and offload under the controlled llama_bench_v2 "
+        "protocol on the recording machine, not tuned production throughput."
+    )
+
+
 class SpeedAssessment(BaseModel):
     """Stored measurements of this plan's artifact, kept apart from the ranking.
 
     The counterpart of ``QualityAssessment`` for Fastest. ``performance_evidence``
-    says how well a plan is backed; this says what was measured and why it cannot
-    yet be compared. Only reference states exist until a run's effective protocol
-    can be audited: reported llama-bench settings are requests, not applied values.
+    says how well a plan is backed; this says what was measured and whether it may
+    be compared. Only a llama_bench_v2 run whose reported settings match the
+    protocol, on this plan's artifact, offload, machine and device, is applicable.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    applicability: Literal["absent", "reference_only"] = "absent"
+    # `measured_plan` only with `applicable` set: the newest unblocked v2 reference.
+    applicability: Literal["absent", "reference_only", "measured_plan"] = "absent"
+    applicable: ApplicableSpeed | None = None
     # Newest first, benchmark ID breaking ties: the order Fastest v1 would read.
     references: tuple[LocalSpeedReference, ...] = ()
     limitations: tuple[str, ...] = (
-        "No benchmark's effective runtime protocol is audited, so none is comparable.",
+        "Only a llama_bench_v2 run that proves its settings on this exact plan applies.",
     )
 
 
@@ -269,6 +295,7 @@ class ExecutionPlanRecommendation(BaseModel):
 
 __all__ = [
     "ApplicableQuality",
+    "ApplicableSpeed",
     "AssessmentLevel",
     "ExecutionPlanRecommendation",
     "ExternalEvaluationEvidence",

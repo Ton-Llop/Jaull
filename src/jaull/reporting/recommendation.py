@@ -34,7 +34,7 @@ from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation.diversity import diversify_ranked_plans
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
-from jaull.recommendation.shadow import POLICY_VERSION, apply_quality_policy
+from jaull.recommendation.shadow import POLICY_VERSION, apply_measured_policy
 from jaull.reporting.estimation import estimate_to_json_dict
 from jaull.workflow.state import RecommendationWorkflowState
 
@@ -43,7 +43,7 @@ REPORT_SCHEMA_VERSION = 3
 
 def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
     """Serialise a run into a stable, JSON-safe dictionary."""
-    quality_positions = _quality_policy_positions(state)
+    quality_positions = _policy_positions(state)
     return {
         "schema_version": REPORT_SCHEMA_VERSION,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -82,7 +82,7 @@ def report_to_json(state: RecommendationWorkflowState, indent: int = 2) -> str:
 
 def report_to_markdown(state: RecommendationWorkflowState) -> str:
     """A human-readable summary for pasting into notes or a thesis appendix."""
-    quality_positions = _quality_policy_positions(state)
+    quality_positions = _policy_positions(state)
     lines: list[str] = ["# jaull recommendation report", ""]
     lines.append(f"Generated: {datetime.now(UTC).isoformat()}")
     lines.append("")
@@ -221,7 +221,7 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
         if criteria:
             lines += [
                 "**Why this position?** "
-                + ("Base criteria, compared in order, for " if "quality_policy" in ranking
+                + ("Base criteria, compared in order, for " if _policy_key(ranking)
                    else "Compared in order, for ")
                 + f"`{_priority(state).value}`:",
                 "",
@@ -230,29 +230,8 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 f"{index}. {item['axis'].replace('_', ' ')}: {item['value']}"
                 for index, item in enumerate(criteria, start=1)
             ]
-            if "quality_policy" in ranking:
-                policy = ranking["quality_policy"]
-                measured = policy["measurement"]
-                lines += [
-                    "", "**Measured-quality policy** (after base criteria, before diversity):",
-                ]
-                if measured is None:
-                    lines.append("- No applicable measurement; this plan keeps its base-pool slot.")
-                else:
-                    lines += [
-                        f"- {measured['suite']} / {measured['metric']}: {measured['value']:.1%} "
-                        f"({measured['correct']}/{measured['samples']}).",
-                        f"- Cohort: `{measured['cohort']}`.",
-                        f"- Record SHA256: `{measured['record_sha256']}`.",
-                        f"- Scope: {measured['scope']}",
-                    ]
-                if policy["base_pool_position"] is not None:
-                    lines.append(f"- Quality order: pool #{policy['base_pool_position']} -> "
-                                 f"#{policy['quality_pool_position']} (before diversity).")
-                else:
-                    lines.append(
-                        "- Pool positions unavailable; a measurement alone proves no move."
-                    )
+            if (key := _policy_key(ranking)) is not None:
+                lines += ["", *_policy_markdown(key, ranking[key])]
             lines += [
                 "",
                 f"Diagnostic composite score: {rec.score.out_of_100}/100 "
@@ -487,9 +466,9 @@ _PLAN_RANKING_NOTE = (
     "weighted composite kept for compatibility and for comparing candidates "
     "without hardware; it does not determine the order shown here."
 )
-_QUALITY_RANKING_NOTE = (
+_MEASURED_RANKING_NOTE = (
     "Base order comes from `ranking.criteria`, compared in order. "
-    "`ranking.quality_policy` then swaps comparable measured plans within one stratum; "
+    "`ranking.{key}` then swaps comparable measured plans within one stratum; "
     "diversity selects the displayed recommendations afterwards. `score` is diagnostic "
     "and does not determine the order shown here."
 )
@@ -500,12 +479,11 @@ _COMPOSITE_RANKING_NOTE = (
 )
 
 
-def _quality_policy_positions(state: RecommendationWorkflowState) -> dict[str, tuple[int, int]]:
-    if (state.requirements is None
-            or state.requirements.priority is not RecommendationPriority.QUALITY):
+def _policy_positions(state: RecommendationWorkflowState) -> dict[str, tuple[int, int]]:
+    if state.requirements is None or state.requirements.priority not in _POLICY_KEYS:
         return {}
     base = {item.plan.plan_id: i + 1 for i, item in enumerate(state.ranked_plans)}
-    active = apply_quality_policy(state.ranked_plans, state.requirements)
+    active = apply_measured_policy(state.ranked_plans, state.requirements)
     expected = [item.primary.plan.plan_id for item in diversify_ranked_plans(
         active, limit=len(state.recommendations),
     )]
@@ -552,17 +530,75 @@ def _ranking_to_dict(
         "ranked_by": "plan_criteria",
         "note": _PLAN_RANKING_NOTE,
     }
-    if priority is RecommendationPriority.QUALITY:
-        measured = rec.plan_assessment.quality.applicable
-        payload["note"] = _QUALITY_RANKING_NOTE
-        payload["quality_policy"] = {
+    if (key := _POLICY_KEYS.get(priority)) is not None:
+        quality = rec.plan_assessment.quality.applicable
+        speed = rec.plan_assessment.speed.applicable
+        stage = key.removesuffix("_policy")
+        measurements: dict[str, Any] = (
+            {"measurement": quality} if stage == "quality"
+            else {"measurement": speed} if stage == "speed"
+            else {"quality_measurement": quality, "speed_measurement": speed}
+        )
+        payload["note"] = _MEASURED_RANKING_NOTE.format(key=key)
+        payload[key] = {
             "version": POLICY_VERSION,
             "artifact_sha256": rec.plan.artifact.sha256,
-            "measurement": measured.model_dump(mode="json") if measured is not None else None,
+            **{name: value.model_dump(mode="json") if value is not None else None
+               for name, value in measurements.items()},
             "base_pool_position": quality_position[0] if quality_position is not None else None,
-            "quality_pool_position": quality_position[1] if quality_position is not None else None,
+            f"{stage}_pool_position": (
+                quality_position[1] if quality_position is not None else None
+            ),
         }
     return payload
+
+
+#: The measured policy each priority applies after the base criteria (Memory has none).
+_POLICY_KEYS = {
+    RecommendationPriority.QUALITY: "quality_policy",
+    RecommendationPriority.SPEED: "speed_policy",
+    RecommendationPriority.BALANCED: "balanced_policy",
+}
+
+
+def _policy_key(ranking: dict[str, Any]) -> str | None:
+    return next((key for key in _POLICY_KEYS.values() if key in ranking), None)
+
+
+def _policy_markdown(key: str, policy: dict[str, Any]) -> list[str]:
+    stage = key.removesuffix("_policy")
+    lines = [f"**Measured-{stage} policy** (after base criteria, before diversity):"]
+    quality = policy.get("measurement") if stage == "quality" else policy.get(
+        "quality_measurement")
+    speed = policy.get("measurement") if stage == "speed" else policy.get("speed_measurement")
+    shown = {"quality": [quality], "speed": [speed], "balanced": [quality, speed]}[stage]
+    if all(item is None for item in shown):
+        lines.append("- No applicable measurement; this plan keeps its base-pool slot.")
+    if stage in ("quality", "balanced") and quality is not None:
+        lines += [
+            f"- {quality['suite']} / {quality['metric']}: {quality['value']:.1%} "
+            f"({quality['correct']}/{quality['samples']}).",
+            f"- Quality cohort: `{quality['cohort']}`; record SHA256: "
+            f"`{quality['record_sha256']}`.",
+            f"- Scope: {quality['scope']}",
+        ]
+    if stage in ("speed", "balanced") and speed is not None:
+        spread = (f" ± {speed['stddev_tokens_per_second']:.1f}"
+                  if speed["stddev_tokens_per_second"] is not None else "")
+        lines += [
+            f"- {speed['metric']}: {speed['tokens_per_second']:.1f}{spread} tok/s "
+            f"({speed['repetitions']} repetitions).",
+            f"- Speed cohort: `{speed['cohort']}`; benchmark: `{speed['benchmark_id']}`.",
+            f"- Scope: {speed['scope']}",
+        ]
+    if stage == "balanced" and (quality is None) != (speed is None):
+        lines.append("- Balanced needs both axes; with one, this plan keeps its slot.")
+    if policy["base_pool_position"] is not None:
+        lines.append(f"- {stage.capitalize()} order: pool #{policy['base_pool_position']} -> "
+                     f"#{policy[f'{stage}_pool_position']} (before diversity).")
+    else:
+        lines.append("- Pool positions unavailable; a measurement alone proves no move.")
+    return lines
 
 
 def _recommendation_to_dict(

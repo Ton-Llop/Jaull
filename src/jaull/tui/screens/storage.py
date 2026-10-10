@@ -94,7 +94,7 @@ class StorageScreen(Screen[None]):
     @on(_Loaded)
     async def _loaded(self, message: _Loaded) -> None:
         self._models, self._runs = message.models, message.runs
-        self._busy, self._armed = False, None
+        self._armed = None
         container = self.query_one("#storage-list", Vertical)
         await container.remove_children()
         if not self._models and not self._runs[0]:
@@ -118,6 +118,7 @@ class StorageScreen(Screen[None]):
                 "Logs and raw bundles. Stored results already embed what they need.",
                 classes="storage-note",
             ))
+        self._busy = False
         self._refresh(message.status)
 
     def _selected(self) -> tuple[list[LocalModelFile], bool]:

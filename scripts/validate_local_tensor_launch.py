@@ -28,7 +28,7 @@ from jaull.observability.provenance import capture_git_commit
 from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.runtime.llama_bench_capability import inspect_llama_bench
 from jaull.runtime.llama_bench_parser import parse_llama_bench_output
-from jaull.runtime.llama_bench_runner import build_llama_bench_command
+from jaull.runtime.llama_bench_runner import build_llama_bench_command, physical_core_threads
 from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
 from jaull.runtime.llama_cpp_launch_policy import pick_gpu_layers
 from jaull.runtime.llama_cpp_tensor_policy import (
@@ -130,7 +130,9 @@ def main() -> int:
                 repetitions=3,
             )
             commands.append(
-                (f"bench-{units}", build_llama_bench_command(str(args.llama_bench), request))
+                (f"bench-{units}", build_llama_bench_command(
+                    str(args.llama_bench), request, threads=physical_core_threads(),
+                ))
             )
     # A new directory and exclusive writes prevent overwriting previous evidence.
     args.output.mkdir(parents=True, exist_ok=False)

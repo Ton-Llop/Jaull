@@ -150,30 +150,40 @@ first*, not how much weight it carries:
 | Priority | Axes, in order |
 |---|---|
 | **Quality** | suitability → capability → quantization quality → execution fitness |
-| **Speed** | executability → throughput → quantization chosen for speed → memory efficiency |
+| **Speed** | executability → quantization chosen for speed → memory efficiency |
 | **Memory** | memory efficiency → execution fitness → executability |
 | **Balanced** | suitability → runnability → capability → execution fitness → executability → memory headroom |
 
-Every key ends with the same tail — performance evidence, confidence, `repo_id`,
+Every key ends with the same tail — confidence, `repo_id`,
 quantization, runtime name — so ties break deterministically and identical inputs always
 produce an identical report.
 
-**Measured quality (Quality priority only).** After the key, `apply_quality_policy`
-(`recommendation/shadow.py`) lets stored quality reorder plans, under strict limits.
-It only acts on plans that have an applicable measurement: one complete audited IFEval
-run of their exact GGUF bytes. Those plans can only trade places with each other, and
-only inside one comparable cohort and one contiguous stratum (confirmed fit, constraints,
-suitability, license and language). Every other plan keeps its base position, so with no
-applicable evidence the order is exactly the key order. The report separates
-`ranking.criteria` (the base order) from `ranking.quality_policy` (the measured-quality
-stage). The latter carries the measurement, cohort, record digest and pool positions
-before and after Quality, before diversity. Missing saved-pool positions remain unknown;
-a measurement alone does not prove a move. Markdown preserves the same separation.
-The pool before this step is what Search saves for Recompare. Recompare calculates on
-that pool but reports proposed changes against the saved visible recommendations, so
-an already-applied Quality swap is not announced as a new move. Speed and Balanced do
-not use it yet: no speed
-measurement applies, and Balanced needs both axes.
+**Measured evidence (Quality, Speed and Balanced).** After the key,
+`apply_measured_policy` (`recommendation/shadow.py`) lets stored measurements reorder
+plans, under strict limits. Quality reads applicable quality: one complete audited IFEval
+run of the plan's exact GGUF bytes. Speed (Fastest) reads applicable speed: the plan's
+own `llama_bench_v2` tg128, on its exact artifact, offload, machine and device, with the
+settings llama-bench restated matching the protocol. Balanced needs both and orders Pareto
+fronts, keeping the base order inside a front, so a real trade-off never moves. Measured
+plans can only trade places with each other, inside one comparable cohort and one
+contiguous stratum (confirmed fit, constraints, suitability, license and language). Every
+other plan keeps its base position, so with no applicable evidence the order is exactly
+the key order. Memory has no measured policy.
+
+`assess_speed` is the only authority on valid speed evidence. Measured speed is not an
+axis of the key: it acts only through `apply_measured_policy`, and the plan's displayed
+tok/s and `performance_evidence` read the applicable figure for information, never raw
+benchmark records. A `llama_bench_v1` record stays visible as a reference but no longer
+orders plans.
+
+The report separates `ranking.criteria` (the base order) from the measured stage of the
+request's priority: `ranking.quality_policy`, `ranking.speed_policy` or
+`ranking.balanced_policy`. Each carries its measurement(s), cohort, record digest or
+benchmark ID, and the pool positions before and after the policy, before diversity.
+Missing saved-pool positions remain unknown; a measurement alone does not prove a move.
+Markdown preserves the same separation. The pool before this step is what Search saves
+for Recompare. Recompare calculates on that pool but reports proposed changes against the
+saved visible recommendations, so an already-applied swap is not announced as a new move.
 
 ### What removes a plan from the list
 

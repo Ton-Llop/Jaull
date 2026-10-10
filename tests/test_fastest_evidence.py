@@ -320,3 +320,20 @@ def test_speed_references_read_newest_first_with_id_breaking_ties() -> None:
     speed = assess_speed(plan, _requirements(), records)
 
     assert [item.benchmark_id for item in speed.references] == ["bench-z", "bench-b", "bench-a"]
+
+
+def test_a_v2_record_is_matched_before_a_newer_v1_one() -> None:
+    """The current protocol wins; v1 still matches when it is all there is."""
+    from datetime import timedelta
+
+    plan, v1 = _record()
+    v2 = v1.model_copy(update={
+        "observation": v1.observation.model_copy(update={"methodology": "llama_bench_v2"}),
+        "identity": v1.identity.model_copy(update={
+            "benchmark_id": "bench-v2",
+            "created_at": v1.identity.created_at - timedelta(days=1),
+        }),
+    })
+    assert matching_benchmark(plan, [v1, v2]) is v2
+    assert matching_benchmark(plan, [v2, v1]) is v2
+    assert matching_benchmark(plan, [v1]) is v1  # Old runs stay visible as references.

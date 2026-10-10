@@ -140,7 +140,9 @@ def test_ifeval_is_not_offered_where_it_could_never_apply() -> None:
     asyncio.run(scenario())
 
 
-def test_changing_profile_reselects_and_keeps_a_typed_dataset(tmp_path: Path) -> None:
+def test_changing_profile_reselects_and_keeps_a_typed_dataset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def scenario() -> None:
         advisor = ProfileAdvisor()
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
@@ -155,7 +157,24 @@ def test_changing_profile_reselects_and_keeps_a_typed_dataset(tmp_path: Path) ->
             # A path the user typed survives a profile switch.
             typed = str(tmp_path / "my-dataset.jsonl")
             screen.query_one("#quality-dataset", Input).value = typed
+            show_measurements = screen._show_measurements
+            entered, release = asyncio.Event(), asyncio.Event()
+
+            async def delayed_measurements(records, *args, **kwargs):
+                entered.set()
+                await release.wait()
+                await show_measurements(records, *args, **kwargs)
+
+            monkeypatch.setattr(screen, "_show_measurements", delayed_measurements)
             screen.query_one("#quality-profile", Select).value = "ifeval"
+            try:
+                async with asyncio.timeout(10):
+                    await entered.wait()
+                assert screen._busy
+                assert screen.query_one("#quality-start", Button).disabled
+                assert screen.query_one("#quality-profile", Select).disabled
+            finally:
+                release.set()
             await _settled(pilot, screen)
             assert screen.query_one("#quality-dataset", Input).value == typed
             assert advisor.profiles[-1] is QualityProfile.IFEVAL
@@ -210,8 +229,9 @@ def test_balanced_without_speed_says_so_instead_of_blaming_quality() -> None:
     })
     assert report.applied and not report.groups
     text = recompare_readout(report, {})
-    assert "no speed measurement applies yet" in text and "Quality priority" in text
-    assert "no two plans" not in text
+    # Speed can apply now (llama_bench_v2); the message names the missing pairing.
+    assert "both applicable quality and applicable speed" in text
+    assert "speed measurement applies yet" not in text
 
 
 @pytest.mark.parametrize("first_value", [0.5, 0.8])

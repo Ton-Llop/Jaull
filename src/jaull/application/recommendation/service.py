@@ -32,7 +32,7 @@ from jaull.recommendation.models import (
     ScoreBreakdown,
     SeriesSibling,
 )
-from jaull.recommendation.shadow import apply_quality_policy
+from jaull.recommendation.shadow import apply_measured_policy
 
 _RankedRecommendation = tuple[
     EvaluatedCandidate,
@@ -110,7 +110,7 @@ def recommend(
         if on_ranked_plans is not None:
             # The base order: Recompare and the fallback baseline start from it.
             on_ranked_plans(ranked_plans)
-        active_plans = apply_quality_policy(ranked_plans, requirements)
+        active_plans = apply_measured_policy(ranked_plans, requirements)
         diversified_items = diversify_ranked_plans(active_plans, limit=limit)
         v2_priority = {
             item.evaluated.repo_id: float(len(active_plans) - index)
