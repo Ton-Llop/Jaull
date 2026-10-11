@@ -1,6 +1,6 @@
 # Status
 
-Updated 2026-10-11. Code checkpoint: `5ef3635` on `master`; CI passes.
+Updated 2026-10-11. Code checkpoint: `330bf0f` on `master`; CI passes.
 
 ## What works
 
@@ -40,12 +40,14 @@ and compares predictions with measurements when the evidence allows it.
 
 ## Checks and evidence
 
-- CI passes on `5ef3635`, including ruff, mypy, the full test suite and the
+- CI passes on `330bf0f`, including ruff, mypy, the full test suite and the
   architecture checks.
-- RTX 2060 campaign (2026-10-10), all three plans `measured_plan`:
-  Qwen2.5-0.5B Q5_K_M 245.0 tok/s, IFEval 25.9 %; Qwen2.5-1.5B 164.5 tok/s,
-  41.0 %; LFM2.5-1.2B 235.1 tok/s, 80.2 %. Balanced keeps the Qwen pair as a
-  trade-off. See [the plan](docs/fastest-balanced-plan.md).
+- RTX 2060 campaigns (2026-10-10/11), all three plans ranking-ready, tg128
+  median over all stored calls: Qwen2.5-0.5B Q5_K_M 246.1 tok/s (6 calls),
+  IFEval 25.9 %; Qwen2.5-1.5B 150.7 tok/s (4), 41.0 %; LFM2.5-1.2B 230.5 tok/s
+  (4), 80.2 %. Balanced keeps the Qwen pair as a trade-off. See
+  [the plan](docs/fastest-balanced-plan.md) and
+  [the noise campaign](docs/qwen2.5-tests/rtx2060-tg128-noise-20261011.md).
 - The RTX 4060 campaign has a successful Validate and a complete pp512/tg128
   benchmark. [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
   explains the RTX 2060/4060 results and their limits.

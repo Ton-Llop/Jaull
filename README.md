@@ -4,6 +4,38 @@
 
 [![codecov](https://codecov.io/gh/Ton-Llop/Jaull/graph/badge.svg)](https://codecov.io/gh/Ton-Llop/Jaull)
 
+Jaull tells you which open language models your machine can really run, picks the exact
+file and runtime for each one, and explains the order. It can then run them, benchmark them
+and score them on your own hardware. No language model writes the ranking or the
+explanations.
+
+![Jaull results screen from a real search on an RTX 2060](docs/assets/tui-results-rtx2060.svg)
+
+*A real search on an older desktop (Ryzen 5 3600, 7.7 GiB RAM, RTX 2060 6 GiB, WSL2):
+English general chat, Balanced priority, commercial use required. Five plans, each with its
+memory fit, runtime and file format.*
+
+**One recommendation from the same search**, shortened from the exported report:
+
+```text
+2. Qwen/Qwen2.5-0.5B-Instruct-GGUF — Safer option
+   Q5_K_M · llama.cpp on CUDA · fits comfortably (1.74 GiB) · apache-2.0, commercial use OK
+   llama-server --model Qwen2.5-0.5B-Instruct-GGUF.Q5_K_M.gguf --ctx-size 4096 --n-gpu-layers -1
+
+   Why this position: placement confirmed · strong fit for chat · strong runnability ·
+                      weak capability (a 0.5B model) · lots of memory headroom
+   Measured on this machine, this exact file:
+     IFEval, 541 prompts      25.9 % (140/541)
+     tg128 generation speed   median 246.1 tok/s over 6 calls (observed 218.6–271.7)
+   Measured evidence did not change its position (#2 → #2).
+   Warning: confidence is low; runtime overhead is a documented heuristic, not a measurement.
+```
+
+To try it: [Quick start](#quick-start). To find your way around the screens:
+[What each button does](#what-each-button-does).
+
+---
+
 Jaull is an explainable local-AI qualification toolkit. It reads your machine, selects
 candidate language models, resolves the exact artifact you would actually run, verifies it,
 checks whether a local runtime and compute backend can execute it, runs it, benchmarks it,

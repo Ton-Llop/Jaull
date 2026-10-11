@@ -3,10 +3,10 @@
 **Data de tall:** 11 d'octubre de 2026.
 
 **Historial de Git revisat:** des de `326068f` (2 d'agost de 2026) fins a
-`5ef36354794492798efad713a7feb7ff353d5616`.
+`330bf0f` (11 d'octubre), que integra l'agregació de velocitat i les revisions D066-D068.
 
-**Cobertura addicional:** els canvis locals sense commit presents durant aquesta revisió,
-especialment l'agregació de velocitat i les revisions de l'avaluació.
+**Cobertura addicional:** cap. Els canvis que en una primera redacció eren locals
+(agregació de velocitat i revisions de l'avaluació) ja són a `330bf0f`.
 
 ## 1. Objectiu i criteri de lectura
 
@@ -42,8 +42,8 @@ d'IFEval. El catàleg publicat continua sent diagnòstic, però això **no vol d
 qualitat local no pugui ordenar**.
 
 En aquestes discrepàncies cal contrastar la data, el commit i el codi corresponent.
-Les revisions locals s'identifiquen expressament: la política de soroll i la seva
-documentació han continuat canviant durant aquesta redacció, sense un nou commit.
+La política de soroll va canviar durant la redacció (D066-D068); totes aquestes
+revisions queden fixades a `330bf0f`.
 
 ### Índex de lectura
 
@@ -76,7 +76,7 @@ documentació han continuat canviant durant aquesta redacció, sense un nou comm
 | 1-7 d'octubre | Catàleg publicat, pilot de qualitat Docker, registres locals i avaluació opcional | `af01ed3`, `89db042`, `8a69267`, `da3e41e`, `24b774c`, `982d408` |
 | 8-10 d'octubre | IFEval auditat, shadow, Evaluate candidates, Recompare i activació de Quality | treball integrat a `7025bb3` |
 | 10 d'octubre | `llama_bench_v2`, velocitat aplicable i activació de Fastest/Balanced | `491b6fc` |
-| 11 d'octubre | Esperes de TUI i campanya de soroll; agregació i revisions locals de comparació | `5ef3635` i canvis sense commit |
+| 11 d'octubre | Esperes de TUI, campanya de soroll, agregació per mediana i comparació per parelles | `5ef3635`, `330bf0f` |
 
 ## 3. Producte, abast i tecnologia
 
@@ -1049,13 +1049,14 @@ Balanced. El parell Qwen petit/ràpid i Qwen gran/més qualitat pot conservar
 l'ordre sense que sigui un error. La dominància es prova també amb casos
 sintètics, no fabricant un moviment a les mesures reals.
 
-**Estat i fonts:** vigent a `491b6fc`, amb revisions locals a D067-D068;
+**Estat i fonts:** els fronts de Pareto estan substituïts a `330bf0f` per la
+comparació per parelles de D068; la necessitat dels dos eixos continua vigent;
 [pla vFinal](../recommendation-vfinal-plan.md),
 [pla Fastest/Balanced](../fastest-balanced-plan.md).
 
 ### D066. Agregar crides diferents en lloc de fer guanyar l'última
 
-**Decisió local:** seleccionar la cohort aplicable més recent i agregar
+**Decisió:** seleccionar la cohort aplicable més recent i agregar
 totes les crides vàlides i diferents d'aquella cohort: mediana tg128,
 mediana pp512 quan hi ha dades, nombre de crides, min/max observats i tots
 els IDs. Sense finestra temporal ni exclusions perquè un valor és baix.
@@ -1073,7 +1074,7 @@ continua comptant, inclòs el valor 218,6 del Qwen petit. El min/max només
 pot créixer en afegir crides de la mateixa cohort: un valor atípic pot
 impedir distingir dos plans indefinidament. Encara no hi ha un rang robust.
 
-**Estat i fonts:** local, sense commit a la data de tall;
+**Estat i fonts:** vigent a `330bf0f`;
 [agregador](../../src/jaull/recommendation/local_evidence.py),
 [tests d'agregació](../../tests/test_speed_aggregation.py),
 [campanya de soroll](../qwen2.5-tests/rtx2060-tg128-noise-20261011.md).
@@ -1089,14 +1090,13 @@ empats no transitius i evitar un llindar universal del 10%. Min/max és
 rang observat, no interval de confiança. Aquesta opció era conservadora,
 però una cadena podia amagar una diferència directa entre A i C.
 
-**Estat i fonts:** revisió local ja substituïda durant aquesta redacció;
-els documents de polítiques també s'han actualitzat a D068. No hi ha un
-commit separat d'aquesta etapa intermèdia en l'historial revisat.
+**Estat i fonts:** substituïda per D068 abans del commit; no hi ha cap commit
+d'aquesta etapa intermèdia (`330bf0f` ja inclou D068).
 [Pla Fastest/Balanced](../fastest-balanced-plan.md), [recomanació](../recommendation.md).
 
-### D068. Revisió local posterior: diferències per parelles i Wilson en Balanced
+### D068. Diferències per parelles i Wilson en Balanced
 
-**Implementació observada:** el `shadow.py` local manté la mediana i el
+**Decisió:** `shadow.py` manté la mediana i el
 mínim de tres crides, però ja no fusiona cadenes de solapaments. Fastest
 compara rangs directament: només hi ha precedència de velocitat quan
 són disjunts. Balanced afegeix intervals Wilson del 95% sobre encerts
@@ -1115,7 +1115,8 @@ prompts processats, mentre que extrapolar-les a una població requereix
 justificar representativitat i dependència. Rangs de velocitat i intervals
 de proporcions no són la mateixa mena d'incertesa.
 
-**Estat i fonts:** criteri adoptat en la revisió local, encara sense commit.
+**Estat i fonts:** vigent a `330bf0f`, amb proves de regressió per a
+solapaments encadenats i per a Start amb 0, 1, 2 i 3 crides.
 El pla Fastest/Balanced la documenta com a revisió amb Ton de l'11 d'octubre.
 Ton confirma posteriorment que l'últim experiment de velocitat d'avui està
 acabat i que ha seguit el criteri Wilson. Wilson s'aplica al component
@@ -1336,11 +1337,11 @@ propostes anteriors sense esborrar registres persistits.
 
 **Motiu i conseqüència:** un canvi visual no ha de llançar Docker
 ni consumir GPU. Una taula sempre pot mostrar dades, però no
-marca guanyador quan difereixen protocols. En la revisió local
-de velocitat, un guanyador requereix també rang separat i prou
+marca guanyador quan difereixen protocols. En velocitat
+(`330bf0f`), un guanyador requereix també rang separat i prou
 crides; una nota de qualitat reutilitzable no bloqueja mesurar Speed.
 
-**Estat i fonts:** vigent, amb ampliacions locals;
+**Estat i fonts:** vigent a `330bf0f`;
 [readiness](../../tests/test_quality_readiness.py),
 [avaluació de velocitat](../../tests/test_tui_speed_evaluation.py).
 
@@ -1354,7 +1355,7 @@ del pla per «la millor del repositori» mentre s'avalua.
 **Motiu i conseqüència:** una mesura d'altres bytes no podria
 ordenar la cerca. Es reutilitzen resultats aplicables i s'executa
 només l'eix que falta; un conflicte de qualitat no es resol amb
-un rerun automàtic. A la revisió local, prémer Start autoritza les
+un rerun automàtic. Des de `330bf0f`, prémer Start autoritza les
 crides que falten fins a tres: 0→3, 1→2 i 2→1. S'intercalen entre
 els plans seleccionats, amb 60 segons de refredament entre crides.
 Un pla amb tres o més, si es marca manualment, rep una crida extra.
@@ -1784,8 +1785,7 @@ una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
 
-Abans d'utilitzar aquest text com a estat final del TFG, fixar a Git la revisió
-local D068 i els registres de l'últim experiment, fixar el commit de la campanya final
-i comprovar quins pendents de D091-D095 s'han completat. **Aquest document
+Abans d'utilitzar aquest text com a estat final del TFG, fixar el commit de la
+campanya final (D068 ja és a `330bf0f`) i comprovar quins pendents de D091-D095 s'han completat. **Aquest document
 és una reconstrucció traçable fins a la data de tall, no un certificat de
-validació dels canvis locals ni un substitut dels registres originals.**
+validació ni un substitut dels registres originals.**
