@@ -51,6 +51,11 @@ def test_the_two_hardware_states_are_not_the_same_picture(tmp_path: Path) -> Non
     assert "Building hardware profile" not in done
 
 
+# Captures of a real search on real hardware. The offline script cannot
+# regenerate them, so they are kept by hand and listed here on purpose.
+REAL_CAPTURES = {"tui-results-rtx2060.svg"}
+
+
 def test_the_readme_only_points_at_screenshots_the_script_writes() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     referenced = {
@@ -58,4 +63,7 @@ def test_the_readme_only_points_at_screenshots_the_script_writes() -> None:
         for line in readme.splitlines()
         if "docs/assets/" in line and line.strip().startswith("![")
     }
-    assert referenced <= set(SCREENSHOTS), sorted(referenced - set(SCREENSHOTS))
+    allowed = set(SCREENSHOTS) | REAL_CAPTURES
+    assert referenced <= allowed, sorted(referenced - allowed)
+    for name in REAL_CAPTURES:
+        assert (ROOT / "docs" / "assets" / name).exists(), f"{name} is missing"
