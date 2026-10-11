@@ -181,8 +181,8 @@ measurements may reorder plans, under strict limits:
 | Priority | Measurement it reads | How it reorders |
 |---|---|---|
 | Best quality | IFEval score of the plan's exact GGUF | higher score first |
-| Fast responses | `llama_bench_v2` tg128 of the plan's own configuration | higher tok/s first |
-| Balanced | both of the above | Pareto fronts; a real trade-off never moves |
+| Fast responses | median `llama_bench_v2` tg128 of at least 3 calls of the plan's own configuration | faster first, only when the observed ranges do not overlap |
+| Balanced | both of the above | first when no axis is clearly worse and one is clearly better; overlapping speed lets clearly better quality decide; a real trade-off never moves |
 | Lowest memory | — | no measured policy |
 
 A measurement only counts when it *applies* to the plan: same file bytes (SHA-256), same
@@ -297,7 +297,7 @@ starts on the suite that matches its priority:
 | Suite | Measures | Needs | Time per model |
 |---|---|---|---|
 | **IFEval** (Best quality) | Instruction following, 541 prompts | Docker, evaluator image, dataset | ~25 min |
-| **Speed** (Fast responses) | `llama_bench_v2` tg128 / pp512 | Only local llama.cpp | ~1 min |
+| **Speed** (Fast responses) | `llama_bench_v2` tg128 / pp512, the calls still missing up to 3 | Only local llama.cpp | up to ~5 min |
 | **Balanced** | IFEval, then speed, on the same GGUFs | Both | ~25 min |
 | **HellaSwag** (3 or 100 samples) | Pipeline smoke test / limited diagnostic | Docker | minutes |
 

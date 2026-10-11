@@ -583,14 +583,19 @@ def _policy_markdown(key: str, policy: dict[str, Any]) -> list[str]:
             f"- Scope: {quality['scope']}",
         ]
     if stage in ("speed", "balanced") and speed is not None:
-        spread = (f" ± {speed['stddev_tokens_per_second']:.1f}"
-                  if speed["stddev_tokens_per_second"] is not None else "")
         lines += [
-            f"- {speed['metric']}: {speed['tokens_per_second']:.1f}{spread} tok/s "
-            f"({speed['repetitions']} repetitions).",
-            f"- Speed cohort: `{speed['cohort']}`; benchmark: `{speed['benchmark_id']}`.",
+            f"- {speed['metric']} median: {speed['tokens_per_second']:.1f} tok/s "
+            f"({speed['run_count']} calls, {speed['repetitions']} repetitions per call).",
+            f"- Speed cohort: `{speed['cohort']}`; benchmarks: "
+            + ", ".join(f"`{identifier}`" for identifier in
+                        (speed['benchmark_ids'] or [speed['benchmark_id']])) + ".",
             f"- Scope: {speed['scope']}",
         ]
+        if speed["observed_min"] is not None and speed["observed_max"] is not None:
+            lines.append(f"- Observed range: {speed['observed_min']:.1f}-"
+                         f"{speed['observed_max']:.1f} tok/s (not a confidence interval).")
+        if speed["run_count"] < 3:
+            lines.append("- Fewer than three calls: speed cannot reorder this plan.")
     if stage == "balanced" and (quality is None) != (speed is None):
         lines.append("- Balanced needs both axes; with one, this plan keeps its slot.")
     if policy["base_pool_position"] is not None:

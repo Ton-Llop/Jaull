@@ -30,7 +30,11 @@ from textual.widgets import (
 )
 
 from jaull.advisor.quality import QualityReadiness
-from jaull.advisor.quality_candidates import QualityCandidateSelection
+from jaull.advisor.quality_candidates import (
+    SPEED_MIN_CALLS,
+    QualityCandidateSelection,
+    speed_call_schedule,
+)
 from jaull.domain.requirements import RecommendationPriority
 from jaull.evaluation.quality_records import describe_record
 from jaull.paths import user_data_dir
@@ -85,7 +89,7 @@ _PROFILE_LABELS = {
 SPEED_SUITE = "speed"
 BALANCED_SUITE = "balanced"
 _SUITE_LABELS = {
-    SPEED_SUITE: "Speed - llama_bench_v2 / about 1 min per model",
+    SPEED_SUITE: "Speed - llama_bench_v2 / 3 calls, up to about 5 min per model",
     BALANCED_SUITE: "Balanced - IFEval + speed / about 25 min per model",
 }
 _SPEED_PROTOCOL = (
@@ -151,6 +155,7 @@ def recompare_readout(
             how = "moved" if change.moved else "diversity, not moved itself"
             lines.append(f"  Base top 5 {change.change}: {name} ({how})")
     lines.append(f"{len(report.fallback)} plans kept their fallback positions.")
+    lines.extend(dict.fromkeys(reason for group in report.groups for reason in group.limitations))
     return "\n".join(lines)
 
 
@@ -289,9 +294,12 @@ def stored_badge(stored: StoredQuality) -> tuple[str, str] | None:
 def speed_badge(speed: SpeedAssessment) -> tuple[str, str] | None:
     """(text, class) saying what the stored benchmarks already prove for this plan."""
     if speed.applicable is not None:
+        measured = speed.applicable
+        repeats = (f" {measured.run_count} calls; need three before ranking."
+                   if not measured.ranking_ready else f" Median of {measured.run_count} calls.")
         return (
             f"Speed already measured (tg128 {speed.applicable.tokens_per_second:.1f} tok/s); "
-            "unchecked, its stored result is shown in Results.", "quality-measured",
+            + repeats + " Its stored result is shown in Results.", "quality-measured",
         )
     if speed.references:
         blocker = speed.references[0].blockers[0] if speed.references[0].blockers else ""
@@ -312,7 +320,7 @@ def stored_speed_rows(
 
 
 def speed_table(rows: tuple[SpeedRow, ...]) -> DataTable[Text]:
-    """tg128 side by side; the fastest in green only when every figure shares a cohort."""
+    """Highlight only a repeated speed range entirely above every comparable peer."""
     table: DataTable[Text] = DataTable(
         id="quality-speed-comparison", cursor_type="none", zebra_stripes=True,
     )
@@ -320,13 +328,18 @@ def speed_table(rows: tuple[SpeedRow, ...]) -> DataTable[Text]:
     for index, (name, _, _) in enumerate(rows):
         table.add_column(Text(name, style="bold"), key=f"speed-{index}")
     measured = [speed for _, speed, _ in rows if speed is not None]
-    comparable = len(measured) == len(rows) > 1 and len({s.cohort for s in measured}) == 1
-    best = max(s.tokens_per_second for s in measured) if comparable else None
+    comparable = (len(measured) == len(rows) > 1 and len({s.cohort for s in measured}) == 1
+                  and all(s.ranking_ready for s in measured))
+    winners = [speed for speed in measured if comparable and all(
+        other is speed or (speed.observed_min is not None and other.observed_max is not None
+                           and speed.observed_min > other.observed_max)
+        for other in measured
+    )]
     dim = palette.INK_2
     table.add_row(Text("tg128", style=dim), *(
         Text("—", style=dim) if speed is None else Text(
             f"{speed.tokens_per_second:.1f} tok/s",
-            style=f"bold {palette.OK}" if speed.tokens_per_second == best else "",
+            style=f"bold {palette.OK}" if speed in winners else "",
         ) for _, speed, _ in rows
     ))
     table.add_row(Text("pp512", style=dim), *(
@@ -335,6 +348,19 @@ def speed_table(rows: tuple[SpeedRow, ...]) -> DataTable[Text]:
         for _, speed, _ in rows
     ))
     table.add_row(Text("Applies", style=dim), *(Text(note) for _, _, note in rows))
+    table.add_row(Text("Calls", style=dim), *(
+        Text("—" if speed is None else str(speed.run_count)) for _, speed, _ in rows
+    ))
+    table.add_row(Text("Observed range", style=dim), *(
+        Text("—" if speed is None or speed.observed_min is None or speed.observed_max is None
+             else f"{speed.observed_min:.1f}-{speed.observed_max:.1f} tok/s")
+        for _, speed, _ in rows
+    ))
+    table.add_row(Text("Benchmark IDs", style=dim), *(
+        Text("—" if speed is None
+             else f"{len(speed.benchmark_ids or (speed.benchmark_id,))} records")
+        for _, speed, _ in rows
+    ))
     return table
 
 
@@ -377,6 +403,7 @@ class _QualityFinished(Message):
         self.records = records
         self.errors = errors
         self.speed_rows = speed_rows
+        self.selection: QualityCandidateSelection | None = None
 
 
 class _QualityProgress(Message):
@@ -800,18 +827,15 @@ class QualityEvaluationScreen(Screen[Path | None]):
         if not self._quality_closing.is_set():
             self.post_message(_QualityCandidatesReady(selection))
 
-    @on(_QualityCandidatesReady)
-    async def _candidates_ready(self, message: _QualityCandidatesReady) -> None:
-        self._selection = message.selection
-        self._selecting = False
+    async def _show_candidates(self, checked: frozenset[str] | None = None) -> None:
         container = self.query_one("#quality-candidates", Vertical)
         await container.remove_children()
         await container.mount(Static(
-            f"{len(message.selection.candidates)} candidates from "
-            f"{message.selection.considered} eligible inspected models",
+            f"{len(self._selection.candidates)} candidates from "
+            f"{self._selection.considered} eligible inspected models",
             classes="section-title", markup=False,
         ))
-        for index, candidate in enumerate(message.selection.candidates):
+        for index, candidate in enumerate(self._selection.candidates):
             plan = candidate.plan
             size = (
                 f"{plan.artifact.size_bytes / 1024**3:.2f} GiB"
@@ -821,7 +845,9 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 Horizontal(
                     Checkbox(
                         f"{index + 1}. {plan.model_identity.model_name}",
-                        value=not self._settled(candidate), id=f"quality-candidate-{index}",
+                        value=not self._settled(candidate) and (
+                            checked is None or plan.plan_id in checked
+                        ), id=f"quality-candidate-{index}",
                         tooltip=plan.model_identity.model_name,
                     ),
                     Static(
@@ -850,21 +876,30 @@ class QualityEvaluationScreen(Screen[Path | None]):
                         markup=False,
                     )],
                 ),
-                classes="quality-row" + ("" if self._settled(candidate) else " -selected"),
+                classes="quality-row" + (
+                    " -selected" if not self._settled(candidate) and (
+                        checked is None or plan.plan_id in checked
+                    ) else ""
+                ),
                 id=f"quality-row-{index}",
             ))
+        if self._selection.notices:
+            await container.mount(Collapsible(
+                Static("\n".join(self._selection.notices), markup=False),
+                title="Selection details", collapsed=bool(self._selection.candidates),
+            ))
+
+    @on(_QualityCandidatesReady)
+    async def _candidates_ready(self, message: _QualityCandidatesReady) -> None:
+        self._selection = message.selection
+        self._selecting = False
+        await self._show_candidates()
         # Replaced even when empty: an earlier suite's table must not linger.
         candidates = message.selection.candidates
         await self._show_measurements(
             stored_records(candidates) if self._measure != SPEED_SUITE else (),
             speed_rows=stored_speed_rows(candidates) if self._measure != "quality" else (),
         )
-        if message.selection.notices:
-            with_details = Collapsible(
-                Static("\n".join(message.selection.notices), markup=False),
-                title="Selection details", collapsed=bool(message.selection.candidates),
-            )
-            await container.mount(with_details)
         self._busy = False
         self._update_downloads()
         self._set_busy(False)
@@ -1051,9 +1086,14 @@ class QualityEvaluationScreen(Screen[Path | None]):
             pending = tuple(c for c in candidates if not c.settled) if balanced else candidates
             message = self._quality_message(advisor, request, allow_download, pending)
             if balanced and not self._cancel.is_set():
-                speed = self._speed_message(advisor, allow_download, tuple(
+                pending_speed = tuple(
                     c for c in candidates if not c.speed_settled
-                ))
+                )
+                speed = (self._speed_message(advisor, allow_download, pending_speed)
+                         if pending_speed else _QualityFinished(
+                             None, "Speed: using stored measurements.",
+                             speed_rows=stored_speed_rows(self._selection.candidates),
+                         ))
                 message = _QualityFinished(
                     message.path, f"{message.readout}\n\n{speed.readout}",
                     records=message.records, errors=(*message.errors, *speed.errors),
@@ -1062,8 +1102,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
         except Exception as exc:
             _log.exception("Candidate evaluations failed")
             message = _QualityFinished(None, f"Evaluation failed: {exc}")
-        if not self._quality_closing.is_set():
-            self.post_message(message)
+        self._post_candidate_finished(advisor, message)
 
     def _run_speed(
         self, advisor: AdvisorService, allow_download: bool,
@@ -1077,6 +1116,31 @@ class QualityEvaluationScreen(Screen[Path | None]):
         except Exception as exc:
             _log.exception("Speed measurement failed")
             message = _QualityFinished(None, f"Speed measurement failed: {exc}")
+        self._post_candidate_finished(advisor, message)
+
+    def _post_candidate_finished(self, advisor: AdvisorService, message: _QualityFinished) -> None:
+        if self._quality_closing.is_set():
+            return
+        if self._search_state is not None and self._search_state.requirements is not None:
+            try:
+                message.selection = advisor.refresh_quality_candidates(
+                    self._selection, self._search_state.requirements,
+                    profile=self._profile if self._measure != SPEED_SUITE else None,
+                )
+                refreshed = {
+                    candidate.plan.model_identity.model_name: candidate.speed.applicable
+                    for candidate in message.selection.candidates
+                    if candidate.speed.applicable is not None
+                }
+                message.speed_rows = tuple(
+                    (name, refreshed.get(name.removesuffix(" (stored)"), speed), note)
+                    for name, speed, note in message.speed_rows
+                )
+            except Exception as exc:
+                _log.exception("Could not refresh evaluation candidates")
+                error = f"Could not refresh candidate evidence: {exc}. Reopen this screen to retry."
+                message.readout += f"\n\n{error}"
+                message.errors = (*message.errors, error)
         if not self._quality_closing.is_set():
             self.post_message(message)
 
@@ -1091,9 +1155,11 @@ class QualityEvaluationScreen(Screen[Path | None]):
             if not self._quality_closing.is_set():
                 self.post_message(_QualityProgress(text))
 
-        rows: list[SpeedRow] = []
+        # One row per plan however many calls it got; the refresh puts the median in.
+        rows: dict[str, SpeedRow] = {}
         errors: list[str] = []
         readouts: list[str] = []
+        planned = len(speed_call_schedule(candidates))
         try:
             outcomes = advisor.run_speed_candidates(
                 candidates, allow_download=allow_download,
@@ -1120,20 +1186,21 @@ class QualityEvaluationScreen(Screen[Path | None]):
             note = ("applies to this plan" if speed.applicable is not None
                     else speed.references[0].blockers[0] if speed.references
                     and speed.references[0].blockers else "reference only")
-            rows.append((name, speed.applicable, note))
+            rows[outcome.plan.plan_id] = (name, speed.applicable, note)
             readouts.append(f"{name}\nSaved: {outcome.path}\nSpeed: {note}")
-        rows.extend(stored_speed_rows(
+        speed_rows = (*rows.values(), *stored_speed_rows(
             self._selection.candidates,
             frozenset(candidate.plan.plan_id for candidate in candidates),
         ))
         completed = sum(outcome.path is not None for outcome in outcomes)
         readouts.insert(0, (
             f"{'Cancelled. ' if self._cancel.is_set() else ''}Speed: completed "
-            f"{completed}/{len(candidates)}; failed {len(outcomes) - completed}; "
-            f"not started {len(candidates) - len(outcomes)}."
+            f"{completed}/{planned} calls; failed {len(outcomes) - completed}; "
+            f"not started {planned - len(outcomes)}. Each plan gets the calls it still "
+            f"needs for {SPEED_MIN_CALLS}, interleaved, with a cool-down between calls."
         ))
         return _QualityFinished(
-            None, "\n\n".join(readouts), errors=tuple(errors), speed_rows=tuple(rows),
+            None, "\n\n".join(readouts), errors=tuple(errors), speed_rows=speed_rows,
         )
 
     def _quality_message(
@@ -1347,6 +1414,11 @@ class QualityEvaluationScreen(Screen[Path | None]):
 
     @on(_QualityFinished)
     async def _finished(self, message: _QualityFinished) -> None:
+        if message.selection is not None:
+            checked = frozenset(candidate.plan.plan_id for candidate in self._checked())
+            self._selection = message.selection
+            await self._show_candidates(checked)
+            self._update_downloads()
         await self._show_measurements(
             message.records, message.errors, speed_rows=message.speed_rows,
         )
@@ -1413,10 +1485,21 @@ class QualityEvaluationScreen(Screen[Path | None]):
                 speed_table(speed_rows),
                 Static(
                     "Controlled llama_bench_v2 protocol on this machine, not tuned "
-                    "production throughput. Fastest orders only comparable measured plans.",
+                    "production throughput. Median of distinct calls; observed range is not "
+                    "a confidence interval. At least three calls before ranking.",
                     classes="comparison-note",
                 ),
             )
+            for name, speed, _ in speed_rows:
+                if speed is not None:
+                    await measurements.mount(TechnicalDetails(
+                        title=f"{name}: speed records and limitations",
+                        extra=[Static(
+                            "\n".join((speed.scope, "Benchmark IDs:",
+                                       *(speed.benchmark_ids or (speed.benchmark_id,)))),
+                            markup=False,
+                        )],
+                    ))
         for error in errors:
             await measurements.mount(Static(error, classes="status-fail", markup=False))
 

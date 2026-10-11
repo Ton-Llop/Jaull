@@ -225,10 +225,20 @@ Benchmarks must succeed, use the runtime's current recognized methodology and
 contain generation measurements consistent with requested generation sizes.
 The actual requested llama.cpp offload count (or Transformers compute dtype)
 must agree with the plan. Transformer-block estimates are never used as runtime
-offload counts. The latest eligible record wins, with record ID breaking equal
+offload counts. For historical memory/runtime matching, the latest eligible record wins,
+with record ID breaking equal
 timestamps deterministically. Failed experiments remain negative evidence;
 failed benchmarks do not become strong performance evidence. Records are never
 rewritten or deleted by matching.
+
+Speed ranking uses a separate derived assessment: median tg128, call count, observed
+min/max and every contributing benchmark ID. All distinct unblocked calls in the newest
+applicable cohort contribute, regardless of date or measured value. Other cohorts remain
+references. At least three calls are required to order. Speed decides a pair of plans
+only when their observed ranges are disjoint; a chain of overlaps is not merged, so a
+directly disjoint pair still decides (see [recommendation.md](recommendation.md)). This
+is a conservative rule, not a confidence interval or a calibrated 10% threshold; one
+atypical call can keep two plans indistinguishable. Stored records remain unchanged.
 
 Limits: matching metadata is not proof of identical file contents. Discovery
 plans have no digest, and mutable revisions such as `main` are not immutable

@@ -155,7 +155,7 @@
         "ranked_by": "plan_criteria",
         "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here.",
         "balanced_policy": {
-          "version": "shadow-v1",
+          "version": "shadow-v2",
           "artifact_sha256": null,
           "quality_measurement": null,
           "speed_measurement": null,

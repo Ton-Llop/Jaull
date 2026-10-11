@@ -1,6 +1,6 @@
-"""Quality/Fastest/Balanced orders computed beside the active ranking, never instead of it.
+"""Shared measured policies for the active ranking and Recompare proposals.
 
-Policy shadow-v1 (docs/recommendation-vfinal-plan.md, section 3):
+Policy shadow-v2 (docs/recommendation.md):
 
 1. Start from the active order before diversity.
 2. Evidence never crosses a stratum: confirmed placement, rejection, commercial confirmation, task
@@ -9,15 +9,19 @@ Policy shadow-v1 (docs/recommendation-vfinal-plan.md, section 3):
 3. A group is the plans of one run sharing a comparable cohort. Only the
    positions its members already held are reordered; a plan without applicable
    evidence keeps its place, and a one-member group cannot move.
-4. Quality and Fastest order by their metric (higher is better), ties in base
-   order. Balanced needs both axes in the same cohorts and orders Pareto fronts,
-   each front in base order. Memory keeps the active order.
+4. Quality orders by its metric. Fastest and Balanced compare each pair directly:
+   speed only when observed ranges are disjoint, quality (Balanced) only when the
+   95% Wilson intervals are. Balanced puts a plan first when no axis is
+   demonstrably worse and one is better, so clearly better quality decides a
+   speed tie and a trade-off decides nothing. Chained overlaps are never merged.
+   The order is the closest to the base that honours every such pair. Memory is
+   unchanged.
 5. Existing diversity then picks the top 5 from each order, and the two kinds
    of change - moves and top-5 entries/exits - are reported separately.
 
 Audited full IFEval can apply to English chat under its controlled-artifact
-protocol, not the proposed execution configuration. Speed still falls back.
-`PlanEvidence` is the boundary; neither projection replaces the active order.
+protocol, not the proposed execution configuration. Speed requires at least
+three distinct valid calls per plan; its observed range is not a confidence interval.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from json import dumps
+from math import sqrt
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -38,7 +43,7 @@ from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
 from jaull.recommendation.quality import assess_quality, index_quality_records
 
-POLICY_VERSION = "shadow-v1"
+POLICY_VERSION = "shadow-v2"
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,9 @@ class Measured:
     value: float
     label: str
     evidence_ids: tuple[str, ...] = ()
+    minimum: float | None = None
+    maximum: float | None = None
+    comparison_ready: bool = True
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,7 @@ class ShadowGroup(BaseModel):
 
     key: str
     plan_ids: tuple[str, ...]
+    limitations: tuple[str, ...] = ()
 
 
 class ShadowFallback(BaseModel):
@@ -126,10 +135,13 @@ def production_evidence(assessment: PlanAssessment) -> PlanEvidence:
     quality = None
     measured = assessment.quality.applicable
     if measured is not None:
+        low, high = _wilson(measured.correct, measured.samples)
         quality = Measured(
             cohort=measured.cohort, value=measured.value,
             label=f"{measured.suite} {measured.metric}",
             evidence_ids=(measured.record_sha256,),
+            # Read only by Balanced: quality must be clearly better to decide a speed tie.
+            minimum=low, maximum=high,
         )
         reasons.append(
             "Quality: measured, but it orders only against other measured plans in its "
@@ -145,11 +157,16 @@ def production_evidence(assessment: PlanAssessment) -> PlanEvidence:
         speed = Measured(
             cohort=applicable_speed.cohort, value=applicable_speed.tokens_per_second,
             label=f"{applicable_speed.metric} tok/s",
-            evidence_ids=(applicable_speed.benchmark_id,),
+            evidence_ids=applicable_speed.benchmark_ids or (applicable_speed.benchmark_id,),
+            minimum=applicable_speed.observed_min, maximum=applicable_speed.observed_max,
+            comparison_ready=applicable_speed.ranking_ready,
         )
         reasons.append(
             "Speed: measured, but it orders only against other measured plans in its "
             "comparable cohort and stratum."
+            if applicable_speed.ranking_ready else
+            f"Speed: {applicable_speed.run_count} stored calls; at least three distinct "
+            "calls with an observed range are required to order plans."
         )
     elif assessment.speed.applicability == "absent":
         reasons.append("Speed: no benchmark of this exact artifact.")
@@ -163,10 +180,10 @@ def production_evidence(assessment: PlanAssessment) -> PlanEvidence:
 def apply_measured_policy(
     ranked: Sequence[RankedPlan], requirements: UserRequirements,
 ) -> list[RankedPlan]:
-    """The active order: shadow-v1 for the request's priority, activated in step 6.
+    """The active order: shadow-v2 for the request's priority.
 
     Quality reads applicable measured quality, Fastest applicable llama_bench_v2
-    tg128, Balanced both (Pareto fronts, base order within a front). Only plans
+    tg128 ranges, Balanced both (pairwise, a speed tie decided by clear quality). Only plans
     in one comparable cohort and one contiguous stratum run swap the positions
     they already held; every other plan keeps its base place, so with no
     applicable evidence this is the base order. Memory has no measured policy.
@@ -341,8 +358,18 @@ def _shadow_order(
         if len(indexes) < 2:
             continue  # A lone measurement is not promoted for existing.
         key = f"run{run_index}|{dumps(cohort)}"
-        groups.append(ShadowGroup(key=key, plan_ids=tuple(ranked[i].plan.plan_id for i in indexes)))
-        ordered, rules = _order_group(policy, [ranked[i] for i in indexes], evidence_of)
+        items = [ranked[i] for i in indexes]
+        limitations: tuple[str, ...] = ()
+        if policy != "quality" and _speed_overlaps(items, evidence_of):
+            limitations = (
+                "Some observed speed ranges overlap: those pairs are not ordered by speed "
+                "(Balanced lets clearly better quality decide them). Ranges are min-max of "
+                "the stored calls, not confidence intervals; one atypical call can keep two "
+                "plans indistinguishable.",
+            )
+        groups.append(ShadowGroup(key=key, plan_ids=tuple(item.plan.plan_id for item in items),
+                                  limitations=limitations))
+        ordered, rules = _order_group(policy, items, evidence_of)
         for slot, item in zip(indexes, ordered, strict=True):
             order[slot] = item
             base_index = position[item.plan.plan_id]
@@ -382,21 +409,70 @@ def _stratum(item: RankedPlan, commercial: bool) -> tuple[object, ...]:
 def _cohort(policy: str, evidence: PlanEvidence) -> tuple[str, ...] | None:
     if policy == "quality":
         return (evidence.quality.cohort,) if evidence.quality else None
+    if evidence.speed is None or not evidence.speed.comparison_ready:
+        return None
     if policy == "fastest":
-        return (evidence.speed.cohort,) if evidence.speed else None
+        return (evidence.speed.cohort,)
     if evidence.quality is None or evidence.speed is None:
         return None  # An unknown axis infers no dominance.
     return evidence.quality.cohort, evidence.speed.cohort
+
+
+def _bounds(measured: Measured | None) -> tuple[float, float]:
+    assert measured is not None
+    return (measured.minimum if measured.minimum is not None else measured.value,
+            measured.maximum if measured.maximum is not None else measured.value)
+
+
+def _compare(a: Measured | None, b: Measured | None) -> int:
+    """1 or -1 only when the two intervals are disjoint; 0 means indistinguishable."""
+    (a_low, a_high), (b_low, b_high) = _bounds(a), _bounds(b)
+    return 1 if a_low > b_high else -1 if a_high < b_low else 0
+
+
+def _precedes(policy: str, a: PlanEvidence, b: PlanEvidence) -> bool:
+    """Whether ``a`` demonstrably belongs before ``b``, judged on this pair alone.
+
+    Fastest: disjoint speed ranges. Balanced: no axis demonstrably worse and one
+    demonstrably better; overlapping speed is an operational tie, so clearly
+    better quality decides it, and a real trade-off (faster vs better) decides
+    nothing. Chained overlaps are never merged: A~B and B~C say nothing of A, C.
+    """
+    speed = _compare(a.speed, b.speed)
+    if policy == "fastest":
+        return speed > 0
+    quality = _compare(a.quality, b.quality)
+    return speed >= 0 and quality >= 0 and (speed > 0 or quality > 0)
+
+
+def _demonstrable_order(
+    items: list[RankedPlan], precedes: Callable[[RankedPlan, RankedPlan], bool],
+) -> list[RankedPlan]:
+    """Closest order to the base that honours every demonstrable pair.
+
+    Filled from the back: the last slot goes to the latest base plan that must
+    not precede any plan still unplaced. A winner therefore rises to the loser's
+    place instead of the loser sinking below unrelated plans.
+    """
+    remaining = list(items)
+    placed: list[RankedPlan] = []
+    while remaining:
+        free = [x for x in remaining
+                if not any(precedes(x, y) for y in remaining if y is not x)]
+        # ponytail: a cycle (not expected from interval comparisons) keeps base order.
+        pick = free[-1] if free else remaining[-1]
+        remaining.remove(pick)
+        placed.append(pick)
+    return placed[::-1]
 
 
 def _order_group(
     policy: str, items: list[RankedPlan], evidence_of: Callable[[RankedPlan], PlanEvidence],
 ) -> tuple[list[RankedPlan], dict[str, str]]:
     """Items arrive in base order; Python's stable sort keeps it for ties."""
-    if policy in {"quality", "fastest"}:
+    if policy == "quality":
         def figure(item: RankedPlan) -> Measured:
-            found = evidence_of(item)
-            measured = found.quality if policy == "quality" else found.speed
+            measured = evidence_of(item).quality
             assert measured is not None
             return measured
 
@@ -405,36 +481,37 @@ def _order_group(
             item.plan.plan_id: f"{figure(item).label} {figure(item).value:g}" for item in items
         }
 
-    def axes(item: RankedPlan) -> tuple[float, float]:
-        found = evidence_of(item)
-        assert found.quality is not None and found.speed is not None
-        return found.quality.value, found.speed.value
-
-    def dominates(a: tuple[float, float], b: tuple[float, float]) -> bool:
-        return a[0] >= b[0] and a[1] >= b[1] and a != b
-
-    fronts: dict[str, int] = {}
-    remaining = list(items)
-    front = 0
-    while remaining:
-        current = [x for x in remaining
-                   if not any(dominates(axes(y), axes(x)) for y in remaining if y is not x)]
-        for item in current:
-            fronts[item.plan.plan_id] = front
-        placed = {item.plan.plan_id for item in current}
-        remaining = [x for x in remaining if x.plan.plan_id not in placed]
-        front += 1
-    ordered = sorted(items, key=lambda item: fronts[item.plan.plan_id])
+    ordered = _demonstrable_order(
+        items, lambda a, b: _precedes(policy, evidence_of(a), evidence_of(b)),
+    )
     rules = {}
     for item in items:
-        quality, speed = axes(item)
         found = evidence_of(item)
-        assert found.quality is not None and found.speed is not None
-        rules[item.plan.plan_id] = (
-            f"Pareto front {fronts[item.plan.plan_id] + 1}: "
-            f"{found.quality.label} {quality:g}, {found.speed.label} {speed:g}"
-        )
+        assert found.speed is not None
+        low, high = _bounds(found.speed)
+        rule = f"tg128 median {found.speed.value:g}, observed range {low:g}-{high:g}"
+        if policy == "balanced":
+            assert found.quality is not None
+            q_low, q_high = _bounds(found.quality)
+            rule += (f"; {found.quality.label} {found.quality.value:g} "
+                     f"(95% interval {q_low:.3f}-{q_high:.3f})")
+        rules[item.plan.plan_id] = rule + "; ordered only by pairwise distinguishable differences"
     return ordered, rules
+
+
+def _speed_overlaps(items: list[RankedPlan],
+                    evidence_of: Callable[[RankedPlan], PlanEvidence]) -> bool:
+    return any(_compare(evidence_of(a).speed, evidence_of(b).speed) == 0
+               for index, a in enumerate(items) for b in items[index + 1:])
+
+
+def _wilson(correct: int, samples: int, z: float = 1.959964) -> tuple[float, float]:
+    """95% Wilson score interval of a proportion."""
+    p = correct / samples
+    denominator = 1 + z * z / samples
+    centre = (p + z * z / (2 * samples)) / denominator
+    half = z * sqrt(p * (1 - p) / samples + z * z / (4 * samples * samples)) / denominator
+    return max(0.0, centre - half), min(1.0, centre + half)
 
 
 __all__ = [

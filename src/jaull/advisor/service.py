@@ -111,6 +111,7 @@ if TYPE_CHECKING:
     from jaull.benchmarks.storage import BenchmarkStore
     from jaull.cases.storage import CaseStore
     from jaull.domain.recommendation import ExternalEvaluationEvidence
+    from jaull.domain.requirements import UserRequirements
     from jaull.domain.runtime import LlamaCppInstallation, PyTorchInstallation
     from jaull.evaluation.benchmark_comparison import BenchmarkComparison
     from jaull.evaluation.quality_records import QualityEvidence
@@ -1020,6 +1021,31 @@ class AdvisorService:
             replace_candidate(candidate, speed=assess_speed(
                 candidate.plan, state.requirements, records,
             )) for candidate in selection.candidates
+        ))
+
+    def refresh_quality_candidates(
+        self, selection: QualityCandidateSelection, requirements: UserRequirements, *,
+        profile: QualityProfile | None,
+    ) -> QualityCandidateSelection:
+        """Refresh local evidence and file presence without rediscovering candidate plans."""
+        from jaull.recommendation.local_evidence import assess_speed
+        from jaull.recommendation.quality import (
+            index_quality_records,
+            requested_profile,
+            stored_quality,
+        )
+        from jaull.runtime.quality_eval_runner import QualityProfile as Profile
+
+        target = requested_profile(requirements) if profile is Profile.IFEVAL else None
+        index = index_quality_records(self._stored_quality_records() if target else ())
+        benchmarks = self._stored_benchmark_records()
+        artifacts = self._artifacts()
+        return replace(selection, candidates=tuple(
+            replace(candidate,
+                    downloaded=artifacts.is_downloaded(candidate.plan.artifact.to_model_artifact()),
+                    stored=stored_quality(index, candidate.plan.artifact.sha256, target),
+                    speed=assess_speed(candidate.plan, requirements, benchmarks))
+            for candidate in selection.candidates
         ))
 
     def run_speed_candidates(

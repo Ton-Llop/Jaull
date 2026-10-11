@@ -32,6 +32,8 @@ def _measured(item: Any, *, quality: float | None = None, speed: float | None = 
             update={"applicability": "measured_plan", "applicable": ApplicableSpeed(
                 tokens_per_second=speed, repetitions=5, cohort=COHORT,
                 benchmark_id=f"bench-{speed}",
+                run_count=3, benchmark_ids=tuple(f"bench-{speed}-{i}" for i in range(3)),
+                observed_min=speed, observed_max=speed,
             )},
         )})
     return type(item)(item.evaluated, item.plan, assessment)

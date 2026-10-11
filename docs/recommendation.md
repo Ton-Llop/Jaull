@@ -163,8 +163,22 @@ produce an identical report.
 plans, under strict limits. Quality reads applicable quality: one complete audited IFEval
 run of the plan's exact GGUF bytes. Speed (Fastest) reads applicable speed: the plan's
 own `llama_bench_v2` tg128, on its exact artifact, offload, machine and device, with the
-settings llama-bench restated matching the protocol. Balanced needs both and orders Pareto
-fronts, keeping the base order inside a front, so a real trade-off never moves. Measured
+settings llama-bench restated matching the protocol. `shadow-v2` uses the median of all
+distinct valid calls in the newest applicable speed cohort (including older calls and
+completed benchmarks from an interrupted campaign). It requires at least three calls
+before speed can order plans. This is a conservative eligibility gate, not statistical
+significance. The observed min/max range is not a confidence interval, and one atypical
+call can keep two plans indistinguishable indefinitely (a known limit; no robust range
+yet). Fastest and Balanced compare each pair directly. Speed decides a pair only when
+the two observed ranges are disjoint (touching counts as overlap). Balanced also needs
+quality, compared by 95% Wilson intervals of the IFEval score: a plan goes first when no
+axis is demonstrably worse and one is demonstrably better. Overlapping speed is an
+operational tie, so clearly better quality decides it; when neither axis is
+distinguishable, or the pair is a real trade-off (faster but clearly worse), the base
+order stays. This is not strict Pareto dominance. Chains are never merged: A overlapping
+B and B overlapping C still let a disjoint A–C pair decide. The final order is the
+closest to the base that honours every demonstrable pair: a winner rises to the loser's
+slot. Measured
 plans can only trade places with each other, inside one comparable cohort and one
 contiguous stratum (confirmed fit, constraints, suitability, license and language). Every
 other plan keeps its base position, so with no applicable evidence the order is exactly
@@ -179,7 +193,9 @@ orders plans.
 The report separates `ranking.criteria` (the base order) from the measured stage of the
 request's priority: `ranking.quality_policy`, `ranking.speed_policy` or
 `ranking.balanced_policy`. Each carries its measurement(s), cohort, record digest or
-benchmark ID, and the pool positions before and after the policy, before diversity.
+all contributing benchmark IDs, run count, observed speed range, and the pool positions
+before and after the policy, before diversity. Five internal repetitions are not five
+independent calls; within-call standard deviations are not pooled into uncertainty.
 Missing saved-pool positions remain unknown; a measurement alone does not prove a move.
 Markdown preserves the same separation. The pool before this step is what Search saves
 for Recompare. Recompare calculates on that pool but reports proposed changes against the

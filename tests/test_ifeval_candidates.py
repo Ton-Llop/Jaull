@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -269,6 +270,8 @@ def test_speed_candidates_are_the_shown_plans_for_any_task(monkeypatch) -> None:
             return SpeedAssessment()
         return SpeedAssessment(applicability="measured_plan", applicable=ApplicableSpeed(
             tokens_per_second=272.0, repetitions=5, cohort="c" * 64, benchmark_id="b",
+            run_count=3, benchmark_ids=("b1", "b2", "b3"),
+            observed_min=272.0, observed_max=272.0,
         ))
 
     monkeypatch.setattr(quality_candidates, "assess_speed", assess)
@@ -288,3 +291,139 @@ def test_speed_candidates_need_the_saved_pool() -> None:
     result = prepare_speed_candidates(advisor, advisor.state())  # type: ignore[arg-type]
     assert result.candidates == ()
     assert result.notices == ("This search kept no plan pool; run it again to evaluate.",)
+
+
+@pytest.mark.parametrize("quality", ["absent", "applicable", "conflict", "reference"])
+def test_refresh_reads_local_evidence_without_changing_or_inspecting_plans(quality) -> None:
+    from types import SimpleNamespace
+
+    from jaull.advisor.quality_candidates import QualityCandidate, QualityCandidateSelection
+    from jaull.advisor.service import AdvisorService
+    from jaull.domain.requirements import RecommendationPriority
+    from tests.test_fastest_v2_applicability import _v2
+    from tests.test_recommendation_engine_v2 import _requirements
+
+    plan, benchmark = _v2()
+    sha = plan.artifact.sha256
+    records = [] if quality == "absent" else [_stored_run(sha, audited=quality != "reference")]
+    if quality == "conflict":
+        records.append(_stored_run(sha, reply="No."))
+    reads = []
+
+    def read_quality():
+        reads.append("quality")
+        return records
+
+    def read_benchmarks():
+        reads.append("speed")
+        return [benchmark]
+
+    advisor = SimpleNamespace(
+        _stored_quality_records=read_quality, _stored_benchmark_records=read_benchmarks,
+        _artifacts=lambda: SimpleNamespace(is_downloaded=lambda artifact: True),
+    )
+    selection = QualityCandidateSelection(
+        (QualityCandidate(plan, "Original reason", False),), ("Original notice",), 5,
+    )
+    refreshed = AdvisorService.refresh_quality_candidates(
+        advisor, selection, _requirements(  # type: ignore[arg-type]
+            RecommendationPriority.BALANCED, use_case=UseCase.GENERAL_CHAT, languages=["en"],
+        ), profile=IFEVAL,
+    )
+    candidate, = refreshed.candidates
+    assert reads == ["quality", "speed"]
+    assert candidate.plan is plan and candidate.reason == "Original reason"
+    assert refreshed.notices == selection.notices and refreshed.considered == 5
+    assert candidate.downloaded and not candidate.speed_settled  # Only one measured call.
+    assert candidate.speed.applicable.benchmark_id == benchmark.identity.benchmark_id
+    assert (candidate.stored.applicable is not None) is (quality == "applicable")
+    assert candidate.stored.conflict is (quality == "conflict")
+    assert candidate.settled is (quality in {"applicable", "conflict"})
+    assert not selection.candidates[0].downloaded
+    assert not selection.candidates[0].settled and not selection.candidates[0].speed_settled
+
+
+def _with_calls(name: str, calls: int) -> Any:
+    from jaull.advisor.quality_candidates import QualityCandidate
+    from jaull.domain.recommendation import ApplicableSpeed, SpeedAssessment
+    from tests.test_tui_quality import _plan
+
+    speed = SpeedAssessment() if not calls else SpeedAssessment(
+        applicability="measured_plan", applicable=ApplicableSpeed(
+            tokens_per_second=100.0, repetitions=5, cohort="c" * 64,
+            benchmark_id=f"{name}-0", benchmark_ids=tuple(f"{name}-{i}" for i in range(calls)),
+            run_count=calls, observed_min=90.0, observed_max=110.0,
+        ),
+    )
+    return QualityCandidate(_plan(repo_id=f"synthetic/{name}"), "fit", True, speed=speed)
+
+
+@pytest.mark.parametrize(("existing", "new"), [(0, 3), (1, 2), (2, 1), (3, 0)])
+def test_start_runs_only_the_missing_speed_calls(existing: int, new: int) -> None:
+    from jaull.advisor.quality_candidates import speed_calls_needed
+
+    candidate = _with_calls("A", existing)
+    # Three valid calls are enough: the plan is settled and starts unchecked.
+    assert candidate.speed_settled is (existing >= 3)
+    expected = new if not candidate.speed_settled else 0
+    assert (0 if candidate.speed_settled else speed_calls_needed(candidate)) == expected
+
+
+def test_a_settled_plan_ticked_by_hand_gets_one_extra_call() -> None:
+    from jaull.advisor.quality_candidates import speed_calls_needed
+
+    assert speed_calls_needed(_with_calls("A", 3)) == 1
+    assert speed_calls_needed(_with_calls("A", 7)) == 1
+
+
+def test_missing_calls_are_interleaved_across_plans() -> None:
+    from jaull.advisor.quality_candidates import speed_call_schedule
+
+    schedule = speed_call_schedule((_with_calls("A", 0), _with_calls("B", 2),
+                                    _with_calls("C", 1)))
+    names = [c.plan.artifact.repo_id.split("/")[1] for c in schedule]
+    assert names == ["A", "B", "C", "A", "C", "A"]
+
+
+class _Bench:
+    """Stores one record per call; cancels after ``stop_after`` calls if set."""
+
+    def __init__(self, stop_after: int | None = None) -> None:
+        self.calls: list[str] = []
+        self.stop_after = stop_after
+
+    def benchmark_plan_speed(self, plan: Any, **kwargs: Any) -> Any:
+        from types import SimpleNamespace
+
+        self.calls.append(plan.artifact.repo_id.split("/")[1])
+        return SimpleNamespace(
+            record=SimpleNamespace(observation=SimpleNamespace(success=True, message=None)),
+            persisted_path=Path(f"/bench/bench-{len(self.calls)}.json"),
+        )
+
+    def cancelled(self) -> bool:
+        return self.stop_after is not None and len(self.calls) >= self.stop_after
+
+
+def test_each_call_is_stored_separately_with_its_own_record() -> None:
+    from jaull.advisor.quality_candidates import run_speed_candidates
+
+    bench = _Bench()
+    outcomes = run_speed_candidates(bench, (_with_calls("A", 1), _with_calls("B", 2)),  # type: ignore[arg-type]
+                                    cooldown=0)
+    assert bench.calls == ["A", "B", "A"]
+    assert [o.path.name for o in outcomes] == ["bench-1.json", "bench-2.json", "bench-3.json"]
+
+
+def test_a_cancelled_run_keeps_the_stored_calls_and_invents_none() -> None:
+    import time
+
+    from jaull.advisor.quality_candidates import run_speed_candidates
+
+    bench = _Bench(stop_after=1)
+    started = time.monotonic()
+    outcomes = run_speed_candidates(bench, (_with_calls("A", 0),),  # type: ignore[arg-type]
+                                    is_cancelled=bench.cancelled, cooldown=30)
+    assert time.monotonic() - started < 5  # The cool-down wait ends on cancel.
+    assert bench.calls == ["A"]  # No second call is started or reported.
+    assert len(outcomes) == 1 and outcomes[0].path is not None

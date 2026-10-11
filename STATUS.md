@@ -1,7 +1,6 @@
 # Status
 
-Updated 2026-10-07. Code checkpoint: `b3edb99` on `docker-models-comp`.
-PR [#25](https://github.com/Ton-Llop/Jaull/pull/25) is merged.
+Updated 2026-10-11. Code checkpoint: `5ef3635` on `master`; CI passes.
 
 ## What works
 
@@ -14,59 +13,62 @@ and compares predictions with measurements when the evidence allows it.
   block execution, not the recommendation.
 - Task and workload mode are separate. Workload requirements and optional
   throughput/TTFT targets can be recorded; they are not measured results.
-- New llama.cpp plans no longer translate KV sequence batch size into
-  `--batch-size`. Token batching uses runtime defaults; explicit old flags remain.
 - Artifact verification rejects incorrect downloads and removes stale SHA
   sidecars before replacing files.
-- Quality evaluation is an explicit, sequential GGUF pilot in the CLI and TUI.
-  Results separate publisher references from measurements of exact artifact
-  bytes; neither changes recommendation ordering.
-- The quality store preserves repeated completed runs. Reuse requires one
-  complete, protocol-matched run; diagnostics and ambiguous repeats are misses.
+- **Measured ranking policies are active.** After the base order, stored
+  measurements may reorder plans:
+  - Quality reads a complete audited IFEval run of the plan's exact GGUF.
+  - Fastest reads the median `llama_bench_v2` tg128 of at least three calls of
+    the plan's own configuration (pp512 + tg128, 5 repetitions, `-fa off`,
+    threads = physical cores), on the same machine, GPU driver/CUDA, device and
+    offload. A pair moves only when the observed ranges do not overlap.
+  - Balanced compares each pair directly: first when no axis is clearly worse
+    and one is clearly better (quality by 95% Wilson interval). Overlapping
+    speed lets clearly better quality decide; a real trade-off never moves.
+  - Memory has no measured policy.
+  Measured plans only swap places with each other inside one comparable cohort
+  and stratum; without applicable evidence the order is the base order.
+  `llama_bench_v1` records remain references only.
+- **Evaluate candidates follows the search priority**: IFEval for Quality,
+  Speed (no Docker) for Fastest, both for Balanced, running only the axis each
+  candidate is missing. Evaluator setup is automatic; downloads need explicit
+  permission. Recompare proposes, from stored quality and speed, what a search
+  would change. Free disk space deletes downloaded models and run folders while
+  keeping the records.
+- The quality store preserves repeated runs; identical repeats count as one
+  result and differing repeats are a conflict, never an applicable score.
 
 ## Checks and evidence
 
-- The historical [CI run for `8b128c6`](https://github.com/Ton-Llop/Jaull/actions/runs/36748809534)
-  passed. It predates this branch's quality-evaluation changes.
-- Local validation for this checkpoint is recorded below after the current
-  branch's full gates have run.
-- The RTX 4060 campaign has a successful Validate and a complete
-  pp512/tg128 benchmark with three repetitions.
-- [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
-  explains the RTX 2060/4060 results and their limits. Different builds and
-  environments mean this is not a controlled GPU comparison.
+- CI passes on `5ef3635`, including ruff, mypy, the full test suite and the
+  architecture checks.
+- RTX 2060 campaign (2026-10-10), all three plans `measured_plan`:
+  Qwen2.5-0.5B Q5_K_M 245.0 tok/s, IFEval 25.9 %; Qwen2.5-1.5B 164.5 tok/s,
+  41.0 %; LFM2.5-1.2B 235.1 tok/s, 80.2 %. Balanced keeps the Qwen pair as a
+  trade-off. See [the plan](docs/fastest-balanced-plan.md).
+- The RTX 4060 campaign has a successful Validate and a complete pp512/tg128
+  benchmark. [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
+  explains the RTX 2060/4060 results and their limits.
 - Public RTX 4060 evidence is anonymized. Original bytes are kept privately;
   see [the evidence index](validation/README.md). Old failed runs remain failures.
 
 ## What is still missing
 
-- Capability estimation still uses a scale prior. Published catalog results
-  are diagnostic references only; all 11 entries lack an evaluated revision
-  and precision and do not certify the artifact that runs.
+- Speed noise between calls is 4-14 % on the RTX 2060
+  ([campaign](docs/qwen2.5-tests/rtx2060-tg128-noise-20261011.md)). The min-max
+  range only grows, so one atypical call can keep two plans indistinguishable
+  indefinitely; a robust range is a later improvement.
+- Capability estimation without measurements still uses a scale prior.
+  Published catalog results are references only.
 - No qualification verdict yet. The 1/2/4 concurrent-user experiment is measured
   under `validation/2060-1vs2vs4-users/` and is deliberately not a priority.
-- NVML process VRAM is unavailable on the measured WDDM machines. Runtime
-  buffer comparisons work where the methodology gates allow them, but do not
-  measure every process allocation.
+- NVML process VRAM is unavailable on the measured WDDM machines.
 - Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
 - Memory overhead, reserve and headroom are not calibrated from these runs.
 
 ## Next steps
 
-The priority is how Jaull estimates quality, not multiuser throughput.
+1. Measure more plans on the RTX 2060 to strengthen the TFG evidence.
+2. Broaden the catalog cautiously, with primary sources and exact provenance.
 
-1. Review and broaden the catalog cautiously for models that appear in Jaull's
-   actual recommendation results, using primary sources and exact provenance.
-2. Design a Quality/Fastest/Balanced policy for review before any ranking
-   integration. Keep unknown and incomparable evidence visible.
-3. Upgrade the limited pilot only after defining sample coverage and uncertainty;
-   a small `--limit` run is not a model-quality verdict.
-
-No HFA, ranking, scoring or calibration changes are part of this checkpoint.
 Historical audits remain in [`docs/history/`](docs/history/).
-
-## Current branch validation
-
-- Current working-tree validation: **2,287 tests passed** on Python 3.12;
-  Ruff, mypy (`249` source files), architecture checks (`4` passed),
-  compileall and `git diff --check` passed.

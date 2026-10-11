@@ -116,11 +116,11 @@ def test_pareto_orders_dominated_plans_and_keeps_trade_offs() -> None:
                      p1=PlanEvidence(quality=quality(0.6), speed=speed(20)),   # B: faster
                      p2=PlanEvidence(quality=quality(0.8), speed=speed(10)))   # A: better
 
-    # A and B are both on the first front; neither is dropped for "barely" winning.
+    # A and B are a trade-off; neither is dropped for "barely" winning.
     assert _repos(report, items) == ["B", "A", "C"]
     rules = {move.repo_id.split("/")[1][0]: move.rule for move in report.moves}
-    assert rules["C"].startswith("Pareto front 2")
-    assert rules["A"].startswith("Pareto front 1")
+    assert rules["C"].startswith("tg128 median 5")
+    assert rules["A"].endswith("ordered only by pairwise distinguishable differences")
 
 
 def test_balanced_infers_no_dominance_from_one_known_axis() -> None:
@@ -341,4 +341,4 @@ def test_the_report_names_the_policy_it_applied(priority) -> None:
     report = build_shadow_report(items, requirements, limit=5)
 
     assert report.applied and report.priority is priority
-    assert report.policy_version == "shadow-v1"
+    assert report.policy_version == "shadow-v2"

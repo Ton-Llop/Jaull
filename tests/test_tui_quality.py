@@ -166,6 +166,11 @@ class CandidateAdvisor(FakeAdvisor):
     def run_quality_candidates(self, candidates: Any, request: Any, **kwargs: Any) -> Any:
         return run_candidates(self, candidates, request, **kwargs)  # type: ignore[arg-type]
 
+    def refresh_quality_candidates(
+        self, selection: Any, requirements: Any, **kwargs: Any,
+    ) -> Any:
+        return selection
+
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 50)])
 @pytest.mark.parametrize("preference_failure", [False, True])

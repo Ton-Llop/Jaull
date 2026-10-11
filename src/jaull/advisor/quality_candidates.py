@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -50,6 +51,10 @@ if TYPE_CHECKING:
     from jaull.workflow.state import RecommendationWorkflowState
 
 MAX_QUALITY_CANDIDATES = 3
+#: Distinct valid calls a plan needs before its speed range may order it.
+SPEED_MIN_CALLS = 3
+#: Idle GPU between two calls, as in the RTX 2060 noise campaign.
+SPEED_COOLDOWN_SECONDS = 60.0
 EVALUATION_CONTEXT = PROFILE_CONTEXT[QualityProfile.SMOKE]
 
 
@@ -72,8 +77,8 @@ class QualityCandidate:
 
     @property
     def speed_settled(self) -> bool:
-        """A rerun only adds another applicable figure; the newest already applies."""
-        return self.speed.applicable is not None
+        """Enough distinct calls to compare this plan's observed speed range."""
+        return self.speed.applicable is not None and self.speed.applicable.ranking_ready
 
 
 @dataclass(frozen=True)
@@ -381,19 +386,57 @@ def prepare_speed_candidates(
     return QualityCandidateSelection(tuple(chosen), tuple(notices), len(shown))
 
 
+def speed_calls_needed(candidate: QualityCandidate) -> int:
+    """Calls still missing for a ranking-ready range; one more if already enough.
+
+    Only valid calls of the applicable cohort count (``run_count``). A plan that
+    already has them starts unchecked, so reaching here means a manual extra call.
+    """
+    applicable = candidate.speed.applicable
+    have = applicable.run_count if applicable is not None else 0
+    return max(SPEED_MIN_CALLS - have, 1)
+
+
+def speed_call_schedule(
+    candidates: tuple[QualityCandidate, ...],
+) -> tuple[QualityCandidate, ...]:
+    """Interleaved calls (A B C, A B, A): drift during a session hits every plan."""
+    needed = [speed_calls_needed(candidate) for candidate in candidates]
+    return tuple(
+        candidate
+        for round_index in range(max(needed, default=0))
+        for candidate, count in zip(candidates, needed, strict=True)
+        if count > round_index
+    )
+
+
 def run_speed_candidates(
     advisor: AdvisorService, candidates: tuple[QualityCandidate, ...], *,
     allow_download: bool = False, is_cancelled: Callable[[], bool] | None = None,
     on_progress: Callable[[str], None] | None = None,
+    cooldown: float = SPEED_COOLDOWN_SECONDS,
 ) -> tuple[QualityCandidateOutcome, ...]:
-    """Sequential llama_bench_v2 runs; each record is stored before the next starts."""
+    """Sequential llama_bench_v2 calls; each record is stored before the next starts.
+
+    Each plan gets the calls it still needs (``speed_calls_needed``), interleaved,
+    with ``cooldown`` seconds of idle GPU between calls. One outcome per call; a
+    cancellation keeps every stored call and invents none.
+    """
     if not 1 <= len(candidates) <= MAX_QUALITY_CANDIDATES:
         raise ValueError("Select between one and three evaluation candidates.")
+    cancelled = is_cancelled or (lambda: False)
+    schedule = speed_call_schedule(candidates)
     outcomes: list[QualityCandidateOutcome] = []
-    for index, candidate in enumerate(candidates, 1):
-        if is_cancelled is not None and is_cancelled():
+    for index, candidate in enumerate(schedule, 1):
+        if index > 1:
+            if on_progress is not None:
+                on_progress(f"Cooling down {cooldown:.0f} s before call {index}/{len(schedule)}")
+            deadline = time.monotonic() + cooldown
+            while not cancelled() and (left := deadline - time.monotonic()) > 0:
+                time.sleep(min(0.5, left))
+        if cancelled():
             break
-        prefix = f"{index}/{len(candidates)} {candidate.plan.model_identity.model_name}"
+        prefix = f"{index}/{len(schedule)} {candidate.plan.model_identity.model_name}"
 
         def report(text: str, prefix: str = prefix) -> None:
             if on_progress is not None:

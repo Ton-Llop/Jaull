@@ -189,7 +189,7 @@ class LocalSpeedReference(BaseModel):
 
 
 class ApplicableSpeed(BaseModel):
-    """tg128 of this plan's exact artifact and offload, under llama_bench_v2.
+    """Median run-level tg128 of this exact plan under llama_bench_v2.
 
     Equal ``cohort`` means same machine, build, protocol, backend, device and
     workload, so two plans' figures may order them. The artifact and offload are
@@ -205,11 +205,27 @@ class ApplicableSpeed(BaseModel):
     pp512_tokens_per_second: float | None = Field(default=None, ge=0.0)
     repetitions: int = Field(ge=1)
     cohort: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Retained for old assessments: the newest contributing run, not the aggregate's identity.
     benchmark_id: str
+    benchmark_ids: tuple[str, ...] = ()
+    run_count: int = Field(default=1, ge=1)
+    observed_min: float | None = Field(default=None, gt=0.0)
+    observed_max: float | None = Field(default=None, gt=0.0)
     scope: str = (
         "This plan's exact artifact and offload under the controlled llama_bench_v2 "
-        "protocol on the recording machine, not tuned production throughput."
+        "protocol on the recording machine, not tuned production throughput. All valid "
+        "runs of the newest applicable cohort contribute. The observed range is not a "
+        "confidence interval; at least three distinct calls are required to order plans."
     )
+
+    @property
+    def ranking_ready(self) -> bool:
+        return (
+            self.run_count >= 3
+            and len(set(self.benchmark_ids)) == self.run_count
+            and self.observed_min is not None and self.observed_max is not None
+            and self.observed_min <= self.tokens_per_second <= self.observed_max
+        )
 
 
 class SpeedAssessment(BaseModel):
@@ -223,7 +239,7 @@ class SpeedAssessment(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    # `measured_plan` only with `applicable` set: the newest unblocked v2 reference.
+    # `measured_plan` describes applicability, not sufficient repeats to order plans.
     applicability: Literal["absent", "reference_only", "measured_plan"] = "absent"
     applicable: ApplicableSpeed | None = None
     # Newest first, benchmark ID breaking ties: the order Fastest v1 would read.

@@ -1,12 +1,50 @@
 # Fastest y Balanced: evidencia de rendimiento aplicable
 
-Fase siguiente a `recommendation-vfinal-plan.md`. Quality ya ordena con calidad
-medida; Fastest y el eje de velocidad de Balanced siguen en shadow porque ninguna
-medición de velocidad puede aplicarse hoy. El objetivo es que un benchmark nuevo
-pueda superar esos bloqueos con rigor, no rebajar los bloqueos.
+**Estado: completada y activada el 2026-10-10** (commit `491b6fc`). Fastest y
+Balanced ordenan con evidencia `llama_bench_v2` aplicable; ver [Estado](#estado).
+
+Fase siguiente a `recommendation-vfinal-plan.md`. Al empezarla, Quality ya ordenaba
+con calidad medida, mientras que Fastest y el eje de velocidad de Balanced seguían en
+shadow porque ninguna medición de velocidad podía aplicarse. El objetivo era que un
+benchmark nuevo pudiera superar esos bloqueos con rigor, no rebajar los bloqueos.
 
 Pregunta que responde Fastest v1: entre los planes medidos con el mismo protocolo en
 la misma máquina, ¿qué configuración genera más rápido? No: qué modelo es más rápido.
+
+## Actualización acotada (2026-10-11): ruido entre ejecuciones
+
+La campaña de tres rondas motivó sustituir "gana la última medición" por `shadow-v2`.
+`assess_speed` agrega todas las llamadas válidas y distintas de la cohorte aplicable más
+reciente: mediana de tg128, número de llamadas, rango observado e IDs de cada benchmark.
+No hay ventana temporal ni exclusión por valor. Los benchmarks completos de intentos
+interrumpidos también cuentan; la medición de 218,6 no se elimina por ser baja.
+
+Con menos de tres llamadas el dato se muestra, pero no ordena. Revisión con Ton
+(2026-10-11): cada pareja se compara directamente. La velocidad decide solo si los rangos
+observados son disjuntos (tocarse cuenta como solape). En Balanced, la calidad se compara
+con intervalos de Wilson al 95 % del IFEval: un plan va delante si ningún eje es
+demostrablemente peor y uno es demostrablemente mejor. Velocidad solapada es un empate
+operativo y la calidad claramente superior lo decide; si ningún eje se distingue, o es un
+compromiso real (más rápido pero claramente peor), se conserva el orden base. No es
+dominancia de Pareto estricta. Los solapes encadenados no se fusionan: A~B y B~C no
+impiden que un par A–C disjunto decida. El orden final es el más cercano al base que
+respeta cada par demostrable: el ganador sube al hueco del perdedor.
+
+Limitación conocida: el rango mínimo–máximo solo crece; una ejecución atípica puede
+impedir indefinidamente distinguir dos planes. Con 3–4 llamadas es una regla
+conservadora y comprensible; un rango robusto queda como mejora posterior.
+
+Evaluate (Speed y la parte de velocidad de Balanced) ejecuta las llamadas que faltan
+hasta tres (0→3, 1→2, 2→1, 3→0; un plan con tres o más que se marque a mano recibe una
+llamada extra), intercaladas entre planes y con 60 s de enfriamiento entre llamadas.
+Cada llamada se guarda como su propio benchmark; si se cancela, se conservan las ya
+guardadas y no se inventa ninguna.
+
+La TUI y los informes muestran llamadas, rango e IDs; solo se marca un ganador de
+velocidad si su rango está completamente por encima de los demás. El rango no es un
+intervalo de confianza; tres llamadas son un mínimo conservador, no prueba estadística.
+No cambia el productor `llama_bench_v2`, no se reescriben registros ni se calibra hardware.
+Las decisiones y resultados de los apartados siguientes describen la versión inicial.
 
 ## Paso 0. Decisiones congeladas (2026-10-10)
 

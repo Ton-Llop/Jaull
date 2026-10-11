@@ -10,6 +10,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from re import fullmatch
+from statistics import median
 
 from jaull.domain.artifacts import ModelArtifact, artifact_identity_matches
 from jaull.domain.benchmarks import (
@@ -414,7 +415,18 @@ def assess_speed(
     sha = plan.artifact.sha256
     if sha is None:
         return SpeedAssessment()
-    matched = [record for record in records if _exact_sha(record.artifact.sha256) == sha]
+    by_id: dict[str, BenchmarkRecord] = {}
+    conflicts: set[str] = set()
+    for record in records:
+        if _exact_sha(record.artifact.sha256) != sha:
+            continue
+        identity = record.identity.benchmark_id
+        previous = by_id.get(identity)
+        if previous is not None and previous != record:
+            conflicts.add(identity)
+            record = min((previous, record), key=lambda item: item.model_dump_json())
+        by_id[identity] = record
+    matched = list(by_id.values())
     matched.sort(
         key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
         reverse=True,
@@ -427,24 +439,38 @@ def assess_speed(
             **_single(record, BenchmarkMeasurementKind.GENERATION, 128, "tg128"),
             **_single(record, BenchmarkMeasurementKind.PREFILL, 512, "pp512"),
             repetitions=record.observation.repetitions,
-            blockers=fastest_benchmark_blockers(plan, requirements, record),
+            blockers=fastest_benchmark_blockers(plan, requirements, record) + (
+                ("Conflicting records share this benchmark ID.",)
+                if record.identity.benchmark_id in conflicts else ()
+            ),
         )
         for record in matched
     ]
-    # The newest reference with no blocker applies. ponytail: newest wins rather
-    # than an average of repeats; pooling runs needs its own variance rule first.
-    applicable = next((
-        ApplicableSpeed(
-            tokens_per_second=reference.tg128_tokens_per_second,
-            stddev_tokens_per_second=reference.tg128_stddev_tokens_per_second,
-            pp512_tokens_per_second=reference.pp512_tokens_per_second,
-            repetitions=record.observation.repetitions,
-            cohort=speed_cohort(record),
-            benchmark_id=reference.benchmark_id,
-        )
+    eligible = [
+        (reference, record)
         for reference, record in zip(references, matched, strict=True)
         if not reference.blockers and reference.tg128_tokens_per_second
-    ), None)
+    ]
+    applicable = None
+    if eligible:
+        cohort = speed_cohort(eligible[0][1])
+        runs = [ref for ref, record in eligible if speed_cohort(record) == cohort]
+        figures = [ref.tg128_tokens_per_second for ref in runs
+                   if ref.tg128_tokens_per_second is not None]
+        prefill = [ref.pp512_tokens_per_second for ref in runs
+                   if ref.pp512_tokens_per_second is not None]
+        applicable = ApplicableSpeed(
+            tokens_per_second=median(figures),
+            # A within-call SD is not the uncertainty between calls.
+            stddev_tokens_per_second=(
+                runs[0].tg128_stddev_tokens_per_second if len(runs) == 1 else None
+            ),
+            pp512_tokens_per_second=median(prefill) if len(prefill) == len(runs) else None,
+            repetitions=eligible[0][1].observation.repetitions,
+            cohort=cohort, benchmark_id=runs[0].benchmark_id,
+            benchmark_ids=tuple(sorted(ref.benchmark_id for ref in runs)),
+            run_count=len(runs), observed_min=min(figures), observed_max=max(figures),
+        )
     return SpeedAssessment(
         applicability=(
             "measured_plan" if applicable is not None

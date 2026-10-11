@@ -125,8 +125,10 @@ From a search the suite selector also offers **Speed** and **Balanced**, and it
 starts on the suite that matches the search priority: Best quality → IFEval,
 Fast responses → Speed, Balanced → Balanced. Speed benchmarks each checked plan
 with `llama_bench_v2` (pp512 + tg128, 5 repetitions) on its own offload and device,
-needs no Docker or dataset, and shows a tg128/pp512 table that highlights a best
-value only when all rows share one comparable cohort. Balanced runs IFEval and then
+running the calls it still needs to reach three (interleaved across plans, 60 s
+cool-down between calls; a plan with three or more ticked by hand gets one extra).
+It needs no Docker or dataset, and shows median, calls and observed range per plan,
+highlighting a winner only when its range is above every comparable peer. Balanced runs IFEval and then
 speed on the same GGUFs. A candidate is pre-checked only when the chosen suite
 still lacks an applicable result for it. **Free disk space** (end of Results) lists
 downloaded models and evaluation output folders for deletion; stored records stay.
