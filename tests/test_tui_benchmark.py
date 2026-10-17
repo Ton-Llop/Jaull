@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from textual.widgets import Button, DataTable
+from textual.widgets import Button, DataTable, Static, TabbedContent, TabPane
 
 from jaull.benchmarks.errors import BenchmarkUnavailableError
 from jaull.benchmarks.matrix import (
@@ -14,6 +14,7 @@ from jaull.benchmarks.matrix import (
     BenchmarkMatrixResult,
 )
 from jaull.domain.benchmarks import (
+    BenchmarkFailureReason,
     BenchmarkGpuLayers,
     BenchmarkMeasurement,
     BenchmarkMeasurementKind,
@@ -225,6 +226,53 @@ def test_benchmark_screen_keeps_partial_failure_results(
             # configuration and its detail can be read at the same time.
             assert screen.query_one("#benchmark-detail-0")
             assert all(tab in text for tab in ("Performance", "Memory", "Technical"))
+
+    _run(scenario())
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+def test_benchmark_failure_shows_remedy_and_keeps_raw_output_in_technical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: tuple[int, int],
+) -> None:
+    message = (
+        "Missing Python development headers (Python.h).\n"
+        "On Ubuntu/WSL: sudo apt install python3.12-dev."
+    )
+    stderr = "fatal error: Python.h: No such file or directory\nTraceback: compiler detail"
+    stdout = '{"success": false, "error": "compiler returned exit status 1"}'
+    observation = BenchmarkObservation(
+        success=False, message=message, exit_code=1, raw_stderr=stderr, raw_stdout=stdout,
+        repetitions=3, duration_seconds=1.0,
+        failure_reason=BenchmarkFailureReason.NON_ZERO_EXIT,
+        command=("/usr/bin/gcc", "cuda_utils.c", "-I/usr/include/python3.12"),
+    )
+    monkeypatch.setattr("tests.test_tui_benchmark._transformers_observation", lambda: observation)
+
+    async def scenario() -> None:
+        runtime = RuntimeRecommendation(
+            runtime=RuntimeName.TRANSFORMERS, confidence=EstimationConfidence.HIGH,
+        )
+        app = JaullApp(advisor=_BenchmarkAdvisor(tmp_path))  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            await app.push_screen(RecommendationBenchmarkScreen(_recommendation(runtime=runtime)))
+            screen = app.screen
+            assert isinstance(screen, RecommendationBenchmarkScreen)
+            _run_workers_inline(screen, monkeypatch)
+            screen.query_one("#benchmark-start", Button).press()
+            await _wait_until(pilot, lambda: bool(screen.query("#benchmark-detail-0")))
+            detail = screen.query_one("#benchmark-detail-0")
+            panes = list(detail.query(TabPane))
+            performance = "\n".join(str(w.content) for w in panes[0].query(Static))
+            assert "Missing Python development headers" in performance
+            assert "sudo apt install python3.12-dev" in performance
+            assert "Technical" in performance
+            assert "Traceback" not in performance
+            detail.query_one(TabbedContent).active = panes[2].id
+            await pilot.pause()
+            technical = "\n".join(str(w.content) for w in panes[2].query(Static))
+            assert stderr in technical and stdout in technical
+            assert "/usr/bin/gcc cuda_utils.c -I/usr/include/python3.12" in technical
+            assert screen._last_result.records[0].observation.raw_stderr == stderr
 
     _run(scenario())
 

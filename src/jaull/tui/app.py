@@ -125,7 +125,11 @@ class JaullApp(App[None]):
         self.push_screen(ModelDiscoveryScreen(answers))
 
     def show_recommendations(self, state: RecommendationWorkflowState) -> None:
-        self.push_screen(RecommendationResultsScreen(state))
+        results = RecommendationResultsScreen(state)
+        if isinstance(self.screen, ModelDiscoveryScreen):
+            self.switch_screen(results)
+        else:
+            self.push_screen(results)
 
     def run_recommendation(
         self,

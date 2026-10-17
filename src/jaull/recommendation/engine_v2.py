@@ -1077,8 +1077,9 @@ def _ranking_key(
         # Measured speed is not a key axis: apply_measured_policy orders it only
         # inside comparable cohorts and strata, after this base order.
         priority_axes = (
+            _LEVEL_RANK[assessment.suitability],
+            _runnability_rank(assessment),
             _LEVEL_RANK[assessment.executability],
-            _priority_quantization_rank(item.plan, priority),
             _memory_efficiency_rank(assessment),
         )
     elif priority is RecommendationPriority.MEMORY:
@@ -1090,7 +1091,7 @@ def _ranking_key(
     else:
         priority_axes = (
             _LEVEL_RANK[assessment.suitability],
-            _balanced_runnability_rank(assessment),
+            _runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
             _LEVEL_RANK[assessment.execution_fitness],
             _LEVEL_RANK[assessment.executability],
@@ -1240,15 +1241,16 @@ def ranking_criteria(
         )
     elif priority is RecommendationPriority.SPEED:
         axes = (
+            ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            (
+                "runnability",
+                assessment.execution_fitness.value,
+                _runnability_rank(assessment),
+            ),
             (
                 "executability",
                 assessment.executability.value,
                 _LEVEL_RANK[assessment.executability],
-            ),
-            (
-                "quantization",
-                item.plan.artifact.quantization or "n/a",
-                _priority_quantization_rank(item.plan, priority),
             ),
             (
                 "memory_footprint",
@@ -1280,7 +1282,7 @@ def ranking_criteria(
             (
                 "runnability",
                 assessment.execution_fitness.value,
-                _balanced_runnability_rank(assessment),
+                _runnability_rank(assessment),
             ),
             ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
@@ -1363,22 +1365,6 @@ def _quantization_quality_rank(plan: ExecutionPlan) -> int:
         return len(order)
 
 
-def _priority_quantization_rank(
-    plan: ExecutionPlan,
-    priority: RecommendationPriority,
-) -> int:
-    if plan.artifact.format is not ArtifactVariantFormat.GGUF:
-        return len(_quantization_ladder(priority))
-    quant = plan.artifact.quantization
-    if quant is None:
-        return len(_quantization_ladder(priority))
-    ladder = _quantization_ladder(priority)
-    try:
-        return ladder.index(quant.upper())
-    except ValueError:
-        return len(ladder)
-
-
 def _memory_efficiency_rank(assessment: PlanAssessment) -> int:
     memory = assessment.measured_memory_bytes or assessment.estimated_memory_bytes
     return memory if memory is not None else 10**18
@@ -1401,11 +1387,11 @@ def _comfortable_memory_rank(assessment: PlanAssessment) -> int:
     return 4
 
 
-def _balanced_runnability_rank(assessment: PlanAssessment) -> int:
-    """Coarse execution class for Balanced before comparing capability.
+def _runnability_rank(assessment: PlanAssessment) -> int:
+    """Coarse execution class before capability (Balanced) or footprint (Speed).
 
     Strong and adequate fitness both mean "normally runnable" for this mode:
-    once a plan is in that broad class, capability is still allowed to decide.
+    once a plan is in that broad class, the priority's next axis can decide.
     Weak/offloading plans move to a degraded class, and unknown readiness stays
     below known runnable plans without being treated as a hard rejection here.
     """

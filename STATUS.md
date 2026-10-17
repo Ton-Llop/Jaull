@@ -48,6 +48,19 @@ and compares predictions with measurements when the evidence allows it.
   (4), 80.2 %. Balanced keeps the Qwen pair as a trade-off. See
   [the plan](docs/fastest-balanced-plan.md) and
   [the noise campaign](docs/qwen2.5-tests/rtx2060-tg128-noise-20261011.md).
+- An offline tg128 predictor (not in the product) was frozen before measuring four
+  new RTX 2060 artifacts. Its observed errors were −6.1 % to +10.5 %, but the audit
+  found a WSL kernel change between calibration and measurement: this is exploratory
+  cross-environment evidence, not validated accuracy within a comparable cohort.
+  The corrected scorer rejects the environment mismatch without rewriting the originals. See
+  [the report](docs/qwen2.5-tests/rtx2060-speed-predictor-20261014.md).
+- Results distinguishes applicable measured speed from the latest metadata-matched
+  Transformers benchmark (historical, not ranking evidence). Without either, there
+  is no speed label; the Speed shortcut remains available. Predictions were withdrawn
+  after a Transformers case measured 18.36 tok/s against roughly 170 estimated.
+  The offline predictor and original experiments remain available for the TFG;
+  other-condition benchmarks stay historical references in the details.
+  See `docs/recommendation.md`.
 - The RTX 4060 campaign has a successful Validate and a complete pp512/tg128
   benchmark. [The comparison report](docs/qwen2.5-tests/rtx4060-campaign-comparison.md)
   explains the RTX 2060/4060 results and their limits.

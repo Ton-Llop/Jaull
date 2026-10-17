@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
 from typing import TYPE_CHECKING
 
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -31,6 +32,7 @@ from jaull.presentation.plan_labels import (
     plan_backend,
     plan_summary_line,
 )
+from jaull.presentation.speed import SpeedReadout, speed_readout
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.tier import TIER_HEADINGS, RecommendationTier
 from jaull.reporting.writer import (
@@ -57,6 +59,8 @@ from jaull.workflow.state import RecommendationWorkflowState
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
+
+_log = logging.getLogger(__name__)
 
 
 class _RecommendationRow(Vertical):
@@ -111,6 +115,7 @@ class _RecommendationRow(Vertical):
             classes=f"rec-list-fit {_fit_class(rec)}",
         )
         yield Static(_plan_line(rec), classes="rec-plan")
+        yield from _speed_widgets(rec, self._index)
         if rec.unknown_reason:
             yield Static(rec.unknown_reason, classes="rec-unknown-reason")
 
@@ -125,10 +130,19 @@ class _RecommendationRow(Vertical):
     def show_evidence(self, evidence: PlanEvidence) -> None:
         self.detail.show_evidence(evidence)
 
+    def show_speed(self, speed: SpeedReadout) -> None:
+        widget = self.query_one(f"#rec-speed-{self._index}", Static)
+        widget.update(speed.label)
+        widget.tooltip = speed.details
+        widget.set_class(speed.measured, "status-ok")
+        self.detail.show_speed(speed)
+
     def _apply(self) -> None:
         self.detail.display = self._selected
 
-    def on_click(self) -> None:
+    def on_click(self, event: events.Click) -> None:
+        if isinstance(event.widget, Button):
+            return
         self.post_message(self.Chosen(self._index))
 
     def action_choose(self) -> None:
@@ -151,6 +165,7 @@ class _RecommendationInspector(Vertical):
         yield Static(_model_title(rec), classes="inspector-title", markup=False)
         yield Static(_plan_line(rec), classes="inspector-subtitle")
         yield from self._compose_actions()
+        yield from _speed_widgets(rec, self._index, detail=True)
         with TabbedContent():
             with TabPane("Plan"), VerticalScroll():
                 yield SummaryCard(
@@ -179,6 +194,13 @@ class _RecommendationInspector(Vertical):
                 )
                 yield Static("Saved execution evidence", classes="section-title")
                 yield Static("", id=f"rec-evidence-{self._index}", classes="status-estimated")
+                yield TechnicalDetails(
+                    title="Speed provenance",
+                    extra=[Static(
+                        "Speed evidence not loaded yet.",
+                        id=f"rec-speed-provenance-{self._index}", markup=False,
+                    )],
+                )
             with TabPane("Memory"), VerticalScroll():
                 estimate = rec.evaluated.memory_estimate
                 if estimate is None:
@@ -299,6 +321,13 @@ class _RecommendationInspector(Vertical):
             bool(evidence.quality_records)
         )
 
+    def show_speed(self, speed: SpeedReadout) -> None:
+        widget = self.query_one(f"#rec-speed-detail-{self._index}", Static)
+        widget.update(speed.label)
+        widget.tooltip = speed.details
+        widget.set_class(speed.measured, "status-ok")
+        self.query_one(f"#rec-speed-provenance-{self._index}", Static).update(speed.details)
+
     def show_alternative_quality(
         self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],
     ) -> None:
@@ -318,9 +347,10 @@ class _RecommendationInspector(Vertical):
 
 
 class _RecommendationEvidenceLoaded(Message):
-    def __init__(self, evidence: EvidenceIndex) -> None:
+    def __init__(self, evidence: EvidenceIndex, speeds: tuple[SpeedReadout, ...] = ()) -> None:
         super().__init__()
         self.evidence = evidence
+        self.speeds = speeds
 
 
 class RecommendationResultsScreen(Screen[None]):
@@ -455,15 +485,26 @@ class RecommendationResultsScreen(Screen[None]):
         try:
             evidence = EvidenceIndex.load(advisor)
         except Exception:
+            _log.exception("Could not load Results evidence")
             return
+        records = evidence.benchmark_records()
+        speeds = []
+        for rec in self._state.recommendations:
+            try:
+                speeds.append(speed_readout(rec.plan, self._state.requirements, records))
+            except Exception:
+                _log.exception("Could not read speed evidence for %s", rec.repo_id)
+                speeds.append(SpeedReadout(details="Could not read speed evidence; see logs."))
         if not self._evidence_closing.is_set():
-            self.post_message(_RecommendationEvidenceLoaded(evidence))
+            self.post_message(_RecommendationEvidenceLoaded(evidence, tuple(speeds)))
 
     @on(_RecommendationEvidenceLoaded)
     def _evidence_loaded(self, message: _RecommendationEvidenceLoaded) -> None:
         if self._evidence_closing.is_set():
             return
         for row in self.query(_RecommendationRow):
+            if row._index < len(message.speeds):
+                row.show_speed(message.speeds[row._index])
             found = _evidence_for_recommendation(
                 message.evidence,
                 self._state.recommendations[row._index],
@@ -500,6 +541,13 @@ class RecommendationResultsScreen(Screen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app = self._app()
         button_id = event.button.id or ""
+        if button_id.startswith("res-speed-"):
+            event.stop()
+            index = int(button_id.rsplit("-", 1)[1])
+            if 0 <= index < len(self._state.recommendations):
+                recommendation = self._state.recommendations[index]
+                app.benchmark_recommendation(recommendation, recommendation.plan)
+            return
         if button_id.startswith("res-run-"):
             index = int(button_id.removeprefix("res-run-"))
             if 0 <= index < len(self._state.recommendations):
@@ -895,6 +943,18 @@ class ExportReportModal(ModalScreen[None]):
         if not path_inputs:
             return
         path_inputs[0].focus()
+
+
+def _speed_widgets(
+    rec: ModelRecommendation, index: int, *, detail: bool = False,
+) -> ComposeResult:
+    suffix = f"detail-{index}" if detail else str(index)
+    with Horizontal(classes="rec-speed-line" + (" -detail" if detail else "")):
+        yield Static("", id=f"rec-speed-{suffix}", classes="rec-speed-value")
+        reason = _runtime_action_reason(rec)
+        button = ActionButton("Speed", id=f"res-speed-{suffix}", disabled=reason is not None)
+        button.tooltip = reason or "Measure this exact execution plan; opens benchmark setup."
+        yield button
 
 
 def _results_actions(has_results: bool) -> ComposeResult:

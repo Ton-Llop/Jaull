@@ -1,0 +1,115 @@
+{
+  "frozen_at": "2026-10-14T09:45:25.103042+00:00",
+  "git_commit": "2dd0eca706d0d4567ecfd6a08f525fcc8d437d80",
+  "git_dirty": true,
+  "gpu": "NVIDIA GeForce RTX 2060",
+  "bandwidth_bytes_per_second": 336000000000.0,
+  "llama_cpp_build": 10357,
+  "residual_seconds_per_token": 0.002382918373534887,
+  "calibration": [
+    {
+      "sha256": "041474553fcabfc2a2d67903f9d2c2e50bd92528e670da4f33b5d0ce6e59fd55",
+      "filename": "qwen2.5-0.5b-instruct-q5_k_m.gguf",
+      "size_bytes": 522186592,
+      "median_tps": 246.06,
+      "benchmark_ids": [
+        "bench-077c60d6-e83b-419f-91de-b618a78b7d5f",
+        "bench-4d26343f-04cf-45f9-9a21-bdc55c0bc367",
+        "bench-e2380698-4fd5-4a53-90dd-7d50a631a04d",
+        "bench-f2145190-ee81-485a-a9a1-c1b48ed2ee3f",
+        "bench-fc2f701f-d9fd-4b9e-a80f-ac3adc257154",
+        "bench-fef7767a-c211-47b1-9460-bd06fbe8b0e3"
+      ]
+    },
+    {
+      "sha256": "fa03f3ac4da941a53a0cd4450aacf6a80804c6a1ff885d2fdcbe9406c03215c4",
+      "filename": "LFM2.5-1.2B-Instruct-Q5_K_M.gguf",
+      "size_bytes": 843354944,
+      "median_tps": 230.515,
+      "benchmark_ids": [
+        "bench-06013d80-f931-40db-b6b3-c901d82ea0eb",
+        "bench-817909ae-5ac2-4665-b4e1-f4306dd64974",
+        "bench-c0437927-d816-4f4c-8da8-72958f36efbf",
+        "bench-d81a7d43-ae56-40e4-baef-7bb6d4a1411a"
+      ]
+    },
+    {
+      "sha256": "b46661073c18e5b56a41fa320975f866a00def1ff08feef4718e013258896f8c",
+      "filename": "qwen2.5-1.5b-instruct-q5_k_m.gguf",
+      "size_bytes": 1285494304,
+      "median_tps": 150.68,
+      "benchmark_ids": [
+        "bench-357b70ce-a544-483b-aca3-b5a90977271c",
+        "bench-6246eba9-0c22-4b52-80ac-8ccbc1aa8535",
+        "bench-a6b2d0d4-516a-40b8-9095-bf59cfcb2b59",
+        "bench-e646a5d0-fc42-46a7-a399-8432dde3ca32"
+      ]
+    }
+  ],
+  "calibration_leave_one_out": [
+    {
+      "filename": "qwen2.5-0.5b-instruct-q5_k_m.gguf",
+      "predicted": 258.16158530222793,
+      "measured": 246.06,
+      "error": 0.04918144071457342
+    },
+    {
+      "filename": "LFM2.5-1.2B-Instruct-Q5_K_M.gguf",
+      "predicted": 193.41242146202984,
+      "measured": 230.515,
+      "error": -0.16095515926499426
+    },
+    {
+      "filename": "qwen2.5-1.5b-instruct-q5_k_m.gguf",
+      "predicted": 166.80842600880095,
+      "measured": 150.68,
+      "error": 0.10703760292541098
+    }
+  ],
+  "targets": [
+    {
+      "repo_id": "unsloth/SmolLM2-135M-Instruct-GGUF",
+      "filename": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "sha256": "ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747",
+      "size_bytes": 105454144,
+      "predicted": {
+        "reference": 3186.219026157948,
+        "llmfit": 1752.4204643868716,
+        "additive": 370.8139747737146
+      }
+    },
+    {
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db",
+      "size_bytes": 491400032,
+      "predicted": {
+        "reference": 683.7606392341464,
+        "llmfit": 376.06835157878055,
+        "additive": 260.04972101751144
+      }
+    },
+    {
+      "repo_id": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+      "filename": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "sha256": "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0",
+      "size_bytes": 668788096,
+      "predicted": {
+        "reference": 502.4012867597452,
+        "llmfit": 276.3207077178599,
+        "additive": 228.657187537257
+      }
+    },
+    {
+      "repo_id": "MaziyarPanahi/Qwen2.5-1.5B-Instruct-GGUF",
+      "filename": "Qwen2.5-1.5B-Instruct.Q5_K_M.gguf",
+      "sha256": "d7180ae697083ff7901bc10f0f23a53ff591cacbab5b29cd1fd59ca1cd622573",
+      "size_bytes": 1125050592,
+      "predicted": {
+        "reference": 298.6532360315402,
+        "llmfit": 164.2592798173471,
+        "additive": 174.48099487516453
+      }
+    }
+  ]
+}

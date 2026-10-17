@@ -136,6 +136,12 @@ accessible la decisió. No s'han de duplicar estimadors o polítiques a cada fro
 El nom inicial `local-ai-check` es va substituir per Jaull, sense canviar el problema
 que resolia l'eina.
 
+**Navegació revisable, 14 d'octubre:** Search és una pantalla transitòria i
+Results la substitueix, no l'apila. Tornar des dels resultats recupera el mateix
+formulari de necessitats amb les respostes conservades. Canviar Quality per Speed
+o una altra resposta i confirmar inicia una cerca nova amb el maquinari detectat;
+no rellança res només per tornar ni modifica la recomanació anterior.
+
 **Estat i fonts:** vigent. `e228038`, `f44d9c9`, `e52ba83`;
 [CLI](../cli.md), [interfície](../ui.md).
 
@@ -1029,6 +1035,15 @@ fins i tot en Memory. La velocitat només reordena mitjançant la política
 mesurada. Un benchmark v1 pot continuar aportant evidència d'execució
 o memòria quan pertoqui; això no autoritza usar-ne throughput per Fastest.
 
+**Correcció del fallback Speed, 14 d'octubre:** sense evidència comparable,
+l'ordre és adequació a la tasca → viabilitat d'execució → coherència del pla
+→ empremta de memòria. Un model base petit no ha de guanyar a un instruct
+adequat per a xat només per mida. La preferència Q4 de la configuració GGUF
+es manté dins de cada repositori, però deixa de ser un avantatge global davant
+d'un altre model Q5 o Transformers. Els plans amb offload es distingeixen dels
+normalment executables abans de premiar una memòria menor. No és una predicció
+de tok/s ni canvia la política d'evidència mesurada, Quality, Balanced o Memory.
+
 **Estat i fonts:** vigent. `491b6fc`;
 [motor](../../src/jaull/recommendation/engine_v2.py),
 [activació des del motor complet](../../tests/test_measured_policy_activation.py).
@@ -1124,6 +1139,113 @@ de qualitat de Balanced, no als tok/s. La lectura feta aquí no certifica
 absència de cicles, correcció estadística o CI d'aquesta revisió.
 [Implementació llegida](../../src/jaull/recommendation/shadow.py),
 [pla actualitzat](../fastest-balanced-plan.md).
+
+### D096. Predictor de tg128 experimental, auditat abans d'arribar al producte
+
+**Decisió:** provar fora del producte un predictor de tg128 per a models
+densos amb full offload: `segons/token = bytes del GGUF / ample de banda + c`,
+on `c` és un residual empíric ajustat per màquina i protocol. Es congela la
+predicció abans de mesurar i només puntuen mesures posteriors (D071). No es
+mostra a la interfície ni ordena Fastest.
+
+**Motiu:** la mateixa comprovació posa la baseline `0,55 × ample de banda / bytes`
+entre +4 % i +388 %. No és una execució de llmfit complet, que també
+incorpora altres dades i correccions. L'eficiència observada respecte a `ample de banda / bytes` no és
+constant en models petits. `ample de banda / bytes` tampoc no és un sostre:
+el fitxer no són els bytes llegits per token.
+
+**Resultat observat i correcció de l'auditoria:** a la RTX 2060 (build 10357,
+`llama_bench_v2`), amb `c` ajustat amb tres artefactes, quatre artefactes
+reservats donen errors entre −6,1 % i +10,5 %. Però la calibració es va fer
+amb WSL `6.18.40.1` i les mesures amb `6.18.54.1`: no són la mateixa cohort
+segons el contracte de Jaull. Les xifres són observacions de transferència
+entre entorns, no precisió validada dins de la mateixa cohort. L'scorer
+corregit rebutja la barreja; prediccions, scores i logs originals es conserven.
+Dos artefactes reservats pertanyen a models Qwen presents a la calibració;
+no són quatre models nous independents.
+
+**Cautela:** una GPU, un build, artefactes fins a 1,3 GB i set plans. És
+un experiment exploratori, no una garantia d'error. Ajustar `c` amb mesures
+s'aparta de D079, que demana que els predictors derivin de metadades i
+les mesures els jutgin.
+
+**Ampliació de presentació, 14 d'octubre, a petició de Ton:** mostrar la lectura
+a Results i un botó `Speed` al costat que obre el benchmark del pla exacte,
+sense executar-lo automàticament. Es distingeixen `Measured`,
+`Est. ... (experimental)` i `Speed unknown`. La predicció es recalcula amb
+registres locals compatibles, no amb un coeficient fix de la campanya antiga:
+una sola cohort, almenys dos altres artefactes amb tres crides cadascun,
+mateixa màquina, kernel, driver i build. L'abast inicial de presentació és
+GGUF dens Qwen2/Llama amb offload CUDA complet i una petició interactiva.
+Transformers, offload parcial i condicions desconegudes no reben una xifra.
+Les referències històriques només es mostren als detalls de procedència.
+
+**Ampliació heurística aprovada el mateix dia:** no exigir mesures locals per
+a una primera aproximació. Si no hi ha mesura aplicable ni calibració vàlida,
+Results pot mostrar `Est. ... (heuristic)` per a arquitectures denses conegudes
+de llama.cpp i Transformers. Utilitza els bytes de pesos estimats del pla
+(amb la seva precisió/quantització), no la mida del repositori ni el pressupost
+de memòria amb reserves. El model és
+`0,5 / (bytes_GPU / BW_GPU + bytes_host / BW_RAM)`.
+
+El `0,5` és una hipòtesi d'escenari sense validar, no una eficiència mesurada
+ni una correcció que s'hagi demostrat millor que `0,55`. L'ample de banda de
+GPU ve de la taula de fitxes tècniques; els `50 GB/s` de RAM són una hipòtesi
+explícita, no una lectura del maquinari. CPU i offload Transformers poden rebre
+aquesta estimació. En offload es condiciona a la col·locació de planificació
+d'HFA, no es confirma la col·locació del runtime; si hi ha dos extrems de
+pesos no-bloc, es mostra el rang derivat, que no és un interval de confiança.
+L'offload GGUF parcial continua sense estimació: no es converteixen blocs HFA
+en unitats de llançament de llama.cpp. MoE, arquitectura desconeguda, manca
+de pesos/col·locació, pla que no cap i càrrega batch/multiusuari s'abstenen.
+No s'hereta mai la calibració de llama.cpp en un pla Transformers.
+
+Aquesta ampliació prioritza utilitat orientativa amb procedència explícita;
+**no afirma precisió validada**, no modela per separat context/KV, còmput,
+desquantització o transferències i no ordena recomanacions. El botó `Speed`
+continua sent una comprovació opcional amb el pla exacte.
+
+**Contrast real del fallback Transformers, 14 d'octubre:** Qwen2.5-0.5B FP16
+va donar 18,36 tok/s al benchmark de l'usuari davant d'uns 170 estimats.
+Un diagnòstic amb els mateixos pesos entre mètodes confirma tots els paràmetres
+a CUDA i FP16: el runner dona 19,63 tok/s i `model.generate` 17,87, amb el
+mateix recorregut de tokens, en dues passades intercalades. No és una
+penalització de 9x exclusiva de Jaull; és una refutació clara de la precisió
+de la heurística en aquest cas. No s'ha ajustat l'eficiència per encaixar-hi.
+No identifica encara el coll d'ampolla ni el màxim rendiment possible de la
+GPU. [Diagnòstic i originals](../../validation/qwen2.5-0.5b-transformers-decode-2060-20261014/README.md).
+
+**Retirada de les prediccions de Results, aprovada el mateix dia:** després
+d'aquest contrast, es retiren tant la heurística sense calibrar com la predicció
+calibrada de la interfície. La procedència explícita no compensa mostrar una
+xifra sense prou precisió validada. Results mostra només `Measured ... tok/s`
+quan la mesura és aplicable segons el contracte existent. Si no ho és, no es
+mostra cap etiqueta de velocitat; es conserva el botó `Speed`. Les mesures
+d'altres condicions continuen com a referències
+històriques als detalls, no com a velocitat atribuïda al pla actual.
+
+L'excepció de presentació a D079 queda retirada: el predictor es conserva només
+com a experiment fora del producte, juntament amb els resultats originals i el
+diagnòstic. No es modifica el ranking, el model de memòria, la cerca guardada,
+els registres ni els informes exportats. Les ampliacions anteriors d'aquest
+apartat documenten el procés de decisió, no el comportament vigent.
+
+**Visibilitat dels benchmarks Transformers guardats:** es distingeix una mesura
+aplicable al ranking d'un resultat històric. Results també pot mostrar
+`Last benchmark ... tok/s (Transformers)` per a l'última execució correcta
+amb generació de 128 tokens i metadades de repositori, runtime, precisió,
+backend i màquina coincidents. Un conflicte conegut de SHA impedeix mostrar-la.
+La data, el protocol, les repeticions i l'ID consten als detalls. No verifica
+els bytes exactes ni l'execució actual, no substitueix una mesura aplicable i
+no entra al ranking Fastest/Balanced. Així es fan visibles les mesures ja
+guardades sense convertir una revisió mutable com `main` en una identitat immutable.
+
+**Estat i fonts:** experiment del 14 d'octubre, sense commit en redactar-se.
+[Informe](../qwen2.5-tests/rtx2060-speed-predictor-20261014.md),
+[script](../../scripts/speed_predictor.py),
+[lectura de presentació](../../src/jaull/presentation/speed.py),
+[prediccions congelades](../../validation/speed-predictor-2060-20261014/frozen-predictions.json),
+[reavaluació auditada](../../validation/speed-predictor-2060-20261014/scores-audited.json).
 
 ## 10. Execució, observació i reproducció experimental
 
@@ -1780,7 +1902,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D095 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D096 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

@@ -305,6 +305,10 @@ class EvidenceIndex:
         """Historical content matches, not a current execution/protocol match."""
         return tuple(self._quality.get(sha256, ())) if sha256 is not None else ()
 
+    def benchmark_records(self) -> tuple[BenchmarkRecord, ...]:
+        """Already loaded records; no further I/O for Results speed readouts."""
+        return tuple(record for group in self._benchmarks.values() for _, record in group)
+
 
 def _safe_ids(list_ids: Callable[[], list[str]]) -> list[str]:
     """A missing or unreadable store means no evidence, not a crashed screen."""

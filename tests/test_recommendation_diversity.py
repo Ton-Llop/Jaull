@@ -213,7 +213,10 @@ def test_primary_execution_plan_comes_from_v2_priority_policy() -> None:
     )
 
     assert quality[0].primary.plan.artifact.quantization == "Q6_K"
-    assert speed[0].primary.plan.artifact.quantization == "Q4_K_M"
+    assert speed[0].primary.assessment.estimated_memory_bytes == min(
+        item.assessment.estimated_memory_bytes
+        for item in (speed[0].primary, *speed[0].alternatives)
+    )
 
 
 def test_recommendation_model_preserves_alternative_plans() -> None:

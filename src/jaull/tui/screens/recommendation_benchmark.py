@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from shlex import join as command_line
 from threading import Event
 from typing import TYPE_CHECKING
 
@@ -108,6 +109,7 @@ class _RunInspector(Vertical):
         memory: Widget | None,
         technical: list[tuple[str, str]],
         note: str | None = None,
+        diagnostic_record: BenchmarkRecord | None = None,
     ) -> None:
         super().__init__(id=f"benchmark-detail-{index}")
         self._title = title
@@ -115,13 +117,19 @@ class _RunInspector(Vertical):
         self._memory = memory
         self._technical = technical
         self._note = note
+        self._diagnostic_record = diagnostic_record
 
     def compose(self) -> ComposeResult:
         yield Static(self._title, classes="inspector-title")
         with TabbedContent():
             with TabPane("Performance"), VerticalScroll():
                 if self._note is not None:
-                    yield Static(self._note, classes="warning-line")
+                    yield Static(self._note, classes="warning-line", markup=False)
+                    if self._diagnostic_record is not None:
+                        yield Static(
+                            "Full command and worker output are in Technical.",
+                            classes="text-secondary",
+                        )
                 if self._performance is not None:
                     yield self._performance
             with TabPane("Memory"), VerticalScroll():
@@ -134,6 +142,15 @@ class _RunInspector(Vertical):
                     yield MetricList("Reproducibility", self._technical)
                 else:
                     yield Static("No reproducibility fields recorded.", classes="text-muted")
+                if self._diagnostic_record is not None:
+                    observation = self._diagnostic_record.observation
+                    for title, value in (
+                        ("Command", command_line(observation.command)),
+                        ("Worker stderr", observation.raw_stderr),
+                        ("Worker stdout", observation.raw_stdout),
+                    ):
+                        yield Static(title, classes="section-title")
+                        yield Static(value or "Not recorded.", markup=False)
 
 
 class _RunRow(Vertical):
@@ -576,6 +593,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
                             else []
                         ),
                         note=failure.message,
+                        diagnostic_record=failure.record,
                     ),
                     selected=not rows,
                 )

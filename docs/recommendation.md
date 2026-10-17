@@ -28,6 +28,11 @@ Recommendations
 | Output | Up to 5 explained recommendations | Raw analysis / estimate for one model |
 | Screens | Welcome → Hardware → Questions → Search → Results | Scan, Inspect, Estimate, Doctor |
 
+When Search completes, Results replaces the progress screen. **Back / Escape**
+returns to the same **Your needs** form with every answer preserved. Changing a
+priority or another answer and submitting starts a new search on the detected
+hardware; it does not mutate the previous recommendation or rerun automatically.
+
 ---
 
 ## The questions the wizard asks
@@ -150,13 +155,19 @@ first*, not how much weight it carries:
 | Priority | Axes, in order |
 |---|---|
 | **Quality** | suitability → capability → quantization quality → execution fitness |
-| **Speed** | executability → quantization chosen for speed → memory efficiency |
+| **Speed** | suitability → runnability → executability → memory efficiency |
 | **Memory** | memory efficiency → execution fitness → executability |
 | **Balanced** | suitability → runnability → capability → execution fitness → executability → memory headroom |
 
 Every key ends with the same tail — confidence, `repo_id`,
 quantization, runtime name — so ties break deterministically and identical inputs always
 produce an identical report.
+
+Speed's fallback protects task suitability and separates normally runnable plans
+from offloading or uncertain plans before rewarding a smaller memory footprint.
+The quantization ladder still selects a configuration within each repository;
+it is not a global preference for GGUF/Q4 over other models or runtimes. Memory
+efficiency is a selection prior, not a predicted or measured tokens/s figure.
 
 **Measured evidence (Quality, Speed and Balanced).** After the key,
 `apply_measured_policy` (`recommendation/shadow.py`) lets stored measurements reorder
@@ -333,6 +344,35 @@ use below a user threshold that this tool cannot verify.
 ---
 
 ## From recommendation to evidence
+
+Results shows a speed readout and a **Speed** shortcut beside each plan, also in the
+selected inspector. The shortcut opens the existing benchmark setup for that exact
+plan; opening Results never downloads or runs a model. Returning refreshes stored evidence.
+
+- **Measured X tok/s** uses applicable local `llama_bench_v2` tg128 evidence. Provenance
+  includes call count, observed range (not a confidence interval) and benchmark IDs.
+- **Last benchmark X tok/s (Transformers)** shows the latest successful matching
+  Transformers generation measurement at 128 tokens, using the existing metadata,
+  machine, backend and precision matching. Known conflicting artifact digests are
+  excluded. This is historical evidence, not verified exact bytes or current
+  execution. Details include date, protocol, repetitions, runtime flags and record ID;
+  it does not order Fastest/Balanced.
+- **No speed label** is shown without applicable evidence or a matching historical
+  Transformers measurement; the **Speed** shortcut remains available. Other-condition
+  benchmarks remain historical references under **Speed provenance**, never
+  throughput attributed to the current plan.
+
+Unvalidated heuristic and calibrated predictions are not shown in Results. A real
+Qwen2.5-0.5B Transformers FP16 run measured 18.36 tok/s against roughly 170 estimated;
+this discrepancy was reproduced at a similar speed with standard `model.generate`.
+The offline predictor and experiments remain available for research, but neither
+predicts the displayed speed nor orders Fastest/Balanced. See
+[the diagnostic](../validation/qwen2.5-0.5b-transformers-decode-2060-20261014/README.md).
+
+Applicable speed currently requires the existing llama.cpp evidence contract;
+displaying a saved Transformers benchmark does not make it ranking-applicable. A Speed
+microbenchmark is not a production-context benchmark. This display does not alter
+ranking, saved searches, evidence records or exported reports.
 
 A recommendation is where the interesting part starts, not where it ends. From the results
 screen, each recommendation resolves into a logical model identity, its artifact variants

@@ -1084,6 +1084,16 @@ DataTable > .datatable--header {
 
 .rec-list-fit { padding: 0 0 0 4; }
 
+.rec-speed-line {
+    height: auto;
+    min-height: 1;
+    padding: 0 0 0 4;
+}
+.rec-speed-line.-detail { padding: 0; margin-bottom: 1; }
+.rec-speed-value { width: 1fr; height: auto; color: $ink-2; }
+.rec-speed-value.status-ok { color: $ok; }
+.rec-speed-line Button { margin: 0 0 0 1; }
+
 .rec-unknown-reason {
     color: $ink-2;
     padding: 0 0 0 4;

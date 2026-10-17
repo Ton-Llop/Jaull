@@ -780,7 +780,15 @@ def test_q4_and_q5_are_different_plans_and_priority_changes_policy() -> None:
     assert {item.plan.artifact.quantization for item in quality} >= {"Q4_K_M", "Q5_K_M"}
     assert quality[0].plan.artifact.quantization != speed[0].plan.artifact.quantization
     assert quality[0].plan.artifact.quantization == "Q6_K"
-    assert speed[0].plan.artifact.quantization == "Q4_K_M"
+    # Enumerating every rung ranks their footprints, not the configuration ladder.
+    assert speed[0].assessment.estimated_memory_bytes == min(
+        item.assessment.estimated_memory_bytes for item in speed
+    )
+    configuration = _select(
+        evaluated.analysis, _requirements(RecommendationPriority.SPEED),
+        size_driven_estimator(vram_budget=24 * GIB),
+    )
+    assert configuration.quantization == "Q4_K_M"
 
 
 def test_balanced_does_not_reward_extra_headroom_over_capability() -> None:
@@ -830,6 +838,88 @@ def test_speed_can_still_promote_lightweight_models_without_benchmark_evidence()
     )
 
     assert ranked[0].evaluated.repo_id == lightweight.repo_id
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("status", [
+    CompatibilityStatus.COMFORTABLE, CompatibilityStatus.OFFLOADING_REQUIRED,
+])
+def test_speed_does_not_prefer_a_larger_q4_to_a_smaller_transformers_plan(status, reverse):
+    requirements = _requirements(RecommendationPriority.SPEED, use_case=UseCase.GENERAL_CHAT)
+    larger = _evaluated_gguf(
+        "org/Heavy-7B-Instruct-GGUF", priority=RecommendationPriority.SPEED,
+        total_bytes=5 * GIB, status=status,
+    )
+    smaller = _evaluated_transformers("org/Small-0.5B-Instruct")
+    smaller = smaller.model_copy(update={"memory_estimate": smaller.memory_estimate.model_copy(
+        update={"total_bytes": GIB})})
+    candidates = [larger, smaller]
+    if reverse:
+        candidates.reverse()
+    before = [item.model_dump_json() for item in candidates]
+    recommendations = ranking.recommend(candidates, requirements, hardware=hardware())
+
+    assert len(recommendations) == 2
+    by_repo = {rec.repo_id: rec for rec in recommendations}
+    assert by_repo[larger.repo_id].plan.artifact.quantization == "Q4_K_M"
+    assert by_repo[smaller.repo_id].plan.runtime_family is RuntimeName.TRANSFORMERS
+    assert recommendations[0].repo_id == smaller.repo_id
+    assert [item.model_dump_json() for item in candidates] == before
+    from jaull.reporting.recommendation import report_to_dict
+    from jaull.workflow.state import RecommendationWorkflowState
+
+    payload = report_to_dict(RecommendationWorkflowState(
+        requirements=requirements, recommendations=recommendations,
+    ))
+    axes = [criterion["axis"]
+            for criterion in payload["recommendations"][0]["ranking"]["criteria"]]
+    assert axes == [
+        "viability", "plan_constraints", "requirement_confirmation", "suitability",
+        "runnability", "executability", "memory_footprint", "plan_confidence",
+    ]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_speed_does_not_prefer_a_larger_q4_to_a_smaller_q5_only_repository(reverse):
+    requirements = _requirements(RecommendationPriority.SPEED, use_case=UseCase.GENERAL_CHAT)
+    larger = _evaluated_gguf(
+        "org/Heavy-7B-Instruct-GGUF", priority=RecommendationPriority.SPEED,
+        total_bytes=5 * GIB,
+    )
+    smaller = _evaluated_gguf("org/Small-1.5B-Instruct-GGUF", total_bytes=GIB)
+    classification = smaller.analysis.classification
+    smaller = smaller.model_copy(update={"analysis": smaller.analysis.model_copy(update={
+        "classification": classification.model_copy(update={"gguf_variants": [
+            variant for variant in classification.gguf_variants if variant.quantization == "Q5_K_M"
+        ]}),
+    })})
+    recommendations = ranking.recommend(
+        [smaller, larger] if reverse else [larger, smaller], requirements, hardware=hardware(),
+    )
+
+    assert recommendations[0].repo_id == smaller.repo_id
+    assert recommendations[0].plan.artifact.quantization == "Q5_K_M"
+    assert recommendations[1].plan.artifact.quantization == "Q4_K_M"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_speed_protects_chat_suitability_before_rewarding_a_smaller_base_model(reverse):
+    requirements = _requirements(RecommendationPriority.SPEED, use_case=UseCase.GENERAL_CHAT)
+    base = _evaluated_gguf(
+        "org/Small-1B-Base-GGUF", priority=RecommendationPriority.SPEED,
+        total_bytes=GIB, tags=["text-generation", "base", "gguf"],
+    )
+    instruct = _evaluated_gguf(
+        "org/Assistant-3B-Instruct-GGUF", priority=RecommendationPriority.SPEED,
+        total_bytes=3 * GIB, tags=["text-generation", "instruct", "gguf"],
+    )
+    recommendations = ranking.recommend(
+        [base, instruct] if reverse else [instruct, base], requirements, hardware=hardware(),
+    )
+
+    assert recommendations[0].repo_id == instruct.repo_id
+    assert recommendations[0].plan_assessment.suitability is AssessmentLevel.STRONG
+    assert recommendations[1].plan_assessment.suitability is AssessmentLevel.WEAK
 
 
 def test_instruction_tuned_evidence_improves_assistant_suitability() -> None:

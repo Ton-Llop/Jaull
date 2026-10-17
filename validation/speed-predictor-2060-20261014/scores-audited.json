@@ -1,0 +1,64 @@
+{
+  "frozen": "validation/speed-predictor-2060-20261014/frozen-predictions.json",
+  "frozen_sha256": "1285b50c6d358247d040016421762ce952b1047e4bdb75e3f8fff520c742186e",
+  "speed_cohort": "7779da3af56fc998824023f90ad8204f4183c29eabe80d00a5f53c3abc377b18",
+  "complete": false,
+  "rows": [
+    {
+      "filename": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "size_bytes": 105454144,
+      "measured": null,
+      "calls": 0,
+      "status": "missing",
+      "benchmark_ids": [],
+      "predicted": {
+        "reference": 3186.219026157948,
+        "llmfit": 1752.4204643868716,
+        "additive": 370.8139747737146
+      },
+      "error": null
+    },
+    {
+      "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "size_bytes": 491400032,
+      "measured": null,
+      "calls": 0,
+      "status": "missing",
+      "benchmark_ids": [],
+      "predicted": {
+        "reference": 683.7606392341464,
+        "llmfit": 376.06835157878055,
+        "additive": 260.04972101751144
+      },
+      "error": null
+    },
+    {
+      "filename": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "size_bytes": 668788096,
+      "measured": null,
+      "calls": 0,
+      "status": "missing",
+      "benchmark_ids": [],
+      "predicted": {
+        "reference": 502.4012867597452,
+        "llmfit": 276.3207077178599,
+        "additive": 228.657187537257
+      },
+      "error": null
+    },
+    {
+      "filename": "Qwen2.5-1.5B-Instruct.Q5_K_M.gguf",
+      "size_bytes": 1125050592,
+      "measured": null,
+      "calls": 0,
+      "status": "missing",
+      "benchmark_ids": [],
+      "predicted": {
+        "reference": 298.6532360315402,
+        "llmfit": 164.2592798173471,
+        "additive": 174.48099487516453
+      },
+      "error": null
+    }
+  ]
+}

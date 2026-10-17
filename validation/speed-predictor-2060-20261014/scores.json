@@ -1,0 +1,89 @@
+{
+  "frozen": "validation/speed-predictor-2060-20261014/frozen-predictions.json",
+  "rows": [
+    {
+      "filename": "SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "size_bytes": 105454144,
+      "measured": 359.19,
+      "calls": 3,
+      "benchmark_ids": [
+        "bench-0c32ef18-877f-47ae-bf18-1957f288073f",
+        "bench-b2ea5ee0-015c-45fe-948b-c1f4e1d4e0fd",
+        "bench-f6d3ce1a-b365-47e0-85d0-12f66a9056c7"
+      ],
+      "predicted": {
+        "reference": 3186.219026157948,
+        "llmfit": 1752.4204643868716,
+        "additive": 370.8139747737146
+      },
+      "error": {
+        "reference": 7.870567182154147,
+        "llmfit": 3.8788119501847813,
+        "additive": 0.03236163248897417
+      }
+    },
+    {
+      "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "size_bytes": 491400032,
+      "measured": 277.06,
+      "calls": 3,
+      "benchmark_ids": [
+        "bench-53a10c5b-4482-4a61-bf97-a9859a6ca0eb",
+        "bench-9e12b069-2512-4478-8cf1-dcfafa77075c",
+        "bench-f18480b5-0331-46ea-b956-50f9593ab37e"
+      ],
+      "predicted": {
+        "reference": 683.7606392341464,
+        "llmfit": 376.06835157878055,
+        "additive": 260.04972101751144
+      },
+      "error": {
+        "reference": 1.467915394622632,
+        "llmfit": 0.35735346704244764,
+        "additive": -0.06139565069836339
+      }
+    },
+    {
+      "filename": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "size_bytes": 668788096,
+      "measured": 240.08,
+      "calls": 3,
+      "benchmark_ids": [
+        "bench-25263215-1783-4265-a86d-b3587388791c",
+        "bench-576f6dbe-b4f0-49ee-8b9b-548a5cbdc589",
+        "bench-b884872a-af69-4ad0-a8be-409a9afbd8f9"
+      ],
+      "predicted": {
+        "reference": 502.4012867597452,
+        "llmfit": 276.3207077178599,
+        "additive": 228.657187537257
+      },
+      "error": {
+        "reference": 1.0926411477830102,
+        "llmfit": 0.15095263128065595,
+        "additive": -0.04757919219736351
+      }
+    },
+    {
+      "filename": "Qwen2.5-1.5B-Instruct.Q5_K_M.gguf",
+      "size_bytes": 1125050592,
+      "measured": 157.97,
+      "calls": 3,
+      "benchmark_ids": [
+        "bench-0ddb0f5a-7947-49db-ae8b-693226f3d459",
+        "bench-3d69a77f-d146-48e1-9697-b5fb6176e53c",
+        "bench-a4bdf327-d4c8-4ea9-ae17-e777fb48bc07"
+      ],
+      "predicted": {
+        "reference": 298.6532360315402,
+        "llmfit": 164.2592798173471,
+        "additive": 174.48099487516453
+      },
+      "error": {
+        "reference": 0.8905693234888914,
+        "llmfit": 0.039813127918890245,
+        "additive": 0.10451981309846503
+      }
+    }
+  ]
+}

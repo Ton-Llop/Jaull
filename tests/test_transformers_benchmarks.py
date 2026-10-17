@@ -139,6 +139,48 @@ def test_runner_preserves_failed_worker_as_failed_observation(tmp_path: Path) ->
     assert observation.peak_ram_bytes == 1234
 
 
+@pytest.mark.parametrize("exit_zero", [False, True])
+@pytest.mark.parametrize("version", ["3.12", "3.13"])
+def test_missing_python_headers_has_an_actionable_message_and_preserves_output(
+    tmp_path: Path, exit_zero: bool, version: str,
+) -> None:
+    stdout = json.dumps({"success": False, "error": "Command ['gcc'] returned exit status 1"})
+    stderr = (
+        "cuda_utils.c:9:10: fatal error: Python.h: No such file or directory\n"
+        f"compilation terminated; include directory /usr/include/python{version}\n"
+    )
+    result = ExecutionResult(
+        stdout=stdout, stderr=stderr,
+        observation=_observation(success=False, exit_code=1,
+                                 failure_reason=ExecutionFailureReason.NON_ZERO_EXIT),
+    )
+    backend = _FakeExecutionBackend(
+        stdout=stdout, stderr=stderr,
+        error=None if exit_zero else ExecutionFailedError("failed", result),
+    )
+    runner = TransformersBenchmarkRunner(backend=backend, python_executable=_python(tmp_path))
+    observation = runner.run(_request())
+    assert not observation.success and not observation.measurements
+    assert "Missing Python development headers (Python.h)" in observation.message
+    assert f"sudo apt install python{version}-dev" in observation.message
+    assert "no speed was measured" in observation.message
+    assert "returned exit status" not in observation.message
+    assert observation.raw_stdout == stdout and observation.raw_stderr == stderr
+    assert observation.exit_code == (0 if exit_zero else 1)
+
+
+def test_missing_python_headers_diagnosis_is_not_inferred_from_a_path_alone(tmp_path: Path):
+    stdout = json.dumps({"success": False, "error": "Unrecognized compiler failure"})
+    stderr = "Python.h is in the include path; fatal error: cuda.h: No such file or directory"
+    runner = TransformersBenchmarkRunner(
+        backend=_FakeExecutionBackend(stdout=stdout, stderr=stderr),
+        python_executable=_python(tmp_path),
+    )
+    observation = runner.run(_request())
+    assert observation.message == "Unrecognized compiler failure"
+    assert observation.raw_stderr == stderr
+
+
 @pytest.mark.parametrize(
     "payload_update",
     [

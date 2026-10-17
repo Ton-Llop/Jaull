@@ -154,6 +154,12 @@ se fabrica un movimiento real.
      una sola vez. `CUDA1`, otra GPU o dos GPU idénticas quedan como referencia.
   Las tres mediciones de la 2060 siguen aplicando con estas reglas.
 
+- **Fallback Speed revisado (2026-10-14).** Sin evidencia comparable, el orden
+  base protege adecuación a la tarea y viabilidad de ejecución antes de premiar
+  menor memoria. La selección Q4 dentro de un repositorio no da preferencia global
+  frente a otro modelo Q5 o Transformers. No predice tok/s ni cambia el contrato
+  de velocidad medida; Quality, Balanced y Memory conservan sus reglas.
+
 - **Evaluate candidates mide lo que pide la prioridad (2026-10-10).** El selector de
   la pantalla de evaluación arranca en la suite de la búsqueda: Quality → IFEval,
   Fastest → Speed (`benchmark_plan_speed`: `llama_bench_v2` con la carga Fastest sobre el

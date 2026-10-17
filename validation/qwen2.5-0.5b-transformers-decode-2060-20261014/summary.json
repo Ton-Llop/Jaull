@@ -1,0 +1,605 @@
+{
+  "placement": {
+    "parameter_devices": {
+      "cuda:0": 290
+    },
+    "parameter_dtypes": {
+      "torch.float16": 290
+    },
+    "parameter_bytes": 988065536,
+    "buffer_devices": {
+      "cuda:0": 2
+    },
+    "training": false,
+    "attention": "sdpa",
+    "hf_device_map": null,
+    "load_seconds": 1.208013359000006
+  },
+  "results": [
+    {
+      "steady_seconds": 6.128609365000102,
+      "steady_tokens": 128,
+      "steady_tps": 20.885651601649744,
+      "method": "runner",
+      "round": 1,
+      "wall_seconds": 6.195090120000032,
+      "cpu_seconds": 6.759999999999998,
+      "torch_allocated_bytes": 1004843008,
+      "torch_reserved_bytes": 1067450368,
+      "gpu_before": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "44, 11, 3085, 480, 5000, 27.31"
+        ],
+        "exit_code": 0
+      },
+      "gpu_during": [
+        {
+          "elapsed": 1.0003977569999734,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 38, 3085, 1080, 5000, 29.61"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 2.065245376000121,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 40, 3085, 1200, 5000, 31.76"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 3.1228892760000235,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 36, 3086, 1140, 5000, 32.15"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 4.176732829000002,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 35, 3085, 1245, 6801, 34.55"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 5.2346966310001335,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 34, 3085, 1245, 6801, 35.13"
+            ],
+            "exit_code": 0
+          }
+        }
+      ],
+      "gpu_after": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "45, 36, 3085, 1200, 5000, 31.33"
+        ],
+        "exit_code": 0
+      }
+    },
+    {
+      "steady_seconds": 7.468400356000075,
+      "steady_tokens": 128,
+      "steady_tps": 17.138877657672094,
+      "total_seconds": 7.517819784000039,
+      "total_tokens": 129,
+      "total_tps": 17.159230163317694,
+      "forward_calls": 129,
+      "method": "generate",
+      "round": 1,
+      "wall_seconds": 7.518392809000034,
+      "cpu_seconds": 8.21,
+      "torch_allocated_bytes": 1004843008,
+      "torch_reserved_bytes": 1067450368,
+      "gpu_before": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "44, 13, 3085, 540, 5000, 27.47"
+        ],
+        "exit_code": 0
+      },
+      "gpu_during": [
+        {
+          "elapsed": 1.0003206459998637,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 38, 3085, 1050, 5000, 29.88"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 2.0714223789998414,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 37, 3085, 1050, 5000, 30.17"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 3.1420183589998487,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 35, 3084, 1020, 5000, 31.45"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 4.2297257169998375,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 36, 3084, 1065, 5000, 30.71"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 5.284676149999996,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "44, 34, 3084, 1065, 5000, 30.48"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 6.340188851999983,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 35, 3084, 990, 5000, 30.26"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 7.404137542999933,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 38, 3084, 1050, 5000, 31.96"
+            ],
+            "exit_code": 0
+          }
+        }
+      ],
+      "gpu_after": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "45, 38, 3084, 1065, 5000, 31.20"
+        ],
+        "exit_code": 0
+      }
+    },
+    {
+      "steady_seconds": 6.882474391999949,
+      "steady_tokens": 128,
+      "steady_tps": 18.597962405611657,
+      "total_seconds": 6.937662866999972,
+      "total_tokens": 129,
+      "total_tps": 18.59415807210923,
+      "forward_calls": 129,
+      "method": "generate",
+      "round": 2,
+      "wall_seconds": 6.938217212999916,
+      "cpu_seconds": 7.570000000000007,
+      "torch_allocated_bytes": 1004843008,
+      "torch_reserved_bytes": 1067450368,
+      "gpu_before": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "44, 9, 3085, 390, 5000, 27.42"
+        ],
+        "exit_code": 0
+      },
+      "gpu_during": [
+        {
+          "elapsed": 1.0003182639998158,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 25, 3085, 975, 5000, 31.30"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 2.0597091999998156,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 39, 3085, 1020, 5000, 31.27"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 3.124168635999922,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 36, 3085, 1020, 5000, 29.92"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 4.196126554999864,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 36, 3085, 960, 5000, 30.60"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 5.2483194709998315,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 39, 3086, 1020, 5000, 31.39"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 6.31709738099994,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 39, 3086, 1065, 5000, 30.64"
+            ],
+            "exit_code": 0
+          }
+        }
+      ],
+      "gpu_after": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "45, 36, 3085, 1065, 5000, 29.73"
+        ],
+        "exit_code": 0
+      }
+    },
+    {
+      "steady_seconds": 6.968597306999982,
+      "steady_tokens": 128,
+      "steady_tps": 18.368115470156887,
+      "method": "runner",
+      "round": 2,
+      "wall_seconds": 7.016841883000097,
+      "cpu_seconds": 7.649999999999999,
+      "torch_allocated_bytes": 1004843008,
+      "torch_reserved_bytes": 1067450368,
+      "gpu_before": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "44, 11, 3085, 495, 5000, 27.48"
+        ],
+        "exit_code": 0
+      },
+      "gpu_during": [
+        {
+          "elapsed": 1.0004063960000167,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 33, 3085, 915, 5000, 31.56"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 2.09611739900015,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 39, 3086, 1080, 5000, 30.58"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 3.154183544000034,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 33, 3086, 1080, 5000, 31.05"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 4.230218466999986,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 34, 3086, 960, 5000, 30.56"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 5.300745375000133,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 40, 3086, 1080, 5000, 30.91"
+            ],
+            "exit_code": 0
+          }
+        },
+        {
+          "elapsed": 6.3804227900000114,
+          "gpu": {
+            "fields": [
+              "temperature.gpu",
+              "utilization.gpu",
+              "memory.used",
+              "clocks.sm",
+              "clocks.mem",
+              "power.draw"
+            ],
+            "rows": [
+              "45, 34, 3094, 1365, 6801, 36.38"
+            ],
+            "exit_code": 0
+          }
+        }
+      ],
+      "gpu_after": {
+        "fields": [
+          "temperature.gpu",
+          "utilization.gpu",
+          "memory.used",
+          "clocks.sm",
+          "clocks.mem",
+          "power.draw"
+        ],
+        "rows": [
+          "45, 28, 3094, 1365, 6801, 35.58"
+        ],
+        "exit_code": 0
+      }
+    }
+  ],
+  "consumed_token_paths_equal": true,
+  "medians": {
+    "runner": 19.626883535903318,
+    "generate": 17.868420031641875
+  }
+}

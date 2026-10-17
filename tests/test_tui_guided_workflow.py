@@ -12,10 +12,20 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import Event, Lock
 
-from textual.widgets import Button, Checkbox, DataTable, Digits, RadioSet, Static
+import pytest
+from textual.widgets import (
+    Button,
+    Checkbox,
+    DataTable,
+    Digits,
+    Input,
+    RadioButton,
+    RadioSet,
+    Static,
+)
 
 from jaull.bootstrap.container import ServiceContainer
-from jaull.domain.requirements import UseCase, WorkloadMode
+from jaull.domain.requirements import RecommendationPriority, UseCase, WorkloadMode
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
 from jaull.tui.screens.model_discovery import ModelDiscoveryScreen
@@ -552,6 +562,53 @@ def test_full_guided_run_reaches_the_results_screen() -> None:
             assert screen.query_one("#res-run-0", Button)
             assert app.workflow_state is not None
             assert app.workflow_state.recommendations
+
+    _run(scenario())
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+def test_results_back_preserves_answers_and_allows_searching_with_a_new_priority(size) -> None:
+    async def scenario() -> None:
+        app = JaullApp(services=_services())
+        async with app.run_test(size=size) as pilot:
+            app.hardware_profile = hardware()
+            app.goto_requirements()
+            await _wait_for(pilot, lambda: isinstance(app.screen, RequirementsWizardScreen))
+            wizard = app.screen
+            wizard.query_one("#uc-coding", RadioButton).value = True
+            wizard.query_one("#lang-other", Checkbox).value = True
+            wizard.query_one("#lang-other-input", Input).value = "fr"
+            await pilot.pause(0)
+            wizard_depth = len(app.screen_stack)
+            machine = app.hardware_profile
+
+            previous_state = None
+            for priority in (RecommendationPriority.QUALITY, RecommendationPriority.SPEED,
+                             RecommendationPriority.BALANCED):
+                wizard.query_one(f"#pr-{priority.value}", RadioButton).value = True
+                await pilot.pause(0)
+                answers = wizard.collect_answers()
+                assert answers is not None and answers.priority is priority
+                wizard.query_one("#wizard-submit", Button).press()
+                await _wait_for(pilot, lambda: isinstance(app.screen, RecommendationResultsScreen))
+                state = app.workflow_state
+                assert state is not None and state.requirements is not None
+                assert state.answers == answers
+                assert state.requirements.priority is priority
+                assert state.requirements.use_case is UseCase.CODING
+                assert len(app.screen_stack) == wizard_depth + 1
+                assert not any(isinstance(s, ModelDiscoveryScreen) for s in app.screen_stack)
+                assert state is not previous_state
+                before = state.model_dump_json()
+
+                await pilot.press("escape")
+                await _wait_for(pilot, lambda: app.screen is wizard)
+                assert len(app.screen_stack) == wizard_depth
+                assert app.hardware_profile is machine
+                assert wizard.collect_answers() == answers
+                assert wizard.query_one("#lang-other-input", Input).value == "fr"
+                assert state.model_dump_json() == before
+                previous_state = state
 
     _run(scenario())
 

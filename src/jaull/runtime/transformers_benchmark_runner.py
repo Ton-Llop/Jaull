@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -319,6 +320,8 @@ def _failed_observation(
     peak_ram_bytes: int | None,
     peak_vram_bytes: int | None,
 ) -> BenchmarkObservation:
+    if failure_reason in {BenchmarkFailureReason.NON_ZERO_EXIT, BenchmarkFailureReason.PARSE_ERROR}:
+        message = _explain_compilation_failure(message, stderr)
     return BenchmarkObservation(
         success=False,
         measurements=[],
@@ -333,6 +336,25 @@ def _failed_observation(
         message=message,
         raw_stdout=stdout,
         raw_stderr=stderr,
+    )
+
+
+def _explain_compilation_failure(message: str, stderr: str) -> str:
+    if not re.search(
+        r"fatal error:\s*['\"]?Python\.h['\"]?\s*:?\s*"
+        r"(?:No such file or directory|file not found)",
+        stderr,
+        re.IGNORECASE,
+    ):
+        return message
+    version = re.search(r"\bpython([0-9]+\.[0-9]+)\b", stderr)
+    package = f"python{version[1]}-dev" if version else "python3-dev"
+    return (
+        "Missing Python development headers (Python.h). "
+        "The runtime could not compile a required Python extension; no speed was measured.\n"
+        "On Ubuntu/WSL, install the headers for the benchmark's Python: "
+        f"sudo apt install {package}. "
+        "On other systems, install the equivalent matching Python headers. Then retry."
     )
 
 
