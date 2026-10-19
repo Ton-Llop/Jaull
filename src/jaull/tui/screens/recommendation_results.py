@@ -35,6 +35,7 @@ from jaull.presentation.plan_labels import (
 from jaull.presentation.speed import SpeedReadout, speed_readout
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.tier import TIER_HEADINGS, RecommendationTier
+from jaull.reporting.recommendation_labels import confidence_rows, score_rows
 from jaull.reporting.writer import (
     default_report_name,
     default_reports_dir,
@@ -200,6 +201,10 @@ class _RecommendationInspector(Vertical):
                         "Speed evidence not loaded yet.",
                         id=f"rec-speed-provenance-{self._index}", markup=False,
                     )],
+                )
+                yield TechnicalDetails(
+                    extra=[Static(_diagnostic_text(rec), markup=False)],
+                    title="Confidence and diagnostics",
                 )
             with TabPane("Memory"), VerticalScroll():
                 estimate = rec.evaluated.memory_estimate
@@ -808,6 +813,10 @@ class RecommendationDetailsScreen(Screen[None]):
         recommendation = self._recommendation
         yield SummaryCard("Recommendation assessment", _assessment_rows(recommendation))
         yield SummaryCard("Recommendation", _recommendation_rows(recommendation))
+        yield TechnicalDetails(
+            title="Confidence and diagnostics",
+            extra=[Static(_diagnostic_text(recommendation), markup=False)],
+        )
 
         estimate = recommendation.evaluated.memory_estimate
         if estimate is not None:
@@ -973,35 +982,42 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
         "Configuration",
         "Memory",
         "Compatibility",
-        "Confidence",
+        "Memory estimation confidence",
         "License",
         "Main reason",
     )
     for rec in _logical_comparison_recommendations(recommendations):
+        confidence_label, confidence = confidence_rows(rec)[0]
         table.add_row(
             _model_title(rec),
             _configuration_label(rec),
             _memory_label(rec),
             rec.status.value,
-            rec.confidence.value,
+            confidence if confidence_label.startswith("Memory")
+            else f"Unavailable (metadata: {confidence})",
             rec.evaluated.candidate.license or "not declared",
             rec.reasons[0] if rec.reasons else "-",
         )
     return table
 
 
+def _diagnostic_text(rec: ModelRecommendation) -> str:
+    return "\n".join(f"{label}: {value}" for label, value in [
+        *confidence_rows(rec), *score_rows(rec),
+    ])
+
+
 def _assessment_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
     assessment = rec.plan_assessment
     if assessment is None:
-        return [("Assessment", "unavailable")]
+        return [("Assessment", "unavailable"), *confidence_rows(rec)]
     return [
         ("Suitability", _display_value(assessment.suitability.value)),
         ("Capability", _display_value(assessment.capability.value)),
         ("Execution fitness", _display_value(assessment.execution_fitness.value)),
         ("Executability", _display_value(assessment.executability.value)),
         ("Memory fit", _memory_fit_label(rec)),
-        ("Performance evidence", _display_value(assessment.performance_evidence.value)),
-        ("Confidence", _display_value(assessment.confidence.value)),
+        *confidence_rows(rec),
     ]
 
 

@@ -60,6 +60,19 @@ stalled program looks like.
 
 The best match leads, with the alternatives compressed to one line each.
 
+Position and plan reasons take precedence over the legacy composite score. Results keeps
+that diagnostic under **Confidence and diagnostics**, not on the model card. The Markdown
+report likewise keeps it in a collapsible technical section after **Why this position?**.
+A higher diagnostic score need not rank first; the no-plan legacy fallback is explicitly
+labelled as composite ranking instead. Internal values and JSON field names are unchanged.
+
+**Memory estimation confidence** describes the estimate, with the low-confidence components
+and their recorded explanations in the technical section. **Plan evidence confidence** is
+the separate plan-level field: matching local execution evidence can raise it without
+raising confidence in a heuristic memory component. Metadata confidence is shown instead
+when no estimate exists. Performance and quality evidence have their own applicability
+labels; none of these labels imply that every aspect of a recommendation was validated.
+
 ![Ranked recommendations](assets/tui-results.svg)
 
 Any recommendation can be exported as a JSON + Markdown report.

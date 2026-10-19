@@ -1648,9 +1648,9 @@ def test_details_show_plan_assessment_instead_of_legacy_score() -> None:
             assert "Memory fit" in text
             assert "Comfortable" in text
             assert "Performance evidence" in text
-            assert "Unknown" in text
-            assert "Confidence" in text
-            assert "Low" in text
+            assert "No comparable benchmark for ranking" in text
+            assert "Plan evidence confidence" in text
+            assert "low" in text
             assert "Position" in text
             assert "Best overall" in text
             assert "Strong match for general chat and assistant use." in text

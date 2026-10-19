@@ -36,6 +36,7 @@ from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.shadow import POLICY_VERSION, apply_measured_policy
 from jaull.reporting.estimation import estimate_to_json_dict
+from jaull.reporting.recommendation_labels import confidence_rows, ranking_axis_label, score_rows
 from jaull.workflow.state import RecommendationWorkflowState
 
 REPORT_SCHEMA_VERSION = 3
@@ -163,7 +164,6 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             f"### {rec.rank}. {rec.repo_id} — {heading}",
             "",
             f"- Compatibility: {rec.displayed_status.value}",
-            f"- Confidence: {rec.confidence.value}",
             f"- License: {rec.evaluated.candidate.license or 'not declared'} "
             f"({rec.license_category.value})",
         ]
@@ -210,6 +210,8 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 f"- Runtime readiness: {readiness.status.value}"
                 + (f" — {readiness.message}" if readiness.message else "")
             )
+        lines += [f"- {label}: {value}" for label, value in confidence_rows(rec)
+                  if label in {"Memory estimation confidence", "Metadata confidence"}]
         lines.append("")
         ranking = _ranking_to_dict(
             rec,
@@ -227,19 +229,18 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 "",
             ]
             lines += [
-                f"{index}. {item['axis'].replace('_', ' ')}: {item['value']}"
+                f"{index}. {ranking_axis_label(item['axis'])}: {item['value']}"
                 for index, item in enumerate(criteria, start=1)
             ]
             if (key := _policy_key(ranking)) is not None:
                 lines += ["", *_policy_markdown(key, ranking[key])]
-            lines += [
-                "",
-                f"Diagnostic composite score: {rec.score.out_of_100}/100 "
-                f"(memory fit {rec.score.memory_fit * 100:.0f}%, "
-                f"capability {rec.score.capability * 100:.0f}%). "
-                "This is not what ordered the list.",
-                "",
-            ]
+            lines.append("")
+        lines += [
+            "<details>", "<summary>Technical details: confidence and diagnostics</summary>", "",
+        ]
+        lines += [f"- {label}: {value}" for label, value in confidence_rows(rec)]
+        lines += [f"- {label}: {value}" for label, value in score_rows(rec)]
+        lines += ["", "</details>", ""]
         if rec.reasons:
             lines += ["**Why this model?**", ""]
             lines += [f"- {reason}" for reason in rec.reasons]

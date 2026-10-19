@@ -25,12 +25,12 @@ Generated: <redacted>
 ### 1. org/Coder-7B — Best Effort
 
 - Compatibility: comfortable
-- Confidence: high
 - License: apache-2.0 (commercial_allowed)
 - Precision: float16
 - Context: 4096 tokens
 - Artifact: native float16 — confirmed
 - Parameter count: 7B (name inference, low confidence)
+- Memory estimation confidence: high
 
 **Why this position?** Base criteria, compared in order, for `balanced`:
 
@@ -43,13 +43,24 @@ Generated: <redacted>
 7. execution fitness: strong
 8. executability: strong
 9. memory headroom: strong
-10. plan confidence: medium
+10. plan evidence confidence: medium
 
 **Measured-balanced policy** (after base criteria, before diversity):
 - No applicable measurement; this plan keeps its base-pool slot.
 - Balanced order: pool #1 -> #1 (before diversity).
 
-Diagnostic composite score: 61/100 (memory fit 75%, capability 70%). This is not what ordered the list.
+<details>
+<summary>Technical details: confidence and diagnostics</summary>
+
+- Memory estimation confidence: high
+- Plan evidence confidence: medium
+- Plan evidence basis: Metadata confidence: medium; without matching local execution evidence, the plan uses metadata and memory-estimate confidence, not runtime installation.
+- Performance evidence: No comparable benchmark for ranking
+- Quality evidence: No applicable evaluation
+- Diagnostic composite score: 61/100 (memory fit 75%, capability 70%)
+- Score role: This is not what ordered the list. Position follows the plan criteria and applicable measured policy, then diversity; a higher score need not rank first.
+
+</details>
 
 **Why this model?**
 
