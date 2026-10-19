@@ -30,7 +30,7 @@ from jaull.domain.execution_plans import (
 )
 from jaull.domain.experiments import ExperimentRecord
 from jaull.domain.hardware import HardwareProfile
-from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.inference import InferenceConfiguration, TargetDevice, WeightPrecision
 from jaull.domain.licenses import LicenseCategory, classify_license
 from jaull.domain.model import GgufVariant, ModelAnalysis
 from jaull.domain.recommendation import (
@@ -47,12 +47,19 @@ from jaull.domain.requirements import RecommendationPriority, UseCase, UserRequi
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessStatus,
+    LlamaCppRuntimeCapability,
     PyTorchRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeName,
     RuntimeRecommendation,
 )
-from jaull.estimator.configuration import select_configuration
+from jaull.domain.runtime_support import quantized_transformers_supported
+from jaull.estimator.configuration import (
+    lower_theoretical_confidence,
+    select_configuration,
+    transformers_precision_options,
+)
+from jaull.exceptions import JaullError
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
@@ -160,15 +167,37 @@ def generate_execution_plans(
             context=ctx,
             estimate_fn=estimate_fn,
         )
-    return [
-        _transformers_plan(
-            evaluated,
-            identity,
-            context=ctx,
+    if estimate_fn is None:
+        return [_transformers_plan(evaluated, identity, context=ctx)]
+    plans: list[ExecutionPlan] = []
+    for precision in transformers_precision_options(evaluated.analysis):
+        config = _config_for_variant(evaluated, requirements, precision=precision)
+        if ctx.hardware is not None and not quantized_transformers_supported(ctx.hardware):
+            config = config.model_copy(update={"target_device": TargetDevice.CPU})
+        issue = None
+        try:
+            estimate = estimate_fn(evaluated.analysis, config)
+        except JaullError as exc:
+            estimate = None
+            issue = f"Memory estimate unavailable for {precision.value}: {exc}"
+        if (
+            estimate is not None
+            and precision in {WeightPrecision.INT4, WeightPrecision.INT8}
+            and packed_transformers_quantization_label(evaluated.analysis.config) is None
+        ):
+            estimate = lower_theoretical_confidence(estimate)
+        configured = evaluated.model_copy(
+            update={
+                "selected_configuration": config,
+                "memory_estimate": estimate,
+            }
         )
-    ]
-
-
+        plan = _transformers_plan(configured, identity, context=ctx)
+        if issue is not None:
+            plan = plan.model_copy(update={"warnings": [*plan.warnings, issue]})
+        if not any(existing.plan_id == plan.plan_id for existing in plans):
+            plans.append(plan)
+    return plans
 
 
 #: How the canonical repository was arrived at. A published result may be shown
@@ -366,24 +395,36 @@ def _gguf_plans(
         analysis.classification.gguf_variants,
         requirements.priority,
     )
+    from jaull.estimator.policies import MAX_GGUF_PLAN_VARIANTS
+
+    selected = (
+        evaluated.selected_configuration.quantization
+        if evaluated.selected_configuration else None
+    )
+    chosen = next((variant for variant in variants if variant.quantization == selected), None)
+    variants = variants[:MAX_GGUF_PLAN_VARIANTS]
+    if chosen is not None and chosen not in variants:
+        variants[-1:] = [chosen]
     if estimate_fn is None:
         selected = (
             evaluated.selected_configuration.quantization
             if evaluated.selected_configuration
             else None
         )
-        selected_variants = [
-            variant for variant in variants if variant.quantization == selected
-        ]
+        selected_variants = [variant for variant in variants if variant.quantization == selected]
         variants = selected_variants or variants[:1]
     plans: list[ExecutionPlan] = []
     for variant in variants:
         config = _config_for_variant(evaluated, requirements, quantization=variant.quantization)
-        estimate = (
-            estimate_fn(analysis, config)
-            if estimate_fn is not None
-            else evaluated.memory_estimate
-        )
+        issue = None
+        try:
+            estimate = (
+                estimate_fn(analysis, config)
+                if estimate_fn is not None else evaluated.memory_estimate
+            )
+        except JaullError as exc:
+            estimate = None
+            issue = f"Memory estimate unavailable for {variant.quantization}: {exc}"
         artifact = ArtifactVariant(
             model_identity=identity,
             repo_id=evaluated.repo_id,
@@ -399,22 +440,35 @@ def _gguf_plans(
             confidence=identity.confidence,
             evidence=list(identity.evidence),
         )
-        plans.append(
-            build_execution_plan(
-                model_identity=identity,
-                artifact=artifact,
-                runtime=(
-                    estimate.runtime_recommendation
-                    if estimate is not None
-                    and estimate.runtime_recommendation is not None
-                    else _runtime_for_artifact(artifact)
-                ),
-                memory_prediction=estimate,
-                hardware=context.hardware,
-                backend_selection=context.backend_selection,
-                execution_readiness=_readiness_for(RuntimeName.LLAMA_CPP, context),
-            )
+        plan = build_execution_plan(
+            model_identity=identity,
+            artifact=artifact,
+            runtime=(
+                estimate.runtime_recommendation
+                if estimate is not None and estimate.runtime_recommendation is not None
+                else _runtime_for_artifact(artifact)
+            ),
+            memory_prediction=estimate,
+            hardware=context.hardware,
+            backend_selection=context.backend_selection,
+            execution_readiness=_readiness_for(RuntimeName.LLAMA_CPP, context),
         )
+        if issue is not None:
+            plan = plan.model_copy(update={"warnings": [*plan.warnings, issue]})
+        readiness = _readiness_for(RuntimeName.LLAMA_CPP, context)
+        if (
+            readiness is not None
+            and plan.backend_selection is not None
+            and isinstance(readiness.runtime_capability, LlamaCppRuntimeCapability)
+            and readiness.selection.selected_backend is not plan.backend_selection.selected_backend
+        ):
+            from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
+
+            readiness = evaluate_execution_readiness(
+                selection=plan.backend_selection,
+                runtime_capability=readiness.runtime_capability,
+            )
+        plans.append(plan.model_copy(update={"execution_readiness": readiness}))
     return plans
 
 
@@ -458,7 +512,7 @@ def _transformers_plan(
         and evaluated.memory_estimate.runtime_recommendation is not None
         else _runtime_for_artifact(artifact)
     )
-    return build_execution_plan(
+    plan = build_execution_plan(
         model_identity=identity,
         artifact=artifact,
         runtime=runtime,
@@ -467,6 +521,12 @@ def _transformers_plan(
         backend_selection=context.backend_selection,
         execution_readiness=_transformers_readiness(runtime=runtime, context=context),
     )
+    readiness = _transformers_readiness(
+        runtime=runtime,
+        context=context,
+        selection=plan.backend_selection,
+    )
+    return plan.model_copy(update={"execution_readiness": readiness})
 
 
 def _config_for_variant(
@@ -554,18 +614,23 @@ def _transformers_readiness(
     *,
     runtime: RuntimeRecommendation,
     context: PlanRankingContext,
+    selection: RuntimeBackendSelection | None = None,
 ) -> ExecutionReadiness | None:
     readiness = _readiness_for(RuntimeName.TRANSFORMERS, context)
-    if readiness is None or not _requires_bitsandbytes(runtime):
+    if readiness is None:
+        return readiness
+    if not _requires_bitsandbytes(runtime) and (
+        selection is None or selection.selected_backend is readiness.selection.selected_backend
+    ):
         return readiness
     if not isinstance(readiness.runtime_capability, PyTorchRuntimeCapability):
         return readiness
     from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
 
     return evaluate_pytorch_execution_readiness(
-        selection=readiness.selection,
+        selection=selection or readiness.selection,
         runtime_capability=readiness.runtime_capability,
-        requires_bitsandbytes=True,
+        requires_bitsandbytes=_requires_bitsandbytes(runtime),
     )
 
 
@@ -608,6 +673,14 @@ def _hard_constraints(
                 code=HardConstraintCode.ARTIFACT_RUNTIME_INCOMPATIBLE,
                 message="Artifact is not compatible with the selected runtime.",
                 evidence_key="artifact.runtime",
+            )
+        )
+    elif plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE:
+        constraints.append(
+            HardConstraint(
+                code=HardConstraintCode.ARTIFACT_RUNTIME_INCOMPATIBLE,
+                message=next(reversed(plan.warnings), "Unsupported execution configuration."),
+                evidence_key="plan.technical_support",
             )
         )
     if memory_insufficient:

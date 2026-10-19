@@ -12,12 +12,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from jaull.domain.artifact_profile import packed_transformers_quantization_label
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityStatus,
     EstimationConfidence,
     MemoryEstimate,
 )
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
@@ -25,6 +27,11 @@ from jaull.domain.inference import (
 )
 from jaull.domain.model import ModelAnalysis
 from jaull.domain.requirements import UserRequirements
+from jaull.domain.runtime_support import (
+    QUANTIZED_CPU_LIMITATION,
+    available_compute_backends,
+    quantized_transformers_supported,
+)
 from jaull.estimator import policies
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
@@ -57,11 +64,13 @@ def select_configuration(
     analysis: ModelAnalysis,
     requirements: UserRequirements,
     estimate_fn: EstimateFn,
+    *,
+    hardware: HardwareProfile | None = None,
 ) -> ConfigurationChoice:
     """Choose the best configuration this repository can offer for these needs."""
     if analysis.classification.primary_type is RepositoryType.GGUF:
-        return _select_gguf(analysis, requirements, estimate_fn)
-    return _select_transformers(analysis, requirements, estimate_fn)
+        return _select_gguf(analysis, requirements, estimate_fn, hardware=hardware)
+    return _select_transformers(analysis, requirements, estimate_fn, hardware=hardware)
 
 
 # --------------------------------------------------------------------------
@@ -71,6 +80,8 @@ def _select_gguf(
     analysis: ModelAnalysis,
     requirements: UserRequirements,
     estimate_fn: EstimateFn,
+    *,
+    hardware: HardwareProfile | None,
 ) -> ConfigurationChoice:
     available = {
         variant.quantization.upper(): variant.quantization
@@ -100,6 +111,8 @@ def _select_gguf(
     for rung in ordered:
         quantization = available[rung]
         config = _build_config(requirements, quantization=quantization)
+        if hardware is not None and available_compute_backends(hardware) == {ComputeBackend.CPU}:
+            config = config.model_copy(update={"target_device": TargetDevice.CPU})
         estimate = estimate_fn(analysis, config)
         status = estimate.assessment.status
         considered.append(f"{quantization}: {status.value}")
@@ -155,6 +168,8 @@ def _select_transformers(
     analysis: ModelAnalysis,
     requirements: UserRequirements,
     estimate_fn: EstimateFn,
+    *,
+    hardware: HardwareProfile | None,
 ) -> ConfigurationChoice:
     considered: list[str] = []
     warnings: list[str] = []
@@ -163,14 +178,31 @@ def _select_transformers(
     ] = []
     seen: list[CompatibilityStatus] = []
 
-    for precision in policies.TRANSFORMERS_DTYPE_LADDER:
+    packed = packed_transformers_quantization_label(analysis.config) is not None
+    for precision in transformers_precision_options(analysis):
+        if (
+            hardware is not None and precision in policies.THEORETICAL_DTYPES
+            and not quantized_transformers_supported(hardware)
+        ):
+            considered.append(f"{precision.value}: unsupported configuration")
+            if QUANTIZED_CPU_LIMITATION not in warnings:
+                warnings.append(QUANTIZED_CPU_LIMITATION)
+            continue
         config = _build_config(requirements, precision=precision)
+        if hardware is not None and not quantized_transformers_supported(hardware):
+            config = config.model_copy(update={"target_device": TargetDevice.CPU})
         estimate = estimate_fn(analysis, config)
         status = estimate.assessment.status
         considered.append(f"{precision.value}: {status.value}")
         seen.append(status)
 
         fallback_options.append((status, config, estimate))
+
+        if packed and hardware is not None and not quantized_transformers_supported(hardware):
+            return ConfigurationChoice(
+                configuration=config, estimate=estimate, reason=QUANTIZED_CPU_LIMITATION,
+                considered=considered, warnings=[QUANTIZED_CPU_LIMITATION],
+            )
 
         if status in _ACCEPTABLE:
             if precision in policies.THEORETICAL_DTYPES:
@@ -179,7 +211,7 @@ def _select_transformers(
                     "ships no confirmed quantized artifact, so loading it at that "
                     "precision requires a runtime that quantizes on the fly."
                 )
-                estimate = _lower_confidence(estimate)
+                estimate = lower_theoretical_confidence(estimate)
             return ConfigurationChoice(
                 configuration=config,
                 estimate=estimate,
@@ -194,8 +226,10 @@ def _select_transformers(
     message = _exhausted_ladder_message(
         seen,
         _fallback_status(fallback_options),
-        unit="precision",
-        aggressive=", including int4",
+        unit=("technically supported precision" if hardware is not None
+              and not quantized_transformers_supported(hardware) else "precision"),
+        aggressive=("" if hardware is not None and not quantized_transformers_supported(hardware)
+                    else ", including int4"),
     )
     warnings.append(message)
     return ConfigurationChoice(
@@ -213,6 +247,20 @@ def _select_transformers(
         considered=considered,
         warnings=warnings,
     )
+
+
+def transformers_precision_options(analysis: ModelAnalysis) -> tuple[WeightPrecision, ...]:
+    """A bounded native-dtype plus existing quantization ladder."""
+    declared = analysis.config.torch_dtype if analysis.config is not None else None
+    native = {
+        "float32": WeightPrecision.FLOAT32,
+        "float16": WeightPrecision.FLOAT16,
+        "bfloat16": WeightPrecision.BFLOAT16,
+    }.get((declared or "").removeprefix("torch."))
+    ladder = tuple(dict.fromkeys([
+        *([native] if native else []), *policies.TRANSFORMERS_DTYPE_LADDER,
+    ]))
+    return ladder[:1] if packed_transformers_quantization_label(analysis.config) else ladder
 
 
 def _exhausted_ladder_message(
@@ -320,7 +368,7 @@ def _build_config(
     )
 
 
-def _lower_confidence(estimate: MemoryEstimate) -> MemoryEstimate:
+def lower_theoretical_confidence(estimate: MemoryEstimate) -> MemoryEstimate:
     """Drop an estimate's confidence by one rung, floor at LOW."""
     order = (
         EstimationConfidence.HIGH,

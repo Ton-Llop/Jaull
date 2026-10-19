@@ -9,9 +9,11 @@ from jaull.discovery import series
 from jaull.discovery.grouping import collapse_families
 from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.execution_plans import ExecutionPlan
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.licenses import classify_license
 from jaull.domain.requirements import UserRequirements
+from jaull.estimator.artifact_analysis import analyze_artifact
 from jaull.recommendation import (
     capability,
     explanations,
@@ -23,6 +25,7 @@ from jaull.recommendation import (
 from jaull.recommendation.actionability import assess_actionability
 from jaull.recommendation.diversity import DiversifiedRecommendation, diversify_ranked_plans
 from jaull.recommendation.engine_v2 import (
+    EstimatePlanFn,
     PlanRankingContext,
     RankedPlan,
     rank_execution_plans,
@@ -33,6 +36,7 @@ from jaull.recommendation.models import (
     SeriesSibling,
 )
 from jaull.recommendation.shadow import apply_measured_policy
+from jaull.runtime.executability import assess_runtime
 
 _RankedRecommendation = tuple[
     EvaluatedCandidate,
@@ -85,6 +89,7 @@ def recommend(
     hardware: HardwareProfile | None = None,
     plan_context: PlanRankingContext | None = None,
     on_ranked_plans: Callable[[Sequence[RankedPlan]], None] | None = None,
+    estimate_fn: EstimatePlanFn | None = None,
 ) -> list[ModelRecommendation]:
     """Produce at most ``limit`` explained recommendations.
 
@@ -106,6 +111,7 @@ def recommend(
             enriched,
             requirements,
             context=context,
+            estimate_fn=estimate_fn,
         )
         if on_ranked_plans is not None:
             # The base order: Recompare and the fallback baseline start from it.
@@ -183,6 +189,8 @@ def recommend(
         ranked,
         start=1,
     ):
+        if ranked_plan is not None and hardware is not None:
+            item = _selected_configuration(item, ranked_plan.plan, hardware)
         label = (
             None if index == 1 else ranker.alternative_label(primary, item)
         )
@@ -215,7 +223,10 @@ def recommend(
                     ranked_plan.assessment if ranked_plan is not None else None
                 ),
                 alternative_plans=(
-                    [alternative.plan for alternative in diversified_item.alternatives]
+                    [
+                        _alternative_plan(alternative, diversified_item.primary, requirements)
+                        for alternative in diversified_item.alternatives
+                    ]
                     if diversified_item is not None
                     else []
                 ),
@@ -250,6 +261,46 @@ def recommend(
         )
 
     return recommendations
+
+
+def _alternative_plan(
+    alternative: RankedPlan, selected: RankedPlan, requirements: UserRequirements,
+) -> ExecutionPlan:
+    reason = (
+        "; ".join(alternative.assessment.rejection_reasons)
+        if alternative.assessment.rejected else
+        f"the {requirements.priority.value} policy preferred {selected.plan.artifact.label} "
+        f"({selected.plan.runtime_family.value})."
+    )
+    return alternative.plan.model_copy(update={
+        "warnings": [*alternative.plan.warnings, f"Not selected: {reason}"],
+    })
+
+
+def _selected_configuration(
+    item: EvaluatedCandidate, plan: ExecutionPlan, hardware: HardwareProfile,
+) -> EvaluatedCandidate:
+    """Project the chosen plan without changing the search-time candidate snapshot."""
+    estimate = plan.memory_prediction
+    if estimate is None:
+        return item
+    config = estimate.inference_configuration
+    if item.selected_configuration == config and item.memory_estimate == estimate:
+        return item
+    artifact = analyze_artifact(item.candidate, item.analysis, config)
+    return item.model_copy(update={
+        "selected_configuration": config,
+        "memory_estimate": estimate,
+        "compatibility": estimate.assessment,
+        "artifact_profile": artifact,
+        "runtime_assessment": assess_runtime(plan.runtime, hardware, artifact, estimate),
+        "configuration_reason": (
+            "Selected from technically compatible plans by the priority policy."
+        ),
+        "warnings": list(dict.fromkeys([
+            *item.candidate.penalties, *estimate.warnings, *plan.warnings,
+        ])),
+    })
 
 
 def _build_series_siblings(

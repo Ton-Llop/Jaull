@@ -67,7 +67,7 @@ def evaluate_candidate(
         )
 
     try:
-        choice = select_configuration(analysis, requirements, estimate_fn)
+        choice = select_configuration(analysis, requirements, estimate_fn, hardware=hardware)
     except HuggingFaceUnavailableError as exc:
         raise exc
     except JaullError as exc:

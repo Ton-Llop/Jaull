@@ -18,12 +18,17 @@ from jaull.domain.artifact_profile import (
     ArtifactProfile,
 )
 from jaull.domain.estimation import CompatibilityStatus, MemoryEstimate
-from jaull.domain.hardware import HardwareProfile, has_usable_accelerator
+from jaull.domain.hardware import ComputeBackend, HardwareProfile, has_usable_accelerator
 from jaull.domain.runtime import (
     RuntimeAssessment,
     RuntimeExecutability,
     RuntimeName,
     RuntimeRecommendation,
+)
+from jaull.domain.runtime_support import (
+    QUANTIZED_CPU_LIMITATION,
+    available_compute_backends,
+    quantized_transformers_supported,
 )
 
 # Runtimes that need a CUDA-capable GPU to load AWQ/GPTQ weights.
@@ -38,7 +43,7 @@ def assess_runtime(
 ) -> RuntimeAssessment:
     """Grade the *ejecutabilidad* of a runtime recommendation."""
     runtime = recommendation.runtime if recommendation else RuntimeName.UNKNOWN
-    has_nvidia_gpu = bool(hardware.gpus)
+    has_nvidia_gpu = ComputeBackend.CUDA in available_compute_backends(hardware)
     has_accelerator = has_usable_accelerator(hardware)
 
     if recommendation is None or runtime is RuntimeName.UNKNOWN:
@@ -58,7 +63,9 @@ def assess_runtime(
     if runtime is RuntimeName.LLAMA_CPP:
         return _assess_llama_cpp(has_accelerator, artifact)
     if runtime is RuntimeName.TRANSFORMERS:
-        return _assess_transformers(has_nvidia_gpu, artifact)
+        return _assess_transformers(
+            quantized_transformers_supported(hardware), artifact, has_cuda=has_nvidia_gpu,
+        )
     if runtime is RuntimeName.VLLM:
         return _assess_vllm(has_nvidia_gpu, artifact)
 
@@ -90,7 +97,7 @@ def _assess_llama_cpp(
 
 
 def _assess_transformers(
-    has_gpu: bool, artifact: ArtifactProfile | None
+    has_gpu: bool, artifact: ArtifactProfile | None, *, has_cuda: bool
 ) -> RuntimeAssessment:
     warnings: list[str] = []
     reasons: list[str] = []
@@ -103,7 +110,7 @@ def _assess_transformers(
         )
 
     if artifact.format in _CUDA_ONLY_QUANT_FORMATS:
-        if not has_gpu:
+        if not has_cuda:
             return RuntimeAssessment(
                 runtime=RuntimeName.TRANSFORMERS,
                 executability=RuntimeExecutability.UNSUPPORTED,
@@ -128,8 +135,7 @@ def _assess_transformers(
                 runtime=RuntimeName.TRANSFORMERS,
                 executability=RuntimeExecutability.UNSUPPORTED,
                 reasons=[
-                    "bitsandbytes int4/int8 kernels require a CUDA GPU; "
-                    "the detected hardware has no NVIDIA GPU."
+                    QUANTIZED_CPU_LIMITATION
                 ],
             )
         return RuntimeAssessment(
@@ -146,8 +152,7 @@ def _assess_transformers(
                 runtime=RuntimeName.TRANSFORMERS,
                 executability=RuntimeExecutability.UNSUPPORTED,
                 reasons=[
-                    "Theoretical quantization has no confirmed artifact and no "
-                    "CPU quantization path in Transformers."
+                    QUANTIZED_CPU_LIMITATION
                 ],
             )
         warnings.append(
@@ -164,7 +169,7 @@ def _assess_transformers(
     # Native dtype (FP16/BF16/FP32) — CPU works but is very slow, GPU is
     # comfortable.
     if has_gpu:
-        reasons.append("Native precision on the detected NVIDIA GPU.")
+        reasons.append("Native precision on an available CUDA/HIP GPU backend.")
         return RuntimeAssessment(
             runtime=RuntimeName.TRANSFORMERS,
             executability=RuntimeExecutability.POTENTIALLY_EXECUTABLE,

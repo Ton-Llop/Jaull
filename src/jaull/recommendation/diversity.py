@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, model_identity_key
+from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, confirmed_model_repo_id
 from jaull.domain.recommendation import RecommendationPosition
 from jaull.recommendation.engine_v2 import RankedPlan
 
@@ -66,20 +66,21 @@ def _best_plan_per_identity(
     grouped: dict[str, list[RankedPlan]] = {}
     indexes: dict[str, int] = {}
     for index, plan in enumerate(ranked_plans):
-        if plan.assessment.rejected:
-            continue
-        key = model_identity_key(plan.plan.model_identity)
+        canonical = confirmed_model_repo_id(plan.plan.model_identity)
+        key = (canonical or plan.plan.artifact.repo_id).casefold()
         grouped.setdefault(key, []).append(plan)
-        indexes.setdefault(key, index)
-    return [
-        _IdentityBucket(
-            key=key,
-            primary=items[0],
-            alternatives=tuple(items[1:]),
+        if not plan.assessment.rejected:
+            indexes.setdefault(key, index)
+    buckets: list[_IdentityBucket] = []
+    for key in sorted(indexes, key=indexes.__getitem__):
+        items = grouped[key]
+        primary = next(item for item in items if not item.assessment.rejected)
+        buckets.append(_IdentityBucket(
+            key=key, primary=primary,
+            alternatives=tuple(item for item in items if item is not primary),
             original_index=indexes[key],
-        )
-        for key, items in sorted(grouped.items(), key=lambda item: indexes[item[0]])
-    ]
+        ))
+    return buckets
 
 
 def _choose_next(

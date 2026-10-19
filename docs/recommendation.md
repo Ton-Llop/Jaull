@@ -112,6 +112,7 @@ Budgets are centralised in `application/recommendation/policies.py`:
 | Deep inspections | 12 |
 | Concurrent inspections | 4 |
 | Variant deep inspections | 6 |
+| Targeted alternative queries per Search | 3 |
 | Recommendations returned | 5 |
 
 Only the shortlist pays for inspection, which reuses the existing `inspect_model`, the
@@ -120,6 +121,42 @@ final memory figures of its own. The shortlist hint is not persisted, reported o
 ranking; after inspection, `MemoryEstimate` and `HardwareFitResult` are the source of truth.
 Analyses are cached between runs so a repeated search does not re-inspect the same
 repositories.
+
+### Selecting a technically compatible execution path
+
+Memory feasibility, technical support and runtime readiness are separate decisions.
+The estimator's precision ladder now checks the available backend before accepting a
+Transformers INT8/INT4 choice. Jaull's current quantized Transformers loader requires
+an observed CUDA/HIP backend; a CPU-only plan cannot become a confirmed recommendation
+just because its theoretical quantized footprint fits. This is a limit of Jaull's
+validated loading path, not a claim that every bitsandbytes version lacks CPU support.
+See the upstream [hardware support documentation](https://huggingface.co/docs/transformers/main/quantization/bitsandbytes).
+
+Before ranking, the workflow reuses its analysis and estimate caches to build a bounded
+plan pool: the declared native float dtype plus the existing FP16/INT8/INT4 ladder
+(at most four precisions), or up to eight published GGUF variants. The configuration
+already selected by the estimator is always retained within that GGUF bound. Packed
+Transformers artifacts remain one representation, not invented dequantized variants.
+Each evaluated configuration has its own `MemoryEstimate`; a rejected quantized plan
+does not lend its footprint to a float or GGUF plan. The memory and placement formulas
+and priority ordering are unchanged.
+
+If a logical model has no known memory-fitting, technically compatible plan, Search
+first reuses inspected conversions and relevant original search hits. It can then call
+the existing metadata-only variant discovery, with a global limit of three queries
+and six additional repository inspections, beyond the original shortlist of twelve.
+Only explicit repository/`base_model` evidence confirms a cross-artifact relation.
+Names may nominate an inspection but cannot merge models or substitute artifacts.
+When no viable path is confirmed, the original diagnostic remains available with a
+bounded-discovery warning; no conversion is assumed.
+
+Technical blockers reject the configuration. Missing binaries or Python dependencies
+only affect readiness and do not order recommendations. The best eligible plan under
+the existing priority policy becomes the primary; other configurations, including
+rejected configurations with their reasons, remain in Paths. Results and exports
+use the selected plan's configuration and estimate. Published quality, IFEval and
+local speed retain their existing applicability gates; conflicting known SHA256
+values cannot match through weaker repository metadata.
 
 ---
 

@@ -146,6 +146,13 @@ requested objectives; benchmark measurements remain separate observations.
 
 The ranking is also **independent of what happens to be installed**: a missing `llama-cli`
 changes readiness, not the Top 5, and that invariant is pinned by a test.
+Before choosing the primary path, Search evaluates a bounded set of precision and GGUF
+variants with their own memory estimates. If the inspected pool has no technically viable
+path for a model, it can look for a GGUF with explicitly declared lineage (at most three
+targeted queries and six extra repository inspections across the search). A CPU configuration
+that needs Jaull's unsupported quantized Transformers loading path cannot displace a viable
+confirmed GGUF. Remaining paths and their limitations stay available in Paths; discovery
+does not download weights or run inference.
 → [docs/recommendation.md](docs/recommendation.md)
 
 **Execution plans.** A recommendation is resolved into a logical model identity, the

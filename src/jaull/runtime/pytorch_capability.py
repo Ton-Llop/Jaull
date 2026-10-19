@@ -643,7 +643,7 @@ def _with_quantization_readiness(
             selected_backend_capability=selected_backend_capability,
             message=(
                 "This quantized Transformers plan requires a CUDA/HIP-capable "
-                "backend; CPU execution is not supported by bitsandbytes."
+                "backend in Jaull's current loader; CPU quantization is not validated here."
             ),
         )
     if selection.selected_backend is not ComputeBackend.CUDA:

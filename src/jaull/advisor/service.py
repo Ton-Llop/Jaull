@@ -1241,6 +1241,17 @@ class AdvisorService:
         from jaull.execution_plans.service import build_execution_plan
 
         current = self.execution_plan_for_recommendation(recommendation)
+
+        def variant_key(variant: ArtifactVariant) -> tuple[object, ...]:
+            return (
+                variant.repo_id.casefold(), variant.filename, variant.format,
+                variant.quantization, variant.precision,
+            )
+
+        known = {
+            variant_key(plan.artifact): plan
+            for plan in (current, *recommendation.alternative_plans)
+        }
         try:
             variants = self.discover_artifact_variants(
                 recommendation=recommendation,
@@ -1249,6 +1260,10 @@ class AdvisorService:
             )
         except Exception:
             variants = [current.artifact]
+        combined = {key: plan.artifact for key, plan in known.items()}
+        for variant in variants:
+            combined.setdefault(variant_key(variant), variant)
+        variants = list(combined.values())
 
         selection = current.backend_selection
         if selection is None and current.hardware is not None:
@@ -1265,16 +1280,14 @@ class AdvisorService:
 
         plans: list[ExecutionPlan] = []
         for variant in variants:
-            runtime = (
-                current.runtime
-                if variant == current.artifact
-                else _runtime_for_variant(variant)
-            )
-            memory = current.memory_prediction if variant == current.artifact else None
+            previous = known.get(variant_key(variant))
+            runtime = previous.runtime if previous is not None else _runtime_for_variant(variant)
+            memory = previous.memory_prediction if previous is not None else None
+            plan_selection = previous.backend_selection if previous is not None else selection
             capability = capabilities.get(runtime.runtime)
             readiness = _readiness_for_plan_variant(
                 runtime=runtime,
-                selection=selection,
+                selection=plan_selection,
                 capability=capability,
             )
             artifact_downloaded = None
@@ -1287,18 +1300,20 @@ class AdvisorService:
                 variant,
                 artifact_downloaded=artifact_downloaded,
             )
-            plans.append(
-                build_execution_plan(
-                    model_identity=current.model_identity,
-                    artifact=variant,
-                    runtime=runtime,
-                    memory_prediction=memory,
-                    hardware=current.hardware,
-                    backend_selection=selection,
-                    runtime_capability=capability,
-                    execution_readiness=readiness,
-                )
+            rebuilt = build_execution_plan(
+                model_identity=variant.model_identity,
+                artifact=variant,
+                runtime=runtime,
+                memory_prediction=memory,
+                hardware=current.hardware,
+                backend_selection=plan_selection,
+                runtime_capability=capability,
+                execution_readiness=readiness,
             )
+            if previous is not None:
+                reasons = [text for text in previous.warnings if text.startswith("Not selected:")]
+                rebuilt = rebuilt.model_copy(update={"warnings": [*rebuilt.warnings, *reasons]})
+            plans.append(rebuilt)
         return plans or [current]
 
     def plan_launch(

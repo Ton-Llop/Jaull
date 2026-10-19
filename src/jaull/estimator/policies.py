@@ -107,3 +107,6 @@ TRANSFORMERS_DTYPE_LADDER: tuple[WeightPrecision, ...] = (
 THEORETICAL_DTYPES: frozenset[WeightPrecision] = frozenset(
     {WeightPrecision.INT8, WeightPrecision.INT4}
 )
+
+# Bound alternate-plan metadata work while always retaining the selected rung.
+MAX_GGUF_PLAN_VARIANTS = 8

@@ -30,6 +30,8 @@ def variant_from_recommendation(
     *,
     identity: ModelIdentity | None = None,
 ) -> ArtifactVariant:
+    if recommendation.plan is not None:
+        return recommendation.plan.artifact
     evaluated = recommendation.evaluated
     effective_identity = identity or resolve_model_identity(
         candidate=evaluated.candidate,
@@ -97,14 +99,20 @@ def execution_plan_for_recommendation(
     runtime_capability: RuntimeCapability | None = None,
     execution_readiness: ExecutionReadiness | None = None,
 ) -> ExecutionPlan:
-    if (
-        recommendation.plan is not None
-        and hardware is None
-        and backend_selection is None
-        and runtime_capability is None
-        and execution_readiness is None
-    ):
-        return recommendation.plan
+    if recommendation.plan is not None:
+        plan = recommendation.plan
+        if all(value is None for value in (
+            hardware, backend_selection, runtime_capability, execution_readiness,
+        )):
+            return plan
+        return build_execution_plan(
+            model_identity=plan.model_identity, artifact=plan.artifact, runtime=plan.runtime,
+            memory_prediction=plan.memory_prediction,
+            hardware=hardware if hardware is not None else plan.hardware,
+            backend_selection=backend_selection or plan.backend_selection,
+            runtime_capability=runtime_capability or plan.runtime_capability,
+            execution_readiness=execution_readiness or plan.execution_readiness,
+        )
     estimate: MemoryEstimate | None = recommendation.evaluated.memory_estimate
     runtime = estimate.runtime_recommendation if estimate is not None else None
     if runtime is None:

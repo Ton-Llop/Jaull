@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import re
 
+from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.execution_plans import (
     ArtifactVariant,
     ArtifactVariantFormat,
     ExecutionPlan,
     ModelIdentity,
+    PlanCompatibilityStatus,
 )
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import (
@@ -191,6 +193,15 @@ def selected_plan_label(plan: ExecutionPlan) -> str:
 
 def readiness_label(plan: ExecutionPlan) -> str:
     """Readiness in plain words, without claiming a check that never ran."""
+    if plan.memory_prediction is not None and (
+        plan.memory_prediction.assessment.status is CompatibilityStatus.INSUFFICIENT
+    ):
+        return "Insufficient memory"
+    if (
+        plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE
+        and plan.runtime_family is not RuntimeName.UNKNOWN
+    ):
+        return "Unsupported configuration"
     if plan.execution_readiness is None:
         return "Readiness unknown"
     status = plan.execution_readiness.status.value.replace("_", " ").capitalize()
@@ -198,6 +209,9 @@ def readiness_label(plan: ExecutionPlan) -> str:
 
 
 def readiness_detail(plan: ExecutionPlan) -> str:
+    label = readiness_label(plan)
+    if label in {"Unsupported configuration", "Insufficient memory"}:
+        return f"{label} — {next(reversed(plan.warnings), 'Configuration cannot be executed.')}"
     readiness = plan.execution_readiness
     if readiness is None:
         return "Readiness has not been checked."
@@ -209,7 +223,8 @@ def readiness_detail(plan: ExecutionPlan) -> str:
 
 def is_ready_plan(plan: ExecutionPlan) -> bool:
     return (
-        plan.execution_readiness is not None
+        plan.compatibility is not PlanCompatibilityStatus.NOT_COMPATIBLE
+        and plan.execution_readiness is not None
         and plan.execution_readiness.status
         in {ExecutionReadinessStatus.READY, ExecutionReadinessStatus.PREPARABLE}
     )
@@ -226,6 +241,8 @@ def runtime_block_reason(plan: ExecutionPlan) -> str | None:
     proceed yields a more precise error from the runtime layer than a guess.
     """
 
+    if plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE:
+        return readiness_detail(plan)
     readiness = plan.execution_readiness
     if readiness is None or readiness.status is not ExecutionReadinessStatus.NOT_READY:
         return None

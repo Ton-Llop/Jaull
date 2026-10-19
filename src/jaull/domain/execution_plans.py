@@ -127,6 +127,22 @@ def model_identity_key(identity: ModelIdentity) -> str:
     return f"metadata:{family}|{model_name}|{parameters}|{variant}|{architecture}"
 
 
+def confirmed_model_repo_id(identity: ModelIdentity) -> str | None:
+    """An explicit repository/lineage claim, without suffix or fuzzy matching."""
+    canonical = identity.canonical_repo_id
+    if canonical is None:
+        return None
+    if any(
+        evidence.kind in {
+            ModelIdentityEvidenceKind.REPOSITORY_ID, ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
+        }
+        and evidence.value.strip().casefold() == canonical.strip().casefold()
+        for evidence in identity.evidence
+    ):
+        return canonical.strip()
+    return None
+
+
 def _strip_artifact_repository_suffix(name: str) -> str:
     lowered = name.casefold()
     for suffix in _ARTIFACT_REPOSITORY_SUFFIXES:

@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from jaull.domain.capability_evidence import CapabilityCatalog, CapabilitySubject
-from jaull.domain.execution_plans import ModelIdentity, ModelIdentityEvidenceKind
+from jaull.domain.execution_plans import ModelIdentity, confirmed_model_repo_id
 from jaull.recommendation.capability import CapabilitySignal
 
 
@@ -25,17 +25,7 @@ class CatalogReadResult:
 
 def canonical_repo_is_confirmed(identity: ModelIdentity) -> bool:
     """Confirm an exact repository claim, not a suffix-based grouping key."""
-    canonical = identity.canonical_repo_id
-    if canonical is None:
-        return False
-    return any(
-        item.kind in {
-            ModelIdentityEvidenceKind.REPOSITORY_ID,
-            ModelIdentityEvidenceKind.BASE_MODEL_METADATA,
-        }
-        and item.value.strip().casefold() == canonical.strip().casefold()
-        for item in identity.evidence
-    )
+    return confirmed_model_repo_id(identity) is not None
 
 
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

@@ -1794,6 +1794,67 @@ a `0.1.0`; aquest document no anuncia aquella release ni la crea.
 [pla vFinal](../recommendation-vfinal-plan.md), [STATUS](../../STATUS.md),
 [versió del paquet](../../pyproject.toml).
 
+### D097. Selecció automàtica d'una configuració tècnicament viable
+
+**Data i problema observat:** 2026-10-19. En un Ryzen 5 5500U amb WSL2 i
+aproximadament 7,4 GiB de RAM, Results podia presentar un Transformers INT4/INT8
+que cabia segons l'estimació però que la ruta actual de Jaull bloquejava en CPU.
+Una conversió GGUF confirmada podia aparèixer només després d'obrir Paths.
+
+**Causa tècnica:** `select_configuration` aturava l'escala en trobar memòria
+suficient; `generate_execution_plans` produïa una única precisió Transformers;
+`build_execution_plan` comprovava només el format/runtime; i el workflow no
+passava l'estimador amb memòria cau al ranking per estimar altres variants.
+La diversificació també podia agrupar repositoris només pel sufix del nom.
+
+**Alternatives considerades:** ocultar `Blocked`, rebutjar runtimes no instal·lats,
+preferir sempre GGUF o expandir totes les combinacions. Les quatre opcions
+perden informació o barregen compatibilitat, readiness i preferència de política.
+
+**Decisió implementada:** compartir regles pures de suport de backend; distingir
+el fit de memòria de la compatibilitat tècnica i de la instal·lació. Estimar
+cada configuració amb les APIs i les memòries cau del workflow, amb màxim quatre
+precisions Transformers i vuit variants GGUF, retenint la variant ja seleccionada.
+Un artefacte Transformers empaquetat continua sent una representació concreta.
+Quan no existeix una ruta viable coneguda, reutilitzar conversions inspeccionades
+i hits de cerca amb linatge declarat abans de fer, com a màxim global, tres
+consultes dirigides i sis inspeccions addicionals. No es descarreguen pesos ni
+s'executen models durant Search.
+
+**Motiu i conseqüència:** la política existent escull el millor pla elegible de
+cada identitat confirmada. Les altres configuracions conserven la seva estimació
+i motiu a Paths. Un runtime absent continua sent una condició de readiness,
+segons D040/D069. Results, reconstrucció de plans i exportació utilitzen la
+configuració seleccionada. Un SHA conegut contradictori impedeix també el matching
+de referències locals; no es modifica IFEval, Wilson, tg128, cohorts ni mediana.
+
+**Proves i evidència:** `tests/test_compatible_plan_selection.py` cobreix CPU,
+CUDA, Vulkan/HIP observats, backends absents, linatge incert, múltiples quants,
+pressupostos, reutilització, llicència, SHA/backend i coherència Results/Paths/export.
+La regressió de diversitat declara ara `base_model` explícitament quan exigeix
+agrupar un model i una conversió. La consulta de metadades del 2026-10-19 va trobar
+linatge explícit i fitxers Q4_K_M/Q5_K_M/Q6_K amb SHA publicat a
+`TheBloke/Mistral-7B-Instruct-v0.2-GGUF` i
+`unsloth/Qwen3-4B-Instruct-2507-GGUF`; no és una validació d'inferència.
+
+**Validació local (Python 3.12.3):** 2838 proves passen, incloses arquitectura,
+regressions de ranking, exportació i captures TUI. Ruff, mypy (256 fitxers),
+compileall, `uv lock --check --offline` i `git diff --check` passen. `uv build`
+i la verificació dels artefactes nous de Jaull també passen; el verificador
+executat sense aïllar-los seleccionava un paquet antic `local_ai_check` ja
+present a `dist/`, que s'ha conservat. No s'ha executat la matriu Windows/Python
+3.13 ni inferència real en aquest canvi.
+
+**Límits pendents:** cerca acotada, no exhaustiva; dependència de metadades de
+linatge declarades; suport CPU de quantització bitsandbytes no validat a Jaull;
+cap nova predicció de memòria compartida o prova empírica d'offload en aquest
+portàtil. Els registres experimentals històrics no es reescriuen.
+
+**Fonts:** [configuració](../../src/jaull/estimator/configuration.py),
+[expansió acotada](../../src/jaull/application/recommendation/alternatives.py),
+[motor de plans](../../src/jaull/recommendation/engine_v2.py),
+[recomanació](../recommendation.md).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -1902,7 +1963,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D096 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D097 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

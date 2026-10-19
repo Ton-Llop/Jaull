@@ -135,6 +135,9 @@ def test_base_repo_gguf_repo_and_precision_variants_share_one_slot() -> None:
     base = _evaluated_transformers(repo_id="Qwen/Qwen2.5-1.5B-Instruct")
     int8 = _with_precision(base, WeightPrecision.INT8)
     gguf = _evaluated_gguf(repo_id="Qwen/Qwen2.5-1.5B-Instruct-GGUF")
+    gguf = gguf.model_copy(update={"candidate": gguf.candidate.model_copy(update={
+        "base_model_repo_id": base.repo_id,
+    })})
 
     recs = ranking.recommend([base, gguf, int8], _requirements(), hardware=hardware())
 

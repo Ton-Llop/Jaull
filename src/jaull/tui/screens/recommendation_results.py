@@ -1432,9 +1432,15 @@ def _alternative_quality(
 
 
 def _recommendation_metadata(rec: ModelRecommendation) -> list[str]:
-    config = rec.evaluated.selected_configuration
-    estimate = rec.evaluated.memory_estimate
-    runtime = estimate.runtime_recommendation if estimate is not None else None
+    estimate = rec.plan.memory_prediction if rec.plan is not None else rec.evaluated.memory_estimate
+    config = (
+        estimate.inference_configuration if estimate is not None
+        else rec.evaluated.selected_configuration
+    )
+    runtime = (
+        rec.plan.runtime if rec.plan is not None
+        else estimate.runtime_recommendation if estimate is not None else None
+    )
 
     values: list[str] = []
     if config is not None and config.quantization:

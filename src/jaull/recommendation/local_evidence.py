@@ -532,9 +532,11 @@ def _same_artifact(plan: ExecutionPlan, artifact: ModelArtifact) -> bool:
     A plan resolved from Search says ``main``; a run pins the immutable commit.
     Equal digests name the same bytes, which is stronger than any revision label.
     """
+    planned, recorded = plan.artifact.sha256, artifact.sha256
+    if planned and recorded and planned.lower() != recorded.lower():
+        return False
     if artifact_identity_matches(plan.artifact.to_model_artifact(), artifact):
         return True
-    planned, recorded = plan.artifact.sha256, artifact.sha256
     return bool(
         planned and recorded and planned.lower() == recorded.lower()
         and plan.artifact.repo_id == artifact.repo_id

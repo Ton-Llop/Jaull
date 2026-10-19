@@ -202,7 +202,9 @@ def test_digest_and_machine_are_required_but_inherited_context_is_not_applied(sh
     missing_sha = plan.model_copy(update={"artifact": plan.artifact.model_copy(update={
         "sha256": sha,
     })})
-    assert matching_benchmark(missing_sha, [record]) is record
+    # Missing metadata can remain a diagnostic reference, but a contradictory
+    # known digest cannot identify the same artifact even for that read path.
+    assert matching_benchmark(missing_sha, [record]) is (record if sha is None else None)
     assert "This plan has no matching exact artifact SHA256." in fastest_benchmark_blockers(
         missing_sha, _requirements(), record,
     )

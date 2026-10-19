@@ -21,6 +21,7 @@ from huggingface_hub.hf_api import ModelInfo
 from jaull.application import requirements as requirements_service
 from jaull.application.recommendation import policies
 from jaull.application.recommendation import service as recommendation_service
+from jaull.application.recommendation.alternatives import expand_execution_candidates
 from jaull.bootstrap.container import ServiceContainer
 from jaull.discovery import candidate_filter, enrichment, query_builder
 from jaull.domain.candidates import (
@@ -274,6 +275,9 @@ def run_workflow(
                 current, requirements, reporter, warnings, [], queries, telemetry, started_at
             )
 
+        analysis_cache: RunCache[str, _InspectionOutcome] = RunCache()
+        estimate_cache: RunCache[tuple[str, str], MemoryEstimate] = RunCache()
+        metadata_client = _RunMetadataClient(services.hf_client, telemetry)
         evaluated, candidate_latency = _evaluate(
             shortlist,
             requirements,
@@ -282,6 +286,42 @@ def run_workflow(
             reporter,
             cancelled,
             telemetry,
+            analysis_cache=analysis_cache,
+            estimate_cache=estimate_cache,
+            metadata_client=metadata_client,
+        )
+        range_client = _build_range_client(services)
+
+        def estimate_plan(
+            analysis: ModelAnalysis, config: InferenceConfiguration,
+        ) -> MemoryEstimate:
+            _check(cancelled)
+            return estimate_cache.get_or_compute(
+                (analysis.repo.repo_id, _config_key(config)),
+                lambda: _estimate_with_timing(
+                    analysis=analysis, hardware=hardware, config=config, services=services,
+                    range_client=range_client, client=metadata_client,
+                    gguf_header_cache=services.gguf_header_cache, telemetry=telemetry,
+                ),
+            )
+
+        known_candidates = {candidate.repo_id.casefold(): candidate for candidate in candidates}
+
+        def inspect_alternative(candidate: ModelCandidate) -> ModelAnalysis:
+            _check(cancelled)
+            candidate = known_candidates.get(candidate.repo_id.casefold(), candidate)
+            return analysis_cache.get_or_compute(
+                _analysis_run_key(candidate),
+                lambda: _inspect_with_persistent_cache(
+                    candidate, services, telemetry, client=metadata_client,
+                ),
+            ).analysis
+
+        evaluated = expand_execution_candidates(
+            evaluated, candidates=candidates, requirements=requirements, hardware=hardware,
+            search_client=services.search_client, inspect_model=inspect_alternative,
+            estimate_fn=estimate_plan, check_cancelled=lambda: _check(cancelled),
+            telemetry=telemetry,
         )
         # Publish the candidates *with* the features the ranker uses. Storing
         # the pre-enrichment list made the report show every score at its 0.0
@@ -331,6 +371,7 @@ def run_workflow(
                 hardware=hardware,
                 plan_context=plan_context,
                 on_ranked_plans=ranked_pool.append,
+                estimate_fn=estimate_plan,
             )
             shadow = _shadow_report(ranked_pool, requirements)
         if not recommendations:
@@ -462,12 +503,12 @@ def _evaluate(
     reporter: ProgressReporter,
     cancelled: CancelCheck,
     telemetry: PerformanceTelemetry,
+    *,
+    analysis_cache: RunCache[str, _InspectionOutcome],
+    estimate_cache: RunCache[tuple[str, str], MemoryEstimate],
+    metadata_client: _RunMetadataClient,
 ) -> tuple[list[EvaluatedCandidate], list[CandidateLatency]]:
     """Inspect and estimate the shortlist, caching within this run."""
-    analysis_cache: RunCache[str, _InspectionOutcome] = RunCache()
-    estimate_cache: RunCache[tuple[str, str], MemoryEstimate] = RunCache()
-    metadata_client = _RunMetadataClient(services.hf_client, telemetry)
-
     def inspect(candidate: ModelCandidate) -> _InspectionOutcome:
         return analysis_cache.get_or_compute(
             _analysis_run_key(candidate),

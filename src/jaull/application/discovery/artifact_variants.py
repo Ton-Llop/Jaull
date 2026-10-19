@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Protocol
 
 from jaull.application.recommendation import policies
@@ -15,6 +16,7 @@ from jaull.domain.execution_plans import (
     ArtifactVariantFormat,
     IdentityMatchStatus,
     ModelIdentity,
+    confirmed_model_repo_id,
     logical_model_repo_key,
     model_identity_key,
 )
@@ -41,6 +43,7 @@ def discover_artifact_variants(
     include_uncertain: bool = False,
     max_deep_inspection: int = policies.MAX_VARIANT_DEEP_INSPECTION,
     telemetry: PerformanceTelemetry | None = None,
+    on_confirmed: Callable[[ModelCandidate, ModelAnalysis], None] | None = None,
 ) -> list[ArtifactVariant]:
     """Discover metadata-only artifact variants without downloading weights."""
 
@@ -60,7 +63,6 @@ def discover_artifact_variants(
     candidates = _prioritize_variant_candidates(
         identity,
         search_results,
-        include_uncertain=include_uncertain,
     )
     inspected = 0
     for candidate in candidates:
@@ -81,6 +83,8 @@ def discover_artifact_variants(
             continue
         if match is IdentityMatchStatus.UNCERTAIN and not include_uncertain:
             continue
+        if match is IdentityMatchStatus.CONFIRMED and on_confirmed is not None:
+            on_confirmed(candidate, analysis)
         variants.extend(
             _variants_from_candidate(
                 identity=identity,
@@ -121,8 +125,6 @@ def _inspect_candidate(
 def _prioritize_variant_candidates(
     identity: ModelIdentity,
     candidates: list[ModelCandidate],
-    *,
-    include_uncertain: bool,
 ) -> list[ModelCandidate]:
     indexed = list(enumerate(candidates))
     ranked: list[tuple[int, int, ModelCandidate]] = []
@@ -130,8 +132,7 @@ def _prioritize_variant_candidates(
         priority = _variant_candidate_priority(identity, candidate)
         if priority is None:
             continue
-        if priority > 1 and not include_uncertain:
-            continue
+        # Name hints may nominate an inspection, never confirm equivalence.
         ranked.append((priority, index, candidate))
     ranked.sort(key=lambda item: (item[0], item[1]))
     return [candidate for _, _, candidate in ranked]
@@ -222,15 +223,9 @@ def _identity_match(
 ) -> IdentityMatchStatus:
     if (
         target.canonical_repo_id
-        and candidate.base_model_repo_id
-        and logical_model_repo_key(candidate.base_model_repo_id)
-        == logical_model_repo_key(target.canonical_repo_id)
-    ):
-        return IdentityMatchStatus.CONFIRMED
-    if (
-        target.canonical_repo_id
         and candidate_identity.canonical_repo_id
-        and model_identity_key(candidate_identity) == model_identity_key(target)
+        and confirmed_model_repo_id(candidate_identity) is not None
+        and candidate_identity.canonical_repo_id.casefold() == target.canonical_repo_id.casefold()
     ):
         return IdentityMatchStatus.CONFIRMED
     if target.family and candidate_identity.family and target.family != candidate_identity.family:
