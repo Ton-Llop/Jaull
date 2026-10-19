@@ -1681,9 +1681,15 @@ def test_details_handle_missing_assessment_and_optional_recommendation_data() ->
             app.show_recommendations(
                 RecommendationWorkflowState(recommendations=[recommendation])
             )
-            await pilot.pause()
+            await _wait_until(pilot, lambda: _results_ready(pilot))
             pilot.app.screen.query_one("#res-details", Button).press()
-            await pilot.pause()
+            # Card rows compose a pass after their titles; Windows CI saw the
+            # titles without the rows after a single pause.
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen)
+                and "none recorded" in _visible_text(pilot.app.screen),
+            )
 
             text = _visible_text(pilot.app.screen)
             assert "Memory fit" in text
@@ -1693,12 +1699,19 @@ def test_details_handle_missing_assessment_and_optional_recommendation_data() ->
             assert "No recommendation reasons recorded." in text
             assert "none recorded" in text
             pilot.app.screen.query_one("#details-back", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot, lambda: isinstance(pilot.app.screen, RecommendationResultsScreen),
+            )
 
             app.show_recommendations(RecommendationWorkflowState(recommendations=[legacy]))
-            await pilot.pause()
+            await _wait_until(pilot, lambda: _results_ready(pilot))
             pilot.app.screen.query_one("#res-details", Button).press()
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: isinstance(pilot.app.screen, RecommendationDetailsScreen)
+                and "Execution paths" in _visible_text(pilot.app.screen)
+                and "unavailable" in _visible_text(pilot.app.screen),
+            )
 
             legacy_text = _visible_text(pilot.app.screen)
             assert "Recommendation assessment" in legacy_text
@@ -2188,6 +2201,15 @@ def _predicate_location(predicate: Any) -> str:
     if code is None:
         return "<unknown predicate>"
     return f"{Path(code.co_filename).name}:{code.co_firstlineno}"
+
+
+def _results_ready(pilot: Any) -> bool:
+    screen = pilot.app.screen
+    return (
+        isinstance(screen, RecommendationResultsScreen)
+        and screen.is_mounted
+        and bool(screen.query("#res-details"))
+    )
 
 
 async def _wait_until(
