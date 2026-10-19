@@ -913,6 +913,11 @@ class AdvisorService:
 
         if plan.hardware is None or plan.backend_selection is None:
             raise BenchmarkConfigurationError("The plan has no hardware or backend selection.")
+        from jaull.presentation.plan_labels import runtime_block_reason
+
+        # A plan whose device or runtime is not confirmed is not measured, whoever asks.
+        if (blocked := runtime_block_reason(plan)) is not None:
+            raise BenchmarkConfigurationError(blocked)
         flags = {flag.name: flag.value for flag in plan.runtime.flags}
         raw_ngl = flags.get("--n-gpu-layers")
         if raw_ngl is None:
@@ -921,15 +926,27 @@ class AdvisorService:
         backend = plan.backend_selection.selected_backend
         device = flags.get("--device")
         if device is None and backend is not ComputeBackend.CPU:
-            # Search plans name no device: take the only one llama.cpp exposes.
+            # Search plans name no device: take the one llama.cpp exposes for the
+            # selected accelerator, or refuse; never the first of several.
+            from jaull.runtime.device_matching import match_runtime_device
+
             capability = self.inspect_llama_cpp_runtime(selection=plan.backend_selection)
-            found = [item.runtime_id for entry in capability.backend_capabilities
-                     if entry.backend is backend for item in entry.devices]
-            if len(found) != 1:
+            backend_capability = next(
+                (entry for entry in capability.backend_capabilities if entry.backend is backend),
+                None,
+            )
+            match = (
+                match_runtime_device(plan.backend_selection, backend_capability)
+                if backend_capability is not None
+                else None
+            )
+            if match is None or match.device is None:
+                found = [item.runtime_id for entry in capability.backend_capabilities
+                         if entry.backend is backend for item in entry.devices]
                 raise BenchmarkConfigurationError(
                     f"Expected one {backend.value} device; llama.cpp exposes {found}."
                 )
-            device = found[0]
+            device = match.device.runtime_id
         report("Running llama_bench_v2 (pp512 / tg128, 5 repetitions)")
         return self.run_benchmark(BenchmarkRequest(
             artifact=artifact, runtime=plan.runtime, backend=backend,

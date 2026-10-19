@@ -1855,6 +1855,146 @@ portàtil. Els registres experimentals històrics no es reescriuen.
 [motor de plans](../../src/jaull/recommendation/engine_v2.py),
 [recomanació](../recommendation.md).
 
+### D098. Vulkan sobre Intel Arc a Windows i WSL2, sense donar res per validat
+
+**Data i necessitat:** 2026-10-19. El PC de Biosfer té una Intel Arc Pro B60 (24 GB de
+VRAM dedicada) amb Windows i WSL2, i tota la ruta validada fins ara és CUDA. Calia
+preparar el suport Vulkan sense accés a aquell equip, de manera que cap resultat
+simulat es pogués confondre amb evidència real.
+
+**Auditoria prèvia:** la major part ja era independent del sistema operatiu (detecció
+Vulkan, selecció de backend, localitzador de binaris amb `.exe`, regles de D097). Els
+punts que assumien NVIDIA/CUDA eren: memòria de dispositius Vulkan no AMD, el `devices[0]`
+del planificador, de la matriu de benchmarks, de la TUI i de `benchmark_plan_speed`, la
+preparació (`READY` si el backend llistava *algun* dispositiu), l'entorn d'evidència
+(només NVML) i la prova de quin dispositiu s'ha mesurat (només `CUDA<i>`). La condició
+`device == "cuda"` de `execution_plans/service.py` resulta ser el flag `device_map` de
+Transformers, no una restricció de llama.cpp: no es toca.
+
+**Alternatives considerades:** (a) fer servir la memòria lliure que informa
+`llama-cli --list-devices` com a disponibilitat de maquinari; (b) DXGI
+`QueryVideoMemoryInfo` o `AdapterRAM` a Windows; (c) un pont WSL2→Windows; (d) afegir
+SYCL; (e) generalitzar `_cuda_blocker` perquè la qualitat també corri a Vulkan. (a)
+faria dependre el rànquing del binari instal·lat, cosa que el README i un test prohibeixen;
+(b) o bé necessita crides natives que no es poden comprovar sense la màquina, o bé és un
+camp de 32 bits que satura prop de 4 GiB; (c), (d) i (e) són fora de l'abast demanat.
+
+**Decisió implementada:** cinc preguntes separades (maquinari present, backend exposat
+pel sistema, backend suportat pel binari concret, dispositiu triat, pla executable).
+Capacitat (mida de la heap local del dispositiu) i pressupost (`VK_EXT_memory_budget`,
+una assignació del procés i no memòria lliure) es llegeixen de `vulkaninfo` només per
+a un dispositiu discret que cap font millor cobreixi; la capacitat mai substitueix la
+disponibilitat. Les targetes idèntiques no s'adivinen. Un nou emparellador
+(`runtime/device_matching.py`) només accepta un dispositiu de llama.cpp si és
+demostrablement l'accelerador seleccionat; tots els consumidors l'usen i, per a Vulkan,
+la preparació passa a `NOT_READY`/`UNKNOWN` si no es pot demostrar. CUDA i HIP conserven
+el comportament validat (un sol dispositiu s'accepta pel nom que sigui). El llistat
+d'adaptadors de Windows només identifica maquinari: backend Vulkan `UNKNOWN`, cap xifra
+de memòria. `classify_execution_environment` distingeix Windows, WSL1, WSL2 i Linux, i
+en WSL2 sense cap dispositiu Vulkan útil s'explica sense culpar el host ni usar cap
+runtime de Windows. L'entorn d'evidència Vulkan inclou dispositiu i versió de driver
+(`ComputeBackendInfo.driver_version`, camp opcional) i la cohort de velocitat només
+canvia per a registres Vulkan: els digests CUDA i CPU són idèntics.
+
+**Emparellament estricte (decisió de l'autor, 2026-10-19):** fins a tenir sortides reals
+de la B60, l'emparellament Vulkan és d'igualtat de nom després de normalitzacions
+innòcues (marques `(R)`/`(TM)` i una anotació final entre parèntesis); no s'admet cap
+coincidència parcial ni heurística tolerant (`RTX 2060` ≠ `RTX 2060 SUPER`). Sense
+coincidència o amb diversos dispositius indistingibles no se'n tria cap: no es fixa
+`--device` i la preparació és `UNKNOWN` o `NOT_READY`, mai `READY`. El motiu es mostra
+sempre i diu què s'havia seleccionat i què ha llistat el binari, per exemple *«llama-cli
+lists several vulkan devices (Vulkan0: X, Vulkan1: X) and none can be tied to 'X'; no
+device is selected automatically»*; arriba a l'etiqueta del pla i als avisos del pla. Si
+els noms de `vulkaninfo` i de llama.cpp difereixen a la B60, es registren tal com són i
+es corregeix en un canvi propi, no afluixant la regla.
+
+**Semàntica del pressupost de memòria Vulkan:** `heapBudget` és una estimació de l'SO o
+del driver de quanta memòria *aquest procés* pot assignar a la heap (pot dependre de la
+càrrega del sistema) i `heapUsage` és el que aquest procés ja hi té. No són VRAM lliure
+global: el pressupost es guarda com a disponibilitat només amb la reserva i el marge
+propis de Jaull a sobre, no se li resta l'ús del procés que només fa la consulta, mai es
+crea una disponibilitat a partir de la mida o de l'ús sols, la font queda etiquetada
+(`vulkan-memory-budget`) i `scan` mostra un avís que ho diu. Un pressupost nul o més gran
+que la heap es descarta.
+
+**Integració al flux normal (`uv run jaull`, 2026-10-19):** (1) l'avís de WSL2 («Running
+inside WSL2: no usable Vulkan accelerator is exposed here… does not show that the Windows
+host cannot accelerate the GPU») s'afegeix als avisos del perfil de maquinari, de manera
+que surt a `scan`, a la pantalla de maquinari del flux guiat i a `doctor`, no només a
+aquest últim; mai afirma que Windows tampoc pugui. (2) La pantalla de maquinari mostra,
+per a un accelerador que no és NVML, la capacitat com a VRAM de capçalera, la fila
+«Compute backend» (Vulkan, o «CPU only — … Vulkan not confirmed» si només Windows ha
+llistat l'adaptador) i l'avís del pressupost; el camí NVIDIA no canvia. (3) `jaull doctor`
+combina NVML, `vulkaninfo` i el llistat de Windows en un sol dispositiu i separa
+*detectat* («Accelerators», amb «vulkan: not confirmed (adapter listed by Windows)») de
+*executable* («Execution ready», que ara porta el motiu del dispositiu). (4) Un pla amb
+`UNKNOWN` per `SELECTED_DEVICE_NOT_IDENTIFIED` es bloqueja igual que `NOT_READY` a Results,
+Paths, Run, Validate i Benchmark; els altres `UNKNOWN` mantenen el comportament previ.
+(5) **Cap acció es pot saltar la comprovació:** Run i Benchmark tornen a preparar el pla i
+ara comproven la preparació *fresca* abans de llançar (abans només es mirava el pla amb què
+s'havia obert la pantalla), el benchmark es nega a mesurar un dispositiu Vulkan no
+identificat, i `benchmark_plan_speed` refusa un pla bloquejat. `jaull run` (CLI) continua
+sense concepte de preparació, també per a CUDA: és una ordre explícita i queda fora
+d'aquesta decisió.
+
+**Coherència de l'offloading:** en una prova inicial es van veure 28/28 blocs de Hardware
+Fit amb `--n-gpu-layers 23`; era un artefacte del fixture (una avaluació enregistrada per a
+una RTX 2060 de 6 GB combinada amb maquinari Intel). Amb l'estimador i la política de
+llançament reals sobre un perfil B60 simulat: si el model hi cap, Hardware Fit dona tots
+els blocs i el llançament `-1` («tot»); amb offloading parcial són dues magnituds
+diferents (blocs viables segons els pressupostos de bytes, i unitats de llama.cpp segons
+l'heurística conservadora del llançament) que mai es converteixen l'una en l'altra; sense
+cabuda no hi ha offloading; i amb capacitat coneguda però sense pressupost no es reclama
+mai VRAM (`effective_device` = CPU). Cap d'aquests nombres s'ha mesurat en una B60. La
+correspondència unitats↔blocs només existeix per a una compilació de llama.cpp en CUDA;
+per a Vulkan la comparació física amb la predicció continua `NOT_COMPARABLE`, i el
+refinament per tensors locals només s'aplica a una CUDA discreta. **Conseqüència de
+producte:** si el driver de la B60 no imprimeix pressupost, Jaull no reclamarà la GPU i
+recomanarà CPU fins que es validi físicament.
+
+**Motiu i conseqüència:** un binari que llista un dispositiu no demostra que sigui el
+bo, i una GPU Intel no implica Vulkan. La memòria observada continua sent la que
+informa llama.cpp (`RuntimeReportedAllocation`), sense pic de VRAM per a Vulkan, i la
+comparació física amb la predicció continua `NOT_COMPARABLE`. WSL2 no hereta Vulkan de
+Windows i no hi ha cap pont; si la B60 només funcionés des de Windows, caldria una
+decisió nova amb identitat de l'executable, traducció de rutes i gestió de processos.
+
+**Proves i evidència:** mòduls de proves nous i extensions als existents (tots sense
+GPU, xarxa ni TTY): `tests/test_vulkan_device_memory.py`, `test_windows_adapters.py`,
+`test_execution_environment.py`, `test_runtime_device_matching.py`,
+`test_vulkan_evidence_identity.py`, `test_vulkan_observation_and_paths.py` i, per a la
+integració, `test_intel_execution_gates.py`, `test_tui_intel_hardware.py`,
+`test_doctor_intel.py`, `test_intel_offload_coherence.py` i `test_tui_intel_flow.py` (que
+recorre les pantalles reals amb l'estimador, el rànquing, el planificador i l'assessor
+reals i només simula el Hub, les sondes de la màquina i els executables de llama.cpp,
+amb scaffolding a `tests/_intel_fixtures.py` i `tests/_intel_flow.py`). Els fixtures
+són sintètics: no hi ha cap captura real de la B60. **Estat: `IMPLEMENTED`; `VALIDATED`
+cap; `UNVERIFIED` el format de `vulkaninfo` amb pressupost, els noms de dispositiu, les
+línies `ggml_vulkan:`, la disponibilitat de `vulkaninfo.exe` a Windows i l'exposició de
+la GPU a WSL2; `BLOCKED_BY_ENVIRONMENT` totes les proves físiques.**
+
+**Validació local (Python 3.12.3):** 2938 proves passen; Ruff, mypy (259 fitxers),
+compileall i `git diff --check` passen. No s'ha executat cap prova en una GPU Intel, ni a
+Windows nadiu ni a WSL2, i no s'ha executat la matriu Windows/Python 3.13.
+
+**Límits pendents:** protocol físic a
+[biosfer-vulkan-validation-protocol.md](../biosfer-vulkan-validation-protocol.md);
+si `vulkaninfo` i
+llama.cpp anomenen la mateixa targeta diferent, Jaull no fixa `--device` i ho diu
+(`UNKNOWN`/`NOT_READY` amb motiu), sense error; no hi ha font de memòria per a Intel a
+Linux (`xe`) ni per DXGI. No s'implementen el pont WSL2→Windows, SYCL ni la qualitat sobre
+Vulkan. **Tancament:** amb això s'acaba el que es pot fer sense maquinari; no s'amplia cap
+funcionalitat més sobre fixtures sintètics. El pas següent és capturar les sortides reals
+(`vulkaninfo`, `vulkaninfo --summary`, `llama-cli --list-devices`, consulta d'adaptadors)
+a Windows i a WSL2 segons el protocol i corregir només el que mostrin. Pensat per a un
+commit independent de D097.
+
+**Fonts:** [disseny i estat](../vulkan-windows-wsl2.md),
+[emparellador](../../src/jaull/runtime/device_matching.py),
+[memòria Vulkan](../../src/jaull/hardware/vulkan.py),
+[adaptadors de Windows](../../src/jaull/hardware/windows_adapters.py),
+[entorn d'execució](../../src/jaull/domain/execution_environment.py), D097.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -1963,7 +2103,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D097 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D098 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

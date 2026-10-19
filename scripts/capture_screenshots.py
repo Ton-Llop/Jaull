@@ -388,6 +388,28 @@ class _ScriptAdvisor(AdvisorService):
             persisted_path=Path("experiments") / f"{record.identity.experiment_id}.json",
         )
 
+    def inspect_llama_cpp_runtime(  # type: ignore[no-untyped-def]
+        self, *, backend=None, selection=None, hardware=None
+    ):
+        """Preparing a plan re-probes llama.cpp; the fixtures must not see the real one.
+
+        Run and Benchmark check the readiness of the freshly prepared plan, so a probe
+        that reached the machine's own ``llama-cli`` would make these captures depend
+        on whether one is installed.
+        """
+        chosen = selection or self.select_runtime_backend(hardware)
+        return _runtime_capability_for(chosen.selected_backend)
+
+    def select_runtime_backend(self, hardware=None):  # type: ignore[no-untyped-def]
+        """The same CUDA machine the ranking context describes.
+
+        The fixture hardware only lists an NVML GPU, which real selection would read
+        as CPU; preparing the plan again must agree with the ranking, or the prepared
+        plan (full offload on a CPU backend) is rightly reported as unsupported.
+        """
+        del hardware
+        return _runtime_backend_selection(ComputeBackend.CUDA)
+
     def _plan_ranking_context(self, hardware_profile) -> PlanRankingContext:  # type: ignore[no-untyped-def]
         """Keep documentation fixtures independent from real local runtimes."""
         del hardware_profile

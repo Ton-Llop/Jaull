@@ -4,6 +4,7 @@ import platform
 import re
 from collections.abc import Callable
 
+from jaull.domain.execution_environment import wsl2_acceleration_note
 from jaull.domain.hardware import (
     AcceleratorProfile,
     BackendAvailability,
@@ -15,6 +16,7 @@ from jaull.hardware.memory import detect_memory
 from jaull.hardware.nvidia import NvmlProvider, detect_nvidia_gpus
 from jaull.hardware.storage import detect_storage
 from jaull.hardware.vulkan import VulkanCommandRunner, detect_vulkan_accelerators
+from jaull.hardware.windows_adapters import WindowsCommandRunner, detect_windows_adapters
 
 # Keys reported to ``on_step``, in the order they complete. The guided UI uses
 # these to advance a progress list as each real probe returns — there is no
@@ -31,6 +33,7 @@ def detect_hardware(
     on_step: Callable[[str], None] | None = None,
     *,
     vulkan_command_runner: VulkanCommandRunner | None = None,
+    windows_command_runner: WindowsCommandRunner | None = None,
 ) -> HardwareProfile:
     warnings: list[str] = []
     notify = on_step if on_step is not None else _ignore
@@ -46,10 +49,19 @@ def detect_hardware(
     warnings.extend(nvidia.warnings)
     vulkan = detect_vulkan_accelerators(vulkan_command_runner)
     warnings.extend(vulkan.warnings)
-    accelerators = _merge_accelerators(
+    accelerators = merge_accelerators(
         [*nvidia.accelerators],
         vulkan.accelerators,
     )
+    # Identification only, merged last: a backend probe's type and memory win,
+    # and an adapter no probe confirmed stays listed with no backend available.
+    windows = detect_windows_adapters(windows_command_runner)
+    warnings.extend(windows.warnings)
+    accelerators = merge_accelerators(accelerators, windows.accelerators)
+    # Said where the user already reads warnings (scan, the guided hardware screen),
+    # not only in `jaull doctor`.
+    if (note := wsl2_acceleration_note(os_name, accelerators)) is not None:
+        warnings.append(note)
     notify(STEP_GPU)
 
     storage = detect_storage()
@@ -84,7 +96,7 @@ def _os_display_name() -> str:
     return system or "unknown"
 
 
-def _merge_accelerators(
+def merge_accelerators(
     base: list[AcceleratorProfile],
     additions: list[AcceleratorProfile],
 ) -> list[AcceleratorProfile]:
@@ -225,3 +237,7 @@ def _availability_rank(availability: BackendAvailability) -> int:
     if availability is BackendAvailability.UNAVAILABLE:
         return 2
     return 1
+
+
+# Kept so existing callers and tests keep working; the public name is the contract.
+_merge_accelerators = merge_accelerators

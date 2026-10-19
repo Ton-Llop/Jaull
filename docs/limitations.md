@@ -30,10 +30,21 @@ README roadmap says so.
   memory.** The memory figure for a Vulkan-detected card is read from Linux DRM sysfs
   (`/sys/class/drm/card*/device/mem_info_vram_total`, and `mem_info_vram_used` when the
   driver exposes it), matched by PCI vendor and device ID. This means memory-based
-  compatibility on AMD works on **Linux with an amdgpu-style driver only**. It does not
-  work on Windows, on Intel or Apple accelerators, or when two identical cards match the
-  same PCI IDs — Vulkan's summary carries no PCI bus ID, so an ambiguous match is
-  discarded rather than guessed, and those machines fall back to system RAM.
+  compatibility on AMD works on **Linux with an amdgpu-style driver only**. For a discrete
+  device that source does not cover (Windows, Intel), Jaull reads the full `vulkaninfo`
+  report: the largest device-local heap is the capacity, and a `VK_EXT_memory_budget`
+  budget, when the driver prints one, is the availability. That budget is an OS/driver
+  allowance for the process, not measured free memory, and the reading is **unverified on
+  real Intel hardware**. Apple accelerators, and two identical cards matching the same
+  PCI IDs — Vulkan's summary carries no PCI bus ID, so an ambiguous match is discarded
+  rather than guessed — still report no memory and fall back to system RAM. Windows adapter
+  RAM (`Win32_VideoController.AdapterRAM`, a 32-bit field) is never used. See
+  [vulkan-windows-wsl2.md](vulkan-windows-wsl2.md).
+- **Windows and WSL2 are different environments.** WSL2 does not inherit Windows' Vulkan
+  support: without a usable Vulkan device inside the distribution Jaull reports that and
+  selects CPU, and it does not run a Windows runtime on WSL2's behalf (no bridge is
+  implemented). Windows-native Vulkan detection needs `vulkaninfo`; the Windows adapter
+  listing alone identifies an adapter but confirms no backend.
 - Shared-memory accelerators are deliberately excluded from both figures: their capacity
   *is* system RAM, not a second pool.
 - A software renderer (llvmpipe and similar, common under WSL) proves the Vulkan API is
@@ -43,7 +54,15 @@ README roadmap says so.
   hardware.** Backend detection, selection and the llama.cpp launch path exist and are
   unit-tested; no measurement on an AMD GPU backs them. Treat any HIP result as unverified
   until a physical run exists. The same caveat applies to Vulkan execution, which has been
-  exercised only through a user-reported detection bug, not through a measured run.
+  exercised only through a user-reported detection bug and automated tests with synthetic
+  output, not through a measured run. Device matching for Vulkan is stricter than for CUDA
+  and HIP (a card is pinned or marked ready only when the runtime's device is shown to be
+  the selected accelerator; a plan whose device is unidentified or absent is blocked in
+  the TUI, and Run and Benchmark re-check the freshly prepared plan before launching; the
+  explicit CLI command `jaull run` has no readiness check, for any backend), physical VRAM
+  comparison against a prediction stays
+  `NOT_COMPARABLE`, and no Vulkan peak-memory telemetry exists: `peak_vram_bytes` is
+  absent for Vulkan runs.
 
 ## Estimation
 

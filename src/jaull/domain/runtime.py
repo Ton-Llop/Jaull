@@ -343,6 +343,8 @@ class ExecutionReadinessReason(StrEnum):
     PROBE_FAILED = "probe_failed"
     SELECTED_BACKEND_EXPOSED = "selected_backend_exposed"
     SELECTED_BACKEND_NOT_EXPOSED = "selected_backend_not_exposed"
+    SELECTED_DEVICE_NOT_EXPOSED = "selected_device_not_exposed"
+    SELECTED_DEVICE_NOT_IDENTIFIED = "selected_device_not_identified"
     QUANTIZATION_DEPENDENCY_MISSING = "quantization_dependency_missing"
     QUANTIZATION_DEPENDENCY_UNKNOWN = "quantization_dependency_unknown"
     ARTIFACT_PREPARATION_REQUIRED = "artifact_preparation_required"

@@ -25,6 +25,7 @@ from jaull.domain.execution_plans import (
 )
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import (
+    ExecutionReadinessReason,
     ExecutionReadinessStatus,
     RuntimeName,
     RuntimeRecommendation,
@@ -239,12 +240,22 @@ def runtime_block_reason(plan: ExecutionPlan) -> str | None:
     inventing its own sentence. Only a conclusive ``NOT_READY`` blocks: an
     unknown readiness means the probe could not decide, and letting the attempt
     proceed yields a more precise error from the runtime layer than a guess.
+
+    One unknown does block: when the runtime lists several devices and none can
+    be tied to the selected accelerator, an attempt would let the runtime pick
+    the GPU, and the result would be attributed to a card nobody chose.
     """
 
     if plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE:
         return readiness_detail(plan)
     readiness = plan.execution_readiness
-    if readiness is None or readiness.status is not ExecutionReadinessStatus.NOT_READY:
+    if readiness is None:
+        return None
+    device_unidentified = (
+        readiness.status is ExecutionReadinessStatus.UNKNOWN
+        and readiness.reason is ExecutionReadinessReason.SELECTED_DEVICE_NOT_IDENTIFIED
+    )
+    if readiness.status is not ExecutionReadinessStatus.NOT_READY and not device_unidentified:
         return None
     detail = readiness.message or readiness.reason.value.replace("_", " ")
     required = plan.runtime_family.value

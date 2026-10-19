@@ -11,7 +11,8 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Digits, Footer, Static
 
-from jaull.domain.hardware import AcceleratorType, HardwareProfile
+from jaull.domain.hardware import AcceleratorType, ComputeBackend, HardwareProfile
+from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.warnings_panel import WarningsPanel
@@ -236,12 +237,31 @@ def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
         rows.append(("Accelerator", accelerator.name))
         if accelerator.dedicated_memory_bytes is not None:
             rows.append(("Accelerator memory", _fmt(accelerator.dedicated_memory_bytes)))
+            if accelerator.type is AcceleratorType.DEDICATED:
+                # The same headline an NVIDIA card gets: capacity, not availability.
+                rows.append(("VRAM", _fmt(accelerator.dedicated_memory_bytes)))
         elif accelerator.shared_memory:
             rows.append(("Accelerator memory", "shared system memory"))
+        rows.append(("Compute backend", _backend_summary(profile)))
     else:
         rows.append(("GPU", "none detected — CPU inference only"))
     rows.append(("Platform", f"{profile.os} ({profile.arch})"))
     return rows
+
+
+def _backend_summary(profile: HardwareProfile) -> str:
+    """Which backend Jaull would use for this accelerator, and whether it was confirmed.
+
+    Detecting an adapter is not confirming a backend: an adapter that only Windows
+    listed has its Vulkan backend unknown, and the machine stays on CPU until a probe
+    says otherwise.
+    """
+    selected = select_runtime_backend(profile).selected_backend
+    if selected is not ComputeBackend.CPU:
+        return {ComputeBackend.CUDA: "CUDA", ComputeBackend.HIP: "HIP"}.get(
+            selected, selected.value.capitalize()
+        )
+    return "CPU only — no accelerator backend confirmed (Vulkan not confirmed for this adapter)"
 
 
 def _fmt(byte_count: int) -> str:

@@ -28,6 +28,7 @@ from jaull.execution.errors import (
     ExecutionTimeoutError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.device_matching import RuntimeDeviceMatchReason, match_runtime_device
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _LIST_DEVICES_SOURCE = "llama-cli --list-devices"
@@ -172,6 +173,13 @@ def evaluate_execution_readiness(
             runtime_capability=runtime_capability,
             message=f"{selection.selected_backend.value} capability was not reported",
         )
+    if (
+        capability.state is LlamaCppBackendCapabilityState.CONFIRMED
+        and selection.selected_backend is ComputeBackend.VULKAN
+        and (blocked := _vulkan_device_readiness(selection, capability, runtime_capability))
+        is not None
+    ):
+        return blocked
     if capability.state is LlamaCppBackendCapabilityState.CONFIRMED:
         return _readiness(
             status=ExecutionReadinessStatus.READY,
@@ -200,6 +208,62 @@ def evaluate_execution_readiness(
         runtime_capability=runtime_capability,
         selected_backend_capability=capability,
         message=f"{selection.selected_backend.value} capability is unknown",
+    )
+
+
+def _vulkan_device_readiness(
+    selection: RuntimeBackendSelection,
+    capability: LlamaCppBackendCapability,
+    runtime_capability: LlamaCppRuntimeCapability,
+) -> ExecutionReadiness | None:
+    """A Vulkan binary exposing *a* device does not show it exposes *the* device.
+
+    Vulkan enumerates every adapter, software rasterisers and integrated GPUs
+    included. The backend only counts as ready when the selected accelerator is
+    one of the devices the binary actually listed; otherwise ``None`` is
+    returned and the caller keeps its ordinary decision.
+    """
+    match = match_runtime_device(selection, capability)
+    if match.device is not None:
+        return None
+    wanted = (
+        f"'{selection.selected_accelerator.name}'"
+        if selection.selected_accelerator is not None
+        else "the selected accelerator"
+    )
+    listed = _listed_devices(capability)
+    if match.reason is RuntimeDeviceMatchReason.AMBIGUOUS:
+        return _readiness(
+            status=ExecutionReadinessStatus.UNKNOWN,
+            reason=ExecutionReadinessReason.SELECTED_DEVICE_NOT_IDENTIFIED,
+            selection=selection,
+            runtime_capability=runtime_capability,
+            selected_backend_capability=capability,
+            message=(
+                f"llama-cli lists several vulkan devices ({listed}) and none can be "
+                f"tied to {wanted}; no device is selected automatically"
+            ),
+        )
+    software_only = match.reason is RuntimeDeviceMatchReason.NO_HARDWARE_DEVICE
+    return _readiness(
+        status=ExecutionReadinessStatus.NOT_READY,
+        reason=ExecutionReadinessReason.SELECTED_DEVICE_NOT_EXPOSED,
+        selection=selection,
+        runtime_capability=runtime_capability,
+        selected_backend_capability=capability,
+        message=(
+            f"llama-cli exposes only a software vulkan renderer ({listed}); "
+            f"{wanted} is not usable through it"
+            if software_only
+            else f"llama-cli did not list {wanted} among its vulkan devices ({listed})"
+        ),
+    )
+
+
+def _listed_devices(capability: LlamaCppBackendCapability) -> str:
+    """The runtime's own enumeration, as observed: ``Vulkan0: <name>, ...``."""
+    return ", ".join(
+        f"{device.runtime_id}: {device.name or 'unnamed'}" for device in capability.devices
     )
 
 

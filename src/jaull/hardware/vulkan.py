@@ -41,6 +41,15 @@ _GPU_HEADER_RE = re.compile(r"^\s*GPU\d+\s*:")
 _KEY_VALUE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9]*)\s*=\s*(.*?)\s*$")
 _VULKAN_COMMAND = ("vulkaninfo", "--summary")
 _VULKAN_TIMEOUT_SECONDS = 5.0
+# The summary carries no memory. The full report does, but it enumerates every
+# extension and property, so it is read only when a discrete device needs it.
+_VULKAN_MEMORY_COMMAND = ("vulkaninfo",)
+_VULKAN_MEMORY_TIMEOUT_SECONDS = 15.0
+_HEAP_START_RE = re.compile(r"^\s*memoryHeaps\[\d+\]")
+_LEADING_INT_RE = re.compile(r"^\s*(\d+)")
+_DEVICE_LOCAL_HEAP_FLAG = "MEMORY_HEAP_DEVICE_LOCAL_BIT"
+_VULKAN_MEMORY_SOURCE = "vulkan-memory-heap"
+_VULKAN_BUDGET_SOURCE = "vulkan-memory-budget"
 _DRM_ROOT = Path("/sys/class/drm")
 
 
@@ -48,6 +57,29 @@ _DRM_ROOT = Path("/sys/class/drm")
 class VulkanProbe:
     accelerators: list[AcceleratorProfile]
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class VulkanHeapMemory:
+    """The device-local heap of one device, as the Vulkan driver reports it.
+
+    ``total_bytes`` is the heap *size*: capacity, never free memory.
+    ``budget_bytes`` exists only when the driver implements
+    ``VK_EXT_memory_budget``. Per the extension it is a rough estimate of how
+    much this process can allocate before allocations fail or degrade, so it is
+    an OS/driver-defined allowance and not a free-memory measurement.
+    """
+
+    total_bytes: int
+    budget_bytes: int | None
+
+
+@dataclass(frozen=True)
+class VulkanDeviceHeaps:
+    vendor_id: str | None
+    device_id: str | None
+    name: str | None
+    heap: VulkanHeapMemory | None
 
 
 def detect_vulkan_accelerators(
@@ -94,7 +126,195 @@ def detect_vulkan_accelerators(
     warnings: list[str] = []
     if not accelerators:
         warnings.append("No Vulkan devices could be parsed from vulkaninfo output.")
+    if _needs_heap_memory(accelerators):
+        accelerators, memory_warnings = _with_heap_memory(accelerators, runner)
+        warnings.extend(memory_warnings)
     return VulkanProbe(accelerators=accelerators, warnings=warnings)
+
+
+def _needs_heap_memory(accelerators: list[AcceleratorProfile]) -> bool:
+    return any(_wants_heap_memory(item) for item in accelerators)
+
+
+def _wants_heap_memory(accelerator: AcceleratorProfile) -> bool:
+    """Only a discrete device with no memory from a better source reads the heaps.
+
+    NVIDIA memory belongs to NVML, which the detector merges in; running the
+    full report for those devices would only add latency.
+    """
+    return (
+        accelerator.type is AcceleratorType.DEDICATED
+        and accelerator.vendor is not AcceleratorVendor.NVIDIA
+        and not accelerator.shared_memory
+        and accelerator.dedicated_memory_bytes is None
+    )
+
+
+def _with_heap_memory(
+    accelerators: list[AcceleratorProfile], runner: VulkanCommandRunner
+) -> tuple[list[AcceleratorProfile], list[str]]:
+    try:
+        completed = runner(_VULKAN_MEMORY_COMMAND, _VULKAN_MEMORY_TIMEOUT_SECONDS)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("vulkaninfo memory report failed", exc_info=exc)
+        return accelerators, [_HEAP_MEMORY_UNKNOWN]
+    if completed.returncode != 0:
+        return accelerators, [_HEAP_MEMORY_UNKNOWN]
+
+    reported = parse_vulkan_heap_memory(completed.stdout)
+    enriched: list[AcceleratorProfile] = []
+    for accelerator in accelerators:
+        heap = _matching_heap(accelerator, accelerators, reported)
+        enriched.append(
+            _with_heap(accelerator, heap) if heap is not None else accelerator
+        )
+    warnings: list[str] = []
+    if any(
+        _wants_heap_memory(item) and item.dedicated_memory_bytes is None for item in enriched
+    ):
+        warnings.append(_HEAP_MEMORY_UNKNOWN)
+    if any(_VULKAN_BUDGET_SOURCE in item.detection_sources for item in enriched):
+        warnings.append(_BUDGET_SEMANTICS)
+    return enriched, warnings
+
+
+_BUDGET_SEMANTICS = (
+    "Vulkan memory budget (VK_EXT_memory_budget) is an OS/driver estimate of how much "
+    "this process may allocate and can depend on system load; it is not a free-VRAM "
+    "measurement, and Jaull applies its own reserve and margin on top of it."
+)
+
+_HEAP_MEMORY_UNKNOWN = (
+    "Vulkan device memory could not be read unambiguously; "
+    "accelerator memory is unknown, not assumed."
+)
+
+
+def _device_key(
+    vendor_id: str | None, device_id: str | None, name: str | None
+) -> tuple[str | None, str | None, str | None]:
+    return (
+        _normalized_pci_id(vendor_id),
+        _normalized_pci_id(device_id),
+        name.strip() if name is not None else None,
+    )
+
+
+def _matching_heap(
+    accelerator: AcceleratorProfile,
+    all_accelerators: list[AcceleratorProfile],
+    reported: list[VulkanDeviceHeaps],
+) -> VulkanHeapMemory | None:
+    """Join a summary device to its heaps, or refuse when the join is not unique.
+
+    The summary has no PCI bus ID, so two identical cards cannot be told apart.
+    """
+    if not _wants_heap_memory(accelerator):
+        return None
+    key = _device_key(accelerator.vendor_id, accelerator.device_id, accelerator.name)
+    if None in key:
+        return None
+    same_in_summary = [
+        item
+        for item in all_accelerators
+        if _device_key(item.vendor_id, item.device_id, item.name) == key
+    ]
+    same_in_report = [
+        item for item in reported if _device_key(item.vendor_id, item.device_id, item.name) == key
+    ]
+    if len(same_in_summary) != 1 or len(same_in_report) != 1:
+        return None
+    return same_in_report[0].heap
+
+
+def _with_heap(
+    accelerator: AcceleratorProfile, heap: VulkanHeapMemory
+) -> AcceleratorProfile:
+    sources = [*accelerator.detection_sources, _VULKAN_MEMORY_SOURCE]
+    if heap.budget_bytes is not None:
+        sources.append(_VULKAN_BUDGET_SOURCE)
+    return accelerator.model_copy(
+        update={
+            "dedicated_memory_bytes": heap.total_bytes,
+            "available_memory_bytes": heap.budget_bytes,
+            "detection_sources": sources,
+        }
+    )
+
+
+def parse_vulkan_heap_memory(output: str) -> list[VulkanDeviceHeaps]:
+    """Read each device's largest device-local heap from a full ``vulkaninfo`` report.
+
+    Host-only heaps are ignored. A budget that is zero or larger than the heap
+    itself is not a usable allowance and is dropped, leaving capacity only.
+    """
+    devices: list[dict[str, str]] = []
+    heaps: list[list[dict[str, int | bool]]] = []
+    current_heap: dict[str, int | bool] | None = None
+    for line in output.splitlines():
+        if _GPU_HEADER_RE.match(line):
+            devices.append({})
+            heaps.append([])
+            current_heap = None
+            continue
+        if not devices:
+            continue
+        if _HEAP_START_RE.match(line):
+            current_heap = {"device_local": False}
+            heaps[-1].append(current_heap)
+            continue
+        stripped = line.strip()
+        if current_heap is not None and stripped == _DEVICE_LOCAL_HEAP_FLAG:
+            current_heap["device_local"] = True
+            continue
+        match = _KEY_VALUE_RE.match(line)
+        if match is None:
+            is_section_header = stripped.endswith(":") and not line.startswith((" ", "\t"))
+            if stripped.startswith("memoryType") or is_section_header:
+                current_heap = None
+            continue
+        key, value = match.groups()
+        if key in {"vendorID", "deviceID", "deviceName"}:
+            devices[-1].setdefault(key, value)
+        elif current_heap is not None and key in {"size", "budget", "usage"}:
+            number = _LEADING_INT_RE.match(value)
+            if number is not None:
+                current_heap[key] = int(number.group(1))
+        elif key.startswith("memoryType"):
+            current_heap = None
+
+    return [
+        VulkanDeviceHeaps(
+            vendor_id=device.get("vendorID"),
+            device_id=device.get("deviceID"),
+            name=device.get("deviceName"),
+            heap=_largest_device_local_heap(device_heaps),
+        )
+        for device, device_heaps in zip(devices, heaps, strict=True)
+        if "deviceName" in device
+    ]
+
+
+def _largest_device_local_heap(
+    heaps: list[dict[str, int | bool]],
+) -> VulkanHeapMemory | None:
+    candidates = [
+        heap
+        for heap in heaps
+        if heap.get("device_local") is True
+        and isinstance(heap.get("size"), int)
+        and int(heap["size"]) > 0
+    ]
+    if not candidates:
+        return None
+    largest = max(candidates, key=lambda heap: int(heap["size"]))
+    size = int(largest["size"])
+    budget = largest.get("budget")
+    usable = (
+        int(budget) if isinstance(budget, int) and not isinstance(budget, bool)
+        and 0 < int(budget) <= size else None
+    )
+    return VulkanHeapMemory(total_bytes=size, budget_bytes=usable)
 
 
 def accelerators_from_summary(
@@ -145,6 +365,8 @@ def _parse_devices(output: str) -> list[dict[str, str]]:
             "deviceType",
             "deviceName",
             "driverName",
+            "driverInfo",
+            "driverVersion",
         }:
             continue
         if current is None:
@@ -209,6 +431,7 @@ def _accelerator_from_device(
                 api_version=device.get("apiVersion"),
                 device_name=name,
                 driver_name=driver,
+                driver_version=device.get("driverInfo") or device.get("driverVersion"),
                 software_renderer=software,
             ),
             software=software,
@@ -406,7 +629,10 @@ def _vendor(vendor_id: str | None) -> AcceleratorVendor:
 
 __all__ = [
     "VulkanCommandRunner",
+    "VulkanDeviceHeaps",
+    "VulkanHeapMemory",
     "VulkanProbe",
     "accelerators_from_summary",
     "detect_vulkan_accelerators",
+    "parse_vulkan_heap_memory",
 ]

@@ -214,6 +214,12 @@ class RecommendationExecutionScreen(Screen[None]):
                         hardware=hardware,
                         on_progress=self._post_step,
                     )
+                    # The screen opened with the readiness of an earlier plan; the one
+                    # just prepared carries the fresh readiness, and a device or runtime
+                    # that is no longer confirmed must not be launched.
+                    if (blocked := runtime_block_reason(prepared_plan.plan)) is not None:
+                        self._post_generation_failed(blocked, None)
+                        return
                     artifact = prepared_plan.artifact
                     runtime = prepared_plan.plan.runtime
                 elif runtime.runtime is RuntimeName.TRANSFORMERS:

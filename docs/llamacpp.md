@@ -111,8 +111,21 @@ Check the runtime device list before using it through Jaull:
 ```
 
 Jaull only pins `--device Vulkan0` (or another reported identifier) after this
-probe exposes a ready Vulkan device. `vulkaninfo` alone is hardware discovery;
-it does not prove that a particular `llama-cli` binary was built with Vulkan.
+probe exposes a ready Vulkan device **that it can tie to the selected accelerator** by
+name. llama.cpp's numbering is its own (`Vulkan1` may be the card you want, with a
+software renderer or an integrated GPU at `Vulkan0`); with several indistinguishable
+devices Jaull leaves the choice automatic and reports the readiness as unknown.
+`vulkaninfo` alone is hardware discovery; it does not prove that a particular
+`llama-cli` binary was built with Vulkan.
+
+**Windows.** Use a Vulkan-enabled `llama-cli.exe` (a Vulkan release build, or a build with
+`-DGGML_VULKAN=ON` and the Vulkan SDK), record its SHA256, and pass it with
+`--llama-cli "C:\path with spaces\llama-cli.exe"`; it is executed as a single argument,
+never through a shell. **WSL2.** Build a separate Linux Vulkan runtime only if
+`vulkaninfo --summary` inside the distribution lists a real device; a Windows
+`llama-cli.exe` is not launched from WSL2. See
+[vulkan-windows-wsl2.md](vulkan-windows-wsl2.md) and the
+[physical validation protocol](biosfer-vulkan-validation-protocol.md).
 
 ### HIP/ROCm build (GGUF)
 

@@ -78,6 +78,9 @@ class ComputeBackendInfo(BaseModel):
     api_version: str | None = None
     device_name: str | None = None
     driver_name: str | None = None
+    # Opaque, as printed by the probe (a Mesa string or a vendor build number).
+    # Evidence compares it for equality only; Jaull never orders driver versions.
+    driver_version: str | None = None
     software_renderer: bool = False
 
 

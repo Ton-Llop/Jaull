@@ -35,6 +35,7 @@ from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
+    LlamaCppBackendCapability,
     LlamaCppRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeName,
@@ -52,6 +53,7 @@ from jaull.presentation.plan_labels import (
     runtime_block_reason,
 )
 from jaull.recommendation.models import ModelRecommendation
+from jaull.runtime.device_matching import match_runtime_device
 from jaull.tui import palette
 from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
@@ -377,10 +379,20 @@ class RecommendationBenchmarkScreen(Screen[None]):
             for_benchmark=True,
         )
         plan = prepared.plan
+        # The readiness the screen opened with may be stale; the plan just prepared
+        # carries the fresh one, and an unconfirmed device or runtime is not measured.
+        if (blocked := runtime_block_reason(plan)) is not None:
+            raise BenchmarkRunnerError(blocked)
         if plan.hardware is None or plan.backend_selection is None:
             raise BenchmarkRunnerError("Prepared execution plan is incomplete.")
         backend = _benchmark_backend(plan.runtime, plan.backend_selection.selected_backend)
         device = _benchmark_device(backend, plan)
+        if backend is ComputeBackend.VULKAN and device is None:
+            # Without -dev the runtime would choose a Vulkan device itself.
+            raise BenchmarkRunnerError(
+                "The Vulkan device could not be identified from the runtime's device "
+                "list; nothing was measured."
+            )
         self._post_step(f"Running selected benchmark: {backend.value}")
         request = BenchmarkRequest(
             artifact=prepared.artifact,
@@ -1132,12 +1144,15 @@ def _benchmark_device(backend: ComputeBackend, plan: ExecutionPlan) -> str | Non
     if backend is ComputeBackend.CPU:
         return "none"
     readiness = plan.execution_readiness
-    if readiness is None or readiness.selected_backend_capability is None:
+    capability = readiness.selected_backend_capability if readiness is not None else None
+    if (
+        plan.backend_selection is None
+        or not isinstance(capability, LlamaCppBackendCapability)
+        or not capability.devices
+    ):
         return None
-    devices = readiness.selected_backend_capability.devices
-    if not devices:
-        return None
-    return devices[0].runtime_id
+    matched = match_runtime_device(plan.backend_selection, capability).device
+    return matched.runtime_id if matched is not None else None
 
 
 def _benchmark_gpu_layers(

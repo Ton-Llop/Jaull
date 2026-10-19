@@ -35,6 +35,7 @@ from jaull.domain.runtime import (
 )
 from jaull.execution.ports import ExecutionBackendProtocol
 from jaull.observability.provenance import capture_git_commit
+from jaull.runtime.device_matching import match_runtime_device
 from jaull.runtime.llama_bench_capability import (
     enrich_capability_from_benchmark_output,
     inspect_llama_bench,
@@ -236,8 +237,18 @@ def _build_requests(
                     reason=f"{selected.value} has no runtime device id.",
                 )
             )
+        elif (match := match_runtime_device(matrix.backend_selection, capability)).device is None:
+            skipped.append(
+                BenchmarkMatrixSkip(
+                    backend=selected,
+                    reason=(
+                        f"{selected.value} runtime device could not be identified "
+                        f"({match.reason.value.replace('_', ' ')})."
+                    ),
+                )
+            )
         else:
-            device = capability.devices[0].runtime_id
+            device = match.device.runtime_id
             layers = matrix.selected_gpu_layers or (_runtime_gpu_layers(matrix.runtime),)
             for gpu_layers in layers:
                 requests.append(

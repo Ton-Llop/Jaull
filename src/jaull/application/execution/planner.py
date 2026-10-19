@@ -41,6 +41,7 @@ from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessStatus,
+    LlamaCppBackendCapability,
     LlamaCppRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeCapability,
@@ -51,6 +52,7 @@ from jaull.domain.runtime import (
 )
 from jaull.execution_plans.service import build_execution_plan
 from jaull.runtime import service as runtime_service
+from jaull.runtime.device_matching import match_runtime_device
 from jaull.runtime.llama_cpp import build as build_llama_cpp_launch
 from jaull.runtime.llama_cpp_tensor_policy import LlamaCppTensorContext
 from jaull.runtime.policies import LLAMA_CPP_DEFAULT_CONTEXT_SIZE
@@ -236,9 +238,14 @@ def _apply_backend_device(
     ):
         return rec
     capability = execution_readiness.selected_backend_capability
-    if capability is None or not capability.devices:
+    if not isinstance(capability, LlamaCppBackendCapability) or not capability.devices:
         return rec
-    runtime_id = capability.devices[0].runtime_id
+    # The runtime's numbering is its own: pin only a device that is provably the
+    # selected accelerator, never simply the first one it listed.
+    matched = match_runtime_device(backend_selection, capability).device
+    if matched is None:
+        return rec
+    runtime_id = matched.runtime_id
     if not runtime_id.strip():
         return rec
     updated = rec.model_copy(

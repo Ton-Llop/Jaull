@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from jaull.domain.enums import DiagnosticStatus
+from jaull.domain.execution_environment import wsl2_acceleration_note
 from jaull.domain.hardware import (
     AcceleratorProfile,
     AcceleratorType,
@@ -22,6 +23,7 @@ from jaull.domain.hardware import (
 from jaull.domain.model import DiagnosticResult
 from jaull.domain.runtime import (
     ExecutionReadiness,
+    ExecutionReadinessReason,
     ExecutionReadinessStatus,
     LlamaCppBinaryStatus,
     LlamaCppRuntimeCapability,
@@ -30,8 +32,10 @@ from jaull.domain.runtime import (
     RuntimeBackendSelection,
 )
 from jaull.execution.host import HostExecutionBackend
+from jaull.hardware.detector import merge_accelerators
 from jaull.hardware.nvidia import detect_nvidia_gpus
 from jaull.hardware.vulkan import detect_vulkan_accelerators
+from jaull.hardware.windows_adapters import detect_windows_adapters
 from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
@@ -169,11 +173,16 @@ def _check_nvidia_gpu() -> DiagnosticResult:
     )
 
 
+def _detected_accelerators() -> list[AcceleratorProfile]:
+    """What the probes found, one entry per device: NVML, Vulkan and the Windows listing."""
+    accelerators = merge_accelerators(
+        detect_nvidia_gpus().accelerators, detect_vulkan_accelerators().accelerators
+    )
+    return merge_accelerators(accelerators, detect_windows_adapters().accelerators)
+
+
 def _check_accelerators() -> DiagnosticResult:
-    accelerators = [
-        *detect_nvidia_gpus().accelerators,
-        *detect_vulkan_accelerators().accelerators,
-    ]
+    accelerators = _detected_accelerators()
     if not accelerators:
         return DiagnosticResult(
             name="Accelerators",
@@ -189,11 +198,18 @@ def _check_accelerators() -> DiagnosticResult:
         )
         for accelerator in accelerators
     )
+    detail = " | ".join(_accelerator_detail(item) for item in accelerators)
+    note = wsl2_acceleration_note(_os_label(), accelerators)
     return DiagnosticResult(
         name="Accelerators",
         status=DiagnosticStatus.OK if has_hardware_backend else DiagnosticStatus.WARN,
-        detail=" | ".join(_accelerator_detail(item) for item in accelerators),
+        detail=f"{detail}. {note}" if note else detail,
     )
+
+
+def _os_label() -> str:
+    """Same ``"<system> <release>"`` shape the hardware profile records."""
+    return f"{platform.system()} {platform.release()}".strip()
 
 
 def _check_preferred_backend(selection: RuntimeBackendSelection) -> DiagnosticResult:
@@ -252,10 +268,7 @@ def _check_pytorch_runtime(
 
 
 def _runtime_hardware_profile() -> HardwareProfile:
-    accelerators = [
-        *detect_nvidia_gpus().accelerators,
-        *detect_vulkan_accelerators().accelerators,
-    ]
+    accelerators = _detected_accelerators()
     return HardwareProfile(
         os=platform.system() or "unknown",
         arch=platform.machine() or "unknown",
@@ -295,6 +308,15 @@ def _runtime_capability_detail(capability: LlamaCppRuntimeCapability) -> str:
     return f"{version or 'available'}{suffix}"
 
 
+# Reasons whose message carries the facts (what was selected, what the runtime listed).
+_DEVICE_REASONS = frozenset(
+    {
+        ExecutionReadinessReason.SELECTED_DEVICE_NOT_EXPOSED,
+        ExecutionReadinessReason.SELECTED_DEVICE_NOT_IDENTIFIED,
+    }
+)
+
+
 def _readiness_detail(readiness: ExecutionReadiness) -> str:
     label = {
         ExecutionReadinessStatus.READY: "yes",
@@ -302,6 +324,8 @@ def _readiness_detail(readiness: ExecutionReadiness) -> str:
         ExecutionReadinessStatus.NOT_READY: "no",
         ExecutionReadinessStatus.UNKNOWN: "unknown",
     }[readiness.status]
+    if readiness.reason in _DEVICE_REASONS and readiness.message:
+        return f"{label} · {readiness.message}"
     return f"{label} · {readiness.reason.value}"
 
 
@@ -336,6 +360,13 @@ def _backend_detail(
         return f"{backend.value}: unknown"
     if backend is ComputeBackend.VULKAN and info.software_renderer:
         return "vulkan: software renderer only"
+    if (
+        backend is ComputeBackend.VULKAN
+        and info.availability is BackendAvailability.UNKNOWN
+        and info.source == "windows-wmi"
+    ):
+        # Detected is not executable: Windows lists the adapter, no probe confirmed Vulkan.
+        return "vulkan: not confirmed (adapter listed by Windows)"
     return f"{backend.value}: {info.availability.value}"
 
 
