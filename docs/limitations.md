@@ -6,6 +6,13 @@ README roadmap says so.
 
 ## Scope
 
+- HellaSwag quality evaluation supports a diagnostic CPU/CUDA/confirmed-Vulkan contract
+  (schema 3), but CPU/Vulkan physical validation remains pending. CUDA results from the
+  historical audited build remain distinct. IFEval ranking still requires its audited
+  CUDA protocol. Native Windows evaluation requires WSL; this pilot does not bridge a
+  Windows GPU into WSL or install a host `llama-server`. CPU smoke/100-example runs are
+  bounded at 30 minutes/six hours and can time out even if the model fits memory.
+
 - `scan`, `inspect`, `estimate`, `doctor`, the TUI's analysis screens and guided
   recommendations **never** download model weights or run inference. Only `jaull run`,
   validation and benchmarking do, and only when explicitly asked.

@@ -7,6 +7,10 @@ dependency rules. The dated pipeline walkthrough is archived at
 Jaull is still a **modular Python monolith** today: no network workers or remote
 executor. Docker is optional and confined to the explicit quality pilot. CLI and TUI
 evaluation actions can start it, never recommendation or application startup.
+HellaSwag evaluation supports an explicit CPU/CUDA/confirmed-Vulkan runtime contract
+(record schema 3), independent of normal-plan placement. Historical CUDA schemas 1/2
+remain readable; IFEval ranking retains its audited contract. The container evaluates
+HTTP evidence while the host owns `llama-server`; `make setup` builds only the evaluator.
 Guided recommendation remains metadata-only,
 but explicit local execution paths
 already exist: `jaull run` resolves, downloads, verifies and executes single-file GGUF

@@ -162,11 +162,16 @@ def validate_scoring_request(payload: dict[str, Any]) -> None:
         raise ValueError("Scoring request differs from the observed one-slot protocol")
 
 
-def validate_scoring_response(payload: dict[str, Any], response: dict[str, Any]) -> None:
+def validate_scoring_response(
+    payload: dict[str, Any],
+    response: dict[str, Any],
+    *,
+    expected_fingerprint: str = "b10357-689e227db",
+) -> None:
     entry = response["choices"][0]["logprobs"]["content"][0]
     top = entry.get("top_logprobs", [])
     if (
-        response.get("system_fingerprint") != "b10357-689e227db"
+        response.get("system_fingerprint") != expected_fingerprint
         or len(response["choices"][0]["logprobs"]["content"]) != 1
         or response.get("usage", {}).get("completion_tokens") != 1
         or response.get("usage", {}).get("prompt_tokens") != len(payload["prompt"])
@@ -201,6 +206,24 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
     config["task"] = task
     artifact = json.loads((output / "verified-artifact.json").read_text())
     validate_artifact_identity(artifact)
+    commands = json.loads((output / "commands.json").read_text())
+    execution = commands.get("execution")
+    fingerprint = "b10357-689e227db"
+    if execution is not None:
+        # The host and record importer validate the complete execution contract.
+        # The evaluator independently binds HTTP responses to that exact build.
+        builds = re.findall(
+            r"(?:version:\s*|\bb)(\d+)\s*(?:\(|-)([0-9a-f]{7,40})\)?",
+            execution["version_text"],
+        )
+        if (
+            execution["protocol"] != "observable-runtime-v2"
+            or len(set(builds)) != 1
+            or execution["fingerprint"] != f"b{builds[0][0]}-{builds[0][1]}"
+            or execution["server_sha256"] != commands["server_sha256"]
+        ):
+            raise ValueError("Missing/mismatched observable runtime build identity")
+        fingerprint = execution["fingerprint"]
     with Path("/artifact/model.gguf").open("rb") as model:
         digest = hashlib.file_digest(model, "sha256").hexdigest()
     if digest != artifact["sha256"]:
@@ -218,6 +241,8 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
         != artifact["local_path"]
     ):
         raise ValueError("Server slot/context/logprob settings differ from the pilot")
+    if execution is not None and props["default_generation_settings"]["params"].get("seed") != 0:
+        raise ValueError("Effective server seed is missing or differs from the evaluation protocol")
     write_json(
         output / "evaluator-config.json",
         {
@@ -268,7 +293,9 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
                     response = super()._post_with_retries(url, payload, **kwargs)
                     record["response"] = response
                     if url == self.completions_url:
-                        validate_scoring_response(payload, response)
+                        validate_scoring_response(
+                            payload, response, expected_fingerprint=fingerprint
+                        )
                     return response
                 except Exception as exc:
                     record["error"] = f"{type(exc).__name__}: {exc}"
@@ -292,7 +319,7 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
                         raise ValueError("Context overflow or ambiguous tokenization boundary")
                 return super().loglikelihood(requests, disable_tqdm=disable_tqdm)
 
-        lm = CheckedGGUF(base_url=base_url, parallel=1, temperature=0, timeout=15)
+        lm = CheckedGGUF(base_url=base_url, parallel=1, temperature=0, timeout=120)
         result = simple_evaluate(
             model=lm,
             tasks=[config],
@@ -327,7 +354,14 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", required=True, choices=["http://host.docker.internal:18083"])
+    parser.add_argument(
+        "--base-url",
+        required=True,
+        choices=[
+            "http://host.docker.internal:18083",
+            "http://127.0.0.1:18083",
+        ],
+    )
     parser.add_argument("--output", type=Path, default=Path("/output"))
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
     args = parser.parse_args()

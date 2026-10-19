@@ -20,4 +20,5 @@ RUN python -c "from lm_eval import simple_evaluate; from lm_eval.tasks._yaml_loa
 RUN python -c "from pilot.quality_eval import ifeval; ifeval.verify_installed_sources(); from lm_eval.tasks._yaml_loader import load_yaml; ifeval.validate_task(load_yaml('/pilot/pilot/quality_eval/suite_ifeval.yaml', resolve_func=True))"
 LABEL io.jaull.quality.artifact-contract="exact-local-gguf-v1"
 LABEL io.jaull.quality.suites="hellaswag-v1,ifeval-chat-v1"
+LABEL io.jaull.quality.runtime-contract="observable-runtime-v2"
 ENTRYPOINT ["python", "-m", "pilot.quality_eval.evaluate"]

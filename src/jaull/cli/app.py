@@ -24,6 +24,7 @@ from jaull.cli.inspect import run_inspect
 from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setup
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.scan import run_scan
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
@@ -427,40 +428,70 @@ def quality_setup_command(
 
 
 @quality_app.command(
-    "run", help="Evaluate explicit local GGUFs sequentially; never download/build.",
+    "run",
+    help="Evaluate explicit local GGUFs sequentially; never download/build.",
 )
 def quality_run_command(
     artifact: list[Path] = typer.Option(
-        ..., "--artifact", help="ModelArtifact JSON. Repeat for sequential evaluation.",
+        ...,
+        "--artifact",
+        help="ModelArtifact JSON. Repeat for sequential evaluation.",
     ),
     dataset_file: Path = typer.Option(
-        ..., "--dataset-file", help="Pinned local validation Parquet.",
+        ...,
+        "--dataset-file",
+        help="Pinned local validation Parquet.",
     ),
     llama_server: Path = typer.Option(
-        ..., "--llama-server", help="Audited host llama-server binary.",
+        ...,
+        "--llama-server",
+        help="Audited host llama-server binary.",
     ),
     image: str = typer.Option(..., "--image", help="Already-built evaluator image (never pulled)."),
     output: Path = typer.Option(
-        ..., "--output", help="Fresh campaign directory for logs and bundles.",
+        ...,
+        "--output",
+        help="Fresh campaign directory for logs and bundles.",
     ),
     pilot_root: Path = typer.Option(
-        Path(), "--pilot-root", help="Trusted Jaull source-checkout root.",
+        Path(),
+        "--pilot-root",
+        help="Trusted Jaull source-checkout root.",
     ),
     profile: QualityProfile = typer.Option(
-        QualityProfile.SMOKE, "--profile",
+        QualityProfile.SMOKE,
+        "--profile",
         help="Fixed smoke, limited 100-sample or full IFEval chat profile.",
     ),
+    backend: ComputeBackend | None = typer.Option(
+        None,
+        "--backend",
+        help="Evaluation placement: cpu, cuda or vulkan; default auto. No explicit-GPU fallback.",
+    ),
     as_json: bool = typer.Option(
-        False, "--json", help="Emit completion ids or an explicit failure.",
+        False,
+        "--json",
+        help="Emit completion ids or an explicit failure.",
     ),
 ) -> None:
-    raise typer.Exit(code=run_quality([
-        QualityRunRequest(
-            artifact_json=path, dataset_file=dataset_file, llama_server=llama_server,
-            image=image, output=output / f"run-{index:02d}", pilot_root=pilot_root, profile=profile,
+    raise typer.Exit(
+        code=run_quality(
+            [
+                QualityRunRequest(
+                    artifact_json=path,
+                    dataset_file=dataset_file,
+                    llama_server=llama_server,
+                    image=image,
+                    output=output / f"run-{index:02d}",
+                    pilot_root=pilot_root,
+                    profile=profile,
+                    backend=backend,
+                )
+                for index, path in enumerate(artifact, start=1)
+            ],
+            as_json=as_json,
         )
-        for index, path in enumerate(artifact, start=1)
-    ], as_json=as_json))
+    )
 
 
 @quality_app.command(

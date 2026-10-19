@@ -28,6 +28,30 @@ from pilot.quality_eval.evaluate import (
 SUITES_LABEL = "io.jaull.quality.suites"
 
 
+def inspect_runtime(server: Path) -> tuple[str, Any]:
+    """Pin the exact executable around lightweight probes; never load a model."""
+    from jaull.domain.runtime import LlamaCppBinaryStatus
+    from jaull.evaluation.quality_runtime import fingerprint_from_version
+    from jaull.execution.host import HostExecutionBackend
+    from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
+
+    with server.open("rb") as handle:
+        sha = hashlib.file_digest(handle, "sha256").hexdigest()
+    capability = inspect_llama_cpp_runtime(backend=HostExecutionBackend(), llama_cli_path=server)
+    if (
+        capability.binary_status is not LlamaCppBinaryStatus.AVAILABLE
+        or not capability.version_text
+    ):
+        raise ValueError(
+            "Runtime probes failed: executable llama-server and build metadata required."
+        )
+    fingerprint_from_version(capability.version_text)
+    with server.open("rb") as handle:
+        if hashlib.file_digest(handle, "sha256").hexdigest() != sha:
+            raise ValueError("Runtime binary changed during inspection.")
+    return sha, capability
+
+
 def _dataset_pin(suite: str) -> tuple[str, str, Callable[[Path], bytes]]:
     if suite == "ifeval":
         from pilot.quality_eval import ifeval
@@ -89,14 +113,22 @@ def prepare_dataset(path: Path, *, allow_download: bool = False, suite: str = "h
 
 
 def prepare_infrastructure(
-    dataset: Path, server: Path, image_name: str, *, allow_download: bool = False,
+    dataset: Path,
+    server: Path,
+    image_name: str,
+    *,
+    allow_download: bool = False,
     suite: str = "hellaswag",
+    observable_runtime: bool = False,
 ) -> dict[str, Any]:
     if not server.is_file() or not os.access(server, os.X_OK):
         raise ValueError("Runtime unavailable: select an executable pinned llama-server.")
-    with server.open("rb") as handle:
-        if hashlib.file_digest(handle, "sha256").hexdigest() != SERVER_SHA256:
-            raise ValueError("Runtime unavailable: llama-server differs from the audited pin.")
+    if observable_runtime:
+        inspect_runtime(server)
+    else:
+        with server.open("rb") as handle:
+            if hashlib.file_digest(handle, "sha256").hexdigest() != SERVER_SHA256:
+                raise ValueError("Runtime unavailable: llama-server differs from the audited pin.")
     try:
         images = json.loads(subprocess.check_output(
             ["docker", "image", "inspect", image_name], text=True, stderr=subprocess.PIPE,
@@ -110,6 +142,11 @@ def prepare_infrastructure(
         raise ValueError("Invalid evaluator image inspection response.")
     image = images[0]
     validate_evaluator_image(image, suite=suite)
+    if observable_runtime:
+        from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_LABEL, QUALITY_RUNTIME_PROTOCOL
+
+        if image["Config"]["Labels"].get(QUALITY_RUNTIME_LABEL) != QUALITY_RUNTIME_PROTOCOL:
+            raise ValueError("Rebuild the evaluator image: observable-runtime-v2 contract missing.")
     if (
         not isinstance(image.get("Id"), str)
         or re.fullmatch("sha256:[0-9a-f]{64}", image["Id"]) is None
@@ -128,11 +165,16 @@ def main() -> None:
     parser.add_argument("--allow-dataset-download", action="store_true")
     # Which pinned dataset and image capability to check; HellaSwag keeps its old call.
     parser.add_argument("--suite", choices=("hellaswag", "ifeval"), default="hellaswag")
+    parser.add_argument("--observable-runtime", action="store_true")
     args = parser.parse_args()
     try:
         image = prepare_infrastructure(
-            args.dataset_file, args.llama_server, args.image,
-            allow_download=args.allow_dataset_download, suite=args.suite,
+            args.dataset_file,
+            args.llama_server,
+            args.image,
+            allow_download=args.allow_dataset_download,
+            suite=args.suite,
+            observable_runtime=args.observable_runtime,
         )
     except (OSError, ValueError) as exc:
         write_json(args.output, {"status": "blocked", "error": str(exc)})

@@ -33,7 +33,8 @@ def compare_quality_records(
          == digest(_comparable(identities[1], field))}
         for field in _COMPARED_FIELDS
     ]
-    checks.append({"field": "schema_version", "match": generation[0] == generation[1]})
+    checks.append({"field": "schema_version", "match":
+                   left["schema_version"] == right["schema_version"]})
     checks.append({"field": "classification", "match":
                    records[0]["classification"] == records[1]["classification"]})
     comparable = all(check["match"] for check in checks)
@@ -164,6 +165,13 @@ def _comparable(identity: dict[str, Any], field: str) -> Any:
     provenance. Its source must still match: both sides used their GGUF's.
     """
     value = identity[field]
+    if field == "runtime" and "execution" in value:
+        # The probe includes transient device availability/free memory. Keep its
+        # digest in identity/provenance, not in effective-protocol equivalence.
+        return value | {"execution": {
+            key: item for key, item in value["execution"].items()
+            if key != "capability_sha256"
+        }}
     if field == "evaluator" and identity_mode(identity) == GENERATION_PROTOCOL["mode"]:
         return {key: item for key, item in value.items() if key != "chat_template_sha256"}
     return value

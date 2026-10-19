@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ from jaull.evaluation.quality_records import (
 from jaull.evaluation.quality_records import (
     validate_record as _validate_record_contract,
 )
+from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_SCHEMA
 
 JSON_FILES = (
     "verified-artifact.json", "artifact-after.json", "container-artifact.json",
@@ -55,7 +57,9 @@ JSON_FILES = (
     "dataset.json", "lm-eval-results.json", "smoke-status.json", "runner-status.json",
 )
 TEXT_FILES = ("http.jsonl", "server.log", "evaluator.log")
-LOG_FILES = ("server.log", "evaluator.log")  # Stored, never parsed: decoded leniently.
+LOG_FILES = ("server.log", "evaluator.log")  # Human logs are decoded leniently.
+
+
 def validate_record(record: dict[str, Any]) -> None:
     """The shared contract, plus the two things only the producer can verify."""
     _validate_record_contract(record)
@@ -84,13 +88,22 @@ def validate_record(record: dict[str, Any]) -> None:
         raise ValueError("Limited result does not match the fixed 100-example selection")
     if "evidence" in record["provenance"]:
         fingerprint = validate_http_coverage(
-            record["provenance"]["evidence"]["http.jsonl"], record["result"]["samples"][task]
+            record["provenance"]["evidence"]["http.jsonl"],
+            record["result"]["samples"][task],
+            expected_fingerprint=identity["runtime"]["fingerprint"]
+            if record["schema_version"] == QUALITY_RUNTIME_SCHEMA
+            else "b10357-689e227db",
         )
         if fingerprint != identity["runtime"]["fingerprint"]:
             raise ValueError("HTTP runtime differs from record identity")
 
 
-def validate_http_coverage(text: str, samples: list[dict[str, Any]]) -> str:
+def validate_http_coverage(
+    text: str,
+    samples: list[dict[str, Any]],
+    *,
+    expected_fingerprint: str = "b10357-689e227db",
+) -> str:
     """Reconstruct every saved continuation from the pinned backend's HTTP evidence."""
     tokenizations: dict[str, list[int]] = {}
     scores: dict[tuple[tuple[int, ...], int], deque[float]] = defaultdict(deque)
@@ -102,7 +115,7 @@ def validate_http_coverage(text: str, samples: list[dict[str, Any]]) -> str:
         request, response = exchange["request"], exchange["response"]
         if exchange["url"].endswith("/v1/completions"):
             validate_scoring_request(request)
-            validate_scoring_response(request, response)
+            validate_scoring_response(request, response, expected_fingerprint=expected_fingerprint)
             key = (tuple(request["prompt"]), request["logit_bias"][0][0])
             scores[key].append(response["choices"][0]["logprobs"]["content"][0]["logprob"])
             fingerprints.add(response["system_fingerprint"])
@@ -303,7 +316,27 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
                                    "commands.json", "server-props.json")
     )
     samples = result["samples"][task]
-    fingerprint = validate_http_coverage(raw["http.jsonl"], samples)
+    execution = commands.get("execution")
+    if execution is not None:
+        capability_text = (bundle / "runtime-capability.json").read_text(encoding="utf-8")
+        capability = json.loads(capability_text)
+        if (
+            digest(capability) != execution["capability_sha256"]
+            or capability["version_text"] != execution["version_text"]
+            or props["default_generation_settings"]["params"].get("seed") != 0
+        ):
+            raise ValueError("Runtime capability/seed evidence differs from execution identity")
+        raw["runtime-capability.json"] = capability_text
+        if execution["backend"] != "cpu":
+            offload = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", raw["server.log"])
+            if not offload or any(int(done) != int(total) or int(total) <= 0
+                                  for done, total in offload):
+                raise ValueError("Full GPU offload was not confirmed; no CPU fallback record")
+    fingerprint = validate_http_coverage(
+        raw["http.jsonl"],
+        samples,
+        expected_fingerprint=execution["fingerprint"] if execution else "b10357-689e227db",
+    )
     if (
         dataset["sample_ids"] != profile["sample_ids"]
         or props["total_slots"] != 1
@@ -319,27 +352,49 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
         "suite": {"name": task, "sha256": evaluator["suite_sha256"]},
         "dataset": {key: dataset[key] for key in ("repo", "revision", "sha256", "sample_ids")}
         | {"total_samples": result["n-samples"][task]["original"]},
-        "samples": [{key: sample[key] for key in (
-            "doc_id", "doc_hash", "prompt_hash", "target_hash", "arguments",
-        )} for sample in samples],
+        "samples": [
+            {
+                key: sample[key]
+                for key in (
+                    "doc_id",
+                    "doc_hash",
+                    "prompt_hash",
+                    "target_hash",
+                    "arguments",
+                )
+            }
+            for sample in samples
+        ],
         "evaluator": evaluator,
         "runtime": {
-            "server_sha256": commands["server_sha256"], "image_id": evidence["image.json"]["id"],
-            "fingerprint": fingerprint, "backend_flags": commands["server"][3:],
+            "server_sha256": commands["server_sha256"],
+            "image_id": evidence["image.json"]["id"],
+            "fingerprint": fingerprint,
+            "backend_flags": commands["server"][3:],
             "server_defaults_sha256": digest(props["default_generation_settings"]),
+            **({"execution": execution} if execution else {}),
         },
         "protocol": {
-            "mode": "loglikelihood", "tokenize_add_special": True,
-            "temperature": 0, "max_tokens": 1, "logprobs": 2, "id_slot": 0,
-            "target_logit_bias": 100, "cached_prompt_tokens": 0,
+            "mode": "loglikelihood",
+            "tokenize_add_special": True,
+            "temperature": 0,
+            "max_tokens": 1,
+            "logprobs": 2,
+            "id_slot": 0,
+            "target_logit_bias": 100,
+            "cached_prompt_tokens": 0,
         },
     }
     record = {
-        "schema_version": 1, "status": "completed",
+        "schema_version": QUALITY_RUNTIME_SCHEMA if execution else 1,
+        "status": "completed",
         "classification": profile["classification"],
-        "identity": identity, "identity_sha256": digest(identity), "result": result,
+        "identity": identity,
+        "identity_sha256": digest(identity),
+        "result": result,
         "provenance": {
-            "source_bundle": str(bundle.resolve()), "hardware": evidence["hardware.json"],
+            "source_bundle": str(bundle.resolve()),
+            "hardware": evidence["hardware.json"],
             "evidence": raw,
             "dataset_file": {"sha256": dataset["sha256"], "size_bytes": len(dataset_bytes)},
         },

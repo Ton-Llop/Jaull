@@ -36,6 +36,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_SCHEMA, validate_runtime_execution
+
 #: A record check. The pilot supplies a stronger one than this module can.
 RecordValidator = Callable[[dict[str, Any]], None]
 
@@ -200,7 +202,9 @@ def _validate_shared_identity(
     if (
         set(suite) != {"name", "sha256"}
         or set(dataset) != DATASET_FIELDS
-        or set(runtime) != RUNTIME_FIELDS
+        or set(runtime) != (
+            RUNTIME_FIELDS | {"execution"} if "execution" in runtime else RUNTIME_FIELDS
+        )
         or identity["protocol"] != protocol
     ):
         raise ValueError("Unsupported identity schema/protocol")
@@ -228,6 +232,8 @@ def _validate_shared_identity(
         or any(not isinstance(flag, str) for flag in runtime["backend_flags"])
     ):
         raise ValueError("Incomplete sample/config identity")
+    if "execution" in runtime:
+        validate_runtime_execution(runtime["execution"], runtime)
     samples = identity["samples"]
     if not isinstance(samples, list) or [sample["doc_id"] for sample in samples] != ids:
         raise ValueError("Incomplete selected sample identity")
@@ -243,11 +249,22 @@ def validate_record(record: dict[str, Any]) -> None:
     if record.get("schema_version") == GENERATION_SCHEMA_VERSION:
         _validate_generation_record(record)
         return
-    if record["schema_version"] != 1 or record["status"] != "completed":
+    if (
+        record["schema_version"] not in {1, QUALITY_RUNTIME_SCHEMA}
+        or record["status"] != "completed"
+    ):
         raise ValueError("Unsupported/unfinished result record")
     if identity_mode(record["identity"]) != "loglikelihood":
         raise ValueError("A schema 1 record must describe loglikelihood scoring")
     identity = record["identity"]
+    observable = "execution" in identity["runtime"]
+    if observable != (record["schema_version"] == QUALITY_RUNTIME_SCHEMA):
+        raise ValueError("Observable runtime requires explicit record schema 3")
+    if observable and (
+        identity["suite"]["name"] not in {"jaull-quality-smoke-v1", "jaull-hellaswag-100-v1"}
+        or record["classification"] not in {"plumbing", "limited"}
+    ):
+        raise ValueError("Observable runtime v2 is diagnostic HellaSwag only")
     validate_identity(identity)
     if not record["provenance"]["hardware"]:
         raise ValueError("Missing hardware provenance")
@@ -309,6 +326,8 @@ def _validate_generation_record(record: dict[str, Any]) -> None:
     if record["status"] != "completed":
         raise ValueError("Unsupported/unfinished result record")
     identity = record["identity"]
+    if "execution" in identity["runtime"]:
+        raise ValueError("Generation retains its audited runtime protocol")
     if identity_mode(identity) != GENERATION_PROTOCOL["mode"]:
         raise ValueError("A schema 2 record must describe chat generation")
     validate_identity(identity)

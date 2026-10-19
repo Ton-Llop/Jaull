@@ -71,9 +71,29 @@ Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/Ton-Llop/Jaull.git
 cd Jaull
-uv sync
+make setup
 uv run jaull ui
 ```
+
+`make setup` requires **GNU Make**, `uv`, and a running Docker daemon. It runs
+`uv sync --locked`, then builds the pinned evaluator with the existing Dockerfile as
+`jaull-quality-eval:gguf-v1`. It never downloads model weights or evaluation datasets,
+nor starts an evaluation or benchmark. The image build downloads pinned software and
+tokenizer resources required by the existing evaluator.
+
+Docker is optional for discovery, Run and speed benchmarks: use `make sync` for Python
+only, or `make docker-build` for the evaluator only. The manual equivalents remain:
+
+```bash
+uv sync --locked
+docker build --platform linux/amd64 --tag jaull-quality-eval:gguf-v1 pilot/quality_eval
+```
+
+The targets use a POSIX shell. Native Windows needs GNU Make plus Git Bash/MSYS2;
+WSL2 is an alternative. Quality
+execution currently requires Linux/WSL and Docker; native Windows can still run Jaull's
+other workflows. `make help` lists targets. A compatible **host** `llama-server` is a
+separate prerequisite: the evaluator image does not provide or install it.
 
 `uv sync` creates the virtual environment and installs the runtime dependencies plus the
 `dev` dependency group. Pass `--no-dev` if you only want the runtime dependencies.
@@ -353,11 +373,18 @@ starts on the suite that matches its priority:
 
 | Button | What it does |
 |---|---|
-| **Prepare evaluator** | Checks and sets up the pinned llama-server, dataset and Docker image. Not needed for Speed. |
+| **Prepare evaluator** | Checks host llama-server identity/build, pinned dataset and Docker image. Not needed for Speed. |
 | **Start evaluation** | Runs the checked models one after another. Identical repeat runs count as one result. |
 | **Cancel** | Stops after the current step; finished results are kept. |
 | **Recompare this search with stored quality** | Re-ranks the saved search pool with everything stored now and shows which plans *would* move and why. Proposal only: the results screen does not change; run a new search to apply it. |
 | **Free disk space** | Lists downloaded models and evaluation output folders with their size; tick and **Delete selected**. Stored results, benchmarks and experiments are kept; a deleted model is downloaded again if needed. |
+
+HellaSwag smoke/100 can use **CPU without CUDA** (`jaull quality run --backend cpu`),
+CUDA or a uniquely confirmed Vulkan device. Evaluation placement is separate from normal
+inference. New runs retain exact binary/build/device and HTTP provenance as schema-3
+diagnostics; they do not inherit historical CUDA comparability or change ranking. CPU
+can be much slower. CPU/Vulkan physical evaluation, including Intel B60, remains pending;
+IFEval keeps its audited CUDA contract. See [setup and reproducible examples](docs/quality-evaluation-pilot.md).
 
 ### Typical loop
 

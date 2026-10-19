@@ -423,6 +423,7 @@ def test_selected_profile_reaches_the_harness_without_enabling_caches(tmp_path, 
     pin = next(iter(ARTIFACT_PINS.values()))
     write_json(tmp_path / "verified-artifact.json", pin | {"sha256": sha,
                                                          "local_path": "/synthetic/model"})
+    write_json(tmp_path / "commands.json", {"server_sha256": evaluate.SERVER_SHA256})
     original_open = Path.open
 
     def open_model(path, *args, **kwargs):

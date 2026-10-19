@@ -997,6 +997,7 @@ class AdvisorService:
     def prepare_quality_candidates(
         self, state: RecommendationWorkflowState, *,
         profile: QualityProfile | None = None,
+        backend: ComputeBackend | None = None,
         is_cancelled: Callable[[], bool] | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> QualityCandidateSelection:
@@ -1004,7 +1005,7 @@ class AdvisorService:
         from jaull.runtime.quality_eval_runner import QualityProfile as Profile
 
         return prepare_candidates(
-            self, state, profile=profile or Profile.SMOKE,
+            self, state, profile=profile or Profile.SMOKE, backend=backend,
             is_cancelled=is_cancelled, on_progress=on_progress,
         )
 

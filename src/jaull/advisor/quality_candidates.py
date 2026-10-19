@@ -19,13 +19,14 @@ from jaull.domain.execution_plans import (
     model_identity_key,
 )
 from jaull.domain.hardware import ComputeBackend
-from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.recommendation import SpeedAssessment
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     QUANTIZATION_LADDERS,
     SAFETY_MARGIN_DEFAULT_PERCENT,
 )
+from jaull.evaluation.quality_runtime import validate_quality_memory
 from jaull.exceptions import JaullError
 from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import CONFIRMED_MEMORY_STATUSES
@@ -40,6 +41,10 @@ from jaull.runtime.quality_eval_runner import (
     QualityEvaluationCancelled,
     QualityProfile,
     QualityRunRequest,
+)
+from jaull.runtime.quality_execution import (
+    quality_backend_selection,
+    quality_memory_hardware,
 )
 
 if TYPE_CHECKING:
@@ -96,9 +101,14 @@ class QualityCandidateOutcome:
 
 
 def _prepare_candidate(
-    advisor: AdvisorService, plan: ExecutionPlan, hardware: HardwareProfile,
-    requirements: UserRequirements, seen: set[str], evidence: list[QualityEvidence],
+    advisor: AdvisorService,
+    plan: ExecutionPlan,
+    hardware: HardwareProfile,
+    requirements: UserRequirements,
+    seen: set[str],
+    evidence: list[QualityEvidence],
     context: int = EVALUATION_CONTEXT,
+    backend: ComputeBackend | None = None,
 ) -> QualityCandidate:
     variant = plan.artifact
     if not variant.filename or variant.file_count != 1:
@@ -128,22 +138,46 @@ def _prepare_candidate(
         "classification": analysis.classification.model_copy(update={"gguf_variants": exact}),
     })
     config = InferenceConfiguration(
-        context_length=context, quantization=artifact.quantization,
+        context_length=context,
+        quantization=artifact.quantization,
+        target_device=TargetDevice.CPU if backend is ComputeBackend.CPU else TargetDevice.AUTO,
         device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
         safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
     )
-    estimate = advisor.estimate_model(exact_analysis, hardware, config, recommend_runtime=False)
-    if (estimate.hardware_fit is None
-            or estimate.hardware_fit.mode is not HardwareFitMode.GPU_RESIDENT
-            or estimate.assessment.status not in {
-                CompatibilityStatus.COMFORTABLE, CompatibilityStatus.COMPATIBLE,
-                CompatibilityStatus.TIGHT,
-            }):
+    evaluation_hardware = (
+        hardware
+        if backend is None
+        else quality_memory_hardware(
+            hardware,
+            quality_backend_selection(hardware, backend),
+        )
+    )
+    estimate = advisor.estimate_model(
+        exact_analysis, evaluation_hardware, config, recommend_runtime=False
+    )
+    if backend is not None:
+        validate_quality_memory(estimate, backend)
+    elif (
+        estimate.hardware_fit is None
+        or estimate.hardware_fit.mode is not HardwareFitMode.GPU_RESIDENT
+        or estimate.assessment.status
+        not in {
+            CompatibilityStatus.COMFORTABLE,
+            CompatibilityStatus.COMPATIBLE,
+            CompatibilityStatus.TIGHT,
+        }
+    ):
         raise ValueError(f"full-device fit unconfirmed at evaluation context {context}")
-    workload_config = config.model_copy(update={
-        "context_length": requirements.desired_context,
-        "concurrent_users": requirements.concurrent_users,
-    })
+    workload_config = config.model_copy(
+        update={
+            "context_length": requirements.desired_context,
+            "concurrent_users": requirements.concurrent_users,
+            **({"target_device": (
+                plan.memory_prediction.inference_configuration.target_device
+                if plan.memory_prediction else TargetDevice.AUTO
+            )} if backend is ComputeBackend.CPU else {}),
+        }
+    )
     workload_estimate = estimate if workload_config == config else advisor.estimate_model(
         exact_analysis, hardware, workload_config, recommend_runtime=False,
     )
@@ -157,19 +191,24 @@ def _prepare_candidate(
     })
     return QualityCandidate(
         pinned,
-        f"Search priority/diversity; workload fits; full-device evaluation fit at ctx {context}.",
+        f"Search priority/diversity; workload fits; "
+        f"{backend.value if backend else 'full-device'} evaluation fit at ctx {context}.",
         advisor._artifacts().is_downloaded(artifact),
         sum(item.artifact_sha256 == artifact.sha256 for item in evidence),
     )
 
 
 def prepare_candidates(
-    advisor: AdvisorService, state: RecommendationWorkflowState, *,
+    advisor: AdvisorService,
+    state: RecommendationWorkflowState,
+    *,
     profile: QualityProfile = QualityProfile.SMOKE,
+    backend: ComputeBackend | None = None,
     is_cancelled: Callable[[], bool] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> QualityCandidateSelection:
     """Inspect metadata only. Never download a model or launch the evaluator."""
+
     def report(text: str) -> None:
         if is_cancelled is not None and is_cancelled():
             raise QualityEvaluationCancelled("Candidate selection cancelled.")
@@ -182,8 +221,10 @@ def prepare_candidates(
         return _prepare_shown_plans(advisor, state, report)
     report("Preparing candidates from the inspected search pool")
     context = advisor._plan_ranking_context(state.hardware)
-    if (blocker := _cuda_blocker(context.backend_selection, state.hardware)) is not None:
-        return QualityCandidateSelection(notices=(blocker,))
+    try:
+        evaluation_backend = quality_backend_selection(state.hardware, backend).selected_backend
+    except ValueError as exc:
+        return QualityCandidateSelection(notices=(str(exc),))
     # Request every inspected logical model, not just the displayed top five.
     # Existing eligibility, ordering and diversity stay owned by recommendation.
     pool = service.recommend(
@@ -222,7 +263,13 @@ def prepare_candidates(
                     continue
                 try:
                     candidate = _prepare_candidate(
-                        advisor, plan, state.hardware, state.requirements, seen, evidence,
+                        advisor,
+                        plan,
+                        state.hardware,
+                        state.requirements,
+                        seen,
+                        evidence,
+                        backend=evaluation_backend,
                     )
                 except (JaullError, OSError, ValueError) as exc:
                     if isinstance(exc, QualityEvaluationCancelled):
@@ -253,7 +300,10 @@ def _cuda_blocker(selection: object, hardware: HardwareProfile) -> str | None:
     if (selection is None
             or getattr(selection, "selected_backend", None) is not ComputeBackend.CUDA
             or len(hardware.gpus) != 1):
-        return "Quality evaluation requires one CUDA GPU; multi-device selection is unsupported."
+        return (
+            "The audited IFEval protocol requires one CUDA GPU; multi-device selection "
+            "is unsupported. Choose HellaSwag smoke/100 for CPU or confirmed Vulkan."
+        )
     return None
 
 

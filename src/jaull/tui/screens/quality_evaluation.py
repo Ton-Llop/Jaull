@@ -35,6 +35,7 @@ from jaull.advisor.quality_candidates import (
     QualityCandidateSelection,
     speed_call_schedule,
 )
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.requirements import RecommendationPriority
 from jaull.evaluation.quality_records import describe_record
 from jaull.paths import user_data_dir
@@ -70,13 +71,13 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_HELLASWAG = "HellaSwag / raw prompts / zero-shot / ctx 2048 / CUDA0 / full offload"
+_HELLASWAG = "HellaSwag / raw prompts / zero-shot / ctx 2048 / CPU or confirmed GPU"
 _PROTOCOL = {
     QualityProfile.SMOKE: _HELLASWAG,
     QualityProfile.HELLASWAG100: _HELLASWAG,
     QualityProfile.IFEVAL: (
         "IFEval / 541 prompts / each GGUF's own chat template / reasoning off / ctx 4096 / "
-        "CUDA0 / full offload"
+        "audited CUDA / full offload"
     ),
 }
 _PROFILE_LABELS = {
@@ -440,11 +441,15 @@ class QualityEvaluationScreen(Screen[Path | None]):
     QualityEvaluationScreen #quality-header .section-title { padding-bottom: 0; }
     QualityEvaluationScreen #quality-profile { margin: 0; }
     QualityEvaluationScreen .quality-permission { height: 1; margin: 0; }
+    QualityEvaluationScreen #quality-backend-row { height: 1; }
+    QualityEvaluationScreen #quality-backend-label { width: 22; }
+    QualityEvaluationScreen #quality-backend { width: 1fr; margin: 0; }
     QualityEvaluationScreen #quality-protocol { margin-top: 1; }
     QualityEvaluationScreen #quality-tabs { height: 1fr; }
     QualityEvaluationScreen ContentSwitcher { height: 1fr; }
     QualityEvaluationScreen TabPane { height: 1fr; padding: 0; }
     QualityEvaluationScreen VerticalScroll { padding: 1 2; }
+    QualityEvaluationScreen #quality-settings-body { padding-top: 0; }
     QualityEvaluationScreen #quality-results-body { padding: 0 2; }
     QualityEvaluationScreen #quality-report > Contents { padding: 0 0 1 0; }
     QualityEvaluationScreen Input, QualityEvaluationScreen Select { margin-bottom: 1; }
@@ -564,9 +569,26 @@ class QualityEvaluationScreen(Screen[Path | None]):
                     "Sequential execution / exact artifacts / recommendations unchanged",
                     classes="text-secondary",
                 )
-            with TabPane("Settings", id="quality-setup-tab"), VerticalScroll(
-                id="quality-settings-body",
+            with (
+                TabPane("Settings", id="quality-setup-tab"),
+                VerticalScroll(
+                    id="quality-settings-body",
+                ),
             ):
+                with Horizontal(id="quality-backend-row"):
+                    yield Static("Evaluation backend", id="quality-backend-label")
+                    yield Select(
+                        [
+                            ("Auto (observed hardware)", "auto"),
+                            ("CPU / RAM", "cpu"),
+                            ("CUDA / full offload", "cuda"),
+                            ("Vulkan / confirmed device", "vulkan"),
+                        ],
+                        value="auto",
+                        allow_blank=False,
+                        compact=True,
+                        id="quality-backend",
+                    )
                 yield Static("Dataset file", classes="field-label")
                 yield Input(placeholder="Evaluation dataset", id="quality-dataset")
                 yield Static("Download permissions", classes="field-label")
@@ -649,9 +671,12 @@ class QualityEvaluationScreen(Screen[Path | None]):
         if self._measure == SPEED_SUITE:
             return f"{_SPEED_PROTOCOL}\nSpeed is measured at each plan's own configuration."
         speed = f"\n{_SPEED_PROTOCOL}" if self._measure == BALANCED_SUITE else ""
+        backend = self._evaluation_backend()
         return (
             f"{_PROTOCOL[self._profile]}{speed}\n"
-            "Evaluation protocol is separate from the selected execution plan."
+            "Evaluation protocol is separate from the selected execution plan.\n"
+            f"Evaluation backend: {backend.value if backend else 'auto'}. "
+            "CPU may take substantially longer; all runs have finite deadlines."
         )
 
     def _settled(self, candidate: QualityCandidate) -> bool:
@@ -679,6 +704,8 @@ class QualityEvaluationScreen(Screen[Path | None]):
             key: self.query_one(f"#quality-{key}", Input).value.strip()
             for key in ("dataset", "server", "root", "image", "output")
         }
+        backend = self._evaluation_backend()
+        values["backend"] = backend.value if backend else "auto"
         self._checking = True
         self._set_busy(self._busy)
         if self._measure == SPEED_SUITE:
@@ -768,8 +795,31 @@ class QualityEvaluationScreen(Screen[Path | None]):
         self._set_busy(True)
         self._set_status("Inspecting candidate metadata; no models downloaded")
         self._executor.submit(
-            self._select_candidates, self._app().advisor, self._profile, self._measure,
+            self._select_candidates,
+            self._app().advisor,
+            self._profile,
+            self._measure,
+            self._evaluation_backend(),
         )
+
+    def _evaluation_backend(self) -> ComputeBackend | None:
+        selectors = list(self.query("#quality-backend").results(Select))
+        value = selectors[0].value if selectors else "auto"
+        return None if value == "auto" else ComputeBackend(str(value))
+
+    @on(Select.Changed, "#quality-backend")
+    async def _backend_changed(self, event: Select.Changed) -> None:
+        if not self.is_mounted or self._busy:
+            return
+        self.query_one("#quality-protocol", Static).update(self._protocol_text())
+        self._check_readiness()
+        if self._search_state is not None:
+            self._busy = True
+            self._selecting = True
+            self._set_busy(True)
+            self._selection = QualityCandidateSelection()
+            await self.query_one("#quality-candidates", Vertical).remove_children()
+            self._start_selection()
 
     @on(Select.Changed, "#quality-profile")
     async def _profile_changed(self, event: Select.Changed) -> None:
@@ -802,17 +852,26 @@ class QualityEvaluationScreen(Screen[Path | None]):
             self._start_selection()
 
     def _select_candidates(
-        self, advisor: AdvisorService, profile: QualityProfile, measure: str,
+        self,
+        advisor: AdvisorService,
+        profile: QualityProfile,
+        measure: str,
+        backend: ComputeBackend | None = None,
     ) -> None:
         assert self._search_state is not None
+
         def progress(text: str) -> None:
             if not self._quality_closing.is_set():
                 self.post_message(_QualityProgress(text))
+
         try:
             if measure == "quality":
                 selection = advisor.prepare_quality_candidates(
-                    self._search_state, profile=profile, is_cancelled=self._cancel.is_set,
+                    self._search_state,
+                    profile=profile,
+                    is_cancelled=self._cancel.is_set,
                     on_progress=progress,
+                    **({"backend": backend} if backend is not None else {}),
                 )
             else:
                 selection = advisor.prepare_speed_candidates(
@@ -969,11 +1028,14 @@ class QualityEvaluationScreen(Screen[Path | None]):
         return QualityRunRequest(
             artifact_json=Path(values["artifact"]) if "artifact" in values else None,
             dataset_file=Path(values["dataset"]),
-            llama_server=Path(values["server"]), pilot_root=Path(values["root"]),
-            image=values["image"], output=Path(values["output"]),
+            llama_server=Path(values["server"]),
+            pilot_root=Path(values["root"]),
+            image=values["image"],
+            output=Path(values["output"]),
             # Balanced shows "balanced" in the selector but evaluates its IFEval profile.
             profile=self._profile,
             allow_dataset_download=self.query_one("#quality-dataset-download", Checkbox).value,
+            backend=self._evaluation_backend(),
         )
 
     @on(Button.Pressed)
@@ -1509,6 +1571,7 @@ class QualityEvaluationScreen(Screen[Path | None]):
         for checkbox in self.query(Checkbox):
             checkbox.disabled = busy
         self.query_one("#quality-profile", Select).disabled = busy
+        self.query_one("#quality-backend", Select).disabled = busy or self._measure == SPEED_SUITE
         self.query_one("#quality-start", Button).disabled = busy or self._evaluator_blocks() or (
             self._search_state is not None and not self._selection.candidates
         )

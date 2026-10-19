@@ -193,7 +193,7 @@ or pull one. They need a trusted source checkout: `scripts/quality_eval_smoke.py
 uv run jaull quality setup --allow-dataset-download --json
 ```
 
-Verifies the pinned `llama-server` by SHA256, inspects the already-local evaluator
+Inspects the explicit host `llama-server` and its exact SHA256/build, the already-local evaluator
 image and its contract label, and verifies the pinned dataset — downloading it only
 with that explicit flag. Dataset consent is separate from GGUF download consent.
 Setup remembers the shared paths and image; it never remembers consent, runs a model
@@ -202,10 +202,28 @@ or creates a record.
 ```bash
 uv run jaull quality run \
   --artifact ARTIFACT.json --dataset-file validation.parquet \
-  --llama-server "$HOME/tools/llama.cpp/build-cuda/bin/llama-server" \
+  --llama-server /absolute/path/to/llama-server \
   --image jaull-quality-eval:gguf-v1 --output FRESH_DIR \
-  --profile hellaswag100 --json
+  --backend cpu --profile smoke --json
 ```
+
+`--backend cpu|cuda|vulkan` selects evaluation placement independently of the normal
+recommendation. Omit it for observed-hardware selection. CPU uses no GPU device and zero
+GPU layers; explicit CUDA/Vulkan never silently falls back. GPU selection requires
+runtime readiness, a uniquely confirmed device and full-device fit. Vulkan/B60 physical
+validation remains pending. `--profile hellaswag100` selects the fixed 100-example subset.
+
+Build the image first with `make setup` (GNU Make, uv, Docker daemon) or
+`make docker-build`; `make sync` installs only Python. Neither Make target evaluates,
+benchmarks, nor downloads model weights/evaluation datasets. The evaluator runs in Docker;
+`llama-server` runs on the Linux/WSL host and is not included in the image. Native Windows
+needs WSL for this pilot. CPU smoke has a 30-minute cap, CPU HellaSwag100 six hours;
+startup and individual HTTP requests are bounded too.
+
+New HellaSwag runs produce diagnostic schema-3 records (`observable-runtime-v2`) with
+binary hash/build, device, effective flags/defaults, HTTP evidence and image identity.
+Unknown response formats fail closed. Historical CUDA schemas 1/2 remain readable but are
+not automatically comparable with new runtimes. IFEval retains its audited CUDA protocol.
 
 Repeat `--artifact` to evaluate several GGUFs **sequentially**, one server and
 container at a time, each into its own `run-NN/`. Existing output directories are

@@ -51,11 +51,19 @@ def check_quality_readiness(
 
     suite = PROFILE_SUITE[profile]
     rows: list[tuple[str, str, str]] = []
+    selected_backend = values.get("backend", "auto")
     image = find_evaluator_image(profile, values.get("image") or None)
     rows.append(("ok", "Evaluator image", image) if image else (
         "bad", "Evaluator image",
         f"No local image supports {suite}. Build it once: {BUILD_COMMAND}",
     ))
+    if profile.value == "ifeval" and selected_backend not in {"auto", "cuda"}:
+        rows.append(("bad", "Evaluation backend", "IFEval retains the audited CUDA protocol. "
+                     "Choose HellaSwag smoke/100 for CPU or Vulkan."))
+    else:
+        rows.append(("warn", "Evaluation backend",
+                     f"{selected_backend}; model fit and device are checked before inference. "
+                     "CPU can be slow."))
     server = Path(values["server"]).expanduser() if values.get("server") else None
     rows.append(("ok", "llama-server", str(server)) if server and server.is_file() else (
         "bad", "llama-server", "Not found; set its path in Settings.",
@@ -81,7 +89,7 @@ def check_quality_readiness(
                     pilot_root=root, output=Path(values.get("output") or "."), profile=profile,
                 ), is_cancelled=is_cancelled)
                 rows.append(("ok", "Verification",
-                             "Pinned runtime binary, image contract and dataset match"))
+                             "Runtime identity, image contract and pinned dataset match"))
             except QualityEvaluationCancelled:
                 raise
             except Exception as exc:  # The preflight's own reason is the useful message.
@@ -95,7 +103,7 @@ def quality_evaluation_block_reason(plan: ExecutionPlan) -> str | None:
     """Known pilot blockers; server/image and fixed-context fit still need preflight.
 
     Do not use llama-cli readiness: this pilot uses a separately pinned server,
-    and its CUDA/full-offload protocol is independent of the selected launch.
+    and its evaluation placement is independent of the selected normal launch.
     """
     if plan.artifact.format is not ArtifactVariantFormat.GGUF:
         return "Select a GGUF path to evaluate this model."
@@ -103,8 +111,6 @@ def quality_evaluation_block_reason(plan: ExecutionPlan) -> str | None:
         return "The selected path does not identify a single GGUF file."
     if plan.artifact.file_count not in (None, 1):
         return "Multipart GGUF is not supported by the quality pilot."
-    if plan.hardware is not None and len(plan.hardware.gpus) != 1:
-        return "The fixed quality pilot requires one CUDA GPU."
     return None
 
 

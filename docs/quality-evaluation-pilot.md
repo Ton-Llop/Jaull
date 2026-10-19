@@ -14,6 +14,101 @@ attempt and superseded gate, is in
 
 ## What is pinned
 
+### Current setup and non-CUDA execution
+
+From the source checkout, `make setup` synchronizes Python with `uv sync --locked` and
+builds `pilot/quality_eval/Dockerfile` as `jaull-quality-eval:gguf-v1`. `make sync` and
+`make docker-build` run those steps separately; `make help` lists them. GNU Make, uv and
+Docker with a running daemon are required for full setup. Native Windows needs GNU Make
+and a POSIX shell (Git Bash/MSYS2), or WSL2; the execution bridge itself requires
+Linux/WSL, not native Windows.
+
+The equivalent manual commands are:
+
+```bash
+uv sync --locked
+docker build --platform linux/amd64 --tag jaull-quality-eval:gguf-v1 pilot/quality_eval
+```
+
+No models or evaluation datasets are fetched by setup, and no evaluation starts. Image
+construction installs the already pinned software and tokenizer resources. The container
+runs lm-evaluation-harness; inference runs in a separately supplied **host llama-server**.
+The server is not downloaded, built or installed automatically.
+
+HellaSwag `smoke` (3 samples) and `hellaswag100` (100 samples) now have an explicit
+`observable-runtime-v2` contract, recorded as **schema 3**:
+
+- CPU: fixed ctx 2048, one slot, seed 0, four threads, `--n-gpu-layers 0`, no GPU device.
+  The complete memory estimate must fit available RAM; VRAM is not required.
+- CUDA: the same scoring controls, a runtime-confirmed device and full offload, with a
+  confirmed device-memory budget. The historical CUDA protocol remains separately
+  readable/reproducible; new runtimes do not silently inherit its identity.
+- Vulkan: the selected accelerator must match exactly one runtime device using D098's
+  matcher, and the estimate must fit its available device budget. Unknown budgets,
+  software renderers and ambiguous devices are refused. No B60 physical support is claimed.
+
+`--backend cpu|cuda|vulkan` selects evaluation placement, not the normal recommendation's
+placement. Omit it for observed-hardware selection. An explicit unavailable GPU is an
+error, never a silent CPU fallback; choose CPU explicitly if desired. GPU records also
+require full-offload confirmation from the captured server log.
+
+The new image must declare `io.jaull.quality.runtime-contract=observable-runtime-v2`.
+Rebuild an older image before using the new HellaSwag route. The exact binary SHA256 is
+captured and checked around runtime probes and again after execution; version/build must
+be parseable, devices observable, and every scoring response must match that build's
+fingerprint. Existing token IDs, finite logprobs, uncached prompt, slot/context checks,
+raw HTTP reconstruction, evaluator/source pins and dataset hashes are still required.
+Unknown HTTP layouts fail closed, even when a binary can otherwise generate text.
+
+The identity includes backend/device, build, binary hash, capability digest, exact server
+flags/defaults and Docker image ID. Complete capability output is saved with raw evidence.
+The probe digest stays auditable but is excluded from protocol equivalence because its
+device free-memory observations can fluctuate; effective backend/device/build flags still match.
+Different builds, backends, placements, images or effective protocols are not automatically
+comparable. Schemas 1/2 remain readable without rewriting historical records. Schema 3
+HellaSwag is diagnostic only: neither smoke nor the 100-sample subset enters ranking.
+IFEval and its ranking applicability retain the audited CUDA/schema-2 contract in this
+milestone; selecting CPU/Vulkan for IFEval produces an explicit blocker.
+
+#### Reproducible CPU invocation
+
+Supply absolute local paths; the manifest must name a verified single GGUF with immutable
+revision and SHA256. Dataset preparation is separate and requires explicit consent:
+
+```bash
+uv run jaull quality setup --llama-server /absolute/bin/llama-server \
+  --dataset-file /absolute/data/validation.parquet --pilot-root "$PWD" \
+  --image jaull-quality-eval:gguf-v1 --allow-dataset-download
+uv run jaull quality run --artifact /absolute/artifact.json \
+  --dataset-file /absolute/data/validation.parquet \
+  --llama-server /absolute/bin/llama-server --pilot-root "$PWD" \
+  --image jaull-quality-eval:gguf-v1 --backend cpu --profile smoke \
+  --output /absolute/new-cpu-smoke
+```
+
+For CUDA or Vulkan change only `--backend` and use a fresh output directory; the runtime
+must expose the appropriate confirmed device. For HellaSwag100 use `--profile hellaswag100`.
+Results → Evaluate candidates and individual GGUF Evaluation use the same backend selector
+in Settings and the same preflight/producer. Search never evaluates or downloads weights.
+
+CPU is substantially slower: startup is bounded at 180 seconds; CPU smoke at 30 minutes
+and CPU HellaSwag100 at six hours. GPU HellaSwag retains 5/10-minute evaluator limits.
+HTTP scoring waits at most 120 seconds per request; the owner has a finite outer deadline
+and bounded cancellation cleanup. Timeout is a failed attempt, not a zero quality score.
+
+On native Linux the new route uses host networking to reach the server bound to loopback;
+WSL/Docker Desktop retains the bridge/`host.docker.internal` route. Docker running inside
+WSL rather than Docker Desktop and remote daemons require separate network validation.
+All mounted paths must be accessible from the daemon. A Windows-host Vulkan device is not
+assumed usable from WSL, and native Windows execution remains unsupported by this pilot.
+
+**Validation status:** the historical CUDA measurements below remain historical evidence.
+The new CPU/Vulkan contract is covered offline; no physical B60 or new CPU inference is
+claimed without a successful completed run. This laptop has Docker/images and small GGUFs
+but no installed `llama-server`; the real CPU smoke therefore remains pending.
+
+### Historical audited CUDA pins
+
 A result is only meaningful against the protocol that produced it, so all of
 this is part of record identity:
 
@@ -187,7 +282,8 @@ directory under user-data `quality-runs/`, not the repository.
 already inspected, before the final truncation to five. It inspects up to six
 logical models and selects up to three, explaining every omission. Only
 confirmed single-file GGUF identities qualify, and the estimator must confirm
-both the requested workload and a full-device fit at ctx 2048. Preparing reads
+both the requested workload and evaluation fit at ctx 2048 (RAM for CPU, full-device
+budget for CUDA/Vulkan). Preparing reads
 Hub metadata and bounded GGUF header ranges; it downloads no model and launches
 no container. This is a selection heuristic, not a claim that these are the best
 models.
@@ -209,7 +305,8 @@ catalog entries are not evidence of poor quality.
 
 ## Limits
 
-- One task (HellaSwag), one machine, one GPU, one runtime build.
+- The published HellaSwag measurements describe one machine/GPU/runtime build;
+  the new schema-3 CPU/Vulkan route does not extend that physical validation.
 - No confidence interval on the per-run metrics, which is what blocks saying two
   models are indistinguishable.
 - CPU-only, partial-offload and multi-GPU evaluation are unsupported. Those

@@ -813,18 +813,14 @@ def test_paths_published_references_follow_selected_model_and_never_fill_local_m
 
 @pytest.mark.parametrize("problem,reason", [
     ("multipart", "Multipart GGUF"), ("missing-file", "single GGUF"),
-    ("no-gpu", "one CUDA GPU"),
 ])
 def test_results_disables_known_incompatible_quality_paths_with_visible_reason(
     problem: str, reason: str,
 ) -> None:
     async def exercise() -> None:
         plan = _plan()
-        if problem == "no-gpu":
-            plan = plan.model_copy(update={"hardware": hardware(vram_gib=None)})
-        else:
-            change = {"file_count": 3} if problem == "multipart" else {"filename": None}
-            plan = plan.model_copy(update={"artifact": plan.artifact.model_copy(update=change)})
+        change = {"file_count": 3} if problem == "multipart" else {"filename": None}
+        plan = plan.model_copy(update={"artifact": plan.artifact.model_copy(update=change)})
         assert reason in (quality_evaluation_block_reason(plan) or "")
         rec = _gguf_recommendation().model_copy(update={"plan": plan})
         app = JaullApp(advisor=ResultsAdvisor([plan]))  # type: ignore[arg-type]
@@ -837,4 +833,18 @@ def test_results_disables_known_incompatible_quality_paths_with_visible_reason(
             assert screen.query_one("#rec-evaluate-reason-0").display
             assert not screen.query_one("#res-paths-0", Button).disabled
 
+    asyncio.run(exercise())
+
+
+def test_results_allows_quality_setup_without_a_cuda_gpu() -> None:
+    async def exercise() -> None:
+        plan = _plan().model_copy(update={"hardware": hardware(vram_gib=None)})
+        assert quality_evaluation_block_reason(plan) is None
+        rec = _gguf_recommendation().model_copy(update={"plan": plan})
+        app = JaullApp(advisor=ResultsAdvisor([plan]))
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = RecommendationResultsScreen(RecommendationWorkflowState(recommendations=[rec]))
+            await app.push_screen(screen)
+            await pilot.pause()
+            assert not screen.query_one("#res-evaluate-0", Button).disabled
     asyncio.run(exercise())

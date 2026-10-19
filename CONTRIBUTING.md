@@ -59,13 +59,34 @@ Bug reports, tests, documentation, small UX/TUI improvements, and model metadata
 
 ## Setting up
 
-Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/). Full setup also needs GNU
+Make and a running Docker daemon. The Make targets need a POSIX shell: on native Windows
+install GNU Make with Git Bash/MSYS2, or use WSL2.
 
 ```bash
 git clone https://github.com/Ton-Llop/Jaull.git
 cd Jaull
-uv sync
+make setup
 ```
+
+`make setup` runs `uv sync --locked` and builds the existing pinned evaluator Dockerfile,
+tagged `jaull-quality-eval:gguf-v1`. It does not fetch model weights or evaluation datasets,
+launch models, evaluate, or benchmark. Docker builds still fetch the pinned evaluator
+dependencies/tokenizer resources. No Compose is involved.
+
+For Python-only development, use `make sync`. For the evaluator image only, use
+`make docker-build`. Manual setup remains supported:
+
+```bash
+uv sync --locked
+docker build --platform linux/amd64 --tag jaull-quality-eval:gguf-v1 pilot/quality_eval
+```
+
+The image runs the evaluator, not inference. Quality evaluation also needs a compatible
+`llama-server` on the Linux/WSL host. HellaSwag can use CPU (`--backend cpu`) without CUDA;
+CUDA and confirmed Vulkan devices are optional. New CPU/Vulkan quality paths remain
+pending physical validation; do not describe offline fixtures as measured compatibility.
+See [the protocol and examples](docs/quality-evaluation-pilot.md).
 
 `uv sync` creates the virtual environment and installs the runtime dependencies plus the
 `dev` dependency group (pytest, ruff, mypy) — uv installs default groups automatically, so

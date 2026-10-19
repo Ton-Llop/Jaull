@@ -185,7 +185,7 @@ def test_selection_preserves_the_advisors_existing_ranking_evidence_context(
     assert observed[0][2].benchmark_records and observed[0][2].experiment_records
 
 
-@pytest.mark.parametrize("change", ["offload", "missing_sha", "uncertain", "wrong_model", "cpu"])
+@pytest.mark.parametrize("change", ["offload", "missing_sha", "uncertain", "wrong_model"])
 def test_unusable_evaluation_candidates_are_explained_not_recommended_away(
     monkeypatch: pytest.MonkeyPatch, change: str,
 ) -> None:

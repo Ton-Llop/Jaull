@@ -23,7 +23,7 @@ from pilot.quality_eval.evaluate import (
     write_json,
 )
 from pilot.quality_eval.ifeval import CONTEXT as IFEVAL_CONTEXT
-from pilot.quality_eval.setup import prepare_infrastructure
+from pilot.quality_eval.setup import inspect_runtime, prepare_infrastructure
 
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
@@ -42,14 +42,26 @@ from jaull.domain.model import (
 from jaull.domain.runtime import ExecutionReadinessStatus
 from jaull.estimator.policies import DEVICE_RESERVE_DEFAULT_BYTES, SAFETY_MARGIN_DEFAULT_PERCENT
 from jaull.estimator.service import estimate_memory
+from jaull.evaluation.quality_records import digest
+from jaull.evaluation.quality_runtime import (
+    QUALITY_RUNTIME_PROTOCOL,
+    fingerprint_from_version,
+    validate_quality_memory,
+    validate_runtime_execution,
+)
 from jaull.execution.host import HostExecutionBackend
 from jaull.hardware.detector import detect_hardware
 from jaull.metadata.config_merger import merge
 from jaull.metadata.gguf_reader import parse_header
 from jaull.runtime.backend_selection import select_runtime_backend
+from jaull.runtime.device_matching import match_runtime_device
 from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
+)
+from jaull.runtime.quality_execution import (
+    quality_backend_selection,
+    quality_memory_hardware,
 )
 
 
@@ -85,8 +97,12 @@ def chat_template_evidence(path: Path) -> dict[str, str]:
 
 
 def artifact_memory_estimate(
-    artifact: ModelArtifact, hardware: HardwareProfile, *, context: int = CONTEXT,
+    artifact: ModelArtifact,
+    hardware: HardwareProfile,
+    *,
+    context: int = CONTEXT,
     require_chat_template: bool = False,
+    backend: ComputeBackend | None = None,
 ) -> MemoryEstimate:
     assert artifact.local_path is not None and artifact.size_bytes is not None
     # ponytail: retain the bounded 32 MiB metadata parser; larger headers fail closed.
@@ -117,15 +133,18 @@ def artifact_memory_estimate(
         ),
     )
     estimate = estimate_memory(
-        analysis, hardware,
+        analysis,
+        hardware,
         InferenceConfiguration(
             context_length=context,
-            target_device=TargetDevice.AUTO,
+            target_device=TargetDevice.CPU if backend is ComputeBackend.CPU else TargetDevice.AUTO,
             quantization=artifact.quantization,
             device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
             safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
         ),
-        OfflineResolver(), resolve_base_model=False, recommend_runtime=False,
+        OfflineResolver(),
+        resolve_base_model=False,
+        recommend_runtime=False,
     )
     return estimate.model_copy(update={"configuration_sources": enriched.sources})
 
@@ -192,8 +211,14 @@ def check_server_port(port: int) -> None:
 
 
 def docker_command(
-    image: str, name: str, output: Path, artifact: Path, dataset: Path,
-    *, profile: str = "smoke",
+    image: str,
+    name: str,
+    output: Path,
+    artifact: Path,
+    dataset: Path,
+    *,
+    profile: str = "smoke",
+    host_network: bool = False,
 ) -> list[str]:
     if profile not in PROFILES:
         raise ValueError("Unknown fixed evaluation profile")
@@ -205,7 +230,7 @@ def docker_command(
         "--name",
         name,
         "--network",
-        "bridge",
+        "host" if host_network else "bridge",
         "--read-only",
         "--user",
         f"{os.getuid()}:{os.getgid()}",
@@ -223,7 +248,7 @@ def docker_command(
         f"type=bind,source={dataset},target={_dataset_target(profile)},readonly",
         image,
         "--base-url",
-        "http://host.docker.internal:18083",
+        "http://127.0.0.1:18083" if host_network else "http://host.docker.internal:18083",
         # Preserve the original smoke's recorded command exactly.
         *(["--profile", profile] if profile != "smoke" else []),
     ]
@@ -239,6 +264,7 @@ def _dataset_target(profile: str) -> str:
 
 # Owned-process bounds. Full IFEval is 541 generations of up to 1280 tokens each.
 TIMEOUTS = {"smoke": 300, "hellaswag100": 600, "ifeval-smoke": 900, "ifeval": 6 * 3600}
+CPU_TIMEOUTS = {"smoke": 1800, "hellaswag100": 6 * 3600}
 
 
 def run(args: argparse.Namespace) -> None:
@@ -253,38 +279,92 @@ def run(args: argparse.Namespace) -> None:
     service = ArtifactService(OfflineResolver(), ArtifactStorage())
     artifact = None
     artifact_verified = False
+    observable = getattr(args, "backend", None) is not None
+    runtime_sha = None if observable else SERVER_SHA256
     try:
+        if observable and suite != "hellaswag":
+            raise ValueError(
+                "Observable CPU/CUDA/Vulkan execution currently supports HellaSwag only; "
+                "IFEval retains its audited CUDA protocol."
+            )
         artifact = ModelArtifact.model_validate_json(args.artifact_json.read_text())
         validate_artifact_identity(artifact.model_dump(mode="json"))
         artifact = service.verify(artifact, full=True)
         artifact_verified = True
         write_json(output / "verified-artifact.json", artifact.model_dump(mode="json"))
         image = prepare_infrastructure(
-            args.dataset_file, args.llama_server, args.image, suite=suite,
+            args.dataset_file,
+            args.llama_server,
+            args.image,
+            suite=suite,
+            **({"observable_runtime": True} if observable else {}),
         )
         hardware = detect_hardware()
+        selection = None
+        execution = None
+        device = "CUDA0"
+        if observable:
+            requested = None if args.backend == "auto" else ComputeBackend(args.backend)
+            selection = quality_backend_selection(hardware, requested)
+            runtime_sha, capability = inspect_runtime(args.llama_server)
+            readiness = evaluate_execution_readiness(
+                selection=selection, runtime_capability=capability
+            )
+            if readiness.status is not ExecutionReadinessStatus.READY:
+                raise ValueError(f"Evaluation runtime not ready: {readiness.message}")
+            selected = selection.selected_backend
+            device = None
+            device_name = "cpu"
+            if selected is not ComputeBackend.CPU:
+                backend_capability = next(
+                    item for item in capability.backend_capabilities if item.backend is selected
+                )
+                matched = match_runtime_device(selection, backend_capability)
+                if matched.device is None:
+                    raise ValueError("Evaluation device is ambiguous or unavailable; no fallback.")
+                device, device_name = matched.device.runtime_id, matched.device.name or "unknown"
+            execution = {
+                "protocol": QUALITY_RUNTIME_PROTOCOL,
+                "backend": selected.value,
+                "device": device or "none",
+                "device_name": device_name,
+                "version_text": capability.version_text,
+                "server_sha256": runtime_sha,
+                "fingerprint": fingerprint_from_version(capability.version_text),
+                "capability_sha256": digest(capability.model_dump(mode="json")),
+            }
+            write_json(output / "runtime-capability.json", capability.model_dump(mode="json"))
         estimate = artifact_memory_estimate(
-            artifact, hardware, context=context, require_chat_template=suite == "ifeval",
+            artifact,
+            quality_memory_hardware(hardware, selection) if observable else hardware,
+            context=context,
+            require_chat_template=suite == "ifeval",
+            **({"backend": selection.selected_backend} if observable else {}),
         )
         write_json(output / "memory-preflight.json", estimate.model_dump(mode="json"))
         if suite == "ifeval":
             assert artifact.local_path is not None
             write_json(output / "chat-template.json", chat_template_evidence(artifact.local_path))
-        selection = select_runtime_backend(hardware)
-        capability = inspect_llama_cpp_runtime(
-            backend=HostExecutionBackend(),
-            llama_cli_path=args.llama_server,
-        )
-        readiness = evaluate_execution_readiness(selection=selection, runtime_capability=capability)
+        if not observable:
+            selection = select_runtime_backend(hardware)
+            capability = inspect_llama_cpp_runtime(
+                backend=HostExecutionBackend(),
+                llama_cli_path=args.llama_server,
+            )
+            readiness = evaluate_execution_readiness(
+                selection=selection, runtime_capability=capability
+            )
         write_json(output / "hardware.json", hardware.model_dump(mode="json"))
         write_json(output / "readiness.json", readiness.model_dump(mode="json"))
-        if (
+        if not observable and (
             selection.selected_backend is not ComputeBackend.CUDA
             or readiness.status is not ExecutionReadinessStatus.READY
             or len(hardware.gpus) != 1
         ):
             raise ValueError("The fixed CUDA smoke requires confirmed readiness on one GPU")
-        if (
+        if observable:
+            validate_quality_memory(estimate, selection.selected_backend)
+        elif (
             estimate.hardware_fit is None
             or estimate.hardware_fit.mode is not HardwareFitMode.GPU_RESIDENT
         ):
@@ -292,16 +372,48 @@ def run(args: argparse.Namespace) -> None:
         write_json(output / "image.json", {"id": image["Id"], "digests": image["RepoDigests"]})
         assert artifact.local_path is not None
         launch = server_command(
-            args.llama_server.resolve(), artifact.local_path,
-            context=context, chat=suite == "ifeval",
+            args.llama_server.resolve(),
+            artifact.local_path,
+            context=context,
+            chat=suite == "ifeval",
+            **(
+                {
+                    "n_gpu_layers": 0 if selection.selected_backend is ComputeBackend.CPU else -1,
+                    "device": device,
+                }
+                if observable
+                else {}
+            ),
+        )
+        if execution is not None:
+            validate_runtime_execution(
+                execution,
+                {
+                    "server_sha256": runtime_sha,
+                    "fingerprint": execution["fingerprint"],
+                    "backend_flags": launch[3:],
+                },
+            )
+        native_linux = (
+            observable and "microsoft" not in Path("/proc/sys/kernel/osrelease").read_text().lower()
         )
         evaluate = docker_command(
-            image["Id"], container_name, output, artifact.local_path, args.dataset_file.resolve(),
+            image["Id"],
+            container_name,
+            output,
+            artifact.local_path,
+            args.dataset_file.resolve(),
             profile=args.profile,
+            **({"host_network": native_linux} if observable else {}),
         )
         write_json(
             output / "commands.json",
-            {"server": launch, "evaluator": evaluate, "server_sha256": SERVER_SHA256},
+            {
+                "server": launch,
+                "evaluator": evaluate,
+                "server_sha256": runtime_sha,
+                **({"execution": execution} if execution else {}),
+            },
         )
         # Never attach to or stop a pre-existing listener.
         check_server_port(18083)
@@ -310,11 +422,18 @@ def run(args: argparse.Namespace) -> None:
             (output / "evaluator.log").open("x") as eval_log,
         ):
             server = subprocess.Popen(launch, stdout=server_log, stderr=subprocess.STDOUT)
-            wait_for_server(server, 18083)
+            wait_for_server(server, 18083, **({"timeout": 180} if observable else {}))
             container_attempted = True
             subprocess.run(
-                evaluate, stdout=eval_log, stderr=subprocess.STDOUT,
-                timeout=TIMEOUTS[args.profile], check=True,
+                evaluate,
+                stdout=eval_log,
+                stderr=subprocess.STDOUT,
+                timeout=(
+                    CPU_TIMEOUTS[args.profile]
+                    if observable and selection.selected_backend is ComputeBackend.CPU
+                    else TIMEOUTS[args.profile]
+                ),
+                check=True,
             )
             container_attempted = False  # Successful --rm already removed our container.
         if json.loads((output / "smoke-status.json").read_text()) != {
@@ -356,6 +475,10 @@ def run(args: argparse.Namespace) -> None:
                 write_json(output / "artifact-after-error.json", {"error": str(exc)})
                 raise
             write_json(output / "artifact-after.json", after.model_dump(mode="json"))
+        if observable and runtime_sha is not None:
+            with args.llama_server.open("rb") as runtime:
+                if hashlib.file_digest(runtime, "sha256").hexdigest() != runtime_sha:
+                    raise ValueError("Runtime changed during evaluation; record withheld.")
     if (output / "cleanup-error.json").exists():
         raise RuntimeError("Owned container cleanup could not be confirmed; see cleanup-error.json")
     write_json(
@@ -376,6 +499,7 @@ def main() -> None:
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
+    parser.add_argument("--backend", choices=("auto", "cpu", "cuda", "vulkan"))
     run(parser.parse_args())
 
 

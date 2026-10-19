@@ -24,6 +24,7 @@ from textual.widgets import (
     Static,
 )
 
+from jaull.advisor.service import AdvisorService
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.requirements import RecommendationPriority, UseCase, WorkloadMode
 from jaull.tui.app import JaullApp
@@ -46,6 +47,13 @@ from tests._workflow_fixtures import (
     size_driven_estimator,
     transformers_analysis,
 )
+
+
+@pytest.fixture(autouse=True)
+def _offline_runtime_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Navigation tests must not import the host's torch in an external probe.
+    # Runtime capability/readiness has its own independently injected tests.
+    monkeypatch.setattr(AdvisorService, "_plan_runtime_readiness", lambda self, **kwargs: None)
 
 
 def _run(coro):  # type: ignore[no-untyped-def]

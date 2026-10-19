@@ -210,7 +210,7 @@ def test_subprocess_failure_and_cancellation_allow_owned_cleanup(
         def __exit__(self, *args: Any) -> None:
             pass
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             waits.append(True)
             if self.interrupt and len(waits) == 1:
                 raise KeyboardInterrupt

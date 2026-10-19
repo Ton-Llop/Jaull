@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -21,6 +22,7 @@ from typing import Any
 from uuid import uuid4
 
 from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.hardware import ComputeBackend
 from jaull.evaluation.quality_records import load_record
 from jaull.exceptions import JaullError
 from jaull.paths import user_data_dir
@@ -54,8 +56,7 @@ _SUITES_LABEL = "io.jaull.quality.suites"
 _SUITE_CAPABILITY = {"hellaswag": None, "ifeval": "ifeval-chat-v1"}
 EVALUATOR_REPOSITORY = "jaull-quality-eval"
 BUILD_COMMAND = (
-    "docker build --platform linux/amd64 --tag jaull-quality-eval:ifeval-chat-v1 "
-    "pilot/quality_eval"
+    "docker build --platform linux/amd64 --tag jaull-quality-eval:gguf-v1 pilot/quality_eval"
 )
 
 
@@ -126,6 +127,9 @@ class QualityRunRequest:
     pilot_root: Path
     profile: QualityProfile = QualityProfile.SMOKE
     allow_dataset_download: bool = False
+    backend: ComputeBackend | None = (
+        None  # None: automatic evaluation placement, not normal-plan placement.
+    )
 
 
 _SETUP_KEYS = ("dataset", "server", "root", "image")
@@ -214,7 +218,9 @@ def _check_cancel(is_cancelled: Callable[[], bool] | None) -> None:
 
 
 def _invoke(
-    command: list[str], root: Path, log: Path,
+    command: list[str],
+    root: Path,
+    log: Path,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
     _check_cancel(is_cancelled)
@@ -225,37 +231,56 @@ def _invoke(
     with (
         log.open("x", encoding="utf-8") as handle,
         subprocess.Popen(
-            command, cwd=root, env=environment, stdout=handle, stderr=subprocess.STDOUT,
+            command,
+            cwd=root,
+            env=environment,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
         ) as process,
     ):
+        deadline = time.monotonic() + (7 * 3600 if "scripts.quality_eval_smoke" in command else 300)
         try:
-            if is_cancelled is None:
-                code = process.wait()
-            else:
-                while True:
-                    _check_cancel(is_cancelled)
-                    try:
-                        code = process.wait(timeout=0.2)
-                        break
-                    except subprocess.TimeoutExpired:
-                        continue
-        except QualityEvaluationCancelled:
-            process.send_signal(signal.SIGINT)
-            process.wait()
-            raise
-        except KeyboardInterrupt:
+            while True:
+                _check_cancel(is_cancelled)
+                if time.monotonic() >= deadline:
+                    raise QualityEvaluationError(
+                        "Quality subprocess exceeded its bounded deadline."
+                    )
+                try:
+                    code = process.wait(timeout=0.2)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except (QualityEvaluationCancelled, KeyboardInterrupt, QualityEvaluationError):
             # Let the pilot's finally stop its owned container/server and
             # finish artifact-after verification; do not kill its owner.
             process.send_signal(signal.SIGINT)
-            process.wait()
+            try:
+                process.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                # Last resort: stop the owned process group, never a pre-existing server.
+                if sys.platform == "win32":
+                    process.terminate()
+                else:
+                    os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    if sys.platform == "win32":
+                        process.kill()
+                    else:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)
             raise
     if code:
         raise QualityEvaluationError(f"Quality pilot exited with {code}; inspect {log}.")
 
 
 def prepare_quality_setup(
-    request: QualityRunRequest, *, is_cancelled: Callable[[], bool] | None = None,
+    request: QualityRunRequest,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> None:
     """Shared preflight, before any model download; optional pinned dataset preparation."""
@@ -281,7 +306,21 @@ def prepare_quality_setup(
     ]
     if request.allow_dataset_download:
         command.append("--allow-dataset-download")
+    if request.profile is not QualityProfile.IFEVAL:
+        command.append("--observable-runtime")
     try:
+        if request.backend not in {
+            None,
+            ComputeBackend.CPU,
+            ComputeBackend.CUDA,
+            ComputeBackend.VULKAN,
+        }:
+            raise QualityEvaluationError("Quality evaluation supports CPU, CUDA or Vulkan.")
+        if request.profile is QualityProfile.IFEVAL and request.backend not in {
+            None,
+            ComputeBackend.CUDA,
+        }:
+            raise QualityEvaluationError("IFEval retains the audited CUDA runtime protocol.")
         _invoke(command, root, output / "setup.log", is_cancelled)
     except QualityEvaluationCancelled:
         raise
@@ -314,7 +353,9 @@ def prepare_quality_setup(
 
 
 def run_quality_evaluation(
-    request: QualityRunRequest, *, is_cancelled: Callable[[], bool] | None = None,
+    request: QualityRunRequest,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Run one bounded profile, then reconstruct its HTTP-validated snapshot.
 
@@ -350,11 +391,31 @@ def run_quality_evaluation(
     # Keep the synchronous CLI call unchanged; TUI workers opt into polling.
     invoke_args = () if is_cancelled is None else (is_cancelled,)
     _invoke(
-        [sys.executable, "-m", "scripts.quality_eval_smoke",
-         "--artifact-json", str(artifact_json), "--dataset-file", str(dataset),
-         "--llama-server", str(server), "--image", request.image,
-         "--profile", request.profile.value, "--output", str(bundle)],
-        root, output / "run.log", *invoke_args,
+        [
+            sys.executable,
+            "-m",
+            "scripts.quality_eval_smoke",
+            "--artifact-json",
+            str(artifact_json),
+            "--dataset-file",
+            str(dataset),
+            "--llama-server",
+            str(server),
+            "--image",
+            request.image,
+            "--profile",
+            request.profile.value,
+            "--output",
+            str(bundle),
+            *(
+                ["--backend", request.backend.value if request.backend else "auto"]
+                if request.profile is not QualityProfile.IFEVAL
+                else []
+            ),
+        ],
+        root,
+        output / "run.log",
+        *invoke_args,
     )
     _invoke(
         [sys.executable, "-m", "pilot.quality_eval.records",
@@ -366,5 +427,9 @@ def run_quality_evaluation(
         raise QualityEvaluationError("Produced record belongs to a different artifact.")
     if record["classification"] != PROFILE_GRADE[request.profile]:
         raise QualityEvaluationError("Produced record belongs to a different evaluation profile.")
+    if request.backend is not None and request.profile is not QualityProfile.IFEVAL:
+        execution = record["identity"]["runtime"].get("execution", {})
+        if execution.get("backend") != request.backend.value:
+            raise QualityEvaluationError("Produced record used a different evaluation backend.")
     _check_cancel(is_cancelled)
     return record
