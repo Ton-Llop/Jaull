@@ -88,6 +88,11 @@ A failed run is still a result: the record is kept, and the failure reason is sh
 
 ## Benchmarking
 
+In Results, **Speed** opens the selected plan's benchmark setup; there is no separate
+duplicate Benchmark button. Completed runs are saved automatically. Returning to Results
+shows the latest compatible saved speed, with provenance under Technical Details, without
+overwriting earlier runs or changing the ranking's aggregate.
+
 The same plan can be measured rather than estimated: `llama-bench` for llama.cpp, an isolated
 Python worker for Transformers. The result is persisted as a `BenchmarkRecord` tied to a
 fingerprint of this machine, so two plans are only ever compared when they were measured on

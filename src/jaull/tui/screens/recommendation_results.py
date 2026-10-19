@@ -273,12 +273,7 @@ class _RecommendationInspector(Vertical):
                 id=f"res-validate-{self._index}",
                 disabled=action_reason is not None,
             )
-            benchmark = ActionButton(
-                "Benchmark",
-                id=f"res-benchmark-{self._index}",
-                disabled=action_reason is not None,
-            )
-            for button in (run, validate, benchmark):
+            for button in (run, validate):
                 button.tooltip = action_reason
                 yield button
             yield ActionButton("Paths", id=f"res-paths-{self._index}")
@@ -559,12 +554,6 @@ class RecommendationResultsScreen(Screen[None]):
             if 0 <= index < len(self._state.recommendations):
                 recommendation = self._state.recommendations[index]
                 app.validate_recommendation(recommendation, recommendation.plan)
-            return
-        if button_id.startswith("res-benchmark-"):
-            index = int(button_id.removeprefix("res-benchmark-"))
-            if 0 <= index < len(self._state.recommendations):
-                recommendation = self._state.recommendations[index]
-                app.benchmark_recommendation(recommendation, recommendation.plan)
             return
         if button_id.startswith("res-paths-"):
             index = int(button_id.removeprefix("res-paths-"))
@@ -953,7 +942,7 @@ def _speed_widgets(
         yield Static("", id=f"rec-speed-{suffix}", classes="rec-speed-value")
         reason = _runtime_action_reason(rec)
         button = ActionButton("Speed", id=f"res-speed-{suffix}", disabled=reason is not None)
-        button.tooltip = reason or "Measure this exact execution plan; opens benchmark setup."
+        button.tooltip = reason or "Benchmark this exact plan and save its measured speed."
         yield button
 
 

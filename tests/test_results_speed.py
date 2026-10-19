@@ -9,7 +9,7 @@ import pytest
 from textual.screen import Screen
 from textual.widgets import Button, Static
 
-from jaull.domain.benchmarks import BenchmarkMeasurementKind, BenchmarkRecord
+from jaull.domain.benchmarks import BenchmarkGpuLayers, BenchmarkMeasurementKind, BenchmarkRecord
 from jaull.domain.execution_plans import ArtifactVariantFormat
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
@@ -85,6 +85,67 @@ def test_exact_applicable_measurement_is_labelled_and_traceable():
     assert readout.source == "measured" and readout.measured
     assert "tg128; 1 calls" in readout.details
     assert record.identity.benchmark_id in readout.details
+
+
+def test_results_show_latest_saved_speed_without_changing_the_ranking_median():
+    from jaull.recommendation.local_evidence import assess_speed
+
+    plan, record = _case()
+    newer = record.model_copy(update={
+        "identity": record.identity.model_copy(update={
+            "benchmark_id": "newer",
+            "created_at": record.identity.created_at + timedelta(days=1),
+        }),
+        "observation": record.observation.model_copy(update={"measurements": [
+            m.model_copy(update={"mean_tokens_per_second": 20.0})
+            for m in record.observation.measurements
+        ]}),
+    })
+    records = [record, newer]
+    readout = speed_readout(plan, _requirements(), records)
+    assert readout.label == "Measured 20.0 tok/s"
+    assert "Latest saved run: newer" in readout.details
+    assert "Ranking aggregate (median): 15.0 tok/s" in readout.details
+    assert readout == speed_readout(plan, _requirements(), records[::-1])
+    assert assess_speed(plan, _requirements(), records).applicable.tokens_per_second == 15.0
+
+
+def _gguf_history_case(backend):
+    plan, record = _case()
+    layers = (
+        BenchmarkGpuLayers.count_layers(0) if backend is ComputeBackend.CPU else record.gpu_layers
+    )
+    device = None if backend is ComputeBackend.CPU else "Vulkan0"
+    runtime = plan.runtime.model_copy(update={"flags": [
+        RuntimeFlag(name="--n-gpu-layers", value="0" if backend is ComputeBackend.CPU else "-1",
+                    source=RuntimeFlagSource.ESTIMATE, explanation="test"),
+    ]})
+    plan = plan.model_copy(update={
+        "runtime": runtime,
+        "backend_selection": plan.backend_selection.model_copy(update={
+            "selected_backend": backend,
+        }),
+    })
+    request = record.request.model_copy(update={
+        "backend": backend, "device": device, "gpu_layers": layers, "runtime": runtime,
+    })
+    record = BenchmarkRecord.create(
+        hardware=plan.hardware, request=request, observation=record.observation,
+    )
+    return plan, record
+
+
+@pytest.mark.parametrize("backend", [ComputeBackend.CPU, ComputeBackend.VULKAN])
+def test_cpu_and_vulkan_keep_saved_speed_as_history_not_ranking_evidence(backend):
+    from jaull.recommendation.local_evidence import assess_speed
+
+    plan, record = _gguf_history_case(backend)
+    readout = speed_readout(plan, _requirements(), [record])
+    assert readout.label == "Last benchmark 10.0 tok/s (llama.cpp)"
+    assert readout.source == "historical" and not readout.measured
+    assert "Not used for ranking" in readout.details
+    assert record.identity.benchmark_id in readout.details
+    assert assess_speed(plan, _requirements(), [record]).applicable is None
 
 
 def test_other_artifacts_never_produce_predictions_or_change_inputs():
@@ -344,8 +405,10 @@ def test_results_show_only_applicable_speed_and_keep_benchmark_accessible(size, 
 
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 50)])
-def test_returning_from_benchmark_refreshes_transformers_history_without_changing_search(size):
-    plan, record = _transformers_case()
+@pytest.mark.parametrize("backend", [None, ComputeBackend.CPU, ComputeBackend.VULKAN])
+def test_returning_from_benchmark_refreshes_history_without_changing_search(size, backend):
+    plan, record = _transformers_case() if backend is None else _gguf_history_case(backend)
+    expected = "Last benchmark 18.4" if backend is None else "Last benchmark 10.0"
     rec = _gguf_recommendation().model_copy(update={"plan": plan})
     state = RecommendationWorkflowState(requirements=_requirements(), recommendations=[rec])
 
@@ -368,11 +431,11 @@ def test_returning_from_benchmark_refreshes_transformers_history_without_changin
             advisor._benchmarks[record.identity.benchmark_id] = record
             app.pop_screen()
             async with asyncio.timeout(10):
-                while "Last benchmark 18.4" not in str(
+                while expected not in str(
                     screen.query_one("#rec-speed-0", Static).content,
                 ):
                     await pilot.pause(0.01)
-            assert "Last benchmark 18.4" in str(
+            assert expected in str(
                 screen.query_one("#rec-speed-detail-0", Static).content,
             )
             assert state.model_dump_json() == before

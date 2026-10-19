@@ -58,9 +58,10 @@ def test_results_screen_can_open_benchmark_screen(tmp_path: Path) -> None:
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
-            assert screen.query_one("#res-benchmark-0", Button).disabled is False
+            assert not screen.query("#res-benchmark-0")
+            assert screen.query_one("#res-speed-0", Button).disabled is False
 
-            screen.query_one("#res-benchmark-0", Button).press()
+            screen.query_one("#res-speed-0", Button).press()
             await pilot.pause()
 
             assert isinstance(pilot.app.screen, RecommendationBenchmarkScreen)

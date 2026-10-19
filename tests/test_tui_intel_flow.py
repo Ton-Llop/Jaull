@@ -85,7 +85,7 @@ def _action_buttons(results: RecommendationResultsScreen) -> dict[str, bool]:
     """Which of the primary actions a user can press (True = enabled)."""
     return {
         name: not results.query_one(f"#res-{name}-0", Button).disabled
-        for name in ("run", "validate", "benchmark")
+        for name in ("run", "validate", "speed")
     }
 
 
@@ -115,7 +115,7 @@ def test_guided_flow_reaches_a_ready_vulkan_plan_for_the_intel_card(tmp_path: Pa
             text = _visible_text(results)
             assert "Vulkan" in text and "Execution path available" in text
             assert "23.00 GiB" in text  # the budget the estimate used, not the 24 GiB capacity
-            assert _action_buttons(results) == {"run": True, "validate": True, "benchmark": True}
+            assert _action_buttons(results) == {"run": True, "validate": True, "speed": True}
 
     _run(scenario())
 
@@ -158,7 +158,7 @@ def test_benchmark_measures_the_matched_device_and_records_where_it_ran(
         app = JaullApp(advisor=advisor)
         async with app.run_test(size=(140, 50)) as pilot:
             results = await _walk_to_results(app, pilot)
-            results.query_one("#res-benchmark-0", Button).press()
+            results.query_one("#res-speed-0", Button).press()
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, RecommendationBenchmarkScreen)
@@ -237,7 +237,7 @@ def test_an_unconfirmed_device_blocks_every_action_and_explains_why(
             assert fragment in text  # the user is told why, on the Results screen
             assert "Execution path available" not in text
             assert _action_buttons(results) == {
-                "run": False, "validate": False, "benchmark": False,
+                "run": False, "validate": False, "speed": False,
             }
             assert results.query_one("#res-paths-0", Button).disabled is False
             # Nothing was launched or measured to get here.
@@ -330,7 +330,7 @@ def test_nvidia_still_gets_a_ready_cuda_plan_through_the_same_flow(tmp_path: Pat
             assert plan.backend_selection.selected_backend is ComputeBackend.CUDA
             assert plan.execution_readiness is not None
             assert plan.execution_readiness.status is ExecutionReadinessStatus.READY
-            assert _action_buttons(results) == {"run": True, "validate": True, "benchmark": True}
+            assert _action_buttons(results) == {"run": True, "validate": True, "speed": True}
             assert "CUDA" in _visible_text(results)
             assert scripted.argv_of("llama-bench") == []
 

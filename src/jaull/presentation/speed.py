@@ -36,19 +36,27 @@ def speed_readout(
         by_id[key] = record
     speed = assess_speed(plan, requirements, tuple(by_id.values()))
     if (measured := speed.applicable) is not None:
+        latest = by_id[measured.benchmark_id]
+        generation = next(
+            m for m in latest.observation.measurements
+            if m.kind is BenchmarkMeasurementKind.GENERATION and m.tokens == 128
+        )
         observed = (
             f"Observed range {measured.observed_min:.1f}-{measured.observed_max:.1f} tok/s. "
             if measured.observed_min is not None and measured.observed_max is not None else ""
         )
         return SpeedReadout(
-            f"Measured {measured.tokens_per_second:.1f} tok/s",
+            f"Measured {generation.mean_tokens_per_second:.1f} tok/s",
             f"tg128; {measured.run_count} calls. {observed}Not a confidence interval. "
+            f"Latest saved run: {latest.identity.benchmark_id}; "
+            f"recorded {latest.identity.created_at.isoformat()}.\n"
+            f"Ranking aggregate (median): {measured.tokens_per_second:.1f} tok/s. "
             f"{measured.scope}\nBenchmark IDs: "
             + ", ".join(measured.benchmark_ids or (measured.benchmark_id,)),
             measured=True,
             source="measured",
         )
-    if plan.runtime_family is RuntimeName.TRANSFORMERS:
+    if plan.runtime_family in {RuntimeName.TRANSFORMERS, RuntimeName.LLAMA_CPP}:
         historical = matching_benchmark(plan, [
             record for record in by_id.values()
             if record.observation.exit_code == 0
@@ -67,8 +75,11 @@ def speed_readout(
                 if m.kind is BenchmarkMeasurementKind.GENERATION and m.tokens == 128
             )
             flags = ", ".join(f"{flag.name}={flag.value}" for flag in historical.runtime.flags)
+            runtime_label = (
+                "Transformers" if plan.runtime_family is RuntimeName.TRANSFORMERS else "llama.cpp"
+            )
             return SpeedReadout(
-                f"Last benchmark {generation.mean_tokens_per_second:.1f} tok/s (Transformers)",
+                f"Last benchmark {generation.mean_tokens_per_second:.1f} tok/s ({runtime_label})",
                 "Historical measurement matched by metadata, not verified exact artifact bytes "
                 "or current execution. Not used for ranking or a production-workload prediction.\n"
                 f"tg128; {historical.request.repetitions} repetitions. "

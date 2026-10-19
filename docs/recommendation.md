@@ -384,18 +384,22 @@ use below a user threshold that this tool cannot verify.
 
 Results shows a speed readout and a **Speed** shortcut beside each plan, also in the
 selected inspector. The shortcut opens the existing benchmark setup for that exact
-plan; opening Results never downloads or runs a model. Returning refreshes stored evidence.
+plan; it replaces the duplicate Benchmark action in Results. Benchmark completion saves
+the record automatically, and returning refreshes stored evidence. Opening Results never
+downloads or runs a model.
 
-- **Measured X tok/s** uses applicable local `llama_bench_v2` tg128 evidence. Provenance
-  includes call count, observed range (not a confidence interval) and benchmark IDs.
-- **Last benchmark X tok/s (Transformers)** shows the latest successful matching
-  Transformers generation measurement at 128 tokens, using the existing metadata,
+- **Measured X tok/s** shows the latest applicable local `llama_bench_v2` tg128 run.
+  Provenance includes its date and ID, the separate ranking median, call count and
+  observed range (not a confidence interval). Ranking still uses the aggregate.
+- **Last benchmark X tok/s (Transformers / llama.cpp)** shows the latest successful
+  matching generation measurement at 128 tokens when ranking evidence is unavailable,
+  including CPU/Vulkan measurements, using the existing metadata,
   machine, backend and precision matching. Known conflicting artifact digests are
   excluded. This is historical evidence, not verified exact bytes or current
   execution. Details include date, protocol, repetitions, runtime flags and record ID;
   it does not order Fastest/Balanced.
 - **No speed label** is shown without applicable evidence or a matching historical
-  Transformers measurement; the **Speed** shortcut remains available. Other-condition
+  measurement; the **Speed** shortcut remains available. Other-condition
   benchmarks remain historical references under **Speed provenance**, never
   throughput attributed to the current plan.
 
@@ -407,7 +411,7 @@ predicts the displayed speed nor orders Fastest/Balanced. See
 [the diagnostic](../validation/qwen2.5-0.5b-transformers-decode-2060-20261014/README.md).
 
 Applicable speed currently requires the existing llama.cpp evidence contract;
-displaying a saved Transformers benchmark does not make it ranking-applicable. A Speed
+displaying a saved benchmark does not make it ranking-applicable. A Speed
 microbenchmark is not a production-context benchmark. This display does not alter
 ranking, saved searches, evidence records or exported reports.
 

@@ -297,7 +297,7 @@ def test_unknown_recommendations_are_separate_and_keep_the_assessment_reason() -
             assert len(screen.query(".rec-row")) == 5
             assert screen.query_one("#res-validate-3", Button).disabled
             assert screen.query_one("#res-run-3", Button).disabled
-            assert screen.query_one("#res-benchmark-3", Button).disabled
+            assert screen.query_one("#res-speed-3", Button).disabled
             assert not screen.query_one("#res-details", Button).disabled
         assert [rec.score for rec in recommendations] == scores
 
@@ -938,7 +938,7 @@ def test_results_validation_and_benchmark_support_transformers_runtime() -> None
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
             assert screen.query_one("#res-validate-0", Button).disabled is False
-            assert screen.query_one("#res-benchmark-0", Button).disabled is False
+            assert screen.query_one("#res-speed-0", Button).disabled is False
 
     _run(scenario())
 
@@ -980,7 +980,7 @@ def test_results_disable_execution_actions_for_a_not_ready_plan() -> None:
             assert isinstance(screen, RecommendationResultsScreen)
             assert screen.query_one("#res-run-0", Button).disabled is True
             assert screen.query_one("#res-validate-0", Button).disabled is True
-            assert screen.query_one("#res-benchmark-0", Button).disabled is True
+            assert screen.query_one("#res-speed-0", Button).disabled is True
             assert screen.query_one("#res-paths-0", Button).disabled is False
             assert "llama.cpp is not installed" in _visible_text(screen)
 
