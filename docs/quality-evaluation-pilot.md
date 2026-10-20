@@ -96,9 +96,11 @@ and CPU HellaSwag100 at six hours. GPU HellaSwag retains 5/10-minute evaluator l
 HTTP scoring waits at most 120 seconds per request; the owner has a finite outer deadline
 and bounded cancellation cleanup. Timeout is a failed attempt, not a zero quality score.
 
-On native Linux the new route uses host networking to reach the server bound to loopback;
-WSL/Docker Desktop retains the bridge/`host.docker.internal` route. Docker running inside
-WSL rather than Docker Desktop and remote daemons require separate network validation.
+Docker topology is inspected independently of the kernel: a local Linux/WSL Engine uses
+host networking to reach the server bound to loopback; Docker Desktop uses the
+bridge/`host.docker.internal` route. Remote, rootless and unidentified daemon topologies
+are refused. Before scoring/generation the evaluator checks `/health` from inside its
+own container, with a bounded timeout and an explicit connectivity error on failure.
 All mounted paths must be accessible from the daemon. A Windows-host Vulkan device is not
 assumed usable from WSL, and native Windows execution remains unsupported by this pilot.
 
@@ -309,8 +311,13 @@ catalog entries are not evidence of poor quality.
   the new schema-3 CPU/Vulkan route does not extend that physical validation.
 - No confidence interval on the per-run metrics, which is what blocks saying two
   models are indistinguishable.
-- CPU-only, partial-offload and multi-GPU evaluation are unsupported. Those
-  machines keep their model recommendations; they just cannot acquire evidence.
+- HellaSwag smoke/100 supports CPU-only evaluation and a uniquely identified GPU with
+  confirmed full-device fit. Partial-offload and split/multi-GPU evaluation remain
+  unsupported. IFEval still requires its audited single-CUDA-GPU protocol.
+- Schema 3 requires retained runtime capability, command, server properties and positive
+  model/compute device allocation evidence, including the effective thread count. Backend
+  initialization alone is not execution proof. Missing/contradictory observations block
+  import; the raw bundle is retained for diagnosis. Schemas 1/2 remain unchanged.
 - Multipart GGUFs are rejected, including a shard renamed to look single-file.
 - A checksum detects corruption, not authenticity. Imported records must be
   trusted local evidence.

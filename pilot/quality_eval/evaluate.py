@@ -352,6 +352,23 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
     )
 
 
+def verify_server_connection(base_url: str) -> None:
+    """Runs inside the evaluator container, before any scoring or generation."""
+    import requests
+
+    try:
+        response = requests.get(base_url + "/health", timeout=10)
+        response.raise_for_status()
+        if response.json().get("status") != "ok":
+            raise ValueError("Host server did not report healthy")
+    except (requests.RequestException, ValueError, AttributeError) as exc:
+        raise ValueError(
+            f"Evaluator container cannot verify llama-server at {base_url}. "
+            "Check Docker Desktop host routing or local Engine host networking; "
+            "no quality inference was started."
+        ) from exc
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -366,6 +383,7 @@ def main() -> None:
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
     args = parser.parse_args()
     try:
+        verify_server_connection(args.base_url)
         if PROFILES[args.profile].get("suite") == "ifeval":
             from pilot.quality_eval import ifeval
 

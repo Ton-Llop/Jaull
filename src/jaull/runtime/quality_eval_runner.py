@@ -24,6 +24,7 @@ from uuid import uuid4
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
 from jaull.evaluation.quality_records import load_record
+from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_LABEL, QUALITY_RUNTIME_PROTOCOL
 from jaull.exceptions import JaullError
 from jaull.paths import user_data_dir
 
@@ -86,6 +87,10 @@ def find_evaluator_image(profile: QualityProfile, preferred: str | None = None) 
         except (OSError, subprocess.SubprocessError, ValueError):
             continue
         if not isinstance(labels, dict) or labels.get(_CONTRACT_LABEL[0]) != _CONTRACT_LABEL[1]:
+            continue
+        if PROFILE_SUITE[profile] == "hellaswag" and (
+            labels.get(QUALITY_RUNTIME_LABEL) != QUALITY_RUNTIME_PROTOCOL
+        ):
             continue
         if capability is None or capability in str(labels.get(_SUITES_LABEL, "")).split(","):
             return name

@@ -55,7 +55,9 @@ def check_quality_readiness(
     image = find_evaluator_image(profile, values.get("image") or None)
     rows.append(("ok", "Evaluator image", image) if image else (
         "bad", "Evaluator image",
-        f"No local image supports {suite}. Build it once: {BUILD_COMMAND}",
+        f"No local image satisfies the {suite} contract"
+        f"{' (observable-runtime-v2 required)' if suite == 'hellaswag' else ''}. "
+        f"Build it once: {BUILD_COMMAND}",
     ))
     if profile.value == "ifeval" and selected_backend not in {"auto", "cuda"}:
         rows.append(("bad", "Evaluation backend", "IFEval retains the audited CUDA protocol. "

@@ -295,6 +295,82 @@ def test_advisor_uses_same_llama_cpp_installation_for_run_and_benchmark(
     assert advisor._llama_bench_runner()._llama_bench == _norm(bench)
 
 
+def test_selected_installation_replaces_previously_created_executors(tmp_path, monkeypatch):
+    import sys
+
+    from jaull.domain.benchmarks import BenchmarkGpuLayers, BenchmarkRequest
+    from jaull.domain.execution import ExecutionObservation, ExecutionResult
+    from jaull.domain.inference import TargetDevice
+    from tests.test_benchmarks import VULKAN_OUTPUT
+    from tests.test_experiment_runner import _artifact, _request, _runtime
+    from tests.test_runtime_device_matching import B60, _selection
+
+    cpu = _exe(tmp_path / "path" / "llama-cli")
+    _exe(cpu.parent / "llama-bench")
+    vulkan = _exe(tmp_path / "home/tools/llama.cpp/build-vulkan/bin/llama-cli")
+    bench = _exe(vulkan.parent / "llama-bench")
+
+    class Backend:
+        def __init__(self):
+            self.commands = []
+
+        def execute(self, request):
+            command = request.command
+            self.commands.append(command)
+            output = "response"
+            if "--list-devices" in command:
+                output = f"Vulkan0: {B60}" if command[0] == str(vulkan) else "Available devices:"
+            elif "--version" in command:
+                output = "version: 12345 (abcdef123)"
+            elif "-m" in command:
+                output = VULKAN_OUTPUT
+            elif "--model" in command:
+                from tests.test_vulkan_execution_identity import _execution_log
+
+                output = _execution_log("Vulkan0", B60)
+            return ExecutionResult(stdout=output, stderr="", observation=ExecutionObservation(
+                success=True, duration_seconds=0.1, exit_code=0,
+                peak_ram_bytes=None, peak_vram_bytes=None,
+            ))
+
+    backend = Backend()
+    monkeypatch.setattr("jaull.execution.host.HostExecutionBackend", lambda: backend)
+    advisor = AdvisorService(services=_services(), runtime_locator=RuntimeLocator(
+        config=RuntimeLocatorConfig(python_executable=sys.executable),
+        registry=None, environ={"PATH": str(cpu.parent)}, home=tmp_path / "home",
+    ))
+    old_run = advisor._llama_cpp_runner()
+    old_bench = advisor._llama_bench_runner()
+    old_experiment = advisor._experiment_runner()
+    old_matrix = advisor._benchmark_matrix_runner()
+    advisor.inspect_llama_cpp_runtime(selection=_selection(B60), backend=backend)
+
+    artifact = _artifact(tmp_path)
+    advisor.run_artifact(artifact=artifact, prompt="hello", runtime=_runtime(n_gpu_layers=-1))
+    advisor._llama_bench_runner().run(BenchmarkRequest(
+        artifact=artifact, runtime=_runtime(n_gpu_layers=-1), backend=ComputeBackend.VULKAN,
+        device="Vulkan0", gpu_layers=BenchmarkGpuLayers.full(),
+    ))
+    runtime = _runtime(n_gpu_layers=-1)
+    from jaull.domain.runtime import RuntimeFlag, RuntimeFlagSource
+
+    runtime = runtime.model_copy(update={"flags": [*runtime.flags, RuntimeFlag(
+        name="--device", value="Vulkan0", source=RuntimeFlagSource.ESTIMATE, explanation="test",
+    )]})
+    request = _request(tmp_path, backend=ComputeBackend.VULKAN, runtime=runtime, persist=False,
+                       prediction_device=TargetDevice.GPU)
+    advisor._experiment_runner().run(request.model_copy(
+        update={"backend_selection": _selection(B60)}
+    ))
+    assert advisor._llama_cpp_runner() is not old_run
+    assert advisor._llama_bench_runner() is not old_bench
+    assert advisor._experiment_runner() is not old_experiment
+    assert advisor._benchmark_matrix_runner() is not old_matrix
+    assert advisor._benchmark_matrix_runner().llama_bench_runner is advisor._llama_bench_runner()
+    assert [cmd[0] for cmd in backend.commands if "--model" in cmd] == [str(vulkan)] * 2
+    assert [cmd[0] for cmd in backend.commands if "-m" in cmd] == [str(bench)]
+
+
 def test_advisor_uses_same_python_for_probe_run_and_benchmark(tmp_path: Path) -> None:
     python = _exe(tmp_path / "venv" / "bin" / "python")
     advisor = AdvisorService(

@@ -68,6 +68,7 @@ from jaull.domain.runtime import (
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
+    SelectedAcceleratorRef,
 )
 from jaull.evaluation.experiments import build_experiment_record
 
@@ -535,6 +536,10 @@ def _estimate(
 def _selection(backend: ComputeBackend) -> RuntimeBackendSelection:
     return RuntimeBackendSelection(
         selected_backend=backend,
+        selected_accelerator=SelectedAcceleratorRef(
+            name="test accelerator", vendor=AcceleratorVendor.AMD,
+            type=AcceleratorType.INTEGRATED,
+        ) if backend is ComputeBackend.VULKAN else None,
         reason=RuntimeBackendSelectionReason.CPU_FALLBACK
         if backend is ComputeBackend.CPU
         else RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,

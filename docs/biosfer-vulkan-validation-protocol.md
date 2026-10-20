@@ -75,21 +75,32 @@ the new test fixtures and the synthetic ones are deleted, in a separate change.
        `dedicated`, `dedicated_memory_bytes` from `vulkan-memory-heap`, `available_memory_bytes`
        only if a budget was printed, Vulkan `available`.
 5. [ ] With the Vulkan build of llama.cpp (record its path, version and SHA256):
-       `llama-cli.exe --list-devices` → save. Does `Vulkan0` carry the same name as step 2?
+       `llama-cli.exe --list-devices` → save. Which `Vulkan<N>` has the B60's name from step 2?
        Is there an extra software device? Do the listed MiB match the heap figures?
 6. [ ] `uv run jaull doctor` → save.
-7. [ ] Run the small GGUF with the Jaull command, full offload:
-       `uv run jaull run --model <repo> --quantization <Q> --prompt "Say hi" --ctx-size 2048 --n-gpu-layers 99 --llama-cli "<path to llama-cli.exe>"`.
-       Save the whole output. Does the log show the layers offloaded to `Vulkan0`
-       (`offloaded N/N layers to GPU`) and `Vulkan0 model buffer size`? Was the pinned
-       `--device` the B60? Watch GPU activity in Task Manager during the run.
+7. [ ] Open the guided Jaull flow, select the verified GGUF path, and require fresh
+       `READY` readiness identifying the B60 and a confirmed memory budget. Stop this
+       branch if readiness or the full-offload fit is unconfirmed. Run a short prompt
+       from Results/Paths and save its actual command and log. They must name the B60's
+       confirmed `--device Vulkan<N>`, not an assumed `Vulkan0`. Check full offload
+       (`offloaded N/N layers to GPU`) and model/compute buffers on that same device.
+       Watch GPU activity in Task Manager as supplementary evidence, not device identity.
+       For a direct cross-check, use the same verified local file and confirmed id:
+       `& "<llama-cli.exe>" --model "<local.gguf>" --device "<VulkanN>" --n-gpu-layers -1 --ctx-size 2048 --prompt "Say hi" --single-turn --verbose`.
+       This raw command does not perform Jaull's preparation. Neither does
+       `jaull run --n-gpu-layers ...`: that explicit CLI override bypasses hardware
+       preparation and must not be described as equivalent to the guided checks.
 8. [ ] Speed, **three independent runs**, protocol unchanged: tg128 (primary), pp512
        (supplementary), flash attention off, five llama-bench repetitions per run, median of
        the three runs. Use the TUI path that produces Jaull benchmark records (Results →
-       Fastest → measure speed) so identity, device and driver are stored. Cross-check one
+       Speed → measure speed) so identity, device and driver are stored. Cross-check one
        run with the raw command and keep its output:
-       `llama-bench.exe -m "<model>" -dev Vulkan0 -ngl -1 -fa 0 -p 512 -n 128 -r 5 -t 4 -b 2048 -ub 512 -ctk f16 -ctv f16 -o md -oe jsonl --progress`
-       (adjust `-dev` to the id found in step 5).
+       Prefer copying the argv actually produced by Jaull. The full-offload v2 template is:
+       `llama-bench.exe -m "<local.gguf>" -dev "<VulkanN>" -ngl -1 -p 512 -n 128 -r 5 -t <physical-cores> -b 512 -ub 512 -fa off -ctk f16 -ctv f16 -lm mmap -o md -oe jsonl --progress`.
+       Obtain the thread count with the producer's own rule:
+       `uv run python -c "import psutil; print(psutil.cpu_count(logical=False))"`.
+       Do not substitute logical cores or an arbitrary number. Use the actual prepared
+       offload for a partial plan, not `-ngl -1`; keep that placement in the record.
 9. [ ] Open the stored benchmark record: does it contain the Windows `os`, the Vulkan
        device, the driver version, the llama.cpp build and the model SHA256? Does
        `assess_speed` accept it for the same plan on the same machine, and refuse it after
@@ -120,10 +131,23 @@ the new test fixtures and the synthetic ones are deleted, in a separate change.
 5. [ ] If a real device appears: build a **separate** Vulkan llama.cpp
        (`-DGGML_VULKAN=ON`, see [llamacpp.md](llamacpp.md)), run `--list-devices`, then repeat
        steps 1.7–1.10 with Linux paths.
+       In bash invoke `<llama-cli>` directly (no PowerShell `&` and no `.exe`).
+       Re-detect the device id and physical cores inside WSL; do not inherit Windows ids.
 6. [ ] If no accelerated path exists in WSL2: write down the exact reason (missing device,
        missing driver, translation layer without the needed extension, build error). **Do not
        mark WSL2 acceleration as supported.** The next step is a design decision about a
        Windows-runtime bridge, not a workaround here.
+
+### Quality evaluation is a separate branch
+
+Run/Validate/Benchmark success does not validate Evaluate. The quality pilot requires
+Linux/WSL and its own confirmed `llama-server`, exact artifact, dataset and evaluator image.
+HellaSwag smoke/100 supports CPU/CUDA/confirmed Vulkan under schema 3; IFEval still requires
+the audited CUDA runtime. A Windows-only B60 is not usable by the WSL pilot through a bridge.
+Record whether Docker is Desktop or a local Engine. The evaluator must verify HTTP health
+from inside its own container before scoring. No additional container or proxy is needed.
+Only a completed, imported smoke with consistent effective backend/device evidence may
+establish this branch as physically validated; preserve every failed bundle unchanged.
 
 ## 3. What to bring back
 

@@ -1857,6 +1857,13 @@ portàtil. Els registres experimentals històrics no es reescriuen.
 
 ### D098. Vulkan sobre Intel Arc a Windows i WSL2, sense donar res per validat
 
+**Actualització 2026-10-20:** l'ampliació posterior del pilot HellaSwag permet
+CPU/CUDA/Vulkan confirmat (schema 3); IFEval conserva el contracte CUDA auditat.
+La identitat efectiva es contrasta amb les capacitats, el comandament i les
+assignacions observades del servidor; inicialitzar un backend no prova que s'hagi
+utilitzat. La validació física de la B60 continua pendent. L'abast original de D098
+que es descriu a continuació no incloïa aquesta ampliació del pilot.
+
 **Data i necessitat:** 2026-10-19. El PC de Biosfer té una Intel Arc Pro B60 (24 GB de
 VRAM dedicada) amb Windows i WSL2, i tota la ruta validada fins ara és CUDA. Calia
 preparar el suport Vulkan sense accés a aquell equip, de manera que cap resultat

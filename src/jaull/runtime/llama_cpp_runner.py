@@ -12,7 +12,10 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.execution.errors import ExecutableNotFoundError, ExecutionError
 from jaull.execution.ports import ExecutionBackendProtocol
-from jaull.runtime.llama_cpp_memory_report import parse_llama_cpp_allocation
+from jaull.runtime.llama_cpp_memory_report import (
+    observed_llama_cpp_device,
+    parse_llama_cpp_allocation,
+)
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _DEFAULT_CONTEXT_SIZE = 4096
@@ -216,18 +219,14 @@ def _drop_llama_cli_epilogue(text: str) -> str:
 
 
 def _observed_backend(runtime_output: str) -> ComputeBackend | None:
-    """Return a backend only when llama.cpp emitted an explicit marker."""
-
-    lowered = runtime_output.casefold()
-    if "ggml_cuda" in lowered or "ggml_backend_cuda" in lowered:
-        return ComputeBackend.CUDA
-    if "ggml_vulkan" in lowered:
-        return ComputeBackend.VULKAN
-    if "ggml_hip" in lowered:
-        return ComputeBackend.HIP
-    if "load_backend: loaded cpu backend" in lowered:
-        return ComputeBackend.CPU
-    return None
+    device = observed_llama_cpp_device(runtime_output)
+    if device is None:
+        return None
+    return next((backend for prefix, backend in (
+        ("CPU", ComputeBackend.CPU), ("CUDA", ComputeBackend.CUDA),
+        ("Vulkan", ComputeBackend.VULKAN), ("ROCm", ComputeBackend.HIP),
+        ("HIP", ComputeBackend.HIP),
+    ) if device.startswith(prefix)), None)
 
 
 __all__ = [

@@ -30,7 +30,8 @@ from tests.test_cli_quality import _request
 from tests.test_tui_ifeval import _state
 from tests.test_tui_quality import CandidateAdvisor, _settled
 
-CONTRACT = {"io.jaull.quality.artifact-contract": "exact-local-gguf-v1"}
+CONTRACT = {"io.jaull.quality.artifact-contract": "exact-local-gguf-v1",
+            "io.jaull.quality.runtime-contract": "observable-runtime-v2"}
 IMAGES = {
     "jaull-quality-eval:gguf-v1": CONTRACT,
     "jaull-quality-eval:ifeval-chat-v1": CONTRACT | {
@@ -66,6 +67,15 @@ def test_hellaswag_keeps_a_remembered_image_from_before_the_suite_label(docker) 
     assert find_evaluator_image(
         QualityProfile.SMOKE, "jaull-quality-eval:gguf-v1",
     ) == "jaull-quality-eval:gguf-v1"
+
+
+def test_hellaswag_skips_preferred_old_runtime_contract(docker, monkeypatch) -> None:
+    monkeypatch.setitem(IMAGES, "jaull-quality-eval:legacy", {
+        "io.jaull.quality.artifact-contract": "exact-local-gguf-v1",
+    })
+    chosen = find_evaluator_image(QualityProfile.SMOKE, "jaull-quality-eval:legacy")
+    assert chosen is not None and chosen != "jaull-quality-eval:legacy"
+    assert IMAGES[chosen]["io.jaull.quality.runtime-contract"] == "observable-runtime-v2"
 
 
 def test_an_image_without_the_contract_is_never_chosen(docker) -> None:

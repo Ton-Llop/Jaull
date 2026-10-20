@@ -203,7 +203,10 @@ def test_runner_records_cuda_only_when_llama_cpp_reports_it(tmp_path: Path) -> N
     backend = _FakeExecutionBackend(
         ExecutionResult(
             stdout="generated",
-            stderr="ggml_cuda_init: found 1 CUDA devices",
+            stderr=("ggml_cuda_init: found 1 CUDA devices\n"
+                    "load_tensors: offloaded 29/29 layers to GPU\n"
+                    "load_tensors: CUDA0 model buffer size = 100.00 MiB\n"
+                    "llama_context: CUDA0 compute buffer size = 10.00 MiB\n"),
             observation=_observation(),
         )
     )
@@ -215,7 +218,7 @@ def test_runner_records_cuda_only_when_llama_cpp_reports_it(tmp_path: Path) -> N
     assert result.observed_backend_source == "llama.cpp runtime output"
 
 
-def test_runner_recognizes_cuda_graph_backend_marker(tmp_path: Path) -> None:
+def test_runner_does_not_attribute_a_device_from_a_graph_marker_alone(tmp_path: Path) -> None:
     model_path = tmp_path / "model.gguf"
     model_path.write_bytes(b"gguf")
     backend = _FakeExecutionBackend(
@@ -229,8 +232,8 @@ def test_runner_recognizes_cuda_graph_backend_marker(tmp_path: Path) -> None:
 
     result = runner.run(artifact=_artifact(model_path), prompt="Hello")
 
-    assert result.observed_backend is ComputeBackend.CUDA
-    assert result.observed_backend_source == "llama.cpp runtime output"
+    assert result.observed_backend is None
+    assert result.observed_backend_source is None
 
 
 def test_runner_defaults_to_cpu_gpu_layers(tmp_path: Path) -> None:

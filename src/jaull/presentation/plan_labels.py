@@ -23,14 +23,17 @@ from jaull.domain.execution_plans import (
     ModelIdentity,
     PlanCompatibilityStatus,
 )
-from jaull.domain.hardware import HardwareProfile
+from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     ExecutionReadinessReason,
     ExecutionReadinessStatus,
+    LlamaCppBackendCapability,
+    LlamaCppBackendCapabilityState,
     RuntimeName,
     RuntimeRecommendation,
 )
 from jaull.presentation.console import format_bytes
+from jaull.runtime.device_matching import match_runtime_device
 
 # Repository names carry the artifact format as a suffix (`-GGUF`, `-AWQ`).
 # That is a fact about the repository, not about the logical model, and it is
@@ -237,25 +240,42 @@ def runtime_block_reason(plan: ExecutionPlan) -> str | None:
     Recommending a plan and acting on it are separate questions, so this answers
     only the second one. The wording names the plan rather than any one verb, so
     Run, Validate and Benchmark can all report the same condition without each
-    inventing its own sentence. Only a conclusive ``NOT_READY`` blocks: an
-    unknown readiness means the probe could not decide, and letting the attempt
-    proceed yields a more precise error from the runtime layer than a guess.
-
-    One unknown does block: when the runtime lists several devices and none can
-    be tied to the selected accelerator, an attempt would let the runtime pick
-    the GPU, and the result would be attributed to a card nobody chose.
+    inventing its own sentence. Vulkan requires confirmed readiness: otherwise
+    an attempt could let the runtime choose an unidentified GPU. Other backends
+    preserve the existing policy for unknown readiness.
     """
 
     if plan.compatibility is PlanCompatibilityStatus.NOT_COMPATIBLE:
         return readiness_detail(plan)
     readiness = plan.execution_readiness
+    selection = plan.backend_selection or (readiness.selection if readiness is not None else None)
+    vulkan = selection is not None and selection.selected_backend is ComputeBackend.VULKAN
+    vulkan_unconfirmed = (
+        vulkan
+        and (readiness is None or readiness.status is not ExecutionReadinessStatus.READY)
+    )
     if readiness is None:
-        return None
+        return "Vulkan device readiness has not been confirmed; recheck the runtime." if (
+            vulkan_unconfirmed
+        ) else None
+    if vulkan and readiness.status is ExecutionReadinessStatus.READY:
+        capability = readiness.selected_backend_capability
+        if (
+            selection is None or readiness.selection != selection
+            or not isinstance(capability, LlamaCppBackendCapability)
+            or capability.backend is not ComputeBackend.VULKAN
+            or capability.state is not LlamaCppBackendCapabilityState.CONFIRMED
+            or match_runtime_device(selection, capability).device is None
+        ):
+            return "Vulkan device cannot be uniquely identified; recheck the runtime."
     device_unidentified = (
         readiness.status is ExecutionReadinessStatus.UNKNOWN
         and readiness.reason is ExecutionReadinessReason.SELECTED_DEVICE_NOT_IDENTIFIED
     )
-    if readiness.status is not ExecutionReadinessStatus.NOT_READY and not device_unidentified:
+    if (
+        readiness.status is not ExecutionReadinessStatus.NOT_READY
+        and not device_unidentified and not vulkan_unconfirmed
+    ):
         return None
     detail = readiness.message or readiness.reason.value.replace("_", " ")
     required = plan.runtime_family.value

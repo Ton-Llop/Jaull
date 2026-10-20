@@ -13,7 +13,6 @@ import argparse
 import hashlib
 import json
 import math
-import re
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
@@ -318,20 +317,9 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
     samples = result["samples"][task]
     execution = commands.get("execution")
     if execution is not None:
-        capability_text = (bundle / "runtime-capability.json").read_text(encoding="utf-8")
-        capability = json.loads(capability_text)
-        if (
-            digest(capability) != execution["capability_sha256"]
-            or capability["version_text"] != execution["version_text"]
-            or props["default_generation_settings"]["params"].get("seed") != 0
-        ):
-            raise ValueError("Runtime capability/seed evidence differs from execution identity")
-        raw["runtime-capability.json"] = capability_text
-        if execution["backend"] != "cpu":
-            offload = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", raw["server.log"])
-            if not offload or any(int(done) != int(total) or int(total) <= 0
-                                  for done, total in offload):
-                raise ValueError("Full GPU offload was not confirmed; no CPU fallback record")
+        raw["runtime-capability.json"] = (bundle / "runtime-capability.json").read_text(
+            encoding="utf-8"
+        )
     fingerprint = validate_http_coverage(
         raw["http.jsonl"],
         samples,

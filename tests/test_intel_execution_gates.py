@@ -33,6 +33,7 @@ from jaull.presentation.plan_labels import runtime_block_reason
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_benchmark import RecommendationBenchmarkScreen
 from jaull.tui.screens.recommendation_execution import RecommendationExecutionScreen
+from tests.test_runtime_device_matching import B60, _selection
 from tests.test_tui_benchmark import _BenchmarkAdvisor, _run_workers_inline
 from tests.test_tui_recommendation_execution import (
     _backend_selection,
@@ -82,7 +83,7 @@ def _readiness(
     return ExecutionReadiness(
         status=status,
         reason=reason,
-        selection=_backend_selection(ComputeBackend.VULKAN),
+        selection=_selection(B60),
         runtime_capability=LlamaCppRuntimeCapability(
             binary_path="llama-cli",
             binary_status=LlamaCppBinaryStatus.AVAILABLE,
@@ -145,14 +146,14 @@ def test_a_confirmed_device_does_not_block() -> None:
     assert runtime_block_reason(_with_readiness(_plan(), READY)) is None
 
 
-def test_other_unknown_readiness_keeps_its_existing_behaviour() -> None:
+def test_vulkan_unknown_probe_failure_is_not_executable() -> None:
     probe_failed = _readiness(
         ExecutionReadinessStatus.UNKNOWN,
         ExecutionReadinessReason.PROBE_FAILED,
         "llama-cli capability probe failed",
     )
 
-    assert runtime_block_reason(_with_readiness(_plan(), probe_failed)) is None
+    assert runtime_block_reason(_with_readiness(_plan(), probe_failed)) is not None
 
 
 # ---------------------------------------------------------------------------

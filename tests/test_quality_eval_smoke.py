@@ -286,6 +286,8 @@ def test_quality_generic_preflight_fails_before_launching_server_or_container(
     from pilot.quality_eval import setup
     from scripts import quality_eval_smoke as smoke
 
+    monkeypatch.setattr(setup, "docker_host_network", lambda: False)
+    monkeypatch.setattr(smoke, "docker_host_network", lambda: False)
     model, server = tmp_path / "model.gguf", tmp_path / "server"
     metadata = {
         "general.architecture": "qwen2", "qwen2.context_length": 32768,

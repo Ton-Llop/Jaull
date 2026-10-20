@@ -15,10 +15,10 @@ test fixtures is synthetic. Status words used below:
 | `UNVERIFIED` | Implemented, but its assumptions about drivers or OS behaviour await a physical test. |
 | `BLOCKED_BY_ENVIRONMENT` | Cannot be tested here (no Intel GPU, no access to the Biosfer PC). |
 
-Out of scope, by decision: SYCL / oneAPI (`ComputeBackend.SYCL` is not added, the
-architecture does not prevent it later), quality evaluation on Vulkan (`_cuda_blocker`
-and the quality protocol are untouched), driver installation, and any change to the
-Windows host or to WSL2.
+Out of scope: SYCL / oneAPI (`ComputeBackend.SYCL` is not added), driver installation,
+and changes to the Windows host or WSL2. The subsequent HellaSwag schema-3 pilot supports
+CPU/CUDA/confirmed Vulkan; see [quality evaluation](quality-evaluation-pilot.md).
+IFEval retains the audited CUDA contract. Neither route is physically validated on B60.
 
 ## 1. Five questions that are not one
 
@@ -56,7 +56,7 @@ Audited on 2026-10-19 against the working tree that contains D097.
 | `recommendation/local_evidence.py` | driver/CUDA environment read only from NVML `hardware.gpus`; device proof only for `CUDA<i>` | Vulkan driver + `ggml_vulkan` device proof |
 | `execution/host.py` peak VRAM | NVML only | unchanged: Vulkan runs report `peak_vram_bytes=None` |
 | `evaluation/comparison.py`, `llama_cpp_tensor_policy.py` | physical VRAM comparison/placement verified for one discrete CUDA device only | unchanged: Vulkan stays `NOT_COMPARABLE` |
-| `advisor/quality_candidates.py` `_cuda_blocker` | quality pilot is CUDA-only | unchanged (out of scope) |
+| `advisor/quality_candidates.py` `_cuda_blocker` | IFEval remains CUDA-only | HellaSwag has a separate CPU/CUDA/Vulkan preflight |
 
 ## 3. Memory: four numbers that must not be confused
 
@@ -117,8 +117,8 @@ device only when it is provably the selected accelerator:
    are never candidates.
 2. A name identifies exactly one candidate (equality after removing `(R)`/`(TM)` and one
    trailing annotation; `RTX 2060` does not match `RTX 2060 SUPER`).
-3. Otherwise a single hardware device is accepted when nothing contradicts the
-   selection; on **Vulkan** a lone device with a different name is a mismatch.
+3. Vulkan always requires a named, unique match to the selected accelerator. An unnamed
+   device, even the only one exposed, does not prove it is the selected card.
 4. Several candidates with no unique name match are ambiguous: no `--device` is pinned.
 
 CUDA and HIP keep their validated behaviour (a single device is accepted regardless of
@@ -132,6 +132,9 @@ and what the binary listed, for example *"llama-cli lists several vulkan devices
 (Vulkan0: X, Vulkan1: X) and none can be tied to 'X'; no device is selected
 automatically"*, and it reaches the plan's label and warnings. A plan in that state is
 neither failed nor presented as ready.
+Run and Benchmark also refuse Vulkan `UNKNOWN/PROBE_FAILED`; CPU/CUDA/HIP keep their
+existing unknown-readiness policy. Validate rechecks the prepared device id against its
+fresh preflight and refuses a renumbered launch rather than executing on another GPU.
 
 **The rule stays strict until real B60 output exists.** Only the harmless normalisations
 above are applied; no partial or fuzzy name matching is added. If `vulkaninfo` and

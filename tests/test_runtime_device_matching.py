@@ -124,18 +124,18 @@ def test_two_devices_without_a_selected_accelerator_are_ambiguous() -> None:
     assert match.reason is RuntimeDeviceMatchReason.AMBIGUOUS
 
 
-def test_only_hardware_device_is_used_when_nothing_names_the_selection() -> None:
+def test_only_hardware_device_without_a_selected_accelerator_is_not_proof() -> None:
     match = match_runtime_device(_selection(None), _capability(_device(0, B60)))
 
-    assert match.device is not None
-    assert match.reason is RuntimeDeviceMatchReason.ONLY_HARDWARE_DEVICE
+    assert match.device is None
+    assert match.reason is RuntimeDeviceMatchReason.NAME_MISMATCH
 
 
-def test_unnamed_runtime_device_with_one_candidate_is_accepted_as_the_only_one() -> None:
+def test_unnamed_runtime_device_is_not_proof_of_the_selected_card() -> None:
     match = match_runtime_device(_selection(B60), _capability(_device(0, None)))
 
-    assert match.device is not None
-    assert match.reason is RuntimeDeviceMatchReason.ONLY_HARDWARE_DEVICE
+    assert match.device is None
+    assert match.reason is RuntimeDeviceMatchReason.NAME_MISMATCH
 
 
 def test_no_devices_means_no_match() -> None:
@@ -356,10 +356,10 @@ def test_vulkan_binary_with_two_identical_cards_is_unknown_not_ready_or_guessed(
     assert readiness.reason is ExecutionReadinessReason.SELECTED_DEVICE_NOT_IDENTIFIED
 
 
-def test_vulkan_selection_without_a_named_accelerator_keeps_the_old_decision() -> None:
+def test_vulkan_selection_without_a_named_accelerator_is_unconfirmed() -> None:
     readiness = _evaluate(_selection(None), _capability(_device(0, B60)))
 
-    assert readiness.status is ExecutionReadinessStatus.READY
+    assert readiness.status is ExecutionReadinessStatus.NOT_READY
 
 
 def _cuda_selection(name: str) -> RuntimeBackendSelection:

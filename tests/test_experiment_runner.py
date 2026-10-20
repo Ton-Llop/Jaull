@@ -174,6 +174,12 @@ def test_experiment_record_captures_command_observed_backend_and_git_commit(
             command=command,
             observed_backend=ComputeBackend.VULKAN,
             observed_backend_source="llama.cpp runtime output",
+            raw_stderr=(
+                "ggml_vulkan: 0 = AMD Radeon(TM) Graphics | uma: 1\n"
+                "load_tensors: offloaded 24/29 layers to GPU\n"
+                "load_tensors: Vulkan0 model buffer size = 100.00 MiB\n"
+                "llama_context: Vulkan0 compute buffer size = 10.00 MiB\n"
+            ),
         ),
     )
     monkeypatch.setattr("jaull.experiments.runner.capture_git_commit", lambda: "abc123")
@@ -529,11 +535,13 @@ class _FakeArtifactRunner:
         command: tuple[str, ...] = (),
         observed_backend: ComputeBackend | None = None,
         observed_backend_source: str | None = None,
+        raw_stderr: str = "",
     ) -> None:
         self.error_observation = error_observation
         self.command = command
         self.observed_backend = observed_backend
         self.observed_backend_source = observed_backend_source
+        self.raw_stderr = raw_stderr
         self.calls: list[tuple[ModelArtifact, str, RuntimeRecommendation | None]] = []
 
     def run(
@@ -562,7 +570,7 @@ class _FakeArtifactRunner:
             observed_backend=self.observed_backend,
             observed_backend_source=self.observed_backend_source,
             raw_stdout="runtime output",
-            raw_stderr="",
+            raw_stderr=self.raw_stderr,
         )
 
 
@@ -595,7 +603,12 @@ def _experiment_runner(
         outputs[("PYTORCH_PROBE",)] = pytorch_probe
     return ExperimentRunner(
         execution_backend=_FakeExecutionBackend(outputs),
-        llama_cpp_runner=artifact_runner or _FakeArtifactRunner(),
+        llama_cpp_runner=artifact_runner or _FakeArtifactRunner(raw_stderr=(
+            "ggml_vulkan: 0 = AMD Radeon(TM) Graphics (test driver) | uma: 1\n"
+            "load_tensors: offloaded 29/29 layers to GPU\n"
+            "load_tensors: Vulkan0 model buffer size = 100.00 MiB\n"
+            "llama_context: Vulkan0 compute buffer size = 10.00 MiB\n"
+        )),
         transformers_runner=transformers_runner,
         store=store if store is not None else ExperimentStore(root=tmp_path / "store"),
         llama_cli_path=binary,
@@ -621,18 +634,28 @@ def _request(
     persist: bool = True,
 ) -> ExperimentRequest:
     effective_runtime = runtime or _runtime(n_gpu_layers=0)
+    selection = RuntimeBackendSelection(
+        selected_backend=backend,
+        reason=RuntimeBackendSelectionReason.CPU_FALLBACK
+        if backend is ComputeBackend.CPU
+        else RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
+    )
+    if backend is ComputeBackend.VULKAN:
+        from jaull.runtime.backend_selection import select_runtime_backend
+
+        selection = select_runtime_backend(hardware or _hardware_with_vulkan())
+        if not any(flag.name == "--device" for flag in effective_runtime.flags):
+            effective_runtime = effective_runtime.model_copy(update={"flags": [
+                *effective_runtime.flags, RuntimeFlag(name="--device", value="Vulkan0",
+                    source=RuntimeFlagSource.ESTIMATE, explanation="Synthetic confirmed device"),
+            ]})
     return ExperimentRequest(
         hardware=hardware or _hardware(),
         artifact=artifact or _artifact(tmp_path),
         runtime=effective_runtime,
         prediction=prediction
         or _estimate(effective_runtime, effective_device=prediction_device),
-        backend_selection=RuntimeBackendSelection(
-            selected_backend=backend,
-            reason=RuntimeBackendSelectionReason.CPU_FALLBACK
-            if backend is ComputeBackend.CPU
-            else RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
-        ),
+        backend_selection=selection,
         requested_backend=_requested_backend(backend),
         workload=ExperimentWorkload(prompt="Hello experimental world"),
         persist=persist,

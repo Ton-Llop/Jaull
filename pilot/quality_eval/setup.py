@@ -35,6 +35,7 @@ def inspect_runtime(server: Path) -> tuple[str, Any]:
     from jaull.execution.host import HostExecutionBackend
     from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
 
+    server = server.expanduser().resolve()
     with server.open("rb") as handle:
         sha = hashlib.file_digest(handle, "sha256").hexdigest()
     capability = inspect_llama_cpp_runtime(backend=HostExecutionBackend(), llama_cli_path=server)
@@ -152,8 +153,43 @@ def prepare_infrastructure(
         or re.fullmatch("sha256:[0-9a-f]{64}", image["Id"]) is None
     ):
         raise ValueError("Evaluator image has no exact image ID.")
+    docker_host_network()
     prepare_dataset(dataset, allow_download=allow_download, suite=suite)
     return image
+
+
+def docker_host_network() -> bool:
+    """Use the local Engine's host namespace, or Desktop's explicit host route."""
+    try:
+        info = json.loads(subprocess.check_output(
+            ["docker", "info", "--format", "{{json .}}"], text=True, timeout=15,
+            stderr=subprocess.PIPE,
+        ))
+        if info.get("OSType") != "linux" or not info.get("OperatingSystem"):
+            raise ValueError("Quality evaluation requires a Linux Docker daemon.")
+        endpoint = None if os.environ.get("DOCKER_CONTEXT") else os.environ.get("DOCKER_HOST")
+        if not endpoint:
+            endpoint = json.loads(subprocess.check_output(
+                ["docker", "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"],
+                text=True, timeout=15, stderr=subprocess.PIPE,
+            ))
+        desktop = "docker desktop" in info["OperatingSystem"].casefold()
+        if (
+            not isinstance(endpoint, str)
+            or not endpoint.startswith(("unix://", "npipe://") if desktop else ("unix://",))
+            or any("rootless" in option for option in info.get("SecurityOptions", []))
+        ):
+            raise ValueError(
+                "Quality evaluation cannot verify this remote/rootless Docker topology. "
+                "Use Docker Desktop or a local Linux/WSL Docker Engine."
+            )
+        return not desktop
+    except (
+        OSError, subprocess.SubprocessError, TypeError, AttributeError, json.JSONDecodeError
+    ) as exc:
+        raise ValueError(
+            "Docker network topology could not be verified; no evaluation started."
+        ) from exc
 
 
 def main() -> None:

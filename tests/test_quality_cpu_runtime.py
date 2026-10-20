@@ -1,5 +1,6 @@
 """Observable quality v2 fixtures are synthetic, not physical GPU/CPU validation."""
 
+import json
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -61,8 +62,191 @@ def _record(backend="cpu", sha="a" * 64):
         }
     )
     record["schema_version"] = 3
+    from jaull.domain.runtime import LlamaCppBinaryStatus, LlamaCppRuntimeCapability
+    from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
+    from tests.test_runtime_device_matching import _capability, _device, _selection
+
+    selection = _selection("Synthetic GPU").model_copy(
+        update={"selected_backend": ComputeBackend(backend)}
+    )
+    gpu = _capability(_device(1, "Synthetic GPU")).model_copy(update={
+        "backend": ComputeBackend(backend),
+        "devices": [_device(1, "Synthetic GPU").model_copy(update={
+            "backend": ComputeBackend(backend), "runtime_id": device,
+        })] if backend != "cpu" else [],
+    })
+    capability = LlamaCppRuntimeCapability(
+        binary_path="/runtime/server", binary_status=LlamaCppBinaryStatus.AVAILABLE,
+        version_text=runtime["execution"]["version_text"], backend_capabilities=[gpu],
+    )
+    raw_capability = capability.model_dump(mode="json")
+    runtime["execution"]["capability_sha256"] = digest(raw_capability)
+    label = "CPU" if backend == "cpu" else device
+    record["provenance"]["evidence"] = {
+        "runtime-capability.json": json.dumps(raw_capability),
+        "readiness.json": evaluate_execution_readiness(
+            selection=selection, runtime_capability=capability,
+        ).model_dump_json(),
+        "commands.json": json.dumps({
+            "server": ["/runtime/server", "--model", "/models/model.gguf",
+                       *runtime["backend_flags"]],
+            "server_sha256": sha, "execution": runtime["execution"],
+        }),
+        "server-props.json": json.dumps({"model_path": "/models/model.gguf",
+            "total_slots": 1, "default_generation_settings": {
+                "n_ctx": 2048, "params": {"seed": 0, "post_sampling_probs": False},
+            }}),
+        "server.log": (
+            ("" if backend == "cpu" else (
+                "Device 1: Synthetic GPU, compute capability 7.5\n" if backend == "cuda" else
+                "ggml_vulkan: 1 = Synthetic GPU (test driver) | uma: 0\n"
+            )) +
+            "system_info: n_threads = 4 (n_threads_batch = 4) / 8\n"
+            f"load_tensors: offloaded {0 if backend == 'cpu' else 29}/29 layers to GPU\n"
+            f"load_tensors: {label} model buffer size = 100.00 MiB\n"
+            f"llama_context: {label} compute buffer size = 10.00 MiB\n"
+        ),
+    }
+    prefix = {"url": "http://127.0.0.1:18083/tokenize",
+              "request": {"content": "Synthetic prompt", "add_special": True},
+              "response": {"tokens": [1]}}
+    whole = deepcopy(prefix)
+    whole["request"]["content"] += " choice"
+    whole["response"]["tokens"] = [1, 2]
+    score = {"url": "http://127.0.0.1:18083/v1/completions",
+             "request": {"prompt": [1], "temperature": 0, "max_tokens": 1,
+                         "logprobs": 2, "logit_bias": [[2, 100]], "id_slot": 0},
+             "response": {"system_fingerprint": runtime["fingerprint"],
+                          "usage": {"completion_tokens": 1, "prompt_tokens": 1,
+                                    "prompt_tokens_details": {"cached_tokens": 0}},
+                          "choices": [{"logprobs": {"content": [{"id": 2, "logprob": -1.0,
+                                      "top_logprobs": [{"id": 2, "logprob": -1.0}]}]}}]}}
+    record["provenance"]["evidence"]["http.jsonl"] = "".join(json.dumps(item) + "\n" for item in (
+        prefix, whole, *[score for _ in record["identity"]["samples"]],
+    ))
     record["identity_sha256"] = digest(record["identity"])
     return record
+
+
+@pytest.mark.parametrize("damage", ["cuda_log", "another_device", "initialization_only",
+                                   "mixed_devices", "missing", "threads", "capability",
+                                   "renumbered_log", "command_runtime", "command_device",
+                                   "empty_command", "props_context", "props_slots"])
+def test_schema3_rejects_unproven_or_contradictory_execution(damage):
+    record = _record("vulkan")
+    raw = record["provenance"]["evidence"]
+    if damage == "missing":
+        del raw["server.log"]
+    elif damage == "capability":
+        capability = json.loads(raw["runtime-capability.json"])
+        capability["backend_capabilities"] = []
+        raw["runtime-capability.json"] = json.dumps(capability)
+        record["identity"]["runtime"]["execution"]["capability_sha256"] = digest(capability)
+        record["identity_sha256"] = digest(record["identity"])
+    elif damage in {"command_runtime", "command_device", "empty_command"}:
+        command = json.loads(raw["commands.json"])
+        if damage == "empty_command":
+            command["server"] = []
+        elif damage == "command_runtime":
+            command["server"][0] = "/different/llama-server"
+        else:
+            index = command["server"].index("--device")
+            command["server"][index + 1] = "Vulkan0"
+        raw["commands.json"] = json.dumps(command)
+    elif damage.startswith("props_"):
+        props = json.loads(raw["server-props.json"])
+        if damage == "props_context":
+            props["default_generation_settings"]["n_ctx"] = 4096
+        else:
+            props["total_slots"] = 2
+        raw["server-props.json"] = json.dumps(props)
+    else:
+        raw["server.log"] = {
+            "cuda_log": raw["server.log"].replace("Vulkan1", "CUDA0"),
+            "another_device": raw["server.log"].replace("Vulkan1", "Vulkan0"),
+            "initialization_only": "ggml_vulkan: Found 1 device\noffloaded 29/29 layers to GPU",
+            "mixed_devices": raw["server.log"] + (
+                "load_tensors: CUDA0 model buffer size = 10.00 MiB\n"
+            ),
+            "threads": raw["server.log"].replace("n_threads = 4", "n_threads = 8"),
+            "renumbered_log": raw["server.log"].replace("1 = Synthetic GPU", "1 = Other GPU") + (
+                "ggml_vulkan: 2 = Synthetic GPU (test driver) | uma: 0\n"
+            ),
+        }[damage]
+    with pytest.raises(ValueError):
+        validate_record(record)
+
+
+def test_schema3_multiple_available_backends_do_not_prove_the_effective_one():
+    record = _record("vulkan")
+    raw = record["provenance"]["evidence"]
+    cap = json.loads(raw["runtime-capability.json"])
+    cuda = deepcopy(cap["backend_capabilities"][0])
+    cuda["backend"] = "cuda"
+    cuda["devices"][0].update(backend="cuda", runtime_id="CUDA0", name="Other GPU")
+    cap["backend_capabilities"].append(cuda)
+    raw["runtime-capability.json"] = json.dumps(cap)
+    execution = record["identity"]["runtime"]["execution"]
+    execution["capability_sha256"] = digest(cap)
+    command = json.loads(raw["commands.json"])
+    command["execution"] = execution
+    raw["commands.json"] = json.dumps(command)
+    record["identity_sha256"] = digest(record["identity"])
+    raw["server.log"] += "ggml_cuda_init: Device 0: Other GPU, compute capability 7.5\n"
+    validate_record(record)  # Both initialized; only Vulkan owns the model and compute.
+    raw["server.log"] = raw["server.log"].replace("Vulkan1", "CUDA0")
+    with pytest.raises(ValueError, match="Effective backend/device"):
+        validate_record(record)
+
+
+@pytest.mark.parametrize("backend", ["cpu", "cuda", "vulkan"])
+def test_schema3_snapshot_and_reload_enforce_observations(tmp_path, monkeypatch, backend):
+    import hashlib
+
+    record = _record(backend)
+    raw = record["provenance"]["evidence"]
+    profile = evaluate.PROFILES["hellaswag100"]
+    data = b"Synthetic dataset, no benchmark was run"
+    monkeypatch.setattr(records, "verified_dataset_bytes", lambda _: data)
+    artifact = {
+        "repo_id": "synthetic/model", "revision": "a" * 40,
+        "filename": "model.gguf", "format": "gguf", "quantization": "Q4_K_M",
+        "size_bytes": 128, "sha256": record["identity"]["artifact_sha256"],
+        "local_path": "/models/model.gguf",
+    }
+    files = {name: {} for name in records.JSON_FILES} | {
+        "verified-artifact.json": artifact, "artifact-after.json": artifact,
+        "container-artifact.json": {"sha256": artifact["sha256"], "mount": "read-only"},
+        "image.json": {"id": record["identity"]["runtime"]["image_id"]},
+        "hardware.json": {"synthetic": True},
+        "evaluator-config.json": record["identity"]["evaluator"],
+        "dataset.json": record["identity"]["dataset"] | {
+            "sha256": hashlib.sha256(data).hexdigest(),
+        },
+        "lm-eval-results.json": record["result"],
+        "smoke-status.json": {"status": profile["status"], "quality_evidence": False},
+        "runner-status.json": {"status": profile["status"], "quality_evidence": False,
+                               "server_exit_code": 0},
+    }
+    for name, value in files.items():
+        (tmp_path / name).write_text(json.dumps(value))
+    for name, text in raw.items():
+        (tmp_path / name).write_text(text)
+    (tmp_path / "evaluator.log").write_text("Synthetic, no evaluation happened")
+    snapshot = records.snapshot_bundle(tmp_path)
+    path = tmp_path / "record.json"
+    records.save_record(path, snapshot)
+    assert records.load_record(path) == snapshot
+    before = path.read_bytes()
+    (tmp_path / "server.log").write_text("ggml_vulkan: Found 1 device\n")
+    with pytest.raises(ValueError):
+        records.snapshot_bundle(tmp_path)
+    assert path.read_bytes() == before
+    snapshot["provenance"]["evidence"]["server.log"] = "ggml_cuda_init: found 1"
+    damaged = tmp_path / "damaged.json"
+    damaged.write_text(json.dumps({"record": snapshot, "record_sha256": digest(snapshot)}))
+    with pytest.raises(ValueError):
+        records.load_record(damaged)
 
 
 @pytest.mark.parametrize("backend", ["cpu", "cuda", "vulkan"])
@@ -115,12 +299,29 @@ def test_historical_cuda_records_remain_readable_but_not_equivalent_to_v2():
 def test_transient_capability_snapshot_stays_auditable_without_changing_protocol_equivalence():
     first = _record("cuda")
     second = deepcopy(first)
-    second["identity"]["runtime"]["execution"]["capability_sha256"] = "c" * 64
+    raw = second["provenance"]["evidence"]
+    cap = json.loads(raw["runtime-capability.json"])
+    cap["backend_capabilities"][0]["devices"][0]["memory_free_bytes"] = 123
+    raw["runtime-capability.json"] = json.dumps(cap)
+    execution = second["identity"]["runtime"]["execution"]
+    execution["capability_sha256"] = digest(cap)
+    commands = json.loads(raw["commands.json"])
+    commands["execution"] = execution
+    raw["commands.json"] = json.dumps(commands)
     second["identity_sha256"] = digest(second["identity"])
     assert first["identity_sha256"] != second["identity_sha256"]
     result = compare_quality_records(first, second, left_source="first", right_source="second")
     assert result["status"] == "COMPARABLE_LIMITED"
     second["identity"]["runtime"]["execution"]["device_name"] = "Different GPU"
+    cap["backend_capabilities"][0]["devices"][0]["name"] = "Different GPU"
+    raw["runtime-capability.json"] = json.dumps(cap)
+    execution["capability_sha256"] = digest(cap)
+    ready = json.loads(raw["readiness.json"])
+    ready["selection"]["selected_accelerator"]["name"] = "Different GPU"
+    raw["readiness.json"] = json.dumps(ready)
+    raw["server.log"] = raw["server.log"].replace("Synthetic GPU", "Different GPU")
+    commands["execution"] = execution
+    raw["commands.json"] = json.dumps(commands)
     second["identity_sha256"] = digest(second["identity"])
     result = compare_quality_records(first, second, left_source="first", right_source="second")
     assert result["status"] == "NOT_COMPARABLE"
@@ -412,6 +613,7 @@ def test_cpu_producer_uses_zero_offload_and_cleans_up_owned_processes(
         },
     )
     monkeypatch.setattr(smoke, "check_server_port", lambda _: None)
+    monkeypatch.setattr(smoke, "docker_host_network", lambda: True)
     monkeypatch.setattr(smoke, "wait_for_server", lambda *a, **kw: None)
     launches, cleanups = [], []
 

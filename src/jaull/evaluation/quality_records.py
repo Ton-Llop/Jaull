@@ -36,7 +36,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_SCHEMA, validate_runtime_execution
+from jaull.evaluation.quality_runtime import (
+    QUALITY_RUNTIME_SCHEMA,
+    validate_runtime_execution,
+    validate_runtime_observation,
+)
 
 #: A record check. The pilot supplies a stronger one than this module can.
 RecordValidator = Callable[[dict[str, Any]], None]
@@ -266,6 +270,8 @@ def validate_record(record: dict[str, Any]) -> None:
     ):
         raise ValueError("Observable runtime v2 is diagnostic HellaSwag only")
     validate_identity(identity)
+    if observable:
+        validate_runtime_observation(identity["runtime"], record["provenance"].get("evidence", {}))
     if not record["provenance"]["hardware"]:
         raise ValueError("Missing hardware provenance")
     if record["identity_sha256"] != digest(identity):

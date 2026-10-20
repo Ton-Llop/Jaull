@@ -23,7 +23,7 @@ from pilot.quality_eval.evaluate import (
     write_json,
 )
 from pilot.quality_eval.ifeval import CONTEXT as IFEVAL_CONTEXT
-from pilot.quality_eval.setup import inspect_runtime, prepare_infrastructure
+from pilot.quality_eval.setup import docker_host_network, inspect_runtime, prepare_infrastructure
 
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
@@ -299,6 +299,7 @@ def run(args: argparse.Namespace) -> None:
             suite=suite,
             **({"observable_runtime": True} if observable else {}),
         )
+        host_network = docker_host_network()
         hardware = detect_hardware()
         selection = None
         execution = None
@@ -394,9 +395,6 @@ def run(args: argparse.Namespace) -> None:
                     "backend_flags": launch[3:],
                 },
             )
-        native_linux = (
-            observable and "microsoft" not in Path("/proc/sys/kernel/osrelease").read_text().lower()
-        )
         evaluate = docker_command(
             image["Id"],
             container_name,
@@ -404,7 +402,7 @@ def run(args: argparse.Namespace) -> None:
             artifact.local_path,
             args.dataset_file.resolve(),
             profile=args.profile,
-            **({"host_network": native_linux} if observable else {}),
+            host_network=host_network,
         )
         write_json(
             output / "commands.json",

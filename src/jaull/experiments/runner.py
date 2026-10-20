@@ -14,6 +14,7 @@ from jaull.domain.experiments import (
     ExperimentRequest,
     ExperimentRunResult,
 )
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessStatus,
@@ -37,10 +38,13 @@ from jaull.experiments.errors import (
 )
 from jaull.experiments.storage import ExperimentStore
 from jaull.observability.provenance import capture_git_commit
+from jaull.runtime.device_matching import match_runtime_device, runtime_device_name_matches
 from jaull.runtime.llama_cpp_capability import (
     evaluate_execution_readiness,
     inspect_llama_cpp_runtime,
 )
+from jaull.runtime.llama_cpp_memory_report import observed_llama_cpp_device
+from jaull.runtime.llama_cpp_runner import LlamaCppRunner
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 from jaull.runtime.pytorch_capability import (
     evaluate_pytorch_execution_readiness,
@@ -93,6 +97,22 @@ class ExperimentRunner:
                 readiness=readiness,
                 runtime_capability=runtime_capability,
             )
+        if (
+            request.runtime.runtime is RuntimeName.LLAMA_CPP
+            and request.backend_selection.selected_backend is ComputeBackend.VULKAN
+        ):
+            capability = readiness.selected_backend_capability
+            from jaull.domain.runtime import LlamaCppBackendCapability
+
+            matched = match_runtime_device(request.backend_selection, capability).device if (
+                isinstance(capability, LlamaCppBackendCapability)
+            ) else None
+            devices = [flag.value for flag in request.runtime.flags if flag.name == "--device"]
+            if matched is None or devices != [matched.runtime_id]:
+                raise ExperimentConfigurationError(
+                    "The prepared device no longer matches the confirmed Vulkan device; "
+                    "prepare the execution plan again. No model was launched."
+                )
 
         inference: InferenceResult | None = None
         raw_result: ExecutionResult | None = None
@@ -103,6 +123,22 @@ class ExperimentRunner:
                 runtime=request.runtime,
             )
             observation = inference.observation
+            if (
+                request.runtime.runtime is RuntimeName.LLAMA_CPP
+                and request.backend_selection.selected_backend is ComputeBackend.VULKAN
+                and observation.success
+            ):
+                output = "\n".join((inference.raw_stdout or "", inference.raw_stderr or ""))
+                accelerator = request.backend_selection.selected_accelerator
+                if (
+                    observed_llama_cpp_device(output) != devices[0]
+                    or accelerator is None
+                    or not runtime_device_name_matches(output, devices[0], accelerator.name)
+                ):
+                    raise ExperimentRunnerError(
+                        "Effective Vulkan device could not be confirmed from the execution log; "
+                        "no validated experiment record was saved."
+                    )
         except ExecutionError as exc:
             if exc.observation is None:
                 raise ExperimentRunnerError(str(exc)) from exc
@@ -215,6 +251,9 @@ class ExperimentRunner:
         return self._runtime_locator().resolve_pytorch().python_executable
 
     def _llama_cli_for_request(self, request: ExperimentRequest) -> str | None:
+        if isinstance(self.llama_cpp_runner, LlamaCppRunner):
+            # Inspect the executable this runner will actually invoke, not another installation.
+            return self.llama_cpp_runner._llama_cli
         readiness_by_cli: dict[str, ExecutionReadinessStatus] = {}
         fallback: str | None = None
         for installation in self._runtime_locator().discover_llama_cpp():

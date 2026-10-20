@@ -291,13 +291,15 @@ def test_cuda_selection_not_ready_with_cpu_only_runtime(tmp_path: Path) -> None:
 
 
 def test_vulkan_selection_ready_when_vulkan_device_is_exposed(tmp_path: Path) -> None:
+    from tests.test_runtime_device_matching import _selection as vulkan_selection
+
     capability = _runtime_capability(
         tmp_path,
         "Available devices:\nVulkan0: AMD Radeon(TM) Graphics\n",
     )
 
     readiness = evaluate_execution_readiness(
-        selection=_selection(ComputeBackend.VULKAN),
+        selection=vulkan_selection("AMD Radeon(TM) Graphics"),
         runtime_capability=capability,
     )
 
@@ -321,6 +323,8 @@ def test_vulkan_selection_never_ready_when_only_cuda_is_exposed(
 
 
 def test_mixed_runtime_can_satisfy_cuda_or_vulkan_selection(tmp_path: Path) -> None:
+    from tests.test_runtime_device_matching import _selection as vulkan_selection
+
     capability = _runtime_capability(
         tmp_path,
         "Available devices:\nCUDA0: NVIDIA RTX\nVulkan0: NVIDIA RTX\n",
@@ -331,7 +335,7 @@ def test_mixed_runtime_can_satisfy_cuda_or_vulkan_selection(tmp_path: Path) -> N
         runtime_capability=capability,
     )
     vulkan = evaluate_execution_readiness(
-        selection=_selection(ComputeBackend.VULKAN),
+        selection=vulkan_selection("NVIDIA RTX"),
         runtime_capability=capability,
     )
 

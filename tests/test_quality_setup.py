@@ -89,6 +89,7 @@ def test_failed_dataset_never_publishes_and_removes_temporary_bytes(
 def test_infrastructure_blocks_before_a_permitted_dataset_download(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synthetic_pins: bytes, failure: str,
 ) -> None:
+    monkeypatch.setattr(setup, "docker_host_network", lambda: False)
     server = tmp_path / "llama-server"
     server.write_bytes(b"synthetic runtime")
     server.chmod(0o700)

@@ -30,7 +30,14 @@ from jaull.domain.benchmarks import (
 )
 from jaull.domain.estimation import EstimationConfidence
 from jaull.domain.execution import ExecutionObservation, ExecutionRequest, ExecutionResult
-from jaull.domain.hardware import ComputeBackend, CpuInfo, HardwareProfile, MemoryInfo
+from jaull.domain.hardware import (
+    AcceleratorType,
+    AcceleratorVendor,
+    ComputeBackend,
+    CpuInfo,
+    HardwareProfile,
+    MemoryInfo,
+)
 from jaull.domain.runtime import (
     LlamaCppBackendCapability,
     LlamaCppBackendCapabilityState,
@@ -44,6 +51,7 @@ from jaull.domain.runtime import (
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
+    SelectedAcceleratorRef,
 )
 from jaull.evaluation.benchmarks import aggregate_benchmark_records
 from jaull.execution.errors import ExecutionFailedError
@@ -686,6 +694,10 @@ def _hardware() -> HardwareProfile:
 def _selection(backend: ComputeBackend) -> RuntimeBackendSelection:
     return RuntimeBackendSelection(
         selected_backend=backend,
+        selected_accelerator=SelectedAcceleratorRef(
+            name="Synthetic Vulkan GPU", vendor=AcceleratorVendor.INTEL,
+            type=AcceleratorType.DEDICATED,
+        ) if backend is ComputeBackend.VULKAN else None,
         reason=RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE
         if backend is ComputeBackend.VULKAN
         else RuntimeBackendSelectionReason.CPU_FALLBACK,
@@ -710,6 +722,7 @@ def _runtime_capability() -> LlamaCppRuntimeCapability:
                     LlamaCppRuntimeDevice(
                         backend=ComputeBackend.VULKAN,
                         runtime_id="Vulkan0",
+                        name="Synthetic Vulkan GPU",
                     )
                 ],
             ),

@@ -39,7 +39,7 @@ _BUFFER = re.compile(
 # ``CUDA0`` is device memory; ``CUDA_Host`` is pinned *host* memory despite the
 # prefix, and a substring match on "CUDA" would silently inflate the device
 # total by every pinned buffer. Match the device suffix exactly.
-_DEVICE_LABEL = re.compile(r"^(?:CUDA|ROCm|MUSA|SYCL|Vulkan)\d+$")
+_DEVICE_LABEL = re.compile(r"^(?:CUDA|ROCm|HIP|MUSA|SYCL|Vulkan)\d+$")
 
 _CATEGORIES = {
     "model": RuntimeBufferCategory.MODEL,
@@ -110,4 +110,39 @@ def _device(largest: dict[tuple[str, RuntimeBufferCategory], float]) -> str | No
     return devices[0]
 
 
-__all__ = ["parse_llama_cpp_allocation"]
+def observed_llama_cpp_device(output: str) -> str | None:
+    """Attribute a loaded model and its compute allocation, never a backend banner."""
+    allocation = parse_llama_cpp_allocation(output)
+    if allocation is None:
+        return None
+    positive = [buffer for buffer in allocation.buffers if buffer.bytes > 0]
+    devices = {buffer.raw_label.split()[0] for buffer in positive
+               if buffer.location is RuntimeBufferLocation.DEVICE}
+    offloads = [(int(done), int(total)) for done, total in re.findall(
+        r"offloaded (\d+)/(\d+) layers to GPU", output,
+    )]
+    assigned = set(re.findall(r"layer\s+\d+ assigned to device ([A-Za-z]+\d*|CPU)\b", output))
+    if len(devices) == 1:
+        device = next(iter(devices))
+        kinds = {buffer.category for buffer in positive
+                 if buffer.raw_label.split()[0] == device}
+        if (
+            {RuntimeBufferCategory.MODEL, RuntimeBufferCategory.COMPUTE} <= kinds
+            and all(0 < done <= total for done, total in offloads)
+            and not (assigned - {device, "CPU"})
+        ):
+            return device
+        return None
+    if devices or any(done > 0 for done, _ in offloads) or assigned - {"CPU"}:
+        return None
+    host_kinds = {buffer.category for buffer in positive
+                  if buffer.raw_label.split()[0].startswith("CPU")}
+    if (
+        {RuntimeBufferCategory.MODEL, RuntimeBufferCategory.COMPUTE} <= host_kinds
+        and (offloads or assigned == {"CPU"})
+    ):
+        return "CPU"
+    return None
+
+
+__all__ = ["observed_llama_cpp_device", "parse_llama_cpp_allocation"]

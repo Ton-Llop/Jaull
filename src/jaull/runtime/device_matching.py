@@ -4,7 +4,8 @@ Hardware discovery and llama.cpp each name a device in their own way, and
 llama.cpp's numbering (``Vulkan0``, ``Vulkan1`` ...) depends on the binary, the
 driver and what else is installed; it is not the order of the hardware list. A
 runtime identifier is therefore only passed to ``--device`` when it can be tied
-to the selected accelerator, and otherwise the launch stays automatic.
+to the selected accelerator. An unconfirmed Vulkan match blocks execution;
+CUDA/HIP retain their existing single-device fallback.
 """
 
 from __future__ import annotations
@@ -47,9 +48,8 @@ def match_runtime_device(
 ) -> RuntimeDeviceMatch:
     """Pick the runtime device for the selected accelerator, or refuse.
 
-    A single hardware device is accepted when nothing contradicts the selection,
-    because the runtime then has no other card to confuse it with. Several
-    candidates need a name that identifies exactly one of them. Names are
+    Vulkan requires a unique name match. CUDA/HIP retain their single-device
+    fallback; several candidates need a name that identifies exactly one. Names are
     compared for equality after removing trademark marks and one trailing
     annotation; a near name (``RTX 2060`` against ``RTX 2060 SUPER``) is a
     different device.
@@ -77,15 +77,10 @@ def match_runtime_device(
         return RuntimeDeviceMatch(None, RuntimeDeviceMatchReason.AMBIGUOUS)
 
     only = candidates[0]
-    # Vulkan enumerates every adapter, so a lone device of another name is
-    # evidently not the selected card. CUDA and HIP name devices the way their
-    # own vendor library does, and a single device there is accepted as before.
-    if (
-        wanted
-        and only.name is not None
-        and selection.selected_backend is ComputeBackend.VULKAN
-    ):
+    if selection.selected_backend is ComputeBackend.VULKAN:
+        # A sole visible adapter may be an integrated GPU, not the selected card.
         return RuntimeDeviceMatch(None, RuntimeDeviceMatchReason.NAME_MISMATCH)
+    # Preserve the existing CUDA/HIP single-device policy.
     return RuntimeDeviceMatch(only, RuntimeDeviceMatchReason.ONLY_HARDWARE_DEVICE)
 
 
@@ -106,9 +101,33 @@ def names_agree(left: str, right: str) -> bool:
     return bool(normalized) and normalized == _normalized_name(right)
 
 
+def runtime_device_name_matches(output: str, runtime_id: str, name: str) -> bool:
+    """Tie an execution's allocation id to its own device enumeration, not a prior probe."""
+    listed: set[tuple[str, str]] = set()
+    for line in output.splitlines():
+        vulkan = re.search(r"\bggml_vulkan:\s*(\d+)\s*=\s*(.+?)\s*\|", line)
+        if vulkan:
+            listed.add((f"Vulkan{vulkan[1]}", vulkan[2]))
+        cuda = re.search(r"\bDevice (\d+): ([^,]+),", line)
+        if cuda:
+            listed.add((f"CUDA{cuda[1]}", cuda[2]))
+        used = re.search(
+            r"using device (CUDA\d+|Vulkan\d+)\s+\((.+?)\)(?=\s*(?:\(|-|$))", line,
+        )
+        if used:
+            listed.add((used[1], used[2]))
+    prefix = runtime_id.rstrip("0123456789")
+    candidates = [(device, label) for device, label in listed if device.startswith(prefix)]
+    return (
+        {device for device, label in candidates if names_agree(label, name)} == {runtime_id}
+        and all(names_agree(label, name) for device, label in candidates if device == runtime_id)
+    )
+
+
 __all__ = [
     "RuntimeDeviceMatch",
     "RuntimeDeviceMatchReason",
     "match_runtime_device",
     "names_agree",
+    "runtime_device_name_matches",
 ]

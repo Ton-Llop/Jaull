@@ -1806,6 +1806,26 @@ class AdvisorService:
             readiness_by_cli=readiness_by_cli,
         )
         if selected.llama_cli is not None:
+            previous = self.llama_cpp_installation
+            if previous is not None and (
+                previous.llama_cli != selected.llama_cli
+                or previous.llama_bench != selected.llama_bench
+            ):
+                from jaull.benchmarks.matrix import BenchmarkMatrixRunner
+                from jaull.experiments.runner import ExperimentRunner
+                from jaull.runtime.llama_bench_runner import LlamaBenchRunner
+                from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+
+                cli_changed = previous.llama_cli != selected.llama_cli
+                bench_changed = previous.llama_bench != selected.llama_bench
+                for name, kind, changed in (
+                    ("llama_cpp_runner", LlamaCppRunner, cli_changed),
+                    ("llama_bench_runner", LlamaBenchRunner, bench_changed),
+                    ("experiment_runner", ExperimentRunner, cli_changed),
+                    ("benchmark_matrix_runner", BenchmarkMatrixRunner, bench_changed),
+                ):
+                    if changed and isinstance(getattr(self, name), kind):
+                        object.__setattr__(self, name, None)
             object.__setattr__(self, "llama_cpp_installation", selected)
         return selected
 

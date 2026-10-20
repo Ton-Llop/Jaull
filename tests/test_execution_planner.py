@@ -149,14 +149,10 @@ def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device() -> None:
         LlamaCppCapabilityReason,
         LlamaCppRuntimeCapability,
         LlamaCppRuntimeDevice,
-        RuntimeBackendSelection,
-        RuntimeBackendSelectionReason,
     )
+    from tests.test_runtime_device_matching import _selection
 
-    selection = RuntimeBackendSelection(
-        selected_backend=ComputeBackend.VULKAN,
-        reason=RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
-    )
+    selection = _selection("AMD Radeon RX test")
     capability = LlamaCppBackendCapability(
         backend=ComputeBackend.VULKAN,
         state=LlamaCppBackendCapabilityState.CONFIRMED,
