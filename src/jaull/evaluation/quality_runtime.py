@@ -124,8 +124,19 @@ def validate_quality_memory(estimate: MemoryEstimate, backend: ComputeBackend) -
         )
 
 
+# Every llama.cpp version line that names both a build number and a commit:
+# ``version: 10357 (689e227db)``, ``b10357-689e227db`` and the newer
+# ``version: 0.1.0-dev (build 10427, commit 650913862)``. Any build is accepted; the
+# fingerprint only identifies which one produced a result. The pilot evaluator runs
+# in a container that cannot import Jaull and keeps a copy of this exact text.
+BUILD_VERSION_PATTERN = (
+    r"(?:version:\s*(?:\S+\s*\(build\s+)?|\bb)(\d+)(?:,\s*commit\s+|\s*(?:\(|-))"
+    r"([0-9a-f]{7,40})\)?"
+)
+
+
 def fingerprint_from_version(version: str) -> str:
-    matches = re.findall(r"(?:version:\s*|\bb)(\d+)\s*(?:\(|-)([0-9a-f]{7,40})\)?", version)
+    matches = re.findall(BUILD_VERSION_PATTERN, version)
     if len(set(matches)) != 1:
         raise ValueError("Runtime build/commit could not be confirmed from --version.")
     build, commit = matches[0]

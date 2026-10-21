@@ -200,7 +200,7 @@ def build_execution_plan(
     ):
         execution_readiness = None
     return ExecutionPlan(
-        plan_id=_plan_id(artifact, runtime),
+        plan_id=_plan_id(artifact, runtime, selection),
         model_identity=model_identity,
         artifact=artifact,
         runtime=runtime,
@@ -335,7 +335,11 @@ def _plan_warnings(
     return warnings
 
 
-def _plan_id(artifact: ArtifactVariant, runtime: RuntimeRecommendation) -> str:
+def _plan_id(
+    artifact: ArtifactVariant,
+    runtime: RuntimeRecommendation,
+    selection: RuntimeBackendSelection | None,
+) -> str:
     parts = [
         _slug(artifact.repo_id),
         _slug(artifact.filename or "repo"),
@@ -343,6 +347,10 @@ def _plan_id(artifact: ArtifactVariant, runtime: RuntimeRecommendation) -> str:
         artifact.quantization or artifact.precision or "default",
         runtime.runtime.value,
     ]
+    # Preserve historical IDs for existing CPU/native plans while ensuring
+    # backend-specific plans for the same artifact remain distinct.
+    if selection is not None and selection.selected_backend is ComputeBackend.VULKAN:
+        parts.append("vulkan")
     return "plan-" + "-".join(_slug(part) for part in parts if part)
 
 

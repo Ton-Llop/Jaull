@@ -431,8 +431,44 @@ def test_cpu_fit_uses_ram_and_rejects_insufficient_memory(tmp_path):
         validate_quality_memory(estimate, ComputeBackend.CPU)
 
 
+@pytest.mark.parametrize(
+    ("version_text", "fingerprint"),
+    [
+        ("version: 10357 (689e227db)", "b10357-689e227db"),
+        # Newer llama.cpp builds print the semantic version first.
+        (
+            "version: 0.1.0-dev (build 10427, commit 650913862)\n"
+            "built with GNU 13.3.0 for Linux x86_64\n",
+            "b10427-650913862",
+        ),
+    ],
+)
+def test_any_llama_cpp_build_is_accepted_in_every_known_version_format(
+    version_text, fingerprint,
+):
+    assert fingerprint_from_version(version_text) == fingerprint
+
+
+def test_pilot_evaluator_reads_build_identity_with_the_same_pattern():
+    """The container cannot import Jaull, so it keeps a copy; the two must not drift."""
+    import ast
+    from pathlib import Path
+
+    from jaull.evaluation.quality_runtime import BUILD_VERSION_PATTERN
+
+    tree = ast.parse((Path(__file__).parents[1] / "pilot/quality_eval/evaluate.py").read_text())
+    patterns = [
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "re.findall"
+        and isinstance(node.args[0], ast.Constant)
+        and "commit" in str(node.args[0].value)
+    ]
+    assert patterns == [BUILD_VERSION_PATTERN]
+
+
 def test_unknown_build_metadata_is_not_a_generic_http_acceptance_rule():
-    assert fingerprint_from_version("version: 10357 (689e227db)") == "b10357-689e227db"
     with pytest.raises(ValueError):
         fingerprint_from_version("some runtime")
     payload = {"prompt": [1], "logit_bias": [[2, 100]]}

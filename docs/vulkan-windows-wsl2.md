@@ -165,6 +165,35 @@ One conceptual flow, platform differences in small adapters:
   opt-in `windows_llama_cli` setting, resolved with `wslpath`, whose SHA256 is recorded in
   the evidence identity, executed only through an allow-listed argv, never a shell.
 
+### 5.1. AMD integrated GPU through Mesa Dozen: local smoke test
+
+On 2026-10-21, a Ryzen 5 5500U laptop under WSL2 exposed
+`Microsoft Direct3D12 (AMD Radeon(TM) Graphics)` as `Vulkan0` through Mesa
+Dozen 26.2.5. With llama.cpp `b10427-650913862`, SmolLM2-135M-Instruct
+Q4_K_M, context 4096 and full offload, automatic Flash Attention aborted during
+warm-up at `ggml-vulkan.cpp:2995`: the requested subgroup size was outside the
+device's supported range. The same local GGUF and binary completed an eight-token
+generation with `--flash-attn off`, exit code 0 and `31/31` layers offloaded.
+
+The launch planner now adds a structured `--flash-attn off` policy flag for
+Vulkan offload when hardware discovery explicitly reports driver `Dozen`/`dzn`.
+The flag and its explanation are retained in the prepared runtime configuration;
+the inference runner forwards it as separate arguments. CPU paths and other
+drivers retain their previous settings. This is a compatibility default, not a
+claim that every model works on Dozen. Intel B60 validation remains pending.
+
+Identities from this local smoke test:
+
+- Runtime executable SHA-256:
+  `e030c62226b88b0bd9eb2cb9d45e9b21ebab3250b3646a2dbf78aabf7a07d5a0`
+  (linked runtime libraries also affect execution).
+- Artifact: `unsloth/SmolLM2-135M-Instruct-GGUF`,
+  `SmolLM2-135M-Instruct-Q4_K_M.gguf`, SHA-256:
+  `ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747`.
+
+This checks generation and observed offload only. It is not a quality evaluation,
+a speed benchmark, or validation of the HellaSwag/IFEval protocols.
+
 ## 6. Evidence identity
 
 * `machine_fingerprint` already contains `hardware.os` and `os_version`, so

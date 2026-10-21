@@ -305,6 +305,33 @@ class EvidenceIndex:
         """Historical content matches, not a current execution/protocol match."""
         return tuple(self._quality.get(sha256, ())) if sha256 is not None else ()
 
+    def saved_experiments_for_plan(self, plan: ExecutionPlan) -> tuple[ExperimentRecord, ...]:
+        """Every saved validation of this exact artifact on this machine, newest first.
+
+        History, like :meth:`saved_benchmarks_for_plan`; the "Validated" tick
+        keeps the stricter :meth:`for_plan` match.
+        """
+        records = (
+            record
+            for _, record in self._experiments.get(_plan_key(plan), ())
+            if _same_machine_and_artifact(record, plan)
+        )
+        return tuple(sorted(records, key=lambda item: item.identity.created_at, reverse=True))
+
+    def saved_benchmarks_for_plan(self, plan: ExecutionPlan) -> tuple[BenchmarkRecord, ...]:
+        """Every saved probe of this exact artifact on this machine, newest first.
+
+        History, not evidence for the plan: a probe may have used another backend,
+        context or flags, and each record states its own configuration. The
+        "Benchmarked" tick keeps the stricter :meth:`for_plan` match.
+        """
+        records = (
+            record
+            for _, record in self._benchmarks.get(_plan_key(plan), ())
+            if _same_machine_and_artifact(record, plan)
+        )
+        return tuple(sorted(records, key=lambda item: item.identity.created_at, reverse=True))
+
     def benchmark_records(self) -> tuple[BenchmarkRecord, ...]:
         """Already loaded records; no further I/O for Results speed readouts."""
         return tuple(record for group in self._benchmarks.values() for _, record in group)
@@ -368,20 +395,21 @@ def _plan_key(plan: ExecutionPlan) -> str:
     )
 
 
-def _same_execution_context(
+def _same_machine_and_artifact(
     record: ExperimentRecord | BenchmarkRecord, plan: ExecutionPlan
 ) -> bool:
-    if plan.hardware is None or plan.memory_prediction is None or plan.backend_selection is None:
+    """The same bytes, run by the same runtime, on the same machine.
+
+    Backend, context length and runtime flags are left out on purpose: that is
+    what separates two probes of the same artifact from each other.
+    """
+    if plan.hardware is None:
         return False
     if machine_fingerprint(
         record.hardware, memory_granularity=EVIDENCE_MEMORY_GRANULARITY,
     ) != machine_fingerprint(plan.hardware, memory_granularity=EVIDENCE_MEMORY_GRANULARITY):
         return False
     if record.runtime.runtime is not plan.runtime_family:
-        return False
-    if tuple((flag.name, flag.value) for flag in record.runtime.flags) != tuple(
-        (flag.name, flag.value) for flag in plan.runtime.flags
-    ):
         return False
     artifact = plan.artifact
     measured = record.artifact
@@ -401,25 +429,26 @@ def _same_execution_context(
 
 
 def _experiment_matches_plan(record: ExperimentRecord, plan: ExecutionPlan) -> bool:
-    if not _same_execution_context(record, plan):
-        return False
-    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    """Validated on this machine, with this artifact, through this backend.
+
+    Context length, launch flags and whether the plan carries a memory estimate
+    do not decide it: a variant found by discovery has no estimate, and the saved
+    record states its own configuration.
+    """
     return (
-        record.preflight.execution_readiness.selection.selected_backend
+        plan.backend_selection is not None
+        and _same_machine_and_artifact(record, plan)
+        and record.preflight.execution_readiness.selection.selected_backend
         is plan.backend_selection.selected_backend
-        and record.prediction.inference_configuration.context_length
-        == plan.memory_prediction.inference_configuration.context_length
     )
 
 
 def _benchmark_matches_plan(record: BenchmarkRecord, plan: ExecutionPlan) -> bool:
-    if not _same_execution_context(record, plan):
-        return False
-    assert plan.backend_selection is not None and plan.memory_prediction is not None
+    """Benchmarked on this machine, with this artifact, through this backend."""
     return (
-        record.request.backend is plan.backend_selection.selected_backend
-        and record.request.context_length
-        == plan.memory_prediction.inference_configuration.context_length
+        plan.backend_selection is not None
+        and _same_machine_and_artifact(record, plan)
+        and record.request.backend is plan.backend_selection.selected_backend
     )
 
 

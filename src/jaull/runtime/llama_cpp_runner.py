@@ -67,6 +67,10 @@ class LlamaCppRunner:
         )
         device = _str_flag(runtime, "--device")
         device_flags = ("--device", device) if device is not None else ()
+        flash_attention = _str_flag(runtime, "--flash-attn")
+        if flash_attention is not None and flash_attention not in {"on", "off", "auto"}:
+            raise LlamaCppRunnerError("Runtime flag --flash-attn must be on, off or auto.")
+        flash_flags = ("--flash-attn", flash_attention) if flash_attention is not None else ()
         batch_flags: tuple[str, ...] = ()
         if _str_flag(runtime, "--batch-size") is not None:
             batch_size = _int_flag(runtime, "--batch-size", default=1)
@@ -82,6 +86,7 @@ class LlamaCppRunner:
             "--n-gpu-layers",
             str(n_gpu_layers),
             *device_flags,
+            *flash_flags,
             *batch_flags,
             "--no-display-prompt",
             "--color",

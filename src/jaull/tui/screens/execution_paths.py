@@ -7,7 +7,12 @@ to choose a runtime and a quantization in the same breath, as if those were the
 same kind of decision. Here the runtime is the choice and the quantization is a
 setting on it.
 
-Two things changed structurally from the previous version:
+The list is one line per path, grouped by runtime option: the recommended group
+leads and is open, the others start closed, and paths that cannot work on this
+machine wait behind a toggle with their reason. Everything longer lives in the
+detail pane of the selected path.
+
+Two things changed structurally from the original version:
 
 * Selection is a state on the option widget, not a `●`/`○` glyph baked into a
   button label. The list is no longer torn down and rebuilt on every click, so
@@ -27,10 +32,11 @@ from typing import TYPE_CHECKING
 
 from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Select, Static, TabbedContent, TabPane
+from textual.widgets import Button, Footer, Static, TabbedContent, TabPane
 
 from jaull.advisor.quality import quality_evaluation_block_reason
 from jaull.domain.execution_plans import ExecutionPlan
@@ -39,13 +45,14 @@ from jaull.presentation.plan_labels import (
     SUGGESTED_QUANTIZATIONS,
     artifact_display,
     execution_option_label,
+    fits_here,
     format_gib,
     is_gguf_plan,
     is_ready_plan,
     model_display_name,
     readiness_detail,
+    readiness_label,
     runtime_block_reason,
-    selected_plan_label,
 )
 from jaull.recommendation.models import ModelRecommendation
 from jaull.tui.evidence import EvidenceIndex, PlanEvidence
@@ -82,19 +89,98 @@ class _ExecutionPathsFailed(Message):
         self.message = message
 
 
-class _PathOption(Vertical):
-    """One runtime option: focusable, selectable, and its own click target.
+class _ListMove(Message):
+    """An arrow key on a list entry: the screen decides where focus goes next."""
 
-    A `Button` would have been less code, but a button label is the wrong place
-    for three lines of state, and toggling a glyph inside it meant rebuilding
-    the widget — and losing focus — to show a selection change.
+    def __init__(self, delta: int) -> None:
+        super().__init__()
+        self.delta = delta
+
+
+_LIST_KEYS: list[BindingType] = [
+    Binding("down,j", "list_move(1)", "Next", show=False),
+    Binding("up,k", "list_move(-1)", "Previous", show=False),
+]
+
+
+class _ListToggle(ActionButton):
+    """A quiet toggle inside the list, reachable with the same arrow keys."""
+
+    BINDINGS = _LIST_KEYS
+
+    def action_list_move(self, delta: int) -> None:
+        self.post_message(_ListMove(delta))
+
+
+class _PathGroupHeader(Static):
+    """One runtime option; Enter or a click opens and closes its paths."""
+
+    DEFAULT_CLASSES = "path-group-head"
+
+    can_focus = True
+
+    BINDINGS = [Binding("enter,space", "open_close", "Open/close"), *_LIST_KEYS]
+
+    class Toggled(Message):
+        def __init__(self, key: str) -> None:
+            super().__init__()
+            self.key = key
+
+    def __init__(
+        self,
+        key: str,
+        label: str,
+        count: int,
+        *,
+        recommended: bool,
+        expanded: bool,
+        summary: str,
+        id: str | None = None,
+    ) -> None:
+        self._key = key
+        self._summary = summary
+        self._label = label
+        self._count = count
+        self._recommended = recommended
+        self._expanded = expanded
+        super().__init__(self._text(), id=id, markup=False)
+
+    def _text(self) -> str:
+        glyph = "▾" if self._expanded else "▸"
+        plural = "" if self._count == 1 else "s"
+        parts = [self._label]
+        if self._recommended:
+            parts.append("★ recommended")
+        parts += [self._summary, f"{self._count} path{plural}"]
+        return f"{glyph} " + " · ".join(parts)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = expanded
+        self.update(self._text())
+
+    def on_click(self) -> None:
+        self.action_open_close()
+
+    def action_open_close(self) -> None:
+        self.post_message(self.Toggled(self._key))
+
+    def action_list_move(self, delta: int) -> None:
+        self.post_message(_ListMove(delta))
+
+
+class _PathOption(Vertical):
+    """One path on one line: variant, state, memory and saved evidence.
+
+    Selection is a state on the widget, not a glyph baked into a label, so the
+    list is not torn down on every click and keyboard focus survives selecting
+    something. Anything longer than a line belongs to the detail pane.
     """
 
     DEFAULT_CLASSES = "path-option selectable"
 
     can_focus = True
 
-    BINDINGS = [("enter", "choose", "Select")]
+    BINDINGS = [("enter", "choose", "Select"), *_LIST_KEYS]
 
     class Chosen(Message):
         def __init__(self, plan_id: str) -> None:
@@ -107,11 +193,18 @@ class _PathOption(Vertical):
         evidence: PlanEvidence,
         *,
         selected: bool,
+        recommended: bool = False,
+        name: str | None = None,
+        reason: str | None = None,
         id: str | None = None,
     ) -> None:
         super().__init__(id=id)
         self._plan = plan
         self._evidence = evidence
+        self._selected = selected
+        self._recommended = recommended
+        self._variant = name or _variant_name(plan)
+        self._reason = reason
         self.set_class(selected, "-selected")
 
     @property
@@ -119,12 +212,18 @@ class _PathOption(Vertical):
         return self._plan.plan_id
 
     def compose(self) -> ComposeResult:
-        yield Static(execution_option_label(self._plan), classes="path-option-title")
-        yield Static(artifact_display(self._plan), classes="path-option-meta -artifact")
-        yield Static(
-            f"{readiness_detail(self._plan)} · {self._evidence.summary()}",
-            classes=f"path-option-meta -evidence {_evidence_class(self._evidence)}",
-        )
+        state, state_class = _short_state(self._plan)
+        with Horizontal(classes="po-line"):
+            yield Static(self._mark(), classes="po-mark")
+            yield Static(self._variant, classes="po-name", markup=False)
+            yield Static(state, classes=f"po-state {state_class}", markup=False)
+            yield Static(_memory_short(self._plan), classes="po-mem", markup=False)
+            yield Static(
+                _evidence_short(self._evidence),
+                classes=f"po-evid {_evidence_class(self._evidence)}",
+                markup=False,
+            )
+        yield Static(self._reason or "", classes="po-reason", markup=False)
         yield Static(
             self._evidence.quality_summary(),
             classes="path-option-meta -quality",
@@ -132,35 +231,29 @@ class _PathOption(Vertical):
         )
 
     def on_mount(self) -> None:
+        reason = self.query_one(".po-reason", Static)
+        reason.display = bool(self._reason)
+        reason.tooltip = self._reason
         quality = self.query_one(".-quality", Static)
         quality.display = bool(self._evidence.quality_records)
         quality.tooltip = self._evidence.quality_details() or None
 
-    def rebind(self, plan: ExecutionPlan, evidence: PlanEvidence) -> None:
-        """Point this option at a different plan behind the same choice.
+    def _mark(self) -> str:
+        return ("●" if self._selected else " ") + ("★" if self._recommended else " ")
 
-        The llama.cpp option stands for whichever quantization is currently
-        picked, so changing the quantization has to move the artifact and
-        evidence lines with it — otherwise the option keeps advertising the
-        artifact the user just navigated away from.
-        """
-        self._plan = plan
-        self._evidence = evidence
-        for widget in self.query(".-artifact").results(Static):
-            widget.update(artifact_display(plan))
-        for widget in self.query(".-evidence").results(Static):
-            widget.update(f"{readiness_detail(plan)} · {evidence.summary()}")
-            widget.set_classes(f"path-option-meta -evidence {_evidence_class(evidence)}")
-        quality = self.query_one(".-quality", Static)
-        quality.update(evidence.quality_summary())
-        quality.display = bool(evidence.quality_records)
-        quality.tooltip = evidence.quality_details() or None
+    def set_selected(self, selected: bool) -> None:
+        self._selected = selected
+        self.set_class(selected, "-selected")
+        self.query_one(".po-mark", Static).update(self._mark())
 
     def on_click(self) -> None:
         self.post_message(self.Chosen(self._plan.plan_id))
 
     def action_choose(self) -> None:
         self.post_message(self.Chosen(self._plan.plan_id))
+
+    def action_list_move(self, delta: int) -> None:
+        self.post_message(_ListMove(delta))
 
 
 class ExecutionPathsScreen(Screen[None]):
@@ -176,10 +269,11 @@ class ExecutionPathsScreen(Screen[None]):
         self._evidence = EvidenceIndex.empty()
         self._selected_plan_id: str | None = None
         self._show_advanced_quantizations = False
+        self._show_unfit = False
         self._path_filter = "all"
-        # Set while a Select is being repopulated, so the Changed event it
-        # emits for its own new value is not read back as a user choice.
-        self._suppress_quantization_event = False
+        # Runtime groups the user (or the default) has open. Closing a group only
+        # hides its rows; it never touches the selection.
+        self._expanded: set[str] = set()
         self._paths_closing = Event()
         self._executor = ThreadPoolExecutor(
             max_workers=1,
@@ -217,8 +311,11 @@ class ExecutionPathsScreen(Screen[None]):
     def _compose_inspector(self) -> ComposeResult:
         yield Static("Loading execution paths...", id="paths-status", classes="status-line")
         yield Static("", id="paths-error", classes="warning-line")
-        yield Static("", id="paths-selected", classes="section-title")
-        yield Static("", id="paths-selected-meta", classes="text-muted")
+        yield Static("", id="paths-selected", classes="section-title", markup=False)
+        yield Static("", id="paths-selected-meta", classes="text-muted", markup=False)
+        with Vertical(id="paths-callout", classes="path-callout"):
+            yield Static("", id="paths-state-word", markup=False)
+            yield Static("", id="paths-state-text", markup=False)
         with Horizontal(id="paths-actions"):
             yield Button("Run", id="paths-run", classes="-primary", disabled=True)
             yield ActionButton("Validate", id="paths-validate", disabled=True)
@@ -226,7 +323,15 @@ class ExecutionPathsScreen(Screen[None]):
         with TabbedContent(initial="paths-evaluation" if self._open_evaluation else ""):
             with TabPane("Plan"), VerticalScroll():
                 yield Static("", id="paths-warnings", classes="warning-line")
-                yield Static("", id="paths-protocol", classes="text-secondary", markup=False)
+                with Vertical(id="paths-facts"):
+                    for key, label in (
+                        ("memory", "Memory"), ("artifact", "Artifact"), ("evidence", "Evidence"),
+                    ):
+                        with Horizontal(classes="fact-row"):
+                            yield Static(label, classes="fact-label", markup=False)
+                            yield Static(
+                                "", id=f"paths-fact-{key}", classes="fact-value", markup=False,
+                            )
                 yield Static("", id="paths-action-reason", classes="warning-line")
             with TabPane("Evaluation", id="paths-evaluation"), VerticalScroll():
                 yield Static("Published model references", classes="section-title")
@@ -259,7 +364,7 @@ class ExecutionPathsScreen(Screen[None]):
         # only exist once they have something to say.
         for widget_id in (
             "#paths-error", "#paths-warnings", "#paths-selected", "#paths-quality",
-            "#paths-quality-provenance",
+            "#paths-quality-provenance", "#paths-callout",
         ):
             self.query_one(widget_id).display = False
         self._paths_closing.clear()
@@ -306,7 +411,10 @@ class ExecutionPathsScreen(Screen[None]):
         self._plans = message.plans
         self._evidence = message.evidence
         if self._selected_plan_id not in {plan.plan_id for plan in self._plans}:
-            self._selected_plan_id = self._plans[0].plan_id if self._plans else None
+            self._selected_plan_id = self._default_plan_id()
+        selected_plan = self._selected_plan()
+        if selected_plan is not None and not self._expanded:
+            self._expanded = {execution_option_label(selected_plan)}
         recheck = self.query_one("#paths-recheck", Button)
         recheck.display = any(
             plan.runtime_family is RuntimeName.TRANSFORMERS for plan in self._plans
@@ -344,15 +452,37 @@ class ExecutionPathsScreen(Screen[None]):
         self._apply_selection()
         self.query_one(SelectionWorkspace).show_detail()
 
-    @on(Select.Changed, "#paths-quant")
-    def _quantization_changed(self, event: Select.Changed) -> None:
-        if self._suppress_quantization_event or event.value is Select.BLANK:
+    @on(_PathGroupHeader.Toggled)
+    def _group_toggled(self, message: _PathGroupHeader.Toggled) -> None:
+        if message.key in self._expanded:
+            self._expanded.discard(message.key)
+        else:
+            self._expanded.add(message.key)
+        for header in self.query(_PathGroupHeader):
+            if header._key == message.key:
+                header.set_expanded(message.key in self._expanded)
+        for body in self.query(".path-group-body"):
+            if body.name == message.key:
+                body.display = message.key in self._expanded
+
+    @on(_ListMove)
+    def _list_move(self, message: _ListMove) -> None:
+        message.stop()
+        stops = [
+            widget
+            for widget in self.query("#paths-list *")
+            if widget.can_focus
+            and not getattr(widget, "disabled", False)
+            and all(node.display for node in (widget, *widget.ancestors))
+        ]
+        if not stops:
             return
-        plan_id = str(event.value)
-        if plan_id == self._selected_plan_id:
-            return
-        self._selected_plan_id = plan_id
-        self._apply_selection()
+        focused = self.focused
+        if focused in stops:
+            target = stops.index(focused) + message.delta
+        else:
+            target = 0 if message.delta > 0 else len(stops) - 1
+        stops[max(0, min(target, len(stops) - 1))].focus()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id or ""
@@ -363,6 +493,10 @@ class ExecutionPathsScreen(Screen[None]):
             return
         if button_id == "paths-toggle-advanced":
             self._show_advanced_quantizations = not self._show_advanced_quantizations
+            await self._render_plans()
+            return
+        if button_id == "paths-toggle-unfit":
+            self._show_unfit = not self._show_unfit
             await self._render_plans()
             return
         if button_id == "paths-back":
@@ -407,98 +541,165 @@ class ExecutionPathsScreen(Screen[None]):
 
     async def _render_plans(self) -> None:
         container = self.query_one("#paths-list", Vertical)
+        # Removing the focused control would hand focus to whatever Textual finds
+        # last, which is a filter chip; put it back on the same control afterwards.
+        focused = self.focused
+        restore = focused.id if focused is not None and container in focused.ancestors else None
         await container.remove_children()
+        await self._build_list(container)
+        if restore:
+            for widget in self.query(f"#{restore}"):
+                widget.focus()
+
+    async def _build_list(self, container: Vertical) -> None:
         if not self._plans:
             await container.mount(Static("No execution paths were found.", classes="text-muted"))
             self._apply_selection()
             return
 
-        visible_primary = self._primary_path_plans(visible_only=True)
-        for index, plan in enumerate(visible_primary):
+        fitting, unfit = self._split_by_fit()
+        recommended_id = self._recommended_plan_id()
+        indexes = {plan.plan_id: index for index, plan in enumerate(self._plans)}
+        shown = False
+        for number, (key, group) in enumerate(self._ordered_groups(fitting, recommended_id)):
+            visible = [plan for plan in group if self._plan_matches_filter(plan)]
+            if not visible:
+                continue
+            shown = True
+            expanded = key in self._expanded
+            body = Vertical(classes="path-group-body", id=f"paths-group-{number}", name=key)
+            body.display = expanded
             await container.mount(
+                _PathGroupHeader(
+                    key,
+                    key,
+                    len(visible),
+                    recommended=any(plan.plan_id == recommended_id for plan in visible),
+                    expanded=expanded,
+                    summary=_group_summary(visible),
+                ),
+                body,
+            )
+            options, hidden = self._group_rows(visible, recommended_id)
+            await body.mount(*(
                 _PathOption(
                     plan,
                     self._evidence.for_plan(plan),
                     selected=plan.plan_id == self._selected_plan_id,
-                    id=f"paths-plan-{index}",
+                    recommended=plan.plan_id == recommended_id,
+                    id=f"paths-plan-{indexes[plan.plan_id]}",
                 )
-            )
-
-        gguf_plan = self._visible_gguf_plan()
-        if gguf_plan is not None:
-            await container.mount(
-                _PathOption(
-                    gguf_plan,
-                    self._evidence.for_plan(gguf_plan),
-                    selected=self._selected_is_gguf(),
-                    id="paths-gguf",
+                for plan in options
+            ))
+            if hidden or (self._show_advanced_quantizations and _has_advanced(visible)):
+                plural = "" if hidden == 1 else "s"
+                label = (
+                    "Hide advanced quantizations"
+                    if self._show_advanced_quantizations
+                    else f"Show {hidden} advanced quantization{plural}"
                 )
-            )
-            await self._mount_quantization_picker(container, gguf_plan)
+                await body.mount(_ListToggle(label, id="paths-toggle-advanced", classes="-quiet"))
 
-        if not visible_primary and gguf_plan is None:
+        visible_unfit = [plan for plan in unfit if self._plan_matches_filter(plan)]
+        if visible_unfit:
+            shown = True
+            await self._mount_unfit(container, visible_unfit, indexes)
+        if not shown:
             await container.mount(
                 Static(_empty_filter_label(self._path_filter), classes="text-muted")
             )
         self._apply_selection()
 
-    async def _mount_quantization_picker(
+    async def _mount_unfit(
         self,
         container: Vertical,
-        gguf_plan: ExecutionPlan,
+        plans: list[ExecutionPlan],
+        indexes: dict[str, int],
     ) -> None:
-        """A quantization is a setting on the llama.cpp option, not a peer path.
-
-        The suggested quantizations lead and are labelled as such; the rest
-        stay behind the toggle so the dropdown opens on a shortlist rather than
-        on twenty near-identical entries.
-        """
-        gguf_plans = self._gguf_plans(visible_only=True)
-        if len(gguf_plans) <= 1:
-            return
-        suggested = [
-            plan
-            for plan in gguf_plans
-            if (plan.artifact.quantization or "") in SUGGESTED_QUANTIZATIONS
-        ]
-        advanced = [plan for plan in gguf_plans if plan not in suggested]
-        visible_advanced = (
-            advanced
-            if self._show_advanced_quantizations
-            else [plan for plan in advanced if plan.plan_id == self._selected_plan_id]
+        """Paths this machine cannot run, one line each with the reason."""
+        count = len(plans)
+        label = (
+            f"Hide {count} that don't fit"
+            if self._show_unfit
+            else f"Show {count} that don't fit"
         )
-
-        options = [
-            (f"{_quantization_name(plan)} · recommended", plan.plan_id) for plan in suggested
-        ] + [(_quantization_name(plan), plan.plan_id) for plan in visible_advanced]
-        if not options:
+        await container.mount(_ListToggle(label, id="paths-toggle-unfit", classes="-quiet"))
+        if not self._show_unfit:
             return
-
-        picker = Vertical(classes="path-quant")
-        await container.mount(picker)
-        await picker.mount(Static("Quantization", classes="path-quant-label"))
-        self._suppress_quantization_event = True
-        try:
-            await picker.mount(
-                Select(
-                    options,
-                    id="paths-quant",
-                    value=gguf_plan.plan_id,
-                    allow_blank=False,
-                )
+        await container.mount(*(
+            _PathOption(
+                plan,
+                self._evidence.for_plan(plan),
+                selected=plan.plan_id == self._selected_plan_id,
+                name=f"{_runtime_name(plan)} · {_variant_name(plan)}",
+                reason=_why_not(plan),
+                id=f"paths-plan-{indexes[plan.plan_id]}",
             )
-        finally:
-            self._suppress_quantization_event = False
+            for plan in plans
+        ))
 
-        hidden = len(advanced) - len(visible_advanced)
-        if hidden > 0 or self._show_advanced_quantizations:
-            plural = "" if hidden == 1 else "s"
-            label = (
-                "Hide advanced quantizations"
-                if self._show_advanced_quantizations
-                else f"Show {hidden} advanced quantization{plural}"
-            )
-            await picker.mount(ActionButton(label, id="paths-toggle-advanced", classes="-quiet"))
+    def _group_rows(
+        self, plans: list[ExecutionPlan], recommended_id: str | None,
+    ) -> tuple[list[ExecutionPlan], int]:
+        """The rows a group shows, and how many advanced quantizations stay behind.
+
+        Suggested quantizations lead; the rest wait behind the group's toggle
+        unless one of them is the path the user has chosen or Jaull recommends.
+        """
+        if not all(is_gguf_plan(plan) for plan in plans):
+            return plans, 0
+        advanced = [plan for plan in plans if _is_advanced(plan)]
+        if self._show_advanced_quantizations:
+            return plans, 0
+        keep = {self._selected_plan_id, recommended_id}
+        shown = [plan for plan in plans if plan not in advanced or plan.plan_id in keep]
+        return shown, len(plans) - len(shown)
+
+    def _split_by_fit(self) -> tuple[list[ExecutionPlan], list[ExecutionPlan]]:
+        """Paths that can work here, and those that cannot; never an empty list.
+
+        When nothing fits, everything is shown as a normal path rather than
+        leaving the user in front of a screen with only a toggle.
+        """
+        fitting = [plan for plan in self._plans if fits_here(plan)]
+        if not fitting:
+            return list(self._plans), []
+        return fitting, [plan for plan in self._plans if not fits_here(plan)]
+
+    def _ordered_groups(
+        self, plans: list[ExecutionPlan], recommended_id: str | None,
+    ) -> list[tuple[str, list[ExecutionPlan]]]:
+        groups: dict[str, list[ExecutionPlan]] = {}
+        for plan in plans:
+            groups.setdefault(execution_option_label(plan), []).append(plan)
+
+        def ordered(group: list[ExecutionPlan]) -> list[ExecutionPlan]:
+            if all(is_gguf_plan(plan) for plan in group):
+                group = sorted(group, key=_gguf_sort_key)
+            return sorted(group, key=lambda plan: plan.plan_id != recommended_id)
+
+        ranked = sorted(
+            groups.items(),
+            key=lambda item: all(plan.plan_id != recommended_id for plan in item[1]),
+        )
+        return [(key, ordered(group)) for key, group in ranked]
+
+    def _recommended_plan_id(self) -> str | None:
+        plan = self._recommendation.plan
+        if plan is not None and any(item.plan_id == plan.plan_id for item in self._plans):
+            return plan.plan_id
+        return self._plans[0].plan_id if self._plans else None
+
+    def _default_plan_id(self) -> str | None:
+        """The recommended path when it fits here, otherwise the first one that does."""
+        if not self._plans:
+            return None
+        fitting, _ = self._split_by_fit()
+        recommended = self._recommended_plan_id()
+        if any(plan.plan_id == recommended for plan in fitting):
+            return recommended
+        groups = self._ordered_groups(fitting, recommended)
+        return groups[0][1][0].plan_id
 
     def _apply_selection(self) -> None:
         """Reflect the current plan everywhere, without rebuilding the list."""
@@ -515,14 +716,8 @@ class ExecutionPathsScreen(Screen[None]):
         reason = self.query_one("#paths-evaluate-reason", Static)
         reason.update(evaluation_reason or "")
         reason.display = evaluation_reason is not None
-        gguf_plan = self._visible_gguf_plan()
         for option in self.query(_PathOption):
-            if option.id == "paths-gguf":
-                if gguf_plan is not None:
-                    option.rebind(gguf_plan, self._evidence.for_plan(gguf_plan))
-                option.set_class(self._selected_is_gguf(), "-selected")
-            else:
-                option.set_class(option.plan_id == self._selected_plan_id, "-selected")
+            option.set_selected(option.plan_id == self._selected_plan_id)
 
         title = self.query_one("#paths-selected", Static)
         meta = self.query_one("#paths-selected-meta", Static)
@@ -532,12 +727,14 @@ class ExecutionPathsScreen(Screen[None]):
             self.query_one("#paths-published-provenance").display = False
             title.display = False
             meta.display = False
+            self.query_one("#paths-callout").display = False
             warnings.display = False
             self.query_one("#paths-quality", Static).display = False
             self.query_one("#paths-quality-empty").display = False
             self.query_one("#paths-quality-provenance").display = False
             self.query_one("#paths-quality-details", Static).update("")
-            self.query_one("#paths-protocol", Static).update("")
+            for key in ("memory", "artifact", "evidence"):
+                self.query_one(f"#paths-fact-{key}", Static).update("")
             self._set_actions(
                 enabled=False,
                 reason="No execution path is selected.",
@@ -548,10 +745,19 @@ class ExecutionPathsScreen(Screen[None]):
         self.query_one("#paths-published", Static).update(evidence.published_summary)
         self.query_one("#paths-published-details", Static).update(evidence.published_provenance)
         self.query_one("#paths-published-provenance").display = bool(evidence.published_provenance)
-        title.update(f"Selected · {selected_plan_label(selected)}")
+        badge = "   ★ recommended" if selected.plan_id == self._recommended_plan_id() else ""
+        title.update(f"{_variant_name(selected)}{badge}")
         title.display = True
-        meta.update(f"{readiness_detail(selected)} · {evidence.summary()} · {_memory(selected)}")
+        meta.update(f"{execution_option_label(selected)} · {_format_name(selected)}")
         meta.display = True
+        state, state_class = _short_state(selected)
+        callout = self.query_one("#paths-callout")
+        callout.set_classes(f"path-callout {_CALLOUT_CLASSES[state_class]}")
+        callout.display = True
+        word = self.query_one("#paths-state-word", Static)
+        word.update(f"● {state}")
+        word.set_classes(state_class)
+        self.query_one("#paths-state-text", Static).update(_state_message(selected))
         quality = self.query_one("#paths-quality", Static)
         quality.update(evidence.quality_readout())
         quality.display = bool(evidence.quality_records)
@@ -561,11 +767,9 @@ class ExecutionPathsScreen(Screen[None]):
         details.update(evidence.quality_details())
         details.display = bool(evidence.quality_records)
         self.query_one("#paths-quality-provenance").display = bool(evidence.quality_records)
-        self.query_one("#paths-protocol", Static).update(
-            f"Artifact: {artifact_display(selected)}\n"
-            f"Readiness: {readiness_detail(selected)}\n"
-            f"Saved execution evidence: {evidence.summary()}"
-        )
+        self.query_one("#paths-fact-memory", Static).update(_memory(selected))
+        self.query_one("#paths-fact-artifact", Static).update(artifact_display(selected))
+        self.query_one("#paths-fact-evidence", Static).update(evidence.summary())
 
         # Plan warnings are computed today and were never rendered.
         text = " ".join(selected.warnings)
@@ -622,33 +826,6 @@ class ExecutionPathsScreen(Screen[None]):
             None,
         )
 
-    def _selected_is_gguf(self) -> bool:
-        selected = self._selected_plan()
-        return selected is not None and is_gguf_plan(selected)
-
-    def _primary_path_plans(self, *, visible_only: bool = False) -> list[ExecutionPlan]:
-        plans = [plan for plan in self._plans if not is_gguf_plan(plan)]
-        if visible_only:
-            return [plan for plan in plans if self._plan_matches_filter(plan)]
-        return plans
-
-    def _gguf_plans(self, *, visible_only: bool = False) -> list[ExecutionPlan]:
-        plans = sorted(
-            (plan for plan in self._plans if is_gguf_plan(plan)),
-            key=_gguf_sort_key,
-        )
-        if visible_only:
-            return [plan for plan in plans if self._plan_matches_filter(plan)]
-        return plans
-
-    def _visible_gguf_plan(self) -> ExecutionPlan | None:
-        """The GGUF plan the single llama.cpp option currently stands for."""
-        visible = self._gguf_plans(visible_only=True)
-        selected = self._selected_plan()
-        if selected is not None and selected in visible:
-            return selected
-        return next(iter(visible), None)
-
     def _plan_matches_filter(self, plan: ExecutionPlan) -> bool:
         if self._path_filter == "ready":
             return is_ready_plan(plan)
@@ -673,8 +850,92 @@ def model_display_name_for(recommendation: ModelRecommendation) -> str:
     return model_display_name(identity, fallback=recommendation.repo_id)
 
 
-def _quantization_name(plan: ExecutionPlan) -> str:
-    return plan.artifact.quantization or plan.artifact.label
+def _variant_name(plan: ExecutionPlan) -> str:
+    """What tells two paths of the same runtime apart: a quantization or a precision."""
+    if is_gguf_plan(plan):
+        return plan.artifact.quantization or plan.artifact.label
+    name = artifact_display(plan)
+    precision = plan.artifact.precision
+    if precision and precision not in name:
+        return f"{name} · {precision}"
+    return name
+
+
+def _is_advanced(plan: ExecutionPlan) -> bool:
+    return (plan.artifact.quantization or "") not in SUGGESTED_QUANTIZATIONS
+
+
+def _has_advanced(plans: list[ExecutionPlan]) -> bool:
+    return all(is_gguf_plan(plan) for plan in plans) and any(_is_advanced(p) for p in plans)
+
+
+# Short row labels for the readiness words `readiness_label` produces, with the
+# colour class that carries the same meaning for anyone who can see it.
+_STATE_STYLES: dict[str, tuple[str, str]] = {
+    "Ready": ("Ready", "status-ok"),
+    "Preparable": ("Preparable", "status-ok"),
+    "Blocked": ("Blocked", "status-warn"),
+    "Insufficient memory": ("No memory", "status-fail"),
+    "Unsupported configuration": ("Unsupported", "status-fail"),
+}
+
+
+def _short_state(plan: ExecutionPlan) -> tuple[str, str]:
+    label = readiness_label(plan)
+    return _STATE_STYLES.get(label, (label, "status-estimated"))
+
+
+_CALLOUT_CLASSES = {
+    "status-ok": "-ok",
+    "status-warn": "-warn",
+    "status-fail": "-fail",
+    "status-estimated": "-muted",
+}
+
+
+def _state_message(plan: ExecutionPlan) -> str:
+    """The long readiness text, for the one path the user is looking at."""
+    if not fits_here(plan):
+        return _why_not(plan)
+    readiness = plan.execution_readiness
+    if readiness is not None and readiness.message:
+        return readiness.message
+    return readiness_detail(plan)
+
+
+def _format_name(plan: ExecutionPlan) -> str:
+    return "GGUF" if is_gguf_plan(plan) else plan.artifact.format.value
+
+
+def _runtime_name(plan: ExecutionPlan) -> str:
+    """Just the runtime of an option label, for rows that sit outside a group."""
+    return execution_option_label(plan).split(" · ")[0]
+
+
+def _group_summary(plans: list[ExecutionPlan]) -> str:
+    """What a closed group still has to say: the best state among its paths."""
+    best = next((plan for plan in plans if is_ready_plan(plan)), plans[0])
+    return _short_state(best)[0].lower()
+
+
+def _memory_short(plan: ExecutionPlan) -> str:
+    if plan.memory_prediction is None:
+        return "—"
+    return format_gib(plan.memory_prediction.total_bytes)
+
+
+def _evidence_short(evidence: PlanEvidence) -> str:
+    parts = []
+    if evidence.validated:
+        parts.append("✓ validated")
+    if evidence.benchmarked:
+        parts.append("✓ benchmarked")
+    return " · ".join(parts)
+
+
+def _why_not(plan: ExecutionPlan) -> str:
+    """The reason in one clause: the part of the readiness detail after the label."""
+    return readiness_detail(plan).split(" — ", 1)[-1]
 
 
 def _memory(plan: ExecutionPlan) -> str:

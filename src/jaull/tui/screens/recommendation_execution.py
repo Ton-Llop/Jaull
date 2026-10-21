@@ -23,7 +23,7 @@ from jaull.domain.execution_plans import (
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
-from jaull.execution.errors import ExecutionError
+from jaull.execution.errors import ExecutionError, ExecutionFailedError
 from jaull.presentation.execution_report import inline_observation_summary
 from jaull.presentation.plan_labels import (
     model_display_name,
@@ -62,10 +62,16 @@ class _GenerationDone(Message):
 
 
 class _GenerationFailed(Message):
-    def __init__(self, message: str, artifact: ModelArtifact | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        artifact: ModelArtifact | None = None,
+        prepared_plan: PreparedExecutionPlan | None = None,
+    ) -> None:
         super().__init__()
         self.message = message
         self.artifact = artifact
+        self.prepared_plan = prepared_plan
 
 
 class RecommendationExecutionScreen(Screen[None]):
@@ -242,7 +248,9 @@ class RecommendationExecutionScreen(Screen[None]):
             ArtifactError,
             ExecutionError,
         ) as exc:
-            self._post_generation_failed(str(exc), prepared_artifact)
+            self._post_generation_failed(
+                _execution_error_message(exc), prepared_artifact, prepared_plan
+            )
             return
         if not self._run_closing.is_set():
             self.post_message(_GenerationDone(artifact, result, prepared_plan))
@@ -272,6 +280,8 @@ class RecommendationExecutionScreen(Screen[None]):
     def _generation_failed_message(self, message: _GenerationFailed) -> None:
         if self._run_closing.is_set():
             return
+        if message.prepared_plan is not None:
+            self._prepared_plan = message.prepared_plan
         if message.artifact is not None:
             self._remember_artifact(message.artifact)
         self._generation_failed(message.message)
@@ -281,10 +291,13 @@ class RecommendationExecutionScreen(Screen[None]):
             self.post_message(_GenerationStep(message))
 
     def _post_generation_failed(
-        self, message: str, artifact: ModelArtifact | None
+        self,
+        message: str,
+        artifact: ModelArtifact | None,
+        prepared_plan: PreparedExecutionPlan | None = None,
     ) -> None:
         if not self._run_closing.is_set():
-            self.post_message(_GenerationFailed(message, artifact))
+            self.post_message(_GenerationFailed(message, artifact, prepared_plan))
 
     def _generation_done(self, artifact: ModelArtifact, result: InferenceResult) -> None:
         self._remember_artifact(artifact)
@@ -482,6 +495,35 @@ def _flag_value(runtime: RuntimeRecommendation | None, name: str) -> str | None:
 
 def _response_text(text: str) -> str:
     return text or "(empty response)"
+
+
+def _execution_error_message(error: Exception) -> str:
+    message = str(error)
+    if not isinstance(error, ExecutionFailedError):
+        return message
+    stderr = error.result.stderr.strip()
+    if not stderr:
+        return message
+    lines = stderr.splitlines()
+    diagnostic = next(
+        (
+            index for index, line in enumerate(lines)
+            if any(marker in line.casefold() for marker in (
+                "ggml_assert", "ggml_abort:", "terminate called", "what():",
+                "error:", "fatal:", "aborted",
+            ))
+        ),
+        None,
+    )
+    start = max(0, diagnostic - 1) if diagnostic is not None else 0
+    end = diagnostic + 3 if diagnostic is not None else 6
+    excerpt_lines = lines[start:end]
+    if len(lines) > end + 3:
+        excerpt_lines.extend(["...", *lines[-3:]])
+    else:
+        excerpt_lines.extend(lines[end:])
+    excerpt = "\n".join(line[:300] for line in excerpt_lines)
+    return f"{message}\nllama.cpp stderr (diagnostic excerpt):\n{excerpt[:1600]}"
 
 
 __all__ = [

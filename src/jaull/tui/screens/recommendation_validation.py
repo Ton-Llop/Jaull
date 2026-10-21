@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -55,6 +56,7 @@ from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
+from jaull.tui.evidence import EvidenceIndex
 from jaull.tui.widgets.context_bar import ContextBar
 from jaull.tui.widgets.metric_list import MetricList, MetricRow
 from jaull.tui.widgets.progress_step import format_step_log
@@ -67,6 +69,14 @@ if TYPE_CHECKING:
 
 
 VALIDATION_PROMPT = "Explain briefly what artificial intelligence is."
+
+_log = logging.getLogger(__name__)
+
+
+class _SavedValidations(Message):
+    def __init__(self, records: tuple[ExperimentRecord, ...]) -> None:
+        super().__init__()
+        self.records = records
 
 
 class _ValidationStep(Message):
@@ -164,6 +174,7 @@ class RecommendationValidationScreen(Screen[None]):
             thread_name_prefix="jaull-validation",
         )
         self._future: Future[None] | None = None
+        self._saved_future: Future[None] | None = None
 
     @property
     def recommendation(self) -> ModelRecommendation:
@@ -213,21 +224,48 @@ class RecommendationValidationScreen(Screen[None]):
         else:
             start.focus()
         self._set_status("")
+        if self._execution_plan is not None:
+            self._saved_future = self._executor.submit(
+                self._saved_worker, self._app().advisor, self._execution_plan,
+            )
 
     def on_unmount(self) -> None:
         self._validation_closing.set()
         self._shutdown_executor()
 
     def _shutdown_executor(self) -> None:
-        if self._future is not None:
-            self._future.cancel()
-            self._future = None
+        for future in (self._future, self._saved_future):
+            if future is not None:
+                future.cancel()
+        self._future = None
+        self._saved_future = None
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         match event.button.id:
             case "validation-start":
                 self._start_validation()
+
+    def _saved_worker(self, advisor: AdvisorService, plan: ExecutionPlan) -> None:
+        """Read what this artifact has already been validated with. Blocking."""
+        try:
+            index = EvidenceIndex.load(advisor, plan.model_identity)
+            records = index.saved_experiments_for_plan(plan)
+        except Exception:
+            # History enriches the screen; a store that cannot be read must not
+            # stop the user from validating.
+            _log.debug("saved validations unreadable", exc_info=True)
+            return
+        if records and not self._validation_closing.is_set():
+            self.post_message(_SavedValidations(records))
+
+    @on(_SavedValidations)
+    def _saved_validations_message(self, message: _SavedValidations) -> None:
+        # A run started or finished meanwhile is newer than anything on disk.
+        busy = self._future is not None and not self._future.done()
+        if self._validation_closing.is_set() or busy or self._last_record is not None:
+            return
+        self._render_record(message.records[0], None, saved=message.records)
 
     def _start_validation(self) -> None:
         if self._future is not None and not self._future.done():
@@ -462,16 +500,23 @@ class RecommendationValidationScreen(Screen[None]):
         *,
         persistence_failed: bool = False,
         raw_log_path: Path | None = None,
+        saved: tuple[ExperimentRecord, ...] = (),
     ) -> None:
         self._clear_result()
         self._last_record = record
         self._last_persisted_path = persisted_path
         body = self.query_one("#validation-result", Vertical)
-        self.query_one("#validation-intro", Static).display = False
+        # Saved validations were not produced by this visit, so the blurb stays.
+        self.query_one("#validation-intro", Static).display = bool(saved)
         succeeded = record.observation.success
         heading = (
             "Configuration validated" if succeeded else "Validation failed during execution"
         )
+        if saved:
+            heading = (
+                f"Saved validation · {record.identity.created_at:%Y-%m-%d %H:%M} "
+                f"· {len(saved)} of this artifact on this machine"
+            )
         if persistence_failed:
             heading = f"{heading} (not saved)"
         body.mount(
@@ -498,6 +543,20 @@ class RecommendationValidationScreen(Screen[None]):
                 "validation-result-node"
             )
         )
+        if len(saved) > 1:
+            body.mount(
+                MetricList(
+                    "Earlier validations",
+                    [
+                        (
+                            f"{earlier.identity.created_at:%Y-%m-%d %H:%M}",
+                            f"{_saved_backend(earlier)} · "
+                            f"{_duration(earlier.observation.duration_seconds)}",
+                        )
+                        for earlier in saved[1:]
+                    ],
+                ).add_class("validation-result-node")
+            )
         self._set_status("")
 
     def _estimate(self) -> MemoryEstimate | None:
@@ -552,6 +611,10 @@ class _ValidationHeader(ContextBar):
             )
             subtitle = f"{quantization} · {runtime_label}"
         super().__init__(title, subtitle, aside="Validate", id="validation-header")
+
+
+def _saved_backend(record: ExperimentRecord) -> str:
+    return record.preflight.execution_readiness.selection.selected_backend.value
 
 
 def _humanise(value: str) -> str:

@@ -48,6 +48,40 @@ from tests.test_tui_recommendation_execution import (
 )
 
 
+def test_benchmark_screen_shows_the_saved_results_for_its_plan(tmp_path: Path) -> None:
+    """Reopening Benchmark must show what was already measured, not an empty screen."""
+    from tests.test_benchmarks import _record as saved_record
+    from tests.test_execution_plans import _gguf_recommendation
+    from tests.test_tui_evidence import _FakeStoreAdvisor, _plan
+
+    record = saved_record(tmp_path)
+
+    class SavedAdvisor(_FakeStoreAdvisor):
+        services = None
+
+    async def scenario() -> None:
+        advisor = SavedAdvisor(benchmarks={record.identity.benchmark_id: record})
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            # Every saved probe of this artifact on this machine is history, even one
+            # measured with another backend or context than the plan being opened.
+            plan = _plan(backend=ComputeBackend.VULKAN, context_length=8192)
+            screen = RecommendationBenchmarkScreen(_gguf_recommendation(), plan)
+            app.push_screen(screen)
+            await _wait_until(pilot, lambda: bool(screen.query(".benchmark-result-node")))
+            assert "Saved benchmarks" in _visible_text(screen)
+
+            # Another artifact must not borrow it.
+            other = RecommendationBenchmarkScreen(
+                _gguf_recommendation(), _plan(sha256="2" * 64),
+            )
+            app.push_screen(other)
+            await pilot.pause(0.5)
+            assert not other.query(".benchmark-result-node")
+
+    _run(scenario())
+
+
 def test_results_screen_can_open_benchmark_screen(tmp_path: Path) -> None:
     async def scenario() -> None:
         state = RecommendationWorkflowState(recommendations=[_recommendation()])

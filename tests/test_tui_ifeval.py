@@ -532,8 +532,11 @@ def test_evaluation_workspace_separates_candidates_setup_and_results(size, tmp_p
             assert checkbox.region.bottom < screen.query_one("#quality-actions").region.y
             assert screen.query_one("#quality-row-0").has_class("-selected")
             checkbox.value = False
-            await pilot.pause()
-            assert not screen.query_one("#quality-row-0").has_class("-selected")
+            # The row loses its class in the Checkbox.Changed handler, which a single
+            # pause does not always reach on a slow runner.
+            await _wait_until(
+                pilot, lambda: not screen.query_one("#quality-row-0").has_class("-selected"),
+            )
             app.save_screenshot(f"quality-candidates-{size[0]}.svg", path=str(tmp_path))
             tabs.active = "quality-setup-tab"
             await pilot.pause()

@@ -267,6 +267,31 @@ def test_runner_passes_confirmed_runtime_device_to_llama_cpp(
     assert command[command.index("--device") + 1] == "Vulkan0"
 
 
+@pytest.mark.parametrize("flash_attention", ["on", "off", "auto", "invalid"])
+def test_runner_honors_structured_flash_attention_setting(
+    tmp_path: Path, flash_attention: str,
+) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"gguf")
+    backend = _FakeExecutionBackend()
+    runner = LlamaCppRunner(backend=backend, llama_cli_path=_executable(tmp_path))
+    runtime = _runtime(n_gpu_layers=-1, device="Vulkan0")
+    runtime = runtime.model_copy(update={"flags": [
+        *runtime.flags,
+        RuntimeFlag(
+            name="--flash-attn", value=flash_attention,
+            source=RuntimeFlagSource.POLICY, explanation="Driver compatibility",
+        ),
+    ]})
+    if flash_attention == "invalid":
+        with pytest.raises(LlamaCppRunnerError, match="--flash-attn"):
+            runner.run(artifact=_artifact(model_path), prompt="Hello", runtime=runtime)
+        assert not backend.requests
+    else:
+        result = runner.run(artifact=_artifact(model_path), prompt="Hello", runtime=runtime)
+        assert result.command[result.command.index("--flash-attn") + 1] == flash_attention
+
+
 def test_runner_always_asks_for_the_load_log(tmp_path: Path) -> None:
     """Without it llama.cpp writes nothing to stderr and there is no observation.
 

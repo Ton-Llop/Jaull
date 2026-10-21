@@ -105,8 +105,47 @@ def plan_launch(
         execution_readiness=execution_readiness,
     )
     resolved = _apply_overrides(resolved, overrides or ExecutionOverrides())
+    resolved = _apply_vulkan_driver_compatibility(resolved, backend_selection)
     _require_runnable(runtime, resolved)
     return resolved
+
+
+def _apply_vulkan_driver_compatibility(
+    rec: RuntimeRecommendation,
+    selection: RuntimeBackendSelection | None,
+) -> RuntimeRecommendation:
+    if (
+        rec.runtime is not RuntimeName.LLAMA_CPP
+        or selection is None
+        or selection.selected_backend is not ComputeBackend.VULKAN
+        or selection.backend_info is None
+        or (selection.backend_info.driver_name or "").strip().casefold() not in {"dozen", "dzn"}
+        or not any(flag.name == "--n-gpu-layers" and flag.value != "0" for flag in rec.flags)
+        or any(flag.name == "--flash-attn" for flag in rec.flags)
+    ):
+        return rec
+    # Reproduced on AMD/WSL2 with b10427: automatic Flash Attention requests
+    # a subgroup size outside Dozen's advertised range and aborts at warm-up.
+    explanation = (
+        "Flash Attention disabled for Mesa Dozen compatibility: the automatic "
+        "shader path can request an unsupported Vulkan subgroup size."
+    )
+    return rec.model_copy(
+        update={
+            "flags": [
+                *rec.flags,
+                RuntimeFlag(
+                    name="--flash-attn", value="off", source=RuntimeFlagSource.POLICY,
+                    explanation=explanation,
+                ),
+            ],
+            "warnings": [*rec.warnings, explanation],
+            "command_preview": (
+                f"{rec.command_preview} --flash-attn off"
+                if rec.command_preview is not None else None
+            ),
+        }
+    )
 
 
 def plan_execution(

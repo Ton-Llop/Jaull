@@ -213,7 +213,8 @@ def run(output: Path, base_url: str, profile_name: str = "smoke") -> None:
         # The host and record importer validate the complete execution contract.
         # The evaluator independently binds HTTP responses to that exact build.
         builds = re.findall(
-            r"(?:version:\s*|\bb)(\d+)\s*(?:\(|-)([0-9a-f]{7,40})\)?",
+            r"(?:version:\s*(?:\S+\s*\(build\s+)?|\bb)(\d+)(?:,\s*commit\s+|\s*(?:\(|-))"
+            r"([0-9a-f]{7,40})\)?",
             execution["version_text"],
         )
         if (

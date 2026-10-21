@@ -146,6 +146,30 @@ def test_a_confirmed_device_does_not_block() -> None:
     assert runtime_block_reason(_with_readiness(_plan(), READY)) is None
 
 
+def test_confirmed_vulkan_remains_actionable_while_gguf_needs_preparation() -> None:
+    preparable = READY.model_copy(
+        update={
+            "status": ExecutionReadinessStatus.PREPARABLE,
+            "reason": ExecutionReadinessReason.ARTIFACT_PREPARATION_REQUIRED,
+            "message": "The runtime is ready; GGUF will be downloaded before execution.",
+        }
+    )
+
+    assert runtime_block_reason(_with_readiness(_plan(), preparable)) is None
+
+
+def test_preparable_vulkan_without_device_evidence_remains_blocked() -> None:
+    preparable = READY.model_copy(
+        update={
+            "status": ExecutionReadinessStatus.PREPARABLE,
+            "reason": ExecutionReadinessReason.ARTIFACT_PREPARATION_REQUIRED,
+            "selected_backend_capability": None,
+        }
+    )
+
+    assert runtime_block_reason(_with_readiness(_plan(), preparable)) is not None
+
+
 def test_vulkan_unknown_probe_failure_is_not_executable() -> None:
     probe_failed = _readiness(
         ExecutionReadinessStatus.UNKNOWN,

@@ -27,8 +27,12 @@ from jaull.domain.runtime import (
     ExecutionReadiness,
     ExecutionReadinessReason,
     ExecutionReadinessStatus,
+    LlamaCppBackendCapability,
+    LlamaCppBackendCapabilityState,
     LlamaCppBinaryStatus,
+    LlamaCppCapabilityReason,
     LlamaCppRuntimeCapability,
+    LlamaCppRuntimeDevice,
     PyTorchRuntimeCapability,
     PyTorchRuntimeStatus,
     RuntimeBackendSelection,
@@ -666,3 +670,94 @@ def test_paths_keeps_the_selected_configuration_and_already_assessed_alternative
         any(text.startswith("Not selected:") for text in by_id[plan.plan_id].warnings)
         for plan in rec.alternative_plans
     )
+
+
+@pytest.mark.parametrize("runtime_exposes_vulkan", [True, False])
+def test_integrated_vulkan_is_an_explicit_path_without_replacing_cpu(
+    runtime_exposes_vulkan: bool,
+):
+    hw, req, _, estimate, evaluated = _setup(backend=ComputeBackend.VULKAN)
+    rec = service.recommend(
+        [evaluated(GGUF, base=BASE)], req, hardware=hw, estimate_fn=estimate
+    )[0]
+    assert rec.plan.runtime.flags
+    assert any(
+        flag.name == "--n-gpu-layers" and flag.value == "0"
+        for flag in rec.plan.runtime.flags
+    )
+
+    device = LlamaCppRuntimeDevice(
+        backend=ComputeBackend.VULKAN,
+        runtime_id="Vulkan0",
+        name="Test AMD GPU",
+    )
+    capability = LlamaCppRuntimeCapability(
+        binary_status=LlamaCppBinaryStatus.AVAILABLE,
+            backend_capabilities=[
+                LlamaCppBackendCapability(
+                    backend=ComputeBackend.VULKAN,
+                    state=(
+                        LlamaCppBackendCapabilityState.CONFIRMED
+                        if runtime_exposes_vulkan
+                        else LlamaCppBackendCapabilityState.NOT_OBSERVED
+                    ),
+                    devices=[device] if runtime_exposes_vulkan else [],
+                    reason=(
+                        LlamaCppCapabilityReason.BACKEND_EXPOSED
+                        if runtime_exposes_vulkan
+                        else LlamaCppCapabilityReason.BACKEND_NOT_OBSERVED
+                    ),
+                )
+            ],
+    )
+    inspected_selections = []
+
+    class PathsAdvisor(AdvisorService):
+        def discover_artifact_variants(self, **kwargs):
+            return [rec.plan.artifact]
+
+        def inspect_llama_cpp_runtime(self, **kwargs):
+            inspected_selections.append(kwargs.get("selection"))
+            return capability
+
+        def _artifacts(self):
+            return SimpleNamespace(is_downloaded=lambda _: True)
+
+    advisor = PathsAdvisor(
+        services=ServiceContainer(
+            hf_client=FakeHfClient(),
+            search_client=FakeSearchClient(),
+            detect_hardware=lambda: hw,
+            inspect_model=lambda *args, **kwargs: pytest.fail("already inspected"),
+            estimate_memory=lambda *args, **kwargs: pytest.fail("already estimated"),
+        )
+    )
+
+    plans = advisor.execution_plans_for_recommendation(rec)
+    assert any(
+        item is not None and item.selected_backend is ComputeBackend.VULKAN
+        for item in inspected_selections
+    )
+    cpu_plan = next(
+        plan for plan in plans
+        if plan.backend_selection is not None
+        and plan.backend_selection.selected_backend is ComputeBackend.CPU
+    )
+    vulkan_plan = next(
+        plan for plan in plans
+        if plan.backend_selection is not None
+        and plan.backend_selection.selected_backend is ComputeBackend.VULKAN
+    )
+    assert cpu_plan.runtime.flags == rec.plan.runtime.flags
+    assert vulkan_plan.plan_id != cpu_plan.plan_id
+    assert any(
+        flag.name == "--n-gpu-layers" and flag.value == "-1"
+        for flag in vulkan_plan.runtime.flags
+    )
+    assert vulkan_plan.execution_readiness is not None
+    assert vulkan_plan.execution_readiness.status is (
+        ExecutionReadinessStatus.READY
+        if runtime_exposes_vulkan
+        else ExecutionReadinessStatus.NOT_READY
+    )
+    assert any("shares system RAM" in warning for warning in vulkan_plan.warnings)

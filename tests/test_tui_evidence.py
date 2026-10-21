@@ -246,19 +246,21 @@ def test_pinned_revision_and_filename_can_identify_artifact_without_sha() -> Non
     assert not index.for_plan(_plan(sha256=None, revision="b" * 40)).validated
 
 
-def test_evidence_does_not_cross_backend_context_or_machine() -> None:
+def test_evidence_does_not_cross_backend_or_machine() -> None:
     advisor = _FakeStoreAdvisor(experiments={"exp-1": _experiment()})
     index = EvidenceIndex.load(advisor)
 
     assert not index.for_plan(_plan(backend=ComputeBackend.VULKAN)).validated
-    assert not index.for_plan(_plan(context_length=8192)).validated
     different_machine = _plan().model_copy(update={"hardware": hardware()})
     assert not index.for_plan(different_machine).validated
-    changed_flags = _plan().runtime.model_copy(update={"flags": []})
-    assert not index.for_plan(_plan().model_copy(update={"runtime": changed_flags})).validated
+    # Context length, launch flags and a missing memory estimate do not decide whether
+    # this path has been validated; the saved record states its own configuration.
+    assert index.for_plan(_plan(context_length=8192)).validated
+    no_estimate = _plan().model_copy(update={"memory_prediction": None})
+    assert index.for_plan(no_estimate).validated
 
 
-def test_benchmark_evidence_is_specific_to_artifact_backend_context_and_machine(
+def test_benchmark_evidence_is_specific_to_artifact_backend_and_machine(
     tmp_path: Path,
 ) -> None:
     benchmark = _benchmark_record(tmp_path)
@@ -271,9 +273,11 @@ def test_benchmark_evidence_is_specific_to_artifact_backend_context_and_machine(
     assert index.for_plan(_plan()).benchmarked
     assert not index.for_plan(_plan(sha256="2" * 64)).benchmarked
     assert not index.for_plan(_plan(backend=ComputeBackend.VULKAN)).benchmarked
-    assert not index.for_plan(_plan(context_length=8192)).benchmarked
     different_machine = _plan().model_copy(update={"hardware": hardware()})
     assert not index.for_plan(different_machine).benchmarked
+    # A plan without a memory estimate (a variant found by discovery) still counts.
+    no_estimate = _plan().model_copy(update={"memory_prediction": None})
+    assert index.for_plan(no_estimate).benchmarked
 
 
 def test_loading_without_an_identity_indexes_every_model() -> None:
@@ -467,9 +471,13 @@ def test_quality_display_is_selected_only_and_clears_when_the_artifact_changes(
             assert detail.display and quality.display
 
             other = _plan(sha256="7" * 64, quantization="Q5_K_M")
+            # A path row stands for one plan: another artifact is another row, and
+            # it must not borrow the first one's historical quality.
             option = app.query_one(_PathOption)
-            option.rebind(other, index.for_plan(other))
-            assert not option.query_one(".-quality", Static).display
+            assert option.query_one(".-quality", Static).display
+            await app.mount(_PathOption(other, index.for_plan(other), selected=False))
+            await pilot.pause(0)
+            assert not list(app.query(_PathOption))[1].query_one(".-quality", Static).display
             row.show_evidence(index.for_plan(other))
             assert not quality.display and not str(quality.content)
             assert [button.disabled for button in detail.query(Button)] == action_states
@@ -598,5 +606,36 @@ def test_manual_estimate_displays_only_quality_for_the_selected_exact_gguf(
             )
             assert not screen.query("#est-quality")
             assert [cfg.quantization for cfg in requests] == ["Q5_K_M", "Q5_K_M", "Q4_K_M"]
+
+    asyncio.run(scenario())
+
+
+def test_validation_screen_shows_the_saved_validations_for_its_artifact() -> None:
+    """Reopening Validate must show what was already validated, not an empty screen."""
+    from jaull.tui.screens.recommendation_validation import RecommendationValidationScreen
+    from tests.test_tui_recommendation_execution import _visible_text
+
+    record = _experiment()
+
+    class SavedAdvisor(_FakeStoreAdvisor):
+        services = None
+
+    async def scenario() -> None:
+        advisor = SavedAdvisor(experiments={record.identity.experiment_id: record})
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            # A validation made with another backend or context is still history.
+            plan = _plan(backend=ComputeBackend.VULKAN, context_length=8192)
+            screen = RecommendationValidationScreen(_gguf_recommendation(), plan)
+            app.push_screen(screen)
+            await _wait_until(pilot, lambda: bool(screen.query(".validation-result-node")))
+            assert "Saved validation" in _visible_text(screen)
+
+            other = RecommendationValidationScreen(
+                _gguf_recommendation(), _plan(sha256="2" * 64),
+            )
+            app.push_screen(other)
+            await pilot.pause(0.5)
+            assert not other.query(".validation-result-node")
 
     asyncio.run(scenario())

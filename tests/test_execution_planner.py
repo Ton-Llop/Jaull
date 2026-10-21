@@ -137,8 +137,17 @@ def test_no_estimate_bare_recommendation_is_unknown_confidence() -> None:
     assert rec.confidence is EstimationConfidence.UNKNOWN
 
 
-def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device() -> None:
-    from jaull.domain.hardware import ComputeBackend
+@pytest.mark.parametrize("driver_name,gpu_layers,flash_attention", [
+    (None, -1, None),
+    ("Dozen", -1, "off"),
+    ("dzn", -1, "off"),
+    ("Intel open-source Mesa driver", -1, None),
+    ("Dozen", 0, None),
+])
+def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device(
+    driver_name: str | None, gpu_layers: int, flash_attention: str | None,
+) -> None:
+    from jaull.domain.hardware import BackendAvailability, ComputeBackend, ComputeBackendInfo
     from jaull.domain.runtime import (
         ExecutionReadiness,
         ExecutionReadinessReason,
@@ -152,7 +161,13 @@ def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device() -> None:
     )
     from tests.test_runtime_device_matching import _selection
 
-    selection = _selection("AMD Radeon RX test")
+    selection = _selection("AMD Radeon RX test").model_copy(update={
+        "backend_info": ComputeBackendInfo(
+            backend=ComputeBackend.VULKAN,
+            availability=BackendAvailability.AVAILABLE,
+            driver_name=driver_name,
+        )
+    })
     capability = LlamaCppBackendCapability(
         backend=ComputeBackend.VULKAN,
         state=LlamaCppBackendCapabilityState.CONFIRMED,
@@ -184,10 +199,16 @@ def test_llama_cpp_plan_pins_confirmed_vulkan_runtime_device() -> None:
         hardware=qwen_hardware(),
         backend_selection=selection,
         execution_readiness=readiness,
+        overrides=ExecutionOverrides(n_gpu_layers=gpu_layers),
     )
 
     assert _flag(rec, "--device") == "Vulkan0"
     assert "--device Vulkan0" in (rec.command_preview or "")
+    assert _flag(rec, "--flash-attn") == flash_attention
+    if flash_attention is not None:
+        assert _source(rec, "--flash-attn") is RuntimeFlagSource.POLICY
+        assert "--flash-attn off" in (rec.command_preview or "")
+        assert any("Dozen" in warning for warning in rec.warnings)
 
 
 def test_llama_cpp_plan_does_not_guess_device_without_runtime_device_id() -> None:

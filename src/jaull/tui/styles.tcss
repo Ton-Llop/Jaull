@@ -1169,40 +1169,88 @@ ExportReportModal {
 /* ---------------------------------------------------------------------
    Execution paths.
    --------------------------------------------------------------------- */
+/* A runtime option is a heading; its paths are one line each underneath. */
+.path-group-head {
+    height: 1;
+    margin: 1 0 0 0;
+    padding: 0 1;
+    color: $accent;
+    text-style: bold;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+.path-group-head:hover,
+.path-group-head:focus {
+    background: $surface-3;
+}
+
+.path-group-body {
+    height: auto;
+}
+
 .path-option {
     height: auto;
-    margin: 0 0 1 0;
+    padding: 0 1;
 }
 
-.path-option-title {
-    color: $ink;
-    text-style: bold;
+.path-option:focus {
+    background: $surface-3;
 }
 
-.selectable.-selected .path-option-title {
-    color: $accent;
+.po-line {
+    height: 1;
+}
+
+.po-line Static {
+    height: 1;
+    color: $ink-2;
+}
+
+.po-mark { width: 3; color: $accent; }
+.po-name { width: 1fr; min-width: 12; color: $ink; text-wrap: nowrap; text-overflow: ellipsis; }
+.po-state { width: 13; }
+.po-mem { width: 10; text-align: right; padding: 0 1 0 0; }
+.po-evid { width: auto; }
+
+.selectable.-selected .po-name { color: $accent; text-style: bold; }
+
+.po-reason {
+    height: 1;
+    padding: 0 0 0 3;
+    color: $ink-3;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 .path-option-meta {
     color: $ink-2;
-    padding: 0 0 0 2;
+    padding: 0 0 0 3;
 }
 
-.path-quant {
+/* The selected path: its state in a coloured callout, its facts in aligned rows. */
+.path-callout {
     height: auto;
-    padding: 0 0 0 2;
-    margin: 0 0 1 0;
+    margin: 1 0;
+    padding: 0 1;
+    background: $surface-2;
+    border-left: thick $ink-3;
 }
 
-.path-quant-label {
-    color: $ink-3;
-}
+.path-callout.-ok { border-left: thick $ok; }
+.path-callout.-warn { border-left: thick $warn; }
+.path-callout.-fail { border-left: thick $bad; }
 
-/* A dropdown holding quantization names has no business being as wide as the
-   terminal; `width: auto` on a Select still fills its container. */
-#paths-quant {
-    width: 34;
-    max-width: 100%;
+#paths-state-word { height: 1; }
+#paths-state-text { height: auto; color: $ink-2; }
+
+#paths-facts { height: auto; margin: 0 0 1 0; }
+.fact-row { height: auto; }
+.fact-label { width: 11; color: $ink-3; }
+.fact-value { width: 1fr; height: auto; color: $ink; }
+
+#paths-list Button.-quiet {
+    margin: 1 0 0 0;
 }
 
 /* ---------------------------------------------------------------------

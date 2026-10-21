@@ -7,7 +7,7 @@ from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
-from textual.widgets import Button, Checkbox, DataTable, Input, Select, Static, TextArea
+from textual.widgets import Button, Checkbox, DataTable, Input, Static, TextArea
 
 from jaull.application.recommendation.execution_plans import execution_plan_for_recommendation
 from jaull.artifacts.errors import ArtifactDownloadError
@@ -90,6 +90,7 @@ from jaull.recommendation.models import ModelRecommendation, ScoreBreakdown
 from jaull.runtime.llama_cpp_capability import evaluate_execution_readiness
 from jaull.runtime.pytorch_capability import evaluate_pytorch_execution_readiness
 from jaull.tui.app import JaullApp
+from jaull.tui.screens.execution_paths import _PathOption
 from jaull.tui.screens.recommendation_execution import (
     InferencePrompt,
     InferenceResponse,
@@ -1074,13 +1075,15 @@ def test_blocked_path_does_not_disable_an_available_alternative() -> None:
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-quant #label")),
+                and len(pilot.app.screen.query(".path-option")) == 2,
             )
             paths = pilot.app.screen
             assert isinstance(paths, ExecutionPathsScreen)
             assert paths.query_one("#paths-run", Button).disabled is True
 
-            paths.query_one("#paths-quant", Select).value = "available-q5"
+            next(
+                row for row in paths.query(_PathOption) if row.plan_id == "available-q5"
+            ).action_choose()
             await _wait_until(
                 pilot,
                 lambda: not paths.query_one("#paths-run", Button).disabled,
@@ -1864,13 +1867,13 @@ def test_execution_paths_selects_plan_and_run_uses_prepared_plan(
             results = pilot.app.screen
             assert isinstance(results, RecommendationResultsScreen)
             results.query_one("#res-paths-0", Button).press()
-            # #paths-gguf is registered several awaited mounts before the actions
-            # are enabled, and pressing a disabled Button is a silent no-op, so
-            # the gate has to name the button this test is about to press.
+            # The rows are mounted several awaited steps before the actions are
+            # enabled, and pressing a disabled Button is a silent no-op, so the
+            # gate has to name the button this test is about to press.
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-gguf"))
+                and bool(pilot.app.screen.query(".path-option"))
                 and not pilot.app.screen.query_one("#paths-run", Button).disabled,
             )
             paths = pilot.app.screen
@@ -1942,30 +1945,27 @@ def test_execution_paths_quantization_selection_does_not_prepare() -> None:
             results = pilot.app.screen
             assert isinstance(results, RecommendationResultsScreen)
             results.query_one("#res-paths-0", Button).press()
-            # `Select` is a compound widget: it exists in the DOM one mount
-            # generation before its own `SelectCurrent` composes the `#label`
-            # that `Select._watch_value` writes into. Waiting only for
-            # `#paths-quant` therefore lets the assignment below land in that
-            # gap and raise NoMatches, so the gate names the descendant the
-            # test is about to touch rather than the container.
             await _wait_until(
                 pilot,
                 lambda: isinstance(pilot.app.screen, ExecutionPathsScreen)
-                and bool(pilot.app.screen.query("#paths-quant #label")),
+                and len(pilot.app.screen.query(".path-option")) == 2,
             )
             paths = pilot.app.screen
             assert isinstance(paths, ExecutionPathsScreen)
             assert advisor.operations == ["plans"]
             assert "GGUF · Q4_K_M" in _visible_text(paths)
 
-            # Quantization is a setting on the llama.cpp option, not a peer
-            # path: one control, opening on the suggested quantizations with
-            # the rest behind the advanced toggle.
-            picker = paths.query_one("#paths-quant", Select)
-            offered = [value for _, value in picker._options]
+            # Quantization is a row inside the llama.cpp group, not a peer
+            # path: the list opens on the suggested quantizations with the
+            # rest behind the group's advanced toggle.
+            offered = [row.plan_id for row in paths.query(_PathOption)]
             assert offered == ["org/Tiny-GGUF:Q4_K_M", "org/Tiny-GGUF:Q5_K_M"]
+            assert bool(paths.query("#paths-toggle-advanced"))
 
-            picker.value = "org/Tiny-GGUF:Q5_K_M"
+            next(
+                row for row in paths.query(_PathOption)
+                if row.plan_id == "org/Tiny-GGUF:Q5_K_M"
+            ).action_choose()
             await _wait_until(
                 pilot,
                 lambda: "GGUF · Q5_K_M" in _visible_text(paths),
@@ -2358,6 +2358,47 @@ def test_execution_screen_retry_after_run_error_reuses_prepared_artifact(
     _run(scenario())
 
 
+def test_execution_retry_retains_the_prepared_runtime_settings(monkeypatch: Any) -> None:
+    class PreparedAdvisor(_FakeAdvisor):
+        def prepare_execution_plan(self, plan: Any, **kwargs: Any) -> PreparedExecutionPlan:
+            prepared = super().prepare_execution_plan(plan, **kwargs)
+            runtime = prepared.plan.runtime.model_copy(update={"flags": [
+                *prepared.plan.runtime.flags,
+                RuntimeFlag(
+                    name="--flash-attn", value="off", source=RuntimeFlagSource.POLICY,
+                    explanation="Driver compatibility resolved during preparation",
+                ),
+            ]})
+            return prepared.model_copy(update={
+                "plan": prepared.plan.model_copy(update={"runtime": runtime})
+            })
+
+    async def scenario() -> None:
+        advisor = PreparedAdvisor(fail_run=ExecutionTimeoutError("first run failed"))
+        recommendation = _recommendation()
+        plan = execution_plan_for_recommendation(recommendation)
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.push_screen(RecommendationExecutionScreen(recommendation, plan))
+            await pilot.pause()
+            screen = pilot.app.screen
+            _run_workers_inline(pilot.app, screen, monkeypatch)
+            _set_prompt(screen, "First try")
+            screen.query_one("#run-generate", Button).press()
+            await _wait_until(pilot, lambda: "first run failed" in _visible_text(screen))
+            advisor.fail_run = None
+            _set_prompt(screen, "Retry")
+            screen.query_one("#run-generate", Button).press()
+            await _wait_until(pilot, lambda: len(screen.query(InferenceResponse)) == 1)
+            assert advisor.operations == ["prepare_plan", "run", "run"]
+            assert advisor.runs[0][2] == advisor.runs[1][2]
+            runtime = advisor.runs[1][2]
+            assert runtime is not None
+            assert any(f.name == "--flash-attn" and f.value == "off" for f in runtime.flags)
+
+    _run(scenario())
+
+
 def test_execution_screen_shows_timeout_and_failed_process_errors(
     monkeypatch: Any,
 ) -> None:
@@ -2368,7 +2409,11 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
                 "non-zero exit",
                 ExecutionResult(
                     stdout="",
-                    stderr="bad",
+                    stderr=(
+                        "verbose startup log\n" * 15
+                        + "GGML_ASSERT(subgroup_size) failed: Vulkan model load aborted\n"
+                        + "stack frame\n" * 12
+                    ),
                     observation=_observation(
                         success=False,
                         exit_code=2,
@@ -2395,6 +2440,11 @@ def test_execution_screen_shows_timeout_and_failed_process_errors(
                     in _widget_text(widget),
                 )
                 assert str(failure) in _widget_text(message)
+                if isinstance(failure, ExecutionFailedError):
+                    assert "llama.cpp stderr" in _widget_text(message)
+                    assert "Vulkan model load aborted" in _widget_text(message)
+                    assert "GGML_ASSERT(subgroup_size)" in _widget_text(message)
+                    assert "stack frame" in _widget_text(message)
 
     _run(scenario())
 

@@ -225,6 +225,18 @@ def readiness_detail(plan: ExecutionPlan) -> str:
     return f"{label} — {readiness.message or readiness.reason.value.replace('_', ' ')}"
 
 
+_DOES_NOT_FIT_LABELS = frozenset({"Insufficient memory", "Unsupported configuration"})
+
+
+def fits_here(plan: ExecutionPlan) -> bool:
+    """Whether the plan could work on this machine once its runtime is sorted out.
+
+    A missing or unprepared runtime is fixable and stays a candidate; too little
+    memory or a configuration Jaull cannot load here is not, so those lists apart.
+    """
+    return readiness_label(plan) not in _DOES_NOT_FIT_LABELS
+
+
 def is_ready_plan(plan: ExecutionPlan) -> bool:
     return (
         plan.compatibility is not PlanCompatibilityStatus.NOT_COMPATIBLE
@@ -250,15 +262,19 @@ def runtime_block_reason(plan: ExecutionPlan) -> str | None:
     readiness = plan.execution_readiness
     selection = plan.backend_selection or (readiness.selection if readiness is not None else None)
     vulkan = selection is not None and selection.selected_backend is ComputeBackend.VULKAN
+    readiness_confirms_vulkan = readiness is not None and readiness.status in {
+        ExecutionReadinessStatus.READY,
+        ExecutionReadinessStatus.PREPARABLE,
+    }
     vulkan_unconfirmed = (
         vulkan
-        and (readiness is None or readiness.status is not ExecutionReadinessStatus.READY)
+        and not readiness_confirms_vulkan
     )
     if readiness is None:
         return "Vulkan device readiness has not been confirmed; recheck the runtime." if (
             vulkan_unconfirmed
         ) else None
-    if vulkan and readiness.status is ExecutionReadinessStatus.READY:
+    if vulkan and readiness_confirms_vulkan:
         capability = readiness.selected_backend_capability
         if (
             selection is None or readiness.selection != selection

@@ -10,6 +10,7 @@ front-end modules free of ``HfClient()``/``detect_hardware`` construction.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -68,7 +69,12 @@ from jaull.domain.experiments import (
     ExperimentRunResult,
     ExperimentWorkload,
 )
-from jaull.domain.hardware import ComputeBackend, HardwareProfile
+from jaull.domain.hardware import (
+    AcceleratorType,
+    BackendAvailability,
+    ComputeBackend,
+    HardwareProfile,
+)
 from jaull.domain.inference import InferenceConfiguration, WeightPrecision
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
@@ -1296,6 +1302,29 @@ class AdvisorService:
             elif runtime_family is RuntimeName.TRANSFORMERS:
                 capabilities[runtime_family] = self.inspect_pytorch_runtime()
 
+        hardware_selection = (
+            self.select_runtime_backend(current.hardware)
+            if current.hardware is not None else None
+        )
+        vulkan_selection = _shared_memory_vulkan_selection(
+            current.hardware,
+            hardware_selection,
+        )
+        vulkan_capability = capabilities.get(RuntimeName.LLAMA_CPP)
+        has_vulkan_plan_variant = any(
+            variant.format is ArtifactVariantFormat.GGUF
+            and _runtime_for_variant(variant).runtime is RuntimeName.LLAMA_CPP
+            for variant in variants
+        )
+        if (
+            vulkan_selection is not None
+            and has_vulkan_plan_variant
+            and (
+                selection is None
+                or selection.selected_backend is not ComputeBackend.VULKAN
+            )
+        ):
+            vulkan_capability = self.inspect_llama_cpp_runtime(selection=vulkan_selection)
         plans: list[ExecutionPlan] = []
         for variant in variants:
             previous = known.get(variant_key(variant))
@@ -1332,6 +1361,49 @@ class AdvisorService:
                 reasons = [text for text in previous.warnings if text.startswith("Not selected:")]
                 rebuilt = rebuilt.model_copy(update={"warnings": [*rebuilt.warnings, *reasons]})
             plans.append(rebuilt)
+
+            # Shared-memory Vulkan is an explicit alternative to the CPU plan,
+            # not a mutation of the recommendation's selected configuration.
+            if (
+                variant.format is ArtifactVariantFormat.GGUF
+                and runtime.runtime is RuntimeName.LLAMA_CPP
+                and vulkan_selection is not None
+            ):
+                vulkan_runtime = _vulkan_offload_runtime(runtime)
+                vulkan_memory = (
+                    memory.model_copy(update={"runtime_recommendation": vulkan_runtime})
+                    if memory is not None else None
+                )
+                vulkan_readiness = _readiness_for_plan_variant(
+                    runtime=vulkan_runtime,
+                    selection=vulkan_selection,
+                    capability=vulkan_capability,
+                )
+                vulkan_readiness = _readiness_for_artifact(
+                    vulkan_readiness,
+                    variant,
+                    artifact_downloaded=artifact_downloaded,
+                )
+                vulkan_plan = build_execution_plan(
+                    model_identity=variant.model_identity,
+                    artifact=variant,
+                    runtime=vulkan_runtime,
+                    memory_prediction=vulkan_memory,
+                    hardware=current.hardware,
+                    backend_selection=vulkan_selection,
+                    runtime_capability=vulkan_capability,
+                    execution_readiness=vulkan_readiness,
+                )
+                vulkan_plan = vulkan_plan.model_copy(
+                    update={
+                        "warnings": [
+                            *vulkan_plan.warnings,
+                            "Integrated Vulkan shares system RAM; the estimate checks "
+                            "the unified pool, not CPU/GPU placement or performance.",
+                        ]
+                    }
+                )
+                plans.append(vulkan_plan)
         return plans or [current]
 
     def plan_launch(
@@ -2029,6 +2101,82 @@ def _readiness_for_artifact(
     )
 
 
+def _shared_memory_vulkan_selection(
+    hardware: HardwareProfile | None,
+    selection: RuntimeBackendSelection | None,
+) -> RuntimeBackendSelection | None:
+    if hardware is None or selection is None:
+        return None
+    candidate = _selection_for_requested_backend(selection, ComputeBackend.VULKAN)
+    accelerator = candidate.selected_accelerator
+    matching_profiles = [
+        item for item in hardware.accelerators
+        if item.shared_memory
+        and item.type is AcceleratorType.INTEGRATED
+        and any(
+            backend.backend is ComputeBackend.VULKAN
+            and backend.availability is BackendAvailability.AVAILABLE
+            for backend in item.backends
+        )
+    ]
+    if accelerator is not None:
+        stable_identity = (
+            ("uuid", accelerator.uuid),
+            ("pci_bus_id", accelerator.pci_bus_id),
+            ("vendor_id", accelerator.vendor_id),
+            ("device_id", accelerator.device_id),
+        )
+        known_identity = [(field, value) for field, value in stable_identity if value]
+        if known_identity:
+            matching_profiles = [
+                item for item in matching_profiles
+                if all(getattr(item, field) == value for field, value in known_identity)
+            ]
+        else:
+            same_name = [item for item in matching_profiles if item.name == accelerator.name]
+            matching_profiles = same_name if len(same_name) == 1 else []
+    if (
+        candidate.selected_backend is not ComputeBackend.VULKAN
+        or accelerator is None
+        or not accelerator.shared_memory
+        or accelerator.type is not AcceleratorType.INTEGRATED
+        or len(matching_profiles) != 1
+    ):
+        return None
+    return candidate
+
+
+def _vulkan_offload_runtime(runtime: RuntimeRecommendation) -> RuntimeRecommendation:
+    flags = [flag for flag in runtime.flags if flag.name != "--n-gpu-layers"]
+    flags.append(
+        RuntimeFlag(
+            name="--n-gpu-layers",
+            value="-1",
+            source=RuntimeFlagSource.HARDWARE,
+            explanation=(
+                "This explicit Vulkan path requests all llama.cpp layers for offload; "
+                "the hardware and runtime preflight must confirm the target device."
+            ),
+        )
+    )
+    preview = runtime.command_preview
+    if preview is not None:
+        if re.search(r"--n-gpu-layers\s+\S+", preview):
+            preview = re.sub(r"--n-gpu-layers\s+\S+", "--n-gpu-layers -1", preview)
+        else:
+            preview = f"{preview} --n-gpu-layers -1"
+    return runtime.model_copy(
+        update={
+            "flags": flags,
+            "command_preview": preview,
+            "reasons": [
+                *runtime.reasons,
+                "Explicit shared-memory Vulkan alternative; CPU plan remains available separately.",
+            ],
+        }
+    )
+
+
 def _selection_for_requested_backend(
     selection: RuntimeBackendSelection,
     backend: ComputeBackend,
@@ -2094,9 +2242,16 @@ def _runtime_for_variant(variant: ArtifactVariant) -> RuntimeRecommendation:
 
 def _execution_overrides_for_plan(plan: ExecutionPlan) -> ExecutionOverrides:
     values: dict[str, int] = {}
+    vulkan_path = (
+        plan.backend_selection is not None
+        and plan.backend_selection.selected_backend is ComputeBackend.VULKAN
+    )
     for flag in plan.runtime.flags:
-        if (flag.source is RuntimeFlagSource.USER_INPUT
-                and flag.name in {"--ctx-size", "--n-gpu-layers"}):
+        user_setting = flag.source is RuntimeFlagSource.USER_INPUT
+        if (
+            flag.name in {"--ctx-size", "--n-gpu-layers"}
+            and (user_setting or (vulkan_path and flag.name == "--n-gpu-layers"))
+        ):
             try:
                 values[flag.name] = int(flag.value)
             except ValueError as exc:

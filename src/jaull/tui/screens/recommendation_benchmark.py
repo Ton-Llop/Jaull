@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from shlex import join as command_line
@@ -59,6 +60,7 @@ from jaull.tui.artifact_preparation import (
     prepare_recommendation_artifact,
     transformers_recommendation_artifact,
 )
+from jaull.tui.evidence import EvidenceIndex
 from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.context_bar import ContextBar
 from jaull.tui.widgets.metric_list import MetricList, MetricRow
@@ -70,6 +72,14 @@ from jaull.tui.widgets.warnings_panel import WarningsPanel
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.tui.app import JaullApp
+
+_log = logging.getLogger(__name__)
+
+
+class _SavedBenchmarks(Message):
+    def __init__(self, records: tuple[BenchmarkRecord, ...]) -> None:
+        super().__init__()
+        self.records = records
 
 
 class _BenchmarkStep(Message):
@@ -230,6 +240,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self._execution_plan = execution_plan
         self._log_messages: list[str] = []
         self._last_result: BenchmarkMatrixResult | None = None
+        self._showing_saved = False
         self._rows: list[_RunRow] = []
         self._selected = 0
         self._benchmark_closing = Event()
@@ -238,6 +249,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             thread_name_prefix="jaull-benchmark",
         )
         self._future: Future[None] | None = None
+        self._saved_future: Future[None] | None = None
 
     @property
     def recommendation(self) -> ModelRecommendation:
@@ -282,21 +294,55 @@ class RecommendationBenchmarkScreen(Screen[None]):
         else:
             start.focus()
         self._set_status("")
+        if self._execution_plan is not None:
+            self._saved_future = self._executor.submit(
+                self._saved_worker, self._app().advisor, self._execution_plan,
+            )
 
     def on_unmount(self) -> None:
         self._benchmark_closing.set()
         self._shutdown_executor()
 
     def _shutdown_executor(self) -> None:
-        if self._future is not None:
-            self._future.cancel()
-            self._future = None
+        for future in (self._future, self._saved_future):
+            if future is not None:
+                future.cancel()
+        self._future = None
+        self._saved_future = None
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         match event.button.id:
             case "benchmark-start":
                 self._start_benchmark()
+
+    def _saved_worker(self, advisor: AdvisorService, plan: ExecutionPlan) -> None:
+        """Read what this plan has already been benchmarked with. Blocking."""
+        try:
+            index = EvidenceIndex.load(advisor, plan.model_identity)
+            records = index.saved_benchmarks_for_plan(plan)
+        except Exception:
+            # History enriches the screen; a store that cannot be read must not
+            # stop the user from benchmarking.
+            _log.debug("saved benchmarks unreadable", exc_info=True)
+            return
+        if records and not self._benchmark_closing.is_set():
+            self.post_message(_SavedBenchmarks(records))
+
+    @on(_SavedBenchmarks)
+    def _saved_benchmarks_message(self, message: _SavedBenchmarks) -> None:
+        # A run started or finished meanwhile is newer than anything on disk.
+        busy = self._future is not None and not self._future.done()
+        if self._benchmark_closing.is_set() or busy or self._last_result is not None:
+            return
+        self._render_result(
+            BenchmarkMatrixResult(
+                completed=[BenchmarkRunResult(record=record) for record in message.records],
+                records=list(message.records),
+            ),
+            saved=True,
+        )
+
     def _start_benchmark(self) -> None:
         if self._future is not None and not self._future.done():
             return
@@ -555,6 +601,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         for node in list(self.query(".benchmark-result-node")):
             node.remove()
         self._last_result = None
+        self._showing_saved = False
 
 
     def _build_rows(self, result: BenchmarkMatrixResult) -> list[_RunRow]:
@@ -569,15 +616,18 @@ class RecommendationBenchmarkScreen(Screen[None]):
         for run in result.completed:
             index = len(rows)
             headline = _headline_speed(run)
+            label = _config_label(run.record)
+            if self._showing_saved:
+                label = f"{label} · {run.record.identity.created_at:%Y-%m-%d %H:%M}"
             rows.append(
                 _RunRow(
                     index,
-                    _config_label(run.record),
+                    label,
                     headline,
                     palette.OK,
                     _RunInspector(
                         index,
-                        _config_label(run.record),
+                        label,
                         performance=_performance_block([run], titled=False),
                         memory=_memory_block([run], estimate, titled=False),
                         technical=_technical_rows(run.record, run.persisted_path),
@@ -635,7 +685,9 @@ class RecommendationBenchmarkScreen(Screen[None]):
     def _compose_runs(self) -> ComposeResult:
         yield Static("Runs", classes="section-title")
         yield from self._rows
-        if self._last_result is None:
+        if self._last_result is None or self._showing_saved:
+            # Saved probes were taken at different times; setting them against
+            # each other would present that as a measured difference.
             return
         # Comparing configurations is what the master pane is for; the bars for
         # any single one of them are a pane away. Dropping this table when the
@@ -683,7 +735,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         for row in self._rows:
             row.set_selected(row._index == index)
 
-    def _render_result(self, result: BenchmarkMatrixResult) -> None:
+    def _render_result(self, result: BenchmarkMatrixResult, *, saved: bool = False) -> None:
         """Result first, mechanism last.
 
         The order is deliberate: whether it worked, how fast it was, what it
@@ -693,15 +745,23 @@ class RecommendationBenchmarkScreen(Screen[None]):
         """
         self._clear_result()
         self._last_result = result
+        self._showing_saved = saved
         body = self.query_one("#benchmark-result", Vertical)
-        # The blurb explained what the button would do; it has now done it.
-        self.query_one("#benchmark-intro", Static).display = False
+        # The blurb explained what the button would do; once it has done it, it
+        # goes. Saved results were not produced by this visit, so it stays.
+        self.query_one("#benchmark-intro", Static).display = saved
         succeeded = bool(result.completed)
         heading = (
             "Benchmark complete"
             if succeeded
             else "Benchmark finished without successful configurations"
         )
+        if saved:
+            count = len(result.completed)
+            heading = (
+                f"Saved benchmarks · {count} run{'' if count == 1 else 's'} "
+                "of this artifact on this machine"
+            )
         body.mount(
             Static(
                 heading,
