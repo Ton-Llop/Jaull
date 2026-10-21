@@ -144,11 +144,13 @@ def test_detect_nvidia_gpus_returns_empty_when_driver_missing() -> None:
 
 
 def test_detect_hardware_works_without_nvidia_gpu() -> None:
-    profile = detect_hardware(_FakeNvmlNoDriver())
+    profile = detect_hardware(
+        _FakeNvmlNoDriver(), vulkan_command_runner=_missing_vulkaninfo
+    )
     assert profile.gpus == []
     assert profile.memory.total_bytes > 0
     assert profile.cpu.logical_cores is None or profile.cpu.logical_cores >= 1
-    assert any("NVIDIA" in w for w in profile.warnings)
+    assert not any("NVIDIA" in w for w in profile.warnings)
 
 
 def test_detect_hardware_populates_gpu_when_available() -> None:
@@ -194,6 +196,19 @@ def test_detect_hardware_adds_amd_vulkan_accelerator() -> None:
     assert vulkan.availability is BackendAvailability.AVAILABLE
     assert hip.availability is BackendAvailability.UNKNOWN
     assert hip.reason is BackendAvailabilityReason.NOT_CHECKED
+    assert not any("NVIDIA" in warning for warning in profile.warnings)
+
+
+def test_nvml_warning_is_kept_when_vulkan_confirms_nvidia_gpu() -> None:
+    profile = detect_hardware(
+        _FakeNvmlNoDriver(), vulkan_command_runner=_nvidia_vulkaninfo
+    )
+
+    assert any("NVML initialization failed" in warning for warning in profile.warnings)
+    assert any(
+        accelerator.vendor is AcceleratorVendor.NVIDIA
+        for accelerator in profile.accelerators
+    )
 
 
 def test_detect_hardware_merges_nvidia_nvml_and_vulkan_backends() -> None:

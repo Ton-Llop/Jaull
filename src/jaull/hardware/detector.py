@@ -7,6 +7,7 @@ from collections.abc import Callable
 from jaull.domain.execution_environment import wsl2_acceleration_note
 from jaull.domain.hardware import (
     AcceleratorProfile,
+    AcceleratorVendor,
     BackendAvailability,
     ComputeBackendInfo,
     HardwareProfile,
@@ -46,7 +47,6 @@ def detect_hardware(
     notify(STEP_CPU)
 
     nvidia = detect_nvidia_gpus(nvml_provider)
-    warnings.extend(nvidia.warnings)
     vulkan = detect_vulkan_accelerators(vulkan_command_runner)
     warnings.extend(vulkan.warnings)
     accelerators = merge_accelerators(
@@ -58,6 +58,10 @@ def detect_hardware(
     windows = detect_windows_adapters(windows_command_runner)
     warnings.extend(windows.warnings)
     accelerators = merge_accelerators(accelerators, windows.accelerators)
+    # NVML is NVIDIA-specific. Its absence is normal on CPU/AMD/Intel systems,
+    # so surface its warnings only when another probe confirms NVIDIA hardware.
+    if any(item.vendor is AcceleratorVendor.NVIDIA for item in accelerators):
+        warnings[:0] = nvidia.warnings
     # Said where the user already reads warnings (scan, the guided hardware screen),
     # not only in `jaull doctor`.
     if (note := wsl2_acceleration_note(os_name, accelerators)) is not None:
