@@ -40,6 +40,7 @@ from jaull.domain.execution_plans import (
     logical_model_repo_key,
 )
 from jaull.domain.experiments import ExperimentRecord
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeName
 from jaull.evaluation.hardware_fingerprint import (
     EVIDENCE_MEMORY_GRANULARITY,
@@ -49,6 +50,11 @@ from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
 from jaull.presentation.published_evaluations import published_reference_text
 from jaull.recommendation.capability_catalog import CatalogReadResult
+from jaull.runtime.device_matching import (
+    names_agree,
+    runtime_device_name_matches,
+    selected_accelerator_matches,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -435,20 +441,44 @@ def _experiment_matches_plan(record: ExperimentRecord, plan: ExecutionPlan) -> b
     do not decide it: a variant found by discovery has no estimate, and the saved
     record states its own configuration.
     """
-    return (
+    same_backend = (
         plan.backend_selection is not None
         and _same_machine_and_artifact(record, plan)
         and record.preflight.execution_readiness.selection.selected_backend
         is plan.backend_selection.selected_backend
+        and record.backend_trace.observed_backend in {
+            None, plan.backend_selection.selected_backend,
+        }
     )
+    if not same_backend or plan.backend_selection is None:
+        return False
+    if plan.backend_selection.selected_backend is ComputeBackend.CPU:
+        return True
+    expected = plan.backend_selection.selected_accelerator
+    actual = record.preflight.execution_readiness.selection.selected_accelerator
+    if not selected_accelerator_matches(expected, actual):
+        return False
+    assert expected is not None and plan.hardware is not None
+    return bool(expected.uuid or expected.pci_bus_id) or sum(
+        names_agree(item.name, expected.name) for item in plan.hardware.accelerators
+    ) == 1
 
 
 def _benchmark_matches_plan(record: BenchmarkRecord, plan: ExecutionPlan) -> bool:
     """Benchmarked on this machine, with this artifact, through this backend."""
-    return (
+    same_backend = (
         plan.backend_selection is not None
         and _same_machine_and_artifact(record, plan)
         and record.request.backend is plan.backend_selection.selected_backend
+    )
+    if not same_backend or plan.backend_selection is None:
+        return False
+    if plan.backend_selection.selected_backend is ComputeBackend.CPU:
+        return True
+    accelerator = plan.backend_selection.selected_accelerator
+    return accelerator is not None and runtime_device_name_matches(
+        "\n".join((record.observation.raw_stdout, record.observation.raw_stderr)),
+        record.requested_device or "", accelerator.name,
     )
 
 

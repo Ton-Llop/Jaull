@@ -12,6 +12,7 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Static, TextArea
 
+from jaull.application.execution import ExecutionPlanningError
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.execution import InferenceResult
@@ -247,6 +248,7 @@ class RecommendationExecutionScreen(Screen[None]):
             QuantizationNotFoundError,
             ArtifactError,
             ExecutionError,
+            ExecutionPlanningError,
         ) as exc:
             self._post_generation_failed(
                 _execution_error_message(exc), prepared_artifact, prepared_plan

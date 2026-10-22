@@ -15,6 +15,7 @@ from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Static, TabbedContent, TabPane
 
+from jaull.application.execution import ExecutionPlanningError
 from jaull.artifacts.errors import ArtifactError
 from jaull.benchmarks.errors import BenchmarkRunnerError
 from jaull.benchmarks.matrix import (
@@ -402,6 +403,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             QuantizationNotFoundError,
             ArtifactError,
             BenchmarkRunnerError,
+            ExecutionPlanningError,
             JaullError,
             OSError,
             ValueError,
@@ -612,7 +614,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         did not run is a result about this machine, not an absence of one.
         """
         rows: list[_RunRow] = []
-        estimate = self._estimate()
+        estimate = None if self._showing_saved else self._estimate()
         for run in result.completed:
             index = len(rows)
             headline = _headline_speed(run)
@@ -630,7 +632,9 @@ class RecommendationBenchmarkScreen(Screen[None]):
                         label,
                         performance=_performance_block([run], titled=False),
                         memory=_memory_block([run], estimate, titled=False),
-                        technical=_technical_rows(run.record, run.persisted_path),
+                        technical=_technical_rows(
+                            run.record, run.persisted_path, saved=self._showing_saved,
+                        ),
                     ),
                     selected=not rows,
                 )
@@ -1011,7 +1015,9 @@ def _warnings(result: BenchmarkMatrixResult) -> list[str]:
     return warnings
 
 
-def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[str, str]]:
+def _technical_rows(
+    record: BenchmarkRecord, path: Path | None, *, saved: bool = False,
+) -> list[tuple[str, str]]:
     artifact = record.artifact
     capability = record.llama_bench_capability
     rows = [
@@ -1052,7 +1058,7 @@ def _technical_rows(record: BenchmarkRecord, path: Path | None) -> list[tuple[st
         ("Peak RAM", _bytes(record.observation.peak_ram_bytes)),
         ("Peak VRAM", _bytes(record.observation.peak_vram_bytes)),
         ("Status", "success" if record.observation.success else "failure"),
-        ("Saved", str(path) if path else "not saved"),
+        ("Saved", str(path) if path else "stored record" if saved else "not saved"),
     ]
     if capability is not None:
         rows[8:8] = [

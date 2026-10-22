@@ -65,6 +65,17 @@ def test_single_device_that_is_the_selected_accelerator_is_matched_by_name() -> 
     assert match.reason is RuntimeDeviceMatchReason.MATCHED_BY_NAME
 
 
+def test_selected_accelerator_matching_requires_retained_physical_ids() -> None:
+    from jaull.runtime.device_matching import selected_accelerator_matches
+
+    expected = _selection(B60).selected_accelerator.model_copy(update={"uuid": "gpu-a"})
+    same = expected.model_copy(update={"detection_sources": ["another probe"]})
+    assert selected_accelerator_matches(expected, same)
+    assert not selected_accelerator_matches(expected, same.model_copy(update={"uuid": "gpu-b"}))
+    assert not selected_accelerator_matches(expected, same.model_copy(update={"uuid": None}))
+    assert not selected_accelerator_matches(expected, None)
+
+
 def test_runtime_numbering_is_not_assumed_to_start_at_the_selected_card() -> None:
     capability = _capability(
         _device(0, "llvmpipe (LLVM 15.0.7, 256 bits)"), _device(1, IGPU), _device(2, B60)

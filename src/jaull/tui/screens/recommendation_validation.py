@@ -14,6 +14,7 @@ from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Static, TabbedContent, TabPane
 
+from jaull.application.execution import ExecutionPlanningError
 from jaull.artifacts.errors import ArtifactError
 from jaull.domain.estimation import MemoryEstimate
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
@@ -127,11 +128,14 @@ class _ValidationTabs(Vertical):
         record: ExperimentRecord,
         path: Path | None,
         detail_rows: list[tuple[str, str]],
+        *,
+        saved: bool = False,
     ) -> None:
         super().__init__()
         self._record = record
         self._path = path
         self._detail_rows = detail_rows
+        self._saved = saved
 
     def compose(self) -> ComposeResult:
         with TabbedContent():
@@ -143,7 +147,9 @@ class _ValidationTabs(Vertical):
                 yield MetricList("Execution", _execution_rows(self._record))
             with TabPane("Technical"), VerticalScroll():
                 yield SummaryCard(
-                    "Experiment", _technical_experiment_rows(self._record, self._path)
+                    "Experiment", _technical_experiment_rows(
+                        self._record, self._path, saved=self._saved,
+                    )
                 )
                 yield SummaryCard("Artifact", _technical_artifact_rows(self._record))
                 yield SummaryCard("Runtime", _technical_runtime_rows(self._record))
@@ -384,6 +390,7 @@ class RecommendationValidationScreen(Screen[None]):
             ArtifactError,
             ExperimentConfigurationError,
             ExperimentRunnerError,
+            ExecutionPlanningError,
             JaullError,
             OSError,
             ValueError,
@@ -530,7 +537,9 @@ class RecommendationValidationScreen(Screen[None]):
         )
         detail_rows = [
             ("Experiment ID", record.identity.experiment_id),
-            ("Saved", str(persisted_path) if persisted_path else "not saved"),
+            ("Saved", str(persisted_path) if persisted_path else (
+                "stored record" if saved else "not saved"
+            )),
         ]
         if raw_log_path is not None:
             detail_rows.append(("Raw runtime log", str(raw_log_path)))
@@ -539,7 +548,7 @@ class RecommendationValidationScreen(Screen[None]):
             for index, step in enumerate(self._log_messages, start=1)
         )
         body.mount(
-            _ValidationTabs(record, persisted_path, detail_rows).add_class(
+            _ValidationTabs(record, persisted_path, detail_rows, saved=bool(saved)).add_class(
                 "validation-result-node"
             )
         )
@@ -690,6 +699,8 @@ def _execution_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
 def _technical_experiment_rows(
     record: ExperimentRecord,
     path: Path | None,
+    *,
+    saved: bool = False,
 ) -> list[tuple[str, str]]:
     return [
         ("ID", record.identity.experiment_id),
@@ -697,7 +708,7 @@ def _technical_experiment_rows(
         ("Schema", str(record.schema_version)),
         ("Jaull", record.environment.jaull_version or "unknown"),
         ("Python", record.environment.python_version or "unknown"),
-        ("Saved", str(path) if path else "not saved"),
+        ("Saved", str(path) if path else "stored record" if saved else "not saved"),
     ]
 
 

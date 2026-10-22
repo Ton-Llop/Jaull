@@ -335,3 +335,32 @@ def test_arrow_keys_walk_the_list() -> None:
             assert screen.focused is rows[0]
 
     _run(scenario())
+
+
+def test_advanced_quantizations_and_focus_belong_to_their_own_runtime_group() -> None:
+    from tests.test_runtime_device_matching import B60, _selection
+
+    async def scenario() -> None:
+        cpu = [_gguf("Q4_K_M"), _gguf("Q8_0")]
+        vulkan = [plan.model_copy(update={
+            "plan_id": plan.plan_id + "-vulkan", "backend_selection": _selection(B60),
+        }) for plan in cpu]
+        plans = [*cpu, *vulkan]
+        async with _app(plans).run_test(size=(120, 50)) as pilot:
+            screen = await _open(pilot, pilot.app, plans, recommended=cpu[0])
+            toggles = list(screen.query(".path-group-body Button"))
+            assert len(toggles) == 2
+            assert len({toggle.id for toggle in toggles}) == 2
+            header = next(h for h in screen.query(".path-group-head") if "Vulkan" in str(h.content))
+            header.action_open_close()
+            await pilot.pause()
+            toggle = screen.query_one("#paths-group-1").query_one(Button)
+            toggle_id = toggle.id
+            toggle.focus()
+            await pilot.press("enter")
+            await _wait_until(pilot, lambda: len(screen.query(".path-option")) == 3)
+            assert not screen.query_one("#paths-group-0").query("#paths-plan-1")
+            assert screen.focused is not None and screen.focused.id == toggle_id
+            assert screen.query_one("#paths-group-1").query("#paths-plan-3")
+
+    _run(scenario())

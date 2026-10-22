@@ -55,6 +55,9 @@ def test_benchmark_screen_shows_the_saved_results_for_its_plan(tmp_path: Path) -
     from tests.test_tui_evidence import _FakeStoreAdvisor, _plan
 
     record = saved_record(tmp_path)
+    record = record.model_copy(update={"observation": record.observation.model_copy(
+        update={"peak_ram_bytes": 3 * 1024**3}
+    )})
 
     class SavedAdvisor(_FakeStoreAdvisor):
         services = None
@@ -70,6 +73,11 @@ def test_benchmark_screen_shows_the_saved_results_for_its_plan(tmp_path: Path) -
             app.push_screen(screen)
             await _wait_until(pilot, lambda: bool(screen.query(".benchmark-result-node")))
             assert "Saved benchmarks" in _visible_text(screen)
+            await _wait_until(pilot, lambda: bool(screen.query("#benchmark-detail-0")))
+            text = _visible_text(screen.query_one("#benchmark-detail-0"))
+            assert "peak RAM" in text
+            assert "Difference" not in text
+            assert "not saved" not in text
 
             # Another artifact must not borrow it.
             other = RecommendationBenchmarkScreen(

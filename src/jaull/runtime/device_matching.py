@@ -19,6 +19,7 @@ from jaull.domain.runtime import (
     LlamaCppBackendCapability,
     LlamaCppRuntimeDevice,
     RuntimeBackendSelection,
+    SelectedAcceleratorRef,
 )
 
 # Software rasterisers that llama.cpp can enumerate as ordinary devices.
@@ -101,6 +102,21 @@ def names_agree(left: str, right: str) -> bool:
     return bool(normalized) and normalized == _normalized_name(right)
 
 
+def selected_accelerator_matches(
+    expected: SelectedAcceleratorRef | None, observed: SelectedAcceleratorRef | None,
+) -> bool:
+    """Match retained physical identity, without comparing discovery-source metadata."""
+    return (
+        expected is not None and observed is not None
+        and expected.vendor is observed.vendor and names_agree(expected.name, observed.name)
+        and all(
+            getattr(observed, field) == getattr(expected, field)
+            for field in ("uuid", "pci_bus_id", "vendor_id", "device_id")
+            if getattr(expected, field) is not None
+        )
+    )
+
+
 def runtime_device_name_matches(output: str, runtime_id: str, name: str) -> bool:
     """Tie an execution's allocation id to its own device enumeration, not a prior probe."""
     listed: set[tuple[str, str]] = set()
@@ -130,4 +146,5 @@ __all__ = [
     "match_runtime_device",
     "names_agree",
     "runtime_device_name_matches",
+    "selected_accelerator_matches",
 ]

@@ -75,7 +75,7 @@ from jaull.domain.hardware import (
     ComputeBackend,
     HardwareProfile,
 )
-from jaull.domain.inference import InferenceConfiguration, WeightPrecision
+from jaull.domain.inference import InferenceConfiguration, TargetDevice, WeightPrecision
 from jaull.domain.model import DiagnosticResult, ModelAnalysis
 from jaull.domain.requirements import UserAnswers
 from jaull.domain.runtime import (
@@ -1368,6 +1368,10 @@ class AdvisorService:
                 variant.format is ArtifactVariantFormat.GGUF
                 and runtime.runtime is RuntimeName.LLAMA_CPP
                 and vulkan_selection is not None
+                and (
+                    rebuilt.backend_selection is None
+                    or rebuilt.backend_selection.selected_backend is not ComputeBackend.VULKAN
+                )
             ):
                 vulkan_runtime = _vulkan_offload_runtime(runtime)
                 vulkan_memory = (
@@ -1524,6 +1528,21 @@ class AdvisorService:
         artifact = self._prepare_plan_artifact(plan, plan.runtime, report)
         report("Selecting compute backend")
         selection = self.select_runtime_backend(hw)
+        if plan.backend_selection is not None:
+            from jaull.runtime.device_matching import selected_accelerator_matches
+
+            requested = plan.backend_selection
+            selection = _selection_for_requested_backend(selection, requested.selected_backend)
+            if requested.selected_backend is not ComputeBackend.CPU and (
+                selection.selected_accelerator is None
+                or (requested.selected_accelerator is not None and not selected_accelerator_matches(
+                    requested.selected_accelerator, selection.selected_accelerator,
+                ))
+            ):
+                raise ExecutionPlanningError(
+                    "The selected accelerator/backend is no longer confirmed. "
+                    "Reopen Paths or start a new search; no fallback was performed."
+                )
         report("Checking runtime readiness")
         if plan.runtime_family is RuntimeName.TRANSFORMERS:
             pytorch_capability = self.inspect_pytorch_runtime()
@@ -2272,6 +2291,12 @@ def _config_for_plan(plan: ExecutionPlan) -> InferenceConfiguration:
         update={
             "quantization": plan.artifact.quantization,
             "precision": precision,
+            "target_device": (
+                TargetDevice.CPU
+                if plan.backend_selection is not None
+                and plan.backend_selection.selected_backend is ComputeBackend.CPU
+                else base.target_device
+            ),
             "context_length": (
                 _execution_overrides_for_plan(plan).context_size or base.context_length
             ),

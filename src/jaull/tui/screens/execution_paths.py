@@ -107,6 +107,7 @@ class _ListToggle(ActionButton):
     """A quiet toggle inside the list, reachable with the same arrow keys."""
 
     BINDINGS = _LIST_KEYS
+    group_key: str | None = None
 
     def action_list_move(self, delta: int) -> None:
         self.post_message(_ListMove(delta))
@@ -268,7 +269,7 @@ class ExecutionPathsScreen(Screen[None]):
         self._plans: list[ExecutionPlan] = []
         self._evidence = EvidenceIndex.empty()
         self._selected_plan_id: str | None = None
-        self._show_advanced_quantizations = False
+        self._advanced_groups: set[str] = set()
         self._show_unfit = False
         self._path_filter = "all"
         # Runtime groups the user (or the default) has open. Closing a group only
@@ -491,8 +492,11 @@ class ExecutionPathsScreen(Screen[None]):
             self._apply_filter_chips()
             await self._render_plans()
             return
-        if button_id == "paths-toggle-advanced":
-            self._show_advanced_quantizations = not self._show_advanced_quantizations
+        if button_id.startswith("paths-toggle-advanced"):
+            key = event.button.group_key if isinstance(event.button, _ListToggle) else None
+            if key is None:
+                return
+            self._advanced_groups.symmetric_difference_update({key})
             await self._render_plans()
             return
         if button_id == "paths-toggle-unfit":
@@ -580,7 +584,8 @@ class ExecutionPathsScreen(Screen[None]):
                 ),
                 body,
             )
-            options, hidden = self._group_rows(visible, recommended_id)
+            show_advanced = key in self._advanced_groups
+            options, hidden = self._group_rows(visible, recommended_id, show_advanced=show_advanced)
             await body.mount(*(
                 _PathOption(
                     plan,
@@ -591,14 +596,19 @@ class ExecutionPathsScreen(Screen[None]):
                 )
                 for plan in options
             ))
-            if hidden or (self._show_advanced_quantizations and _has_advanced(visible)):
+            if hidden or (show_advanced and _has_advanced(visible)):
                 plural = "" if hidden == 1 else "s"
                 label = (
                     "Hide advanced quantizations"
-                    if self._show_advanced_quantizations
+                    if show_advanced
                     else f"Show {hidden} advanced quantization{plural}"
                 )
-                await body.mount(_ListToggle(label, id="paths-toggle-advanced", classes="-quiet"))
+                toggle = _ListToggle(
+                    label, id="paths-toggle-advanced" + (f"-{number}" if number else ""),
+                    classes="-quiet",
+                )
+                toggle.group_key = key
+                await body.mount(toggle)
 
         visible_unfit = [plan for plan in unfit if self._plan_matches_filter(plan)]
         if visible_unfit:
@@ -639,7 +649,7 @@ class ExecutionPathsScreen(Screen[None]):
         ))
 
     def _group_rows(
-        self, plans: list[ExecutionPlan], recommended_id: str | None,
+        self, plans: list[ExecutionPlan], recommended_id: str | None, *, show_advanced: bool,
     ) -> tuple[list[ExecutionPlan], int]:
         """The rows a group shows, and how many advanced quantizations stay behind.
 
@@ -649,7 +659,7 @@ class ExecutionPathsScreen(Screen[None]):
         if not all(is_gguf_plan(plan) for plan in plans):
             return plans, 0
         advanced = [plan for plan in plans if _is_advanced(plan)]
-        if self._show_advanced_quantizations:
+        if show_advanced:
             return plans, 0
         keep = {self._selected_plan_id, recommended_id}
         shown = [plan for plan in plans if plan not in advanced or plan.plan_id in keep]

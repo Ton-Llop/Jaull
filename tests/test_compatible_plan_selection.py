@@ -761,3 +761,12 @@ def test_integrated_vulkan_is_an_explicit_path_without_replacing_cpu(
         else ExecutionReadinessStatus.NOT_READY
     )
     assert any("shares system RAM" in warning for warning in vulkan_plan.warnings)
+    # Reopening an already selected Vulkan path must not add the same path twice.
+    reopened = advisor.execution_plans_for_recommendation(
+        rec.model_copy(update={"plan": vulkan_plan})
+    )
+    assert len({plan.plan_id for plan in reopened}) == len(reopened)
+    assert {
+        plan.artifact.quantization for plan in reopened
+        if plan.backend_selection.selected_backend is ComputeBackend.VULKAN
+    } == {plan.artifact.quantization for plan in plans}

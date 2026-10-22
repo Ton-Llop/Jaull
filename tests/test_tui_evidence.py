@@ -280,6 +280,66 @@ def test_benchmark_evidence_is_specific_to_artifact_backend_and_machine(
     assert index.for_plan(no_estimate).benchmarked
 
 
+def test_validation_badge_does_not_cross_accelerators_of_the_same_backend():
+    from tests._intel_fixtures import WINDOWS_OS, scan
+    from tests.test_runtime_device_matching import B60, IGPU, _selection
+
+    hw = scan(WINDOWS_OS)
+    hw = hw.model_copy(update={"accelerators": [
+        *hw.accelerators, hw.accelerators[0].model_copy(update={"name": IGPU}),
+    ]})
+    plan = _plan(backend=ComputeBackend.VULKAN).model_copy(update={
+        "hardware": hw, "backend_selection": _selection(B60),
+    })
+    record = _experiment()
+    record = record.model_copy(update={
+        "hardware": plan.hardware, "preflight": record.preflight.model_copy(update={
+            "execution_readiness": record.preflight.execution_readiness.model_copy(update={
+                "selection": _selection(IGPU),
+            }),
+        }),
+    })
+    index = EvidenceIndex.load(_FakeStoreAdvisor(experiments={"exp-1": record}))
+    assert index.saved_experiments_for_plan(plan) == (record,)
+    assert not index.for_plan(plan).validated
+    same_gpu = plan.model_copy(update={"backend_selection": _selection(IGPU)})
+    assert index.for_plan(same_gpu).validated
+    cpu_execution = record.model_copy(update={"backend_trace": record.backend_trace.model_copy(
+        update={"observed_backend": ComputeBackend.CPU}
+    )})
+    contradicted = EvidenceIndex.load(_FakeStoreAdvisor(experiments={"exp-1": cpu_execution}))
+    assert contradicted.saved_experiments_for_plan(same_gpu) == (cpu_execution,)
+    assert not contradicted.for_plan(same_gpu).validated
+
+
+@pytest.mark.parametrize("device,matched", [("Vulkan0", False), ("Vulkan1", True)])
+def test_benchmark_badge_requires_the_selected_gpu_not_just_the_backend(tmp_path, device, matched):
+    from jaull.domain.benchmarks import BenchmarkGpuLayers, BenchmarkRecord
+    from tests._intel_fixtures import WINDOWS_OS, scan
+    from tests.test_runtime_device_matching import B60, IGPU, _selection
+
+    hw = scan(WINDOWS_OS)
+    hw = hw.model_copy(update={"accelerators": [
+        *hw.accelerators, hw.accelerators[0].model_copy(update={"name": IGPU}),
+    ]})
+    plan = _plan(backend=ComputeBackend.VULKAN).model_copy(update={
+        "hardware": hw, "backend_selection": _selection(B60),
+    })
+    base = _benchmark_record(tmp_path)
+    record = BenchmarkRecord.create(
+        hardware=plan.hardware, request=base.request.model_copy(update={
+            "backend": ComputeBackend.VULKAN, "device": device,
+            "gpu_layers": BenchmarkGpuLayers.full(),
+        }), observation=base.observation.model_copy(update={"raw_stderr": (
+            f"ggml_vulkan: 0 = {IGPU} | uma: 1\n"
+            f"ggml_vulkan: 1 = {B60} | uma: 0\n"
+        )}),
+    )
+    index = EvidenceIndex.load(_FakeStoreAdvisor(benchmarks={"bench-1": record}))
+    assert index.saved_benchmarks_for_plan(plan) == (record,)
+    assert index.for_plan(plan).benchmarked is matched
+
+
 def test_loading_without_an_identity_indexes_every_model() -> None:
     """The results screen scans the stores once for several models at a time."""
     advisor = _FakeStoreAdvisor(
@@ -630,6 +690,8 @@ def test_validation_screen_shows_the_saved_validations_for_its_artifact() -> Non
             app.push_screen(screen)
             await _wait_until(pilot, lambda: bool(screen.query(".validation-result-node")))
             assert "Saved validation" in _visible_text(screen)
+            await _wait_until(pilot, lambda: bool(screen.query(".validation-tabs")))
+            assert "not saved" not in _visible_text(screen)
 
             other = RecommendationValidationScreen(
                 _gguf_recommendation(), _plan(sha256="2" * 64),

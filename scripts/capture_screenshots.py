@@ -60,7 +60,11 @@ from jaull.domain.experiments import (  # noqa: E402
     ExperimentRequest,
     ExperimentRunResult,
 )
-from jaull.domain.hardware import ComputeBackend  # noqa: E402
+from jaull.domain.hardware import (  # noqa: E402
+    AcceleratorType,
+    AcceleratorVendor,
+    ComputeBackend,
+)
 from jaull.domain.runtime import (  # noqa: E402
     LlamaCppBackendCapability,
     LlamaCppBackendCapabilityState,
@@ -74,6 +78,7 @@ from jaull.domain.runtime import (  # noqa: E402
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
+    SelectedAcceleratorRef,
 )
 from jaull.evaluation.experiments import build_experiment_record  # noqa: E402
 from jaull.execution.errors import ExecutionTimeoutError  # noqa: E402
@@ -429,6 +434,10 @@ class _ScriptAdvisor(AdvisorService):
 def _runtime_backend_selection(backend: ComputeBackend) -> RuntimeBackendSelection:
     return RuntimeBackendSelection(
         selected_backend=backend,
+        selected_accelerator=SelectedAcceleratorRef(
+            name="NVIDIA GeForce RTX 4070", vendor=AcceleratorVendor.NVIDIA,
+            type=AcceleratorType.DEDICATED,
+        ) if backend is ComputeBackend.CUDA else None,
         reason=RuntimeBackendSelectionReason.NATIVE_BACKEND_AVAILABLE
         if backend is ComputeBackend.CUDA
         else RuntimeBackendSelectionReason.CPU_FALLBACK,
