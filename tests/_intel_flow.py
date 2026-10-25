@@ -33,7 +33,7 @@ from tests.test_llama_cpp_capability import _result
 from tests.test_tui_recommendation_execution import _pytorch_runtime_capability
 
 REPO = "org/Coder-7B-GGUF"
-FILENAME = "coder-7b-q4_k_m.gguf"
+FILENAME = "model-Q4_K_M.gguf"
 LLAMA_7B = ModelConfig(
     model_type="llama",
     max_position_embeddings=32768,
@@ -126,7 +126,8 @@ class IntelAdvisor(AdvisorService):
             filename=FILENAME,
             format="gguf",
             quantization=quantization or "Q4_K_M",
-            size_bytes=self.local_model.stat().st_size,
+            size_bytes=next(file.size_bytes for file in self.inspect_model(repo_id).files
+                            if file.path == FILENAME),
             local_path=self.local_model,
             sha256="a" * 64,
             is_downloaded=True,

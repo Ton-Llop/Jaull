@@ -533,7 +533,9 @@ def test_matrix_runs_cpu_and_selected_backend_with_partial_failure(
         ]
     )
     matrix = BenchmarkMatrixRunner(
-        execution_backend=_FakeExecutionBackend(stdout="llama-bench version"),
+        execution_backend=_FakeExecutionBackend(
+            stdout="Vulkan0: Synthetic Vulkan GPU\nllama-bench version",
+        ),
         llama_bench_runner=runner,  # type: ignore[arg-type]
         store=BenchmarkStore(root=tmp_path / "benchmarks"),
         llama_bench_path=_executable(tmp_path),
@@ -554,6 +556,62 @@ def test_matrix_runs_cpu_and_selected_backend_with_partial_failure(
     assert len(result.failed) == 1
     assert result.failed[0].request.backend is ComputeBackend.VULKAN
     assert len(result.records) == 1
+    assert len(runner.requests) == 2
+
+
+@pytest.mark.parametrize("real_runner", [False, True])
+@pytest.mark.parametrize("listing,expected", [
+    ("Vulkan0: Synthetic Vulkan GPU\n", 1),
+    ("Vulkan0: Integrated GPU\nVulkan1: Synthetic Vulkan GPU\n", 0),
+    ("Vulkan0: Synthetic Vulkan GPU\nVulkan1: Synthetic Vulkan GPU\n", 0),
+    ("Vulkan0: (24576 MiB, 23000 MiB free)\n", 0),
+    ("Available devices:\n", 0),
+    (None, 0),
+])
+def test_matrix_checks_the_benchmark_binarys_own_devices(tmp_path, listing, expected, real_runner):
+    class Devices(_FakeExecutionBackend):
+        def execute(self, request):
+            if "--list-devices" in request.command:
+                self.requests.append(request)
+                if listing is None:
+                    raise ExecutionFailedError("Device probe failed", ExecutionResult(
+                        stdout="", stderr="probe failed", observation=ExecutionObservation(
+                            success=False, duration_seconds=0.01, exit_code=1,
+                        ),
+                    ))
+                return ExecutionResult(stdout=listing, stderr="", observation=ExecutionObservation(
+                    success=True, duration_seconds=0.01, exit_code=0,
+                ))
+            return super().execute(request)
+
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"gguf")
+    backend = Devices(stdout=VULKAN_OUTPUT)
+    worker = _SequenceBenchmarkRunner([_observation(VULKAN_OUTPUT)])
+    configured = _executable(tmp_path)
+    actual = configured
+    if real_runner:
+        (tmp_path / "actual").mkdir()
+        actual = _executable(tmp_path / "actual")
+        worker = LlamaBenchRunner(backend=backend, llama_bench_path=actual)
+    store = BenchmarkStore(root=tmp_path / "records")
+    result = BenchmarkMatrixRunner(
+        execution_backend=backend, llama_bench_runner=worker, store=store,
+        llama_bench_path=configured,
+    ).run(BenchmarkMatrixRequest(
+        hardware=_hardware(), artifact=_artifact(model), runtime=_runtime(ngl=-1),
+        backend_selection=_selection(ComputeBackend.VULKAN),
+        runtime_capability=_runtime_capability(), include_cpu=False,
+    ))
+    calls = (
+        [request for request in backend.requests if "-dev" in request.command]
+        if real_runner else worker.requests
+    )
+    assert len(calls) == expected
+    assert len(result.completed) == expected
+    assert len(store.list_ids()) == expected
+    assert any("--list-devices" in request.command for request in backend.requests)
+    assert all(request.command[0] == str(actual) for request in backend.requests)
 
 
 def test_aggregate_reports_descriptive_speedups(tmp_path: Path) -> None:

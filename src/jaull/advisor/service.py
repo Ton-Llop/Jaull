@@ -635,6 +635,7 @@ class AdvisorService:
         *,
         hardware: HardwareProfile,
         persist: bool = True,
+        backend_selection: RuntimeBackendSelection | None = None,
     ) -> BenchmarkRunResult:
         if request.runtime.runtime is RuntimeName.TRANSFORMERS:
             return self._run_transformers_benchmark(
@@ -645,15 +646,25 @@ class AdvisorService:
 
         from jaull.observability.provenance import capture_git_commit
         from jaull.runtime.llama_bench_capability import (
+            confirm_benchmark_device,
             enrich_capability_from_benchmark_output,
             inspect_llama_bench,
         )
 
-        installation = self._resolved_llama_cpp_installation()
-        observation = self._llama_bench_runner().run(request)
+        runner = self._llama_bench_runner()
+        if request.backend is not ComputeBackend.CPU:
+            selection = backend_selection or _selection_for_requested_backend(
+                self.select_runtime_backend(hardware), request.backend,
+            )
+            confirm_benchmark_device(
+                backend=runner.backend, llama_bench_path=runner._llama_bench,
+                selection=selection, device=request.device,
+                timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
+            )
+        observation = runner.run(request)
         capability = inspect_llama_bench(
-            backend=self._host_execution_backend(),
-            llama_bench_path=installation.llama_bench,
+            backend=runner.backend,
+            llama_bench_path=runner._llama_bench,
             timeout_seconds=min(self.llama_bench_timeout_seconds, 30.0),
         )
         capability = enrich_capability_from_benchmark_output(capability, observation)
@@ -931,9 +942,7 @@ class AdvisorService:
         artifact = self._prepare_selected_gguf(plan, allow_download=allow_download, report=report)
         backend = plan.backend_selection.selected_backend
         device = flags.get("--device")
-        if device is None and backend is not ComputeBackend.CPU:
-            # Search plans name no device: take the one llama.cpp exposes for the
-            # selected accelerator, or refuse; never the first of several.
+        if backend is not ComputeBackend.CPU:
             from jaull.runtime.device_matching import match_runtime_device
 
             capability = self.inspect_llama_cpp_runtime(selection=plan.backend_selection)
@@ -952,6 +961,11 @@ class AdvisorService:
                 raise BenchmarkConfigurationError(
                     f"Expected one {backend.value} device; llama.cpp exposes {found}."
                 )
+            if device is not None and device != match.device.runtime_id:
+                raise BenchmarkConfigurationError(
+                    "The plan's device no longer matches the selected accelerator; "
+                    "reprepare the execution path. No model was launched."
+                )
             device = match.device.runtime_id
         report("Running llama_bench_v2 (pp512 / tg128, 5 repetitions)")
         return self.run_benchmark(BenchmarkRequest(
@@ -961,7 +975,7 @@ class AdvisorService:
                         else BenchmarkGpuLayers.count_layers(int(raw_ngl))),
             prefill_sizes=FASTEST_PREFILL_SIZES, generation_sizes=FASTEST_GENERATION_SIZES,
             repetitions=FASTEST_REPETITIONS, timeout_seconds=900.0,
-        ), hardware=plan.hardware)
+        ), hardware=plan.hardware, backend_selection=plan.backend_selection)
 
     # ------------------------------------------------------------------
     # Disk space. Deleting a model never touches stored results: evidence is
@@ -1587,6 +1601,7 @@ class AdvisorService:
                 "filename": artifact.filename,
                 "size_bytes": artifact.size_bytes,
                 "quantization": artifact.quantization or plan.artifact.quantization,
+                "sha256": artifact.sha256,
             }
         )
         prepared = self.plan_execution(
@@ -1621,13 +1636,23 @@ class AdvisorService:
             quantization=plan.artifact.quantization,
             revision=plan.artifact.revision,
         )
+        from jaull.advisor.quality import check_selected_artifact
+
+        try:
+            check_selected_artifact(artifact, plan.artifact)
+        except ValueError as exc:
+            raise ExecutionPlanningError(str(exc)) from exc
         if not artifact.is_downloaded:
             report_step("Downloading artifact")
             artifact = self.download_artifact(artifact)
         else:
             report_step(f"Reuse local artifact {artifact.filename}")
         report_step("Verifying artifact")
-        artifact = self.verify_artifact(artifact)
+        artifact = self.verify_artifact(artifact, full=True)
+        try:
+            check_selected_artifact(artifact, plan.artifact)
+        except ValueError as exc:
+            raise ExecutionPlanningError(str(exc)) from exc
         report_step("Model ready")
         return artifact
 

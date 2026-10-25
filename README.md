@@ -127,9 +127,10 @@ driver versions through NVML; and non-NVIDIA adapters through a `vulkaninfo` pro
 records per-backend availability (CUDA / Vulkan / HIP / CPU) and flags software renderers
 such as llvmpipe instead of treating them as usable accelerators. On Linux, a discrete
 Vulkan device can additionally obtain physical and, when the driver exposes it, available
-VRAM from DRM sysfs. That enables AMD/Vulkan planning without treating VRAM and system RAM
-as one pool. Runtime execution still requires a compatible local binary, verified separately
-through `llama-cli --list-devices`; Intel and Apple memory discovery remain outside this path.
+VRAM from DRM sysfs. Discrete Intel/AMD devices can also use unambiguously matched Vulkan
+heaps and, when exposed, the driver's allocation budget; that budget is not free VRAM.
+This path is implemented but awaits physical validation on the B60. Runtime execution
+still requires a compatible local binary, verified separately through `--list-devices`.
 
 **Model inspection.** Normalises any Hugging Face URL form to a `repo_id`, classifies the
 repository (`transformers` / `gguf` / `diffusers` / `onnx` / `adapter` / `unknown`) and
@@ -573,8 +574,7 @@ Not implemented:
 - [ ] Multipart GGUF and Transformers artifacts in the CLI `run` path
 - [ ] Runtime-exact placement point prediction under partial offload (the host/device
       estimate and component split already exist)
-- [ ] Non-NVIDIA VRAM in the memory model beyond Linux DRM-backed discrete Vulkan devices
-  (Intel, Apple Silicon and platforms without DRM VRAM telemetry)
+- [ ] Physical validation of non-NVIDIA Vulkan heap/budget discovery, including Intel B60
 - [ ] Remote executor
 - [ ] Shared organisational deployment workflow
 
@@ -621,10 +621,10 @@ The short version — the full list is in [docs/limitations.md](docs/limitations
 
 - Recommendation and estimation never download weights or run inference. Only `run`,
   validation and benchmarking do, and only when you ask for them.
-- Memory-based compatibility reads NVML for NVIDIA and, for other vendors, Linux DRM sysfs
-  for the Vulkan-detected device — in practice discrete AMD on an amdgpu-style driver.
-  Windows AMD, Intel and Apple accelerators are still detected and their backends probed,
-  but their VRAM does not enter the memory model.
+- Memory-based compatibility reads NVML for NVIDIA, Linux DRM when available, or Vulkan
+  device-local heaps and driver budgets for unambiguously identified discrete Intel/AMD
+  devices. Capacity alone does not demonstrate available memory. The Vulkan heap/budget
+  path still awaits physical B60 validation; unknown memory is never invented.
 - Vulkan and HIP/ROCm execution are implemented but not validated on real hardware.
 - The CLI `run` path is limited to single-file GGUF artifacts.
 - KV cache estimation assumes MHA/GQA with `sliding_window` as the only refinement; MoE,

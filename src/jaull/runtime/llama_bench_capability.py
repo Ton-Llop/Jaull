@@ -7,13 +7,19 @@ import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from jaull.benchmarks.errors import BenchmarkConfigurationError
 from jaull.domain.benchmarks import (
     BenchmarkObservation,
     LlamaBenchBinaryStatus,
     LlamaBenchCapability,
 )
 from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
-from jaull.domain.runtime import RuntimeResolutionStatus
+from jaull.domain.runtime import (
+    LlamaCppBackendCapabilityState,
+    LlamaCppBinaryStatus,
+    RuntimeBackendSelection,
+    RuntimeResolutionStatus,
+)
 from jaull.execution.errors import (
     ExecutableNotFoundError,
     ExecutionError,
@@ -21,11 +27,41 @@ from jaull.execution.errors import (
     ExecutionTimeoutError,
 )
 from jaull.execution.ports import ExecutionBackendProtocol
+from jaull.runtime.device_matching import match_runtime_device
+from jaull.runtime.llama_cpp_capability import inspect_llama_cpp_runtime
 from jaull.runtime.locator import RuntimeLocator, RuntimeLocatorConfig
 
 _LLAMA_BENCH = "llama-bench"
 _VERSION_SOURCE = "llama-bench --version"
 _BUILD_LINE = re.compile(r"^build:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def confirm_benchmark_device(
+    *,
+    backend: ExecutionBackendProtocol,
+    llama_bench_path: str | Path,
+    selection: RuntimeBackendSelection,
+    device: str | None,
+    timeout_seconds: float = 10.0,
+) -> None:
+    """A CLI device id cannot authorize another executable's device enumeration."""
+    capability = inspect_llama_cpp_runtime(
+        backend=backend, llama_cli_path=llama_bench_path, timeout_seconds=timeout_seconds,
+    )
+    selected = next((item for item in capability.backend_capabilities
+                     if item.backend is selection.selected_backend
+                     and item.state is LlamaCppBackendCapabilityState.CONFIRMED), None)
+    matched = match_runtime_device(selection, selected).device if selected is not None else None
+    if (
+        capability.binary_status is not LlamaCppBinaryStatus.AVAILABLE
+        or matched is None or matched.runtime_id != device
+    ):
+        raise BenchmarkConfigurationError(
+            f"The selected device {device!r} is not confirmed by llama-bench's own "
+            f"--list-devices (matched: {matched.runtime_id if matched else 'none'}; "
+            f"probe: {capability.message or capability.binary_status.value}). "
+            "Reprepare the execution path; no model was launched."
+        )
 
 
 def inspect_llama_bench(
@@ -218,6 +254,7 @@ def _last_useful_line(text: str) -> str | None:
 
 
 __all__ = [
+    "confirm_benchmark_device",
     "enrich_capability_from_benchmark_output",
     "inspect_llama_bench",
     "resolve_llama_bench_binary",

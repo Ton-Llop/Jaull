@@ -198,6 +198,64 @@ def test_a_device_the_run_names_differently_stays_unknown() -> None:
     assert DEVICE_BLOCKER in fastest_benchmark_blockers(plan, _requirements(), record)
 
 
+@pytest.mark.parametrize("banner", ["NVIDIA GeForce RTX 4090", ""])
+def test_explicit_device_does_not_replace_physical_identity_proof(banner) -> None:
+    from jaull.domain.runtime import RuntimeFlag, RuntimeFlagSource
+
+    plan, record = _cuda_case(banner=banner or None)
+    if not banner:
+        record = record.model_copy(update={"observation": record.observation.model_copy(
+            update={"raw_stderr": ""},
+        )})
+    plan = plan.model_copy(update={"runtime": plan.runtime.model_copy(update={"flags": [
+        *plan.runtime.flags, RuntimeFlag(name="--device", value="CUDA0",
+            source=RuntimeFlagSource.ESTIMATE, explanation="Explicit runtime index"),
+    ]})})
+    assert DEVICE_BLOCKER in fastest_benchmark_blockers(plan, _requirements(), record)
+    assert assess_speed(plan, _requirements(), [record]).applicable is None
+
+
+@pytest.mark.parametrize("correct_device", [False, True])
+def test_explicit_vulkan_id_requires_the_b60_in_the_execution_log(correct_device):
+    from jaull.domain.benchmarks import BenchmarkRecord
+    from jaull.domain.hardware import AcceleratorVendor, ComputeBackend
+    from jaull.domain.runtime import RuntimeFlag, RuntimeFlagSource
+    from tests.test_vulkan_evidence_identity import B60, _vulkan_accelerator
+
+    plan, old = _cuda_case()
+    hardware = plan.hardware.model_copy(update={
+        "gpus": [], "accelerators": [_vulkan_accelerator("synthetic driver")],
+    })
+    accelerator = plan.backend_selection.selected_accelerator.model_copy(update={
+        "name": B60, "vendor": AcceleratorVendor.INTEL,
+    })
+    plan = plan.model_copy(update={"hardware": hardware, "backend_selection":
+        plan.backend_selection.model_copy(update={"selected_backend": ComputeBackend.VULKAN,
+                                                  "selected_accelerator": accelerator}),
+        "runtime": plan.runtime.model_copy(update={"flags": [*plan.runtime.flags,
+            RuntimeFlag(name="--device", value="Vulkan0", source=RuntimeFlagSource.ESTIMATE,
+                        explanation="Explicit device"),
+        ]}),
+    })
+    log = (
+        f"ggml_vulkan: 0 = {B60} | uma: 0\n" if correct_device else
+        f"ggml_vulkan: 0 = Intel Iris Xe Graphics | uma: 1\n"
+        f"ggml_vulkan: 1 = {B60} | uma: 0\n"
+    )
+    observation = old.observation.model_copy(update={
+        "command": tuple("Vulkan0" if part == "CUDA0" else part
+                         for part in old.observation.command),
+        "measurements": [item.model_copy(update={"raw_device": "Vulkan0"})
+                         for item in old.observation.measurements], "raw_stderr": log,
+    })
+    record = BenchmarkRecord.create(hardware=hardware,
+        request=old.request.model_copy(update={"backend": ComputeBackend.VULKAN,
+                                               "device": "Vulkan0"}),
+        observation=observation, llama_bench_capability=old.llama_bench_capability,
+    )
+    assert (assess_speed(plan, _requirements(), [record]).applicable is not None) == correct_device
+
+
 def test_two_identical_gpus_cannot_prove_which_one_ran() -> None:
     plan, record = _cuda_case(gpus=2)
     assert DEVICE_BLOCKER in fastest_benchmark_blockers(plan, _requirements(), record)

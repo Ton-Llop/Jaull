@@ -17,6 +17,8 @@ from jaull.domain.runtime import (
     LlamaCppCapabilityReason,
     LlamaCppRuntimeCapability,
     LlamaCppRuntimeDevice,
+    RuntimeFlag,
+    RuntimeFlagSource,
 )
 from tests.test_fastest_v2_applicability import _cuda_case
 
@@ -47,7 +49,7 @@ class _Advisor:
             )],
         )
 
-    def run_benchmark(self, request: Any, *, hardware: Any) -> Any:
+    def run_benchmark(self, request: Any, *, hardware: Any, backend_selection: Any = None) -> Any:
         self.requests.append(request)
         return SimpleNamespace(record=None, persisted_path=None)
 
@@ -79,3 +81,54 @@ def test_a_missing_model_without_permission_runs_nothing() -> None:
     with pytest.raises(ValueError, match="not local"):
         AdvisorService.benchmark_plan_speed(advisor, plan)  # type: ignore[arg-type]
     assert advisor.requests == []
+
+
+def test_an_explicit_speed_device_is_rechecked_before_launch() -> None:
+    plan, _ = _cuda_case()
+    flag = RuntimeFlag(name="--device", value="CUDA0", source=RuntimeFlagSource.ESTIMATE,
+                       explanation="Device selected before renumbering")
+    plan = plan.model_copy(update={"runtime": plan.runtime.model_copy(update={
+        "flags": [*plan.runtime.flags, flag],
+    })})
+    advisor = _Advisor(["CUDA1"])
+    with pytest.raises(BenchmarkConfigurationError, match="device"):
+        AdvisorService.benchmark_plan_speed(advisor, plan)  # type: ignore[arg-type]
+    assert not advisor.requests
+
+
+@pytest.mark.parametrize("renumbered", [False, True])
+def test_advisor_checks_the_executed_benchmark_not_the_cli(tmp_path, monkeypatch, renumbered):
+    from jaull.domain.benchmarks import BenchmarkGpuLayers, BenchmarkRequest
+    from tests._intel_fixtures import B60_NAME, WINDOWS_OS, scan
+    from tests._intel_flow import intel_advisor, listing
+    from tests.test_llama_cpp_capability import _result
+
+    hw = scan(WINDOWS_OS)
+    advisor, scripted = intel_advisor(tmp_path, hw)
+    original = scripted.execute
+
+    def execute(request):
+        if "--list-devices" in request.command:
+            assert "llama-bench" in request.command[0]
+            scripted.commands.append(request.command)
+            devices = (("Vulkan0", "Integrated GPU"), ("Vulkan1", B60_NAME)) if renumbered else (
+                ("Vulkan0", B60_NAME),
+            )
+            return _result(stdout=listing(devices))
+        return original(request)
+
+    monkeypatch.setattr(scripted, "execute", execute)
+    from tests.test_benchmarks import _runtime
+
+    request = BenchmarkRequest(
+        artifact=advisor.resolve_artifact("org/model"), runtime=_runtime(ngl=-1),
+        backend=ComputeBackend.VULKAN, device="Vulkan0", gpu_layers=BenchmarkGpuLayers.full(),
+        prefill_sizes=(512,), generation_sizes=(128,),
+    )
+    if renumbered:
+        with pytest.raises(BenchmarkConfigurationError, match="llama-bench"):
+            advisor.run_benchmark(request, hardware=hw, persist=False)
+    else:
+        assert advisor.run_benchmark(request, hardware=hw, persist=False).record.observation.success
+    launches = [command for command in scripted.commands if "-dev" in command]
+    assert len(launches) == (0 if renumbered else 1)

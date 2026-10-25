@@ -403,6 +403,7 @@ class _BenchmarkAdvisor(_FakeAdvisor):
         *,
         hardware: object,
         persist: bool = True,
+        backend_selection: object = None,
     ) -> BenchmarkRunResult:
         del hardware, persist
         self.benchmark_calls += 1

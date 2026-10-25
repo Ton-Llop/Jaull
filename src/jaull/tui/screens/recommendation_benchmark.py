@@ -456,7 +456,9 @@ class RecommendationBenchmarkScreen(Screen[None]):
             repetitions=FASTEST_REPETITIONS,
             timeout_seconds=900.0,
         )
-        run = advisor.run_benchmark(request, hardware=plan.hardware)
+        run = advisor.run_benchmark(
+            request, hardware=plan.hardware, backend_selection=plan.backend_selection,
+        )
         if run.record.observation.success:
             return BenchmarkMatrixResult(completed=[run], records=[run.record])
         return BenchmarkMatrixResult(

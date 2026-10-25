@@ -133,3 +133,64 @@ def test_preparation_errors_are_reported_by_each_execution_worker(monkeypatch, o
         assert errors == ["Selected device is unavailable; no fallback"]
     finally:
         screen._shutdown_executor()
+
+
+@pytest.mark.parametrize("changed", ["sha256", "filename", "revision"])
+def test_preparation_refuses_a_different_resolved_artifact(changed):
+    hw, req, _, estimate, evaluated = _setup()
+    plan = service.recommend([evaluated(GGUF, base=BASE)], req, hardware=hw,
+                             estimate_fn=estimate)[0].plan
+    selected = plan.artifact.model_copy(update={"sha256": "a" * 64, "revision": "c" * 40})
+    plan = plan.model_copy(update={"artifact": selected})
+    actual = selected.to_model_artifact().model_copy(update={
+        changed: {"sha256": "b" * 64, "filename": "another.gguf", "revision": "d" * 40}[changed],
+        "is_downloaded": True,
+    })
+    verifications = []
+    advisor = SimpleNamespace(
+        resolve_artifact=lambda **kwargs: actual,
+        verify_artifact=lambda artifact, **kwargs: verifications.append(kwargs) or artifact,
+    )
+    with pytest.raises(ExecutionPlanningError, match="artifact"):
+        AdvisorService._prepare_plan_artifact(advisor, plan, plan.runtime, lambda _: None)
+    assert not verifications
+
+
+def test_prepared_artifact_is_fully_verified():
+    hw, req, _, estimate, evaluated = _setup()
+    plan = service.recommend([evaluated(GGUF, base=BASE)], req, hardware=hw,
+                             estimate_fn=estimate)[0].plan
+    artifact = plan.artifact.to_model_artifact().model_copy(update={"is_downloaded": True})
+    calls = []
+    advisor = SimpleNamespace(
+        resolve_artifact=lambda **kwargs: artifact,
+        verify_artifact=lambda artifact, **kwargs: calls.append(kwargs) or artifact,
+    )
+    assert AdvisorService._prepare_plan_artifact(
+        advisor, plan, plan.runtime, lambda _: None,
+    ) == artifact
+    assert calls == [{"full": True}]
+
+
+def test_prepared_plan_retains_the_verified_digest_without_mutating_the_search(monkeypatch):
+    hw, req, analyses, estimate, evaluated = _setup()
+    plan = service.recommend([evaluated(GGUF, base=BASE)], req, hardware=hw,
+                             estimate_fn=estimate)[0].plan
+    before = plan.model_dump_json()
+    artifact = plan.artifact.to_model_artifact().model_copy(update={"sha256": "b" * 64})
+    advisor = AdvisorService(services=ServiceContainer(
+        hf_client=SimpleNamespace(), search_client=SimpleNamespace(), detect_hardware=lambda: hw,
+        inspect_model=lambda repo, **kwargs: analyses[repo],
+        estimate_memory=lambda analysis, hardware, inference_cfg, **kwargs:
+            estimate(analysis, inference_cfg),
+    ))
+    monkeypatch.setattr(AdvisorService, "_prepare_plan_artifact", lambda *args: artifact)
+    capability = LlamaCppRuntimeCapability(
+        binary_path="/synthetic/llama-cli", binary_status=LlamaCppBinaryStatus.AVAILABLE,
+    )
+    monkeypatch.setattr(
+        AdvisorService, "inspect_llama_cpp_runtime", lambda *args, **kwargs: capability,
+    )
+    prepared = advisor.prepare_execution_plan(plan, hardware=hw)
+    assert prepared.plan.artifact.sha256 == prepared.artifact.sha256 == "b" * 64
+    assert plan.model_dump_json() == before

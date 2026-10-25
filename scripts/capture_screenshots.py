@@ -303,14 +303,19 @@ class _ScriptAdvisor(AdvisorService):
         revision: str | None = None,
     ) -> ModelArtifact:
         self._gate.wait()  # type: ignore[attr-defined]
+        from jaull.estimator.gguf_selection import select_variant
+
+        variant = select_variant(
+            self.inspect_model(repo_id).classification.gguf_variants, quantization,
+        ).variant
         return ModelArtifact(
             repo_id=repo_id,
             revision=revision or "main",
-            filename="qwen2.5-7b-instruct-q4_k_m.gguf",
+            filename=variant.files[0].path,
             format="gguf",
-            quantization=quantization or "Q4_K_M",
-            size_bytes=4 * GIB,
-            local_path=Path("~/.cache/jaull/qwen2.5-7b-instruct-q4_k_m.gguf"),
+            quantization=variant.quantization,
+            size_bytes=variant.total_bytes,
+            local_path=Path("~/.cache/jaull") / variant.files[0].path,
             sha256="0" * 64,
             is_downloaded=False,
             is_verified=False,

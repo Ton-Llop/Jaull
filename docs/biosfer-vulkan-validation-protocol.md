@@ -32,6 +32,7 @@ record its SHA256 (`Get-FileHash -Algorithm SHA256` on Windows, `sha256sum` in W
 | `vulkaninfo-summary.txt` | `vulkaninfo --summary > vulkaninfo-summary.txt 2>&1` | same | `B60_SUMMARY` |
 | `vulkaninfo-full.txt` | `vulkaninfo > vulkaninfo-full.txt 2>&1` | same | `B60_FULL` (heaps, `budget`, `usage`, flags) |
 | `llama-list-devices.txt` | `& "<llama-cli.exe>" --list-devices > llama-list-devices.txt 2>&1` | `<llama-cli> --list-devices > llama-list-devices.txt 2>&1` | device-line fixtures |
+| `llama-bench-list-devices.txt` | `& "<llama-bench.exe>" --list-devices > llama-bench-list-devices.txt 2>&1` | `<llama-bench> --list-devices > llama-bench-list-devices.txt 2>&1` | benchmark device preflight |
 | `llama-version.txt` | `& "<llama-cli.exe>" --version > llama-version.txt 2>&1` | same | version text |
 | `windows-adapters.json` | `Get-CimInstance Win32_VideoController \| Select-Object Name,PNPDeviceID,DriverVersion,AdapterCompatibility \| ConvertTo-Json -Compress > windows-adapters.json` | `n/a` (the query is skipped outside Windows) | `B60_ROW` |
 | `llama-load-log.txt` | stderr of the offload run in step 1.7 | same | `VULKAN_LOAD_LOG`, `ggml_vulkan:` lines |
@@ -77,6 +78,8 @@ the new test fixtures and the synthetic ones are deleted, in a separate change.
 5. [ ] With the Vulkan build of llama.cpp (record its path, version and SHA256):
        `llama-cli.exe --list-devices` → save. Which `Vulkan<N>` has the B60's name from step 2?
        Is there an extra software device? Do the listed MiB match the heap figures?
+       Repeat with the exact `llama-bench.exe` to be used. Jaull independently checks its
+       device enumeration before benchmarking; a different mapping blocks measurement.
 6. [ ] `uv run jaull doctor` → save.
 7. [ ] Open the guided Jaull flow, select the verified GGUF path, and require fresh
        `READY` readiness identifying the B60 and a confirmed memory budget. Stop this

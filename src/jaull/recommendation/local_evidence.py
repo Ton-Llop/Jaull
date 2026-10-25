@@ -9,7 +9,6 @@ cryptographic verification when the plan has no digest.
 import hashlib
 import json
 from collections.abc import Sequence
-from re import compile as re_compile
 from re import fullmatch
 from statistics import median
 
@@ -43,7 +42,7 @@ from jaull.evaluation.hardware_fingerprint import (
     EVIDENCE_MEMORY_GRANULARITY,
     machine_fingerprint,
 )
-from jaull.runtime.device_matching import names_agree
+from jaull.runtime.device_matching import runtime_device_name_matches
 
 
 def matching_experiment(
@@ -357,8 +356,10 @@ def fastest_benchmark_blockers(
         blockers.append("Historical artifact/machine/runtime/backend/offload matching failed.")
     if record.requested_backend is not ComputeBackend.CPU:
         devices = [flag.value for flag in plan.runtime.flags if flag.name == "--device"]
-        implied = not devices and _runtime_device_is_the_plans_accelerator(plan, record)
-        if not implied and (len(devices) != 1 or devices[0] != record.requested_device):
+        if (
+            not _runtime_device_is_the_plans_accelerator(plan, record)
+            or (devices and devices != [record.requested_device])
+        ):
             blockers.append("The plan's runtime device is unknown or differs from the measurement.")
         environment = _gpu_environment(record.hardware, record.requested_backend)
         if (
@@ -380,34 +381,13 @@ def fastest_benchmark_blockers(
 def _runtime_device_is_the_plans_accelerator(
     plan: ExecutionPlan, record: BenchmarkRecord,
 ) -> bool:
-    """Search plans name no device: prove the measured one is the plan's accelerator.
-
-    The run's own output carries the runtime's enumeration ("Device 0: <name>, ...").
-    Only CUDA ids are read, as ``CUDA<i>`` maps to that index; anything that cannot be
-    shown to be the accelerator the plan selected stays unknown, never assumed.
-    """
+    """Prove physical identity from the run's own enumeration, even with an explicit id."""
     selection = plan.backend_selection
     accelerator = selection.selected_accelerator if selection is not None else None
-    vulkan = fullmatch(r"Vulkan(\d+)", record.requested_device or "")
     output = "\n".join((record.observation.raw_stdout, record.observation.raw_stderr))
-    if vulkan is not None and accelerator is not None:
-        # llama.cpp's own list: "ggml_vulkan: <index> = <name> (<driver>) | uma: ...".
-        # As for CUDA, the name must point at exactly one device.
-        listed = [found.groups() for line in output.splitlines()
-                  if (found := _GGML_VULKAN_DEVICE.match(line))]
-        holders = [index for index, name in listed if names_agree(name, accelerator.name)]
-        return holders == [vulkan[1]]
-    match = fullmatch(r"CUDA(\d+)", record.requested_device or "")
-    if match is None or accelerator is None:
-        return False
-    enumerated = [found.groups() for line in output.splitlines()
-                  if (found := fullmatch(r"\s*Device (\d+): ([^,]+),.*", line))]
-    # The name must point at exactly one device: two identical GPUs prove nothing.
-    holders = [index for index, name in enumerated if name == accelerator.name]
-    return holders == [match[1]]
-
-
-_GGML_VULKAN_DEVICE = re_compile(r"\s*ggml_vulkan:\s*(\d+)\s*=\s*(.+?)\s*\|")
+    return accelerator is not None and runtime_device_name_matches(
+        output, record.requested_device or "", accelerator.name,
+    )
 
 
 def _gpu_environment(

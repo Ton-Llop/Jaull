@@ -37,6 +37,7 @@ from jaull.execution.ports import ExecutionBackendProtocol
 from jaull.observability.provenance import capture_git_commit
 from jaull.runtime.device_matching import match_runtime_device
 from jaull.runtime.llama_bench_capability import (
+    confirm_benchmark_device,
     enrich_capability_from_benchmark_output,
     inspect_llama_bench,
 )
@@ -102,9 +103,14 @@ class BenchmarkMatrixRunner:
         if request.runtime.runtime is not RuntimeName.LLAMA_CPP:
             raise BenchmarkRunnerError("Benchmarking currently requires llama.cpp runtime.")
 
+        runner = self.llama_bench_runner
+        bench_path = (
+            runner._llama_bench if isinstance(runner, LlamaBenchRunner) else self.llama_bench_path
+        )
+        backend = runner.backend if isinstance(runner, LlamaBenchRunner) else self.execution_backend
         capability = inspect_llama_bench(
-            backend=self.execution_backend,
-            llama_bench_path=self.llama_bench_path,
+            backend=backend,
+            llama_bench_path=bench_path,
             timeout_seconds=self.capability_timeout_seconds,
             allow_empty_workload_probe=True,
         )
@@ -122,6 +128,13 @@ class BenchmarkMatrixRunner:
         skipped.extend(config_skips)
         for benchmark_request in configs:
             try:
+                if benchmark_request.backend is not ComputeBackend.CPU:
+                    assert capability.binary_path is not None
+                    confirm_benchmark_device(
+                        backend=backend, llama_bench_path=capability.binary_path,
+                        selection=request.backend_selection, device=benchmark_request.device,
+                        timeout_seconds=self.capability_timeout_seconds,
+                    )
                 observation = self.llama_bench_runner.run(benchmark_request)
             except (BenchmarkParseError, BenchmarkRunnerError) as exc:
                 failed.append(
