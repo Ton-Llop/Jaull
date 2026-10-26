@@ -13,10 +13,8 @@ from pathlib import PurePosixPath
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.model import GgufVariant, ModelFile, RepositoryClassification
 
-_MULTIPART_SUFFIX_RE = re.compile(r"-\d{5}-of-\d{5}$")
-_GGUF_QUANT_RE = re.compile(
-    r"(?P<q>IQ\d+[A-Z0-9_]*|Q\d+[A-Z0-9_]*|F16|F32|BF16)", re.IGNORECASE
-)
+_MULTIPART_SUFFIX_RE = re.compile(r"-(?P<index>\d{5})-of-(?P<count>\d{5})$")
+_GGUF_QUANT_RE = re.compile(r"(?P<q>IQ\d+[A-Z0-9_]*|Q\d+[A-Z0-9_]*|F16|F32|BF16)", re.IGNORECASE)
 
 
 def classify_repository(files: Iterable[ModelFile]) -> RepositoryClassification:
@@ -89,52 +87,44 @@ def _pick_primary(detected: set[RepositoryType]) -> RepositoryType:
 
 
 def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
-    """Group GGUF files by their detected quantization label.
-
-    Multi-part files (``…-00001-of-00003``) are collapsed into a single variant.
-    """
-    buckets: dict[str, list[ModelFile]] = defaultdict(list)
+    """Keep each whole file and each shard set as an independent representation."""
+    buckets: dict[tuple[str, str, str, int], list[ModelFile]] = defaultdict(list)
     for f in files:
-        name = PurePosixPath(f.path).name
+        path = PurePosixPath(f.path)
+        name = path.name
         if not name.lower().endswith(".gguf"):
             continue
         quant = _detect_quantization(name)
-        buckets[quant].append(f)
+        stem = name[: -len(".gguf")]
+        split = _MULTIPART_SUFFIX_RE.search(stem)
+        count = int(split.group("count")) if split else -1
+        base = _MULTIPART_SUFFIX_RE.sub("", stem)
+        buckets[(quant, str(path.parent), base, count)].append(f)
 
     variants: list[GgufVariant] = []
-    for quant, raw_group in sorted(buckets.items()):
-        group = _without_duplicated_parts(raw_group)
-        total = sum(f.size_bytes or 0 for f in group)
+    for (quant, _parent, _base, count), group in sorted(buckets.items()):
+        parts = [_MULTIPART_SUFFIX_RE.search(PurePosixPath(f.path).stem) for f in group]
+        is_split = any(part is not None for part in parts)
+        indexes = [int(part.group("index")) for part in parts if part is not None]
+        complete = not is_split or (
+            count > 0 and len(indexes) == count and sorted(indexes) == list(range(1, count + 1))
+        )
+        sizes = [f.size_bytes for f in group]
+        total = (
+            sum(size for size in sizes if size is not None)
+            if complete and all(size is not None and size > 0 for size in sizes)
+            else None
+        )
         variants.append(
             GgufVariant(
                 quantization=quant,
                 files=sorted(group, key=lambda f: f.path),
                 total_bytes=total,
+                is_complete=complete,
+                is_split=is_split,
             )
         )
     return variants
-
-
-def _without_duplicated_parts(group: list[ModelFile]) -> list[ModelFile]:
-    """Count a set of weights once when a repository publishes it both whole and in parts.
-
-    Several repositories (Qwen's among them) ship each quantization as ``name.gguf`` and also
-    as ``name-00001-of-0000N.gguf`` ... ``name-0000N-of-0000N.gguf``. They are the same
-    weights twice, so summing every file doubled the estimate and made the download twice the
-    size. Parts that are all the repository has for a name are kept, and so are unrelated
-    files that merely share a quantization label.
-    """
-
-    def stem(file: ModelFile) -> tuple[PurePosixPath, str]:
-        path = PurePosixPath(file.path)
-        return path.parent, _MULTIPART_SUFFIX_RE.sub("", path.name[: -len(".gguf")])
-
-    def is_part(file: ModelFile) -> bool:
-        name = PurePosixPath(file.path).name[: -len(".gguf")]
-        return _MULTIPART_SUFFIX_RE.search(name) is not None
-
-    whole_stems = {stem(file) for file in group if not is_part(file)}
-    return [file for file in group if not (is_part(file) and stem(file) in whole_stems)]
 
 
 def _detect_quantization(filename: str) -> str:

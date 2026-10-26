@@ -62,7 +62,12 @@ def test_a_quantization_published_whole_and_as_parts_is_counted_once() -> None:
         ModelFile(path="m-q2_k.gguf", size_bytes=2_810),  # one file only
     ]
 
-    variants = {v.quantization: v for v in classify_repository(files).gguf_variants}
+    from jaull.domain.gguf_variants import preferred_gguf_variants
+
+    variants = {
+        v.quantization: v
+        for v in preferred_gguf_variants(classify_repository(files).gguf_variants)
+    }
 
     assert variants["Q8_0"].total_bytes == 7_540
     assert [f.path for f in variants["Q8_0"].files] == ["m-q8_0.gguf"]

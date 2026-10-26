@@ -47,6 +47,10 @@ class QuantizationNotFoundError(EstimationError):
         )
 
 
+class GgufVariantSelectionError(EstimationError):
+    """A quantization does not identify one complete artifact representation."""
+
+
 class GgufHeaderIncompleteError(JaullError):
     """More bytes are needed to finish parsing the GGUF metadata table."""
 

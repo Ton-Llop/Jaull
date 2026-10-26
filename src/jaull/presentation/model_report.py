@@ -56,7 +56,10 @@ def render_model(analysis: ModelAnalysis, console: Console) -> None:
 
     header.add_row("Repository size", format_bytes(analysis.total_size_bytes))
     if classification.gguf_variants:
-        largest = max(v.total_bytes for v in classification.gguf_variants)
+        largest = max(
+            (v.total_bytes for v in classification.gguf_variants if v.total_bytes is not None),
+            default=None,
+        )
         header.add_row("Largest variant", format_bytes(largest))
     header.add_row("Files", str(len(analysis.files)))
 

@@ -113,7 +113,8 @@ class InspectScreen(Screen[None]):
         header_rows.append(("Repository size", size_label))
         if analysis.classification.gguf_variants:
             largest = max(
-                v.total_bytes for v in analysis.classification.gguf_variants
+                (v.total_bytes for v in analysis.classification.gguf_variants
+                 if v.total_bytes is not None), default=None,
             )
             header_rows.append(("Largest variant", _fmt(largest)))
         header_rows.append(("Files", str(len(analysis.files))))

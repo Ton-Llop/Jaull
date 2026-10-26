@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from jaull.analyzers.base import AnalyzerResult
 from jaull.analyzers.generic import collect_relevant_files
+from jaull.domain.gguf_variants import unique_gguf_representation
 from jaull.domain.model import (
     ModelFile,
     ModelRepositoryInfo,
     RepositoryClassification,
 )
+from jaull.exceptions import GgufVariantSelectionError
 from jaull.huggingface.client import HfClientProtocol
 
 
@@ -31,11 +33,22 @@ class GgufAnalyzer:
         del repo, client
         warnings: list[str] = []
 
+        for quant in sorted({variant.quantization for variant in classification.gguf_variants}):
+            matching = [v for v in classification.gguf_variants if v.quantization == quant]
+            try:
+                variant = unique_gguf_representation(matching)
+                if variant.total_bytes is None:
+                    warnings.append(
+                        f"{quant}: artifact size is unknown; memory fit is unconfirmed."
+                    )
+            except GgufVariantSelectionError as exc:
+                warnings.append(f"{quant}: {exc}")
+
         if len(classification.gguf_variants) > 1:
             quants = ", ".join(v.quantization for v in classification.gguf_variants)
             warnings.append(
                 f"Repository contains {len(classification.gguf_variants)} GGUF "
-                f"quantization variants ({quants}); only one is loaded at a time."
+                f"artifact representations ({quants}); only one is loaded at a time."
             )
 
         return AnalyzerResult(

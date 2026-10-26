@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 # ModelConfig. Invalidate entries created before that normalization existed.
 # Version 4: a GGUF quantization published both whole and as split parts is counted once;
 # earlier entries carry variant sizes (and file lists) that doubled such weights.
-ANALYSIS_CACHE_SCHEMA_VERSION = 4
+# Version 5 preserves separate representations, unknown sizes and shard completeness.
+ANALYSIS_CACHE_SCHEMA_VERSION = 5
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
 

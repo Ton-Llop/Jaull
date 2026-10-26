@@ -29,6 +29,7 @@ from jaull.domain.execution_plans import (
     PlanCompatibilityStatus,
 )
 from jaull.domain.experiments import ExperimentRecord
+from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration, TargetDevice, WeightPrecision
 from jaull.domain.licenses import LicenseCategory, classify_license
@@ -392,7 +393,7 @@ def _gguf_plans(
     if analysis is None:
         return []
     variants = _ordered_gguf_variants(
-        analysis.classification.gguf_variants,
+        preferred_gguf_variants(analysis.classification.gguf_variants),
         requirements.priority,
     )
     from jaull.estimator.policies import MAX_GGUF_PLAN_VARIANTS
@@ -576,7 +577,7 @@ def _ordered_gguf_variants(
         variants,
         key=lambda variant: (
             rank.get(variant.quantization.upper(), len(rank)),
-            variant.total_bytes,
+            variant.total_bytes if variant.total_bytes is not None else float("inf"),
             variant.quantization,
         ),
     )

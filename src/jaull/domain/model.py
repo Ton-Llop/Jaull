@@ -71,7 +71,10 @@ class GgufVariant(BaseModel):
 
     quantization: str
     files: list[ModelFile]
-    total_bytes: int
+    total_bytes: int | None
+    # Historical variants predate explicit shard validation.
+    is_complete: bool = True
+    is_split: bool = False
 
     @property
     def sha256(self) -> str | None:

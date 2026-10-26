@@ -11,6 +11,7 @@ from jaull.domain.execution_plans import (
     IdentityMatchStatus,
     ModelIdentity,
 )
+from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.model import GgufVariant, ModelAnalysis
 from jaull.domain.runtime import (
@@ -141,7 +142,7 @@ def execution_plan_for_recommendation(
 def _gguf_variant(analysis: ModelAnalysis | None, quantization: str) -> GgufVariant | None:
     if analysis is None:
         return None
-    for variant in analysis.classification.gguf_variants:
+    for variant in preferred_gguf_variants(analysis.classification.gguf_variants):
         if variant.quantization == quantization:
             return variant
     return None

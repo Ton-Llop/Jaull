@@ -57,10 +57,17 @@ def estimate_weights_from_gguf(variant: GgufVariant) -> WeightEstimate:
         component=MemoryComponent(
             name="Weights",
             bytes=variant.total_bytes,
-            source=EstimateSource.EXACT,
-            confidence=EstimationConfidence.HIGH,
+            source=(
+                EstimateSource.EXACT if variant.total_bytes is not None else EstimateSource.UNKNOWN
+            ),
+            confidence=(
+                EstimationConfidence.HIGH
+                if variant.total_bytes is not None else EstimationConfidence.UNKNOWN
+            ),
             explanation=(
                 f"Exact remote file size of the {variant.quantization} variant."
+                if variant.total_bytes is not None
+                else f"File size is not known for the {variant.quantization} variant."
             ),
         ),
         num_parameters=None,

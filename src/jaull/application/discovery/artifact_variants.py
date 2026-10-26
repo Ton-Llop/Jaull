@@ -20,6 +20,7 @@ from jaull.domain.execution_plans import (
     logical_model_repo_key,
     model_identity_key,
 )
+from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.model import ModelAnalysis
 from jaull.domain.runtime import RuntimeName
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
@@ -178,7 +179,7 @@ def _variants_from_candidate(
 ) -> list[ArtifactVariant]:
     variants: list[ArtifactVariant] = []
     if analysis.classification.primary_type is RepositoryType.GGUF:
-        for gguf in analysis.classification.gguf_variants:
+        for gguf in preferred_gguf_variants(analysis.classification.gguf_variants):
             variants.append(
                 ArtifactVariant(
                     model_identity=identity,

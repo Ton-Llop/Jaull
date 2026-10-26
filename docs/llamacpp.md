@@ -237,6 +237,14 @@ Generated text
 
 ## Notes
 
+- A whole GGUF and its split files are alternative representations; their sizes are
+  never added together. Jaull prefers a unique whole file for the requested quantization,
+  including when split files are in another directory.
+- Distinct whole files sharing a quantization are ambiguous: Jaull reports the conflict
+  rather than selecting one by filename order. Incomplete shard sets are refused, and
+  missing file sizes stay unknown. Multi-file execution remains unsupported.
+- Repository-analysis caches from before these representation checks are automatically
+  ignored and rebuilt on the next inspection; saved experiments are not rewritten.
 - `llama-cli` is not installed by cloning the repository; it must be compiled.
 - CUDA builds require both a working NVIDIA GPU setup and the CUDA Toolkit (`nvcc`).
 - Jaull currently executes GGUF artifacts through `llama-cli`.

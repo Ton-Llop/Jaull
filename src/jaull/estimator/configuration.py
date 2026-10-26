@@ -19,6 +19,7 @@ from jaull.domain.estimation import (
     EstimationConfidence,
     MemoryEstimate,
 )
+from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.inference import (
     InferenceConfiguration,
@@ -85,14 +86,14 @@ def _select_gguf(
 ) -> ConfigurationChoice:
     available = {
         variant.quantization.upper(): variant.quantization
-        for variant in analysis.classification.gguf_variants
+        for variant in preferred_gguf_variants(analysis.classification.gguf_variants)
     }
     if not available:
         return ConfigurationChoice(
             configuration=None,
             estimate=None,
-            reason="Repository is GGUF but publishes no recognisable quantization.",
-            warnings=["No GGUF variants could be identified in this repository."],
+            reason="No unambiguous complete GGUF representation could be selected.",
+            warnings=["GGUF representations are missing, incomplete or ambiguous."],
         )
 
     ladder = policies.QUANTIZATION_LADDERS[requirements.priority]
