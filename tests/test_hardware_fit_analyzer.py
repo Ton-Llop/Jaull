@@ -11,6 +11,7 @@ from jaull.domain.estimation import (
 )
 from jaull.domain.hardware import (
     AcceleratorProfile,
+    AcceleratorType,
     CpuInfo,
     GpuInfo,
     HardwareProfile,
@@ -745,3 +746,27 @@ def test_unified_memory_is_not_treated_as_ram_plus_vram() -> None:
     assert result.memory_topology is HardwareMemoryTopology.UNIFIED_MEMORY
     assert result.mode is HardwareFitMode.CPU_RAM
     assert result.available_vram_bytes is None
+
+
+def test_a_shared_memory_igpu_next_to_a_dedicated_gpu_does_not_make_the_machine_unified() -> None:
+    """Regression found on a B60 + Ryzen iGPU box: the iGPU forced the RAM-only path."""
+    hardware = _hardware(ram=12 * GIB).model_copy(update={"accelerators": [
+        AcceleratorProfile(
+            name="Dedicated card", type=AcceleratorType.DEDICATED,
+            dedicated_memory_bytes=24 * GIB, available_memory_bytes=23 * GIB,
+        ),
+        AcceleratorProfile(
+            name="Integrated GPU", type=AcceleratorType.INTEGRATED, shared_memory=True,
+        ),
+    ]})
+
+    result = analyze_components(
+        weights_bytes=13 * GIB,  # does not fit the 12 GiB of RAM, fits the 23 GiB card
+        kv_cache_bytes=1 * GIB,
+        overhead_bytes=1 * GIB,
+        hardware=hardware,
+        total_transformer_blocks=40,
+    )
+
+    assert result.memory_topology is HardwareMemoryTopology.DISCRETE_MEMORY
+    assert result.mode is HardwareFitMode.GPU_RESIDENT

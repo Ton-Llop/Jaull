@@ -105,3 +105,21 @@ def test_shared_accelerator_memory_is_not_a_second_vram_pool() -> None:
 
     assert planning_accelerator_memory_bytes(hardware) is None
     assert available_accelerator_memory_bytes(hardware) is None
+
+
+def test_a_shared_memory_igpu_beside_a_dedicated_card_does_not_unify_the_shortlist() -> None:
+    """Regression found on a B60 + Ryzen iGPU box: the shortlist judged every
+    candidate against system RAM, so models only the card could hold were dropped."""
+    igpu = AcceleratorProfile(
+        name="AMD integrated graphics",
+        vendor=AcceleratorVendor.AMD,
+        type=AcceleratorType.INTEGRATED,
+        shared_memory=True,
+    )
+    card = _amd_hardware(available_vram=6 * GIB)
+    both = card.model_copy(update={"accelerators": [*card.accelerators, igpu]})
+    only_igpu = card.model_copy(update={"accelerators": [igpu]})
+
+    assert candidate_filter._has_unified_memory(both) is False
+    assert candidate_filter._planning_vram_bytes(both) == 8 * GIB
+    assert candidate_filter._has_unified_memory(only_igpu) is True

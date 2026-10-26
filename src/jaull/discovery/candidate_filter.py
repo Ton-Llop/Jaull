@@ -720,6 +720,14 @@ def _planning_vram_bytes(hardware: HardwareProfile) -> int | None:
 
 
 def _has_unified_memory(hardware: HardwareProfile) -> bool:
+    """One shared pool only when no dedicated device with known memory exists.
+
+    A shared-memory iGPU beside a dedicated card does not make the machine a single
+    pool; judging every candidate against system RAM would drop the models only the
+    card can hold. Same rule as the Hardware Fit analyzer.
+    """
+    if _planning_vram_bytes(hardware) is not None:
+        return False
     return any(accelerator.shared_memory for accelerator in hardware.accelerators)
 
 

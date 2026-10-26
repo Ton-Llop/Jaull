@@ -665,6 +665,14 @@ def _analyze_unified_memory(
 
 
 def _memory_topology(hardware: HardwareProfile) -> HardwareMemoryTopology:
+    """One shared pool only when no dedicated device with a known budget exists.
+
+    A shared-memory GPU next to a dedicated card (a Ryzen iGPU beside an Arc or
+    NVIDIA card, say) does not turn the machine into a single pool: the weights go
+    to the dedicated card, whose budget is what the fit is checked against.
+    """
+    if available_accelerator_memory_bytes(hardware) is not None:
+        return HardwareMemoryTopology.DISCRETE_MEMORY
     if any(accelerator.shared_memory for accelerator in hardware.accelerators):
         return HardwareMemoryTopology.UNIFIED_MEMORY
     return HardwareMemoryTopology.DISCRETE_MEMORY
