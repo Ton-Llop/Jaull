@@ -91,9 +91,18 @@ QUANTIZATION_LADDERS: dict[RecommendationPriority, tuple[str, ...]] = {
 }
 
 # Below this the quality loss is severe enough that it is only worth offering
-# when nothing else fits at all.
+# when nothing else fits at all. The line is Q3_K_S in bits per weight (about 3.4): every
+# llama.cpp quantization that stores no more than that is listed, the `IQ1`/`IQ2` family
+# included. Speed and Memory ladders still use the small ones on purpose.
 AGGRESSIVE_QUANTIZATIONS: frozenset[str] = frozenset(
-    {"Q2_K", "Q3_K_S", "IQ1_S", "IQ2_XS"}
+    {
+        "Q1_0",
+        "IQ1_S", "IQ1_M",
+        "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M",
+        "Q2_K", "Q2_K_L", "Q2_K_XL",
+        "IQ3_XXS", "IQ3_XS",
+        "Q3_K_S",
+    }
 )
 
 # dtype ladder for Transformers repositories. int8/int4 are theoretical: no

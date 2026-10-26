@@ -1576,9 +1576,16 @@ def _evaluated_gguf(
     tags: list[str] | None = None,
     metadata_confidence: EstimationConfidence = EstimationConfidence.HIGH,
     total_bytes: int = 5 * GIB,
+    quantizations: tuple[str, ...] | None = None,
+    base_bytes: int | None = None,
 ) -> EvaluatedCandidate:
     req = _requirements(priority)
-    analysis = gguf_analysis(repo_id=repo_id)
+    published: dict[str, object] = {}
+    if quantizations is not None:
+        published["quantizations"] = quantizations
+    if base_bytes is not None:
+        published["base_bytes"] = base_bytes
+    analysis = gguf_analysis(repo_id=repo_id, **published)  # type: ignore[arg-type]
     estimator = size_driven_estimator(vram_budget=24 * GIB)
     choice = _select(analysis, req, estimator)
     estimate = memory_estimate(
@@ -2142,3 +2149,42 @@ def test_plans_that_tie_on_every_axis_go_to_the_most_downloaded_repository(
     )
 
     assert ranked[0].evaluated.repo_id == popular.repo_id
+
+
+@pytest.mark.parametrize(
+    "priority", [RecommendationPriority.QUALITY, RecommendationPriority.BALANCED],
+)
+def test_an_aggressive_quantization_never_beats_one_that_fits(
+    priority: RecommendationPriority,
+) -> None:
+    """Regression found on a B60 box: a 30B model at 1 bit (`IQ1_M`, comfortable) took a slot ahead
+    of a 4-bit model (`Q4_K_M`, merely compatible) because headroom was compared before
+    quantization. The policy says an aggressive quantization is only worth offering when nothing
+    else fits. Speed and Memory keep their ladders, which include the small quantizations."""
+    estimator = size_driven_estimator(vram_budget=14 * GIB)
+
+    def quantization_chosen(item: EvaluatedCandidate) -> str | None:
+        ranked = rank_execution_plans(
+            [item], _requirements(priority), estimate_fn=estimator, context=_ready_llama_context(),
+        )
+        return ranked[0].plan.artifact.quantization
+
+    both = _evaluated_gguf(
+        "org/Big-30B-Instruct-GGUF", priority=priority,
+        quantizations=("IQ1_M", "Q4_K_M"), base_bytes=10 * GIB,
+    )
+    assert quantization_chosen(both) == "Q4_K_M"
+
+    aggressive_only = _evaluated_gguf(
+        "org/Big-30B-Instruct-GGUF", priority=priority,
+        quantizations=("IQ1_M",), base_bytes=10 * GIB,
+    )
+    fits = _evaluated_gguf(
+        "org/Small-7B-Instruct-GGUF", priority=priority,
+        quantizations=("Q4_K_M",), base_bytes=11 * GIB,
+    )
+    ranked = rank_execution_plans(
+        [aggressive_only, fits], _requirements(priority),
+        estimate_fn=estimator, context=_ready_llama_context(),
+    )
+    assert ranked[0].evaluated.repo_id == fits.repo_id

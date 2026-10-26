@@ -99,7 +99,10 @@ def _select_gguf(
     ladder = policies.QUANTIZATION_LADDERS[requirements.priority]
     # Anything the repo publishes that is not on the ladder is still usable as a
     # last resort, ordered so the least aggressive comes first.
-    extras = sorted(set(available) - set(ladder))
+    extras = sorted(
+        set(available) - set(ladder),
+        key=lambda rung: (rung in policies.AGGRESSIVE_QUANTIZATIONS, rung),
+    )
     ordered = [rung for rung in ladder if rung in available] + extras
 
     considered: list[str] = []

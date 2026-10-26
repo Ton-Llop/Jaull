@@ -40,14 +40,15 @@ Generated: <redacted>
 2. plan constraints: none
 3. requirement confirmation: commercial use confirmed
 4. suitability: strong
-5. runnability: strong
-6. capability: adequate
-7. execution fitness: strong
-8. executability: strong
-9. memory headroom: strong
-10. plan evidence confidence: medium
-11. quantization preference: n/a
-12. popularity: 10,000 downloads
+5. aggressive quantization: n/a
+6. runnability: strong
+7. capability: adequate
+8. execution fitness: strong
+9. executability: strong
+10. memory headroom: strong
+11. plan evidence confidence: medium
+12. quantization preference: n/a
+13. popularity: 10,000 downloads
 
 **Balanced selection** (before measured evidence):
 - A plan without known strong/adequate capability goes behind every capable plan that is at least as viable as it (confirmed memory fit, rejection state, runnability); capable plans keep their order. Comparable measured evidence is applied afterwards.

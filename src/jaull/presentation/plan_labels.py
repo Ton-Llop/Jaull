@@ -122,18 +122,17 @@ def _round_gib(value: int) -> str:
 
 # Vendor boilerplate is the same on every machine, so it carries no
 # information in a one-line summary.
+_TRADEMARK_MARKS = re.compile(r"\((?:R|TM)\)", re.IGNORECASE)
 _CPU_NOISE = re.compile(
-    r"\b(\d+-Core Processor|Processor|CPU|\(R\)|\(TM\)|@.*)\b|\s{2,}",
+    r"\b(\d+-Core Processor|Processor|CPU|@.*)\b|\s{2,}",
     re.IGNORECASE,
 )
 _GPU_NOISE = re.compile(r"\b(NVIDIA|AMD|Intel|GeForce|Radeon)\s*", re.IGNORECASE)
 
 
 def _short_cpu(model: str) -> str:
-    return _CPU_NOISE.sub(" ", model).strip() or model
-
-
-_TRADEMARK_MARKS = re.compile(r"\((?:R|TM)\)", re.IGNORECASE)
+    without_marks = _TRADEMARK_MARKS.sub("", model)
+    return _CPU_NOISE.sub(" ", without_marks).strip() or model
 
 
 def _short_gpu(name: str) -> str:

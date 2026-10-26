@@ -320,3 +320,15 @@ def test_balanced_prefers_a_comfortable_rung_over_a_tight_one(
     assert choice.configuration is not None
     assert choice.configuration.quantization == expected
     assert any("tight" in w.lower() for w in choice.warnings) is warns
+
+
+def test_quantizations_off_the_ladder_are_tried_least_aggressive_first() -> None:
+    """The ladder only names a few rungs; the rest used to be tried alphabetically, which put
+    `IQ1_M` ahead of `Q4_0` and chose a 1-bit model whenever everything fitted."""
+    choice = select_configuration(
+        gguf_analysis(quantizations=("IQ1_M", "Q4_0")),
+        _req(RecommendationPriority.BALANCED),  # type: ignore[arg-type]
+        size_driven_estimator(vram_budget=24 * GIB),
+    )
+    assert choice.configuration is not None
+    assert choice.configuration.quantization == "Q4_0"

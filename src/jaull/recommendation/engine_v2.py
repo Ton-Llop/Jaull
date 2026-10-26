@@ -1184,6 +1184,7 @@ def ranking_tie_key(
     else:
         priority_axes = (
             _LEVEL_RANK[assessment.suitability],
+            _aggressive_quantization_rank(item.plan),
             _runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
             _LEVEL_RANK[assessment.execution_fitness],
@@ -1203,6 +1204,21 @@ def ranking_tie_key(
         # Only a tie reaches here: with every axis equal, the better-known repository first.
         -item.evaluated.candidate.downloads,
     )
+
+
+def _aggressive_quantization_rank(plan: ExecutionPlan) -> int:
+    """1 for a quantization the policy only offers when nothing else fits, else 0.
+
+    Used by Balanced, where headroom would otherwise prefer a 1-bit 30B model that fits with
+    room to spare over a 4-bit one that fits with less. Speed and Memory keep these on
+    their ladders.
+    """
+    from jaull.estimator import policies
+
+    quantization = plan.artifact.quantization
+    if plan.artifact.format is not ArtifactVariantFormat.GGUF or not quantization:
+        return 0
+    return 1 if quantization.upper() in policies.AGGRESSIVE_QUANTIZATIONS else 0
 
 
 def _ladder_rank(plan: ExecutionPlan, priority: RecommendationPriority) -> int:
@@ -1396,6 +1412,12 @@ def ranking_criteria(
     else:
         axes = (
             ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            (
+                "aggressive_quantization",
+                (item.plan.artifact.quantization or "n/a")
+                + (" (aggressive)" if _aggressive_quantization_rank(item.plan) else ""),
+                _aggressive_quantization_rank(item.plan),
+            ),
             (
                 "runnability",
                 assessment.execution_fitness.value,

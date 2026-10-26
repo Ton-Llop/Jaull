@@ -2297,6 +2297,38 @@ segon al quart lloc de General chat.
 **Fonts:** [diversitat](../../src/jaull/recommendation/diversity.py),
 [rànquing v2](../../src/jaull/recommendation/engine_v2.py), D101, D103.
 
+### D105. Una quantització agressiva no passa per davant d'una que càpiga
+
+**Data i necessitat:** 2026-10-26. A la cerca real de la B60, un 30B a 1 bit (`IQ1_M`) i un
+32B a 2 bits (`IQ2_M`) ocupaven places de Balanced. A la clau de Balanced l'eix de marge de
+memòria (`_comfortable_memory_rank`) va abans que l'escala de quantització, de manera que un
+`IQ1_M` de 12 GiB «còmode» guanyava a un `Q4_K_M` de 19 GiB només «compatible». La política
+escrita (`AGGRESSIVE_QUANTIZATIONS`: «només val la pena oferir-ho quan res més càpiga») no
+es complia al rànquing, i la llista era incompleta.
+
+**Decisió:** (1) la llista d'agressives arriba fins a `Q3_K_S` en bits per pes (uns 3,4),
+criteri que ja seguia, i inclou la família `IQ1`/`IQ2`, `IQ3_XXS`, `IQ3_XS`, `Q1_0` i les
+variants `Q2_K_L`/`Q2_K_XL`; (2) a Balanced hi ha un eix nou, `aggressive_quantization`,
+després de la idoneïtat i abans de la runnability, que posa una quantització agressiva
+darrere d'una que càpiga (un pla amb offload, que cap, passa abans que un d'1 bit resident);
+(3) el selector prova les quantitzacions fora de l'escala de menys a més agressiva en lloc
+d'alfabèticament, que posava `IQ1_M` primera. **Quality** ja s'hi protegia amb
+`_quantization_quality_rank`; **Speed i Memory no canvien** perquè les seves escales
+inclouen a propòsit `Q3_K_S` i `Q2_K` (Memory busca el més petit). `ranking_criteria` publica
+el criteri nou a Balanced, que arriba als snapshots de l'informe.
+
+**Límits:** la llista és per etiqueta de quantització, no per mesura; una etiqueta nova no
+llistada no es detecta. No es toca la mida del model: un 30B a `Q4_K_M` ajustat (`tight`)
+encara pot entrar si és l'únic que càpiga.
+
+**Estat:** `IMPLEMENTED` amb tests (rànquing de Quality i Balanced; ordre del selector) que
+fallaven abans. Cerca real: General chat passa del 32B `IQ2_M` al `Q3_K_M`, i Coding del 30B
+`IQ1_M` al `Q4_K_M`.
+
+**Fonts:** [polítiques](../../src/jaull/estimator/policies.py),
+[selector](../../src/jaull/estimator/configuration.py),
+[rànquing v2](../../src/jaull/recommendation/engine_v2.py), D101, D104.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2405,7 +2437,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D104 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D105 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
