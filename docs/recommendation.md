@@ -206,11 +206,13 @@ The quantization ladder still selects a configuration within each repository;
 it is not a global preference for GGUF/Q4 over other models or runtimes. Memory
 efficiency is a selection prior, not a predicted or measured tokens/s figure.
 
-**Balanced selection.** Before measured evidence, `weak_plans_last` prefers known
-strong/adequate capability within contiguous groups sharing confirmed memory fit,
-rejection state and runnability. Weak/unknown capability fills the other positions.
-A capable plan with unknown fit or offload cannot jump over a normally runnable
-plan across these boundaries. This metadata preference runs before measurements,
+**Balanced selection.** Before measured evidence, `weak_plans_last` moves a plan
+without known strong/adequate capability behind every capable plan that is at least
+as viable as it (confirmed memory fit, rejection state, runnability). Only that plan
+moves, and only backwards: capable plans keep their order, so the licence-first and
+runnable-before-capable orders still decide between them. A weak plan that runs can
+therefore end up behind a capable plan that needs offloading, which is what keeps it
+from filling a slot. This metadata preference runs before measurements,
 so applicable comparable evidence can override it. The active order, Recompare and
 report export use the same sequence.
 

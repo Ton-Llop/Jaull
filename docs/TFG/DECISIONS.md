@@ -2234,6 +2234,40 @@ MoE a la B60.
 **Fonts:** [KV cache](../../src/jaull/estimator/kv_cache.py),
 [tests](../../tests/test_kv_cache_estimator.py), D023, D101.
 
+### D103. Desempat per descàrregues en lloc del nom del repositori
+
+**Data i necessitat:** 2026-10-26. A la B60, Llama 2 7B (62 k descàrregues) quedava per
+sobre de Llama 3.1 8B (511 k) i no hi havia cap eix que els separés: empataven en
+idoneïtat, runnability, capacitat, llicència (`unknown` als dos), confiança i escala de
+quantització. Els decidia el nom del repositori en ordre alfabètic, i `TheBloke` va abans
+que `bartowski` perquè les majúscules s'ordenen primer. No és cap senyal de qualitat.
+
+**Decisió:** quan tots els eixos empaten, passa davant el repositori amb més descàrregues;
+el nom només desempata dues quantitats iguals. La clau queda després de l'escala de
+quantització (`_ladder_rank`), de manera que la popularitat d'un repositori mai canvia
+quina quantització es prefereix. Val per a les quatre prioritats. `ranking_criteria`
+publica un criteri nou, `popularity`, amb el mateix rang que la clau, i els snapshots de
+l'informe s'han regenerat (una línia cadascun). No s'ha pujat `REPORT_SCHEMA_VERSION`:
+només s'afegeix un element a una llista de criteris. El baseline de política
+(`recommendation-policy-baseline.json`) i l'ordre daurat de Balanced canvien només en els
+empats entre models petits (Tiny, Mini, Small passen a l'ordre de descàrregues); Medium
+continua segon per capacitat. Speed i Memory no canvien. La nota publicada de la política
+de Balanced passa a `balanced-capability-within-viability-v2` (D101, punt 9).
+
+**Límits:** les descàrregues afavoreixen els models antics i majoritaris; aquí només
+resolen empats, mai passen per davant d'un eix. No mesuren qualitat. **No canvia la
+llista final de l'exemple,** perquè el diversificador (`diversify_ranked_plans`) tria,
+entre plans amb la mateixa signatura d'avaluació, el de família no vista abans que el
+millor classificat; així, un MoE de codi de 140 k descàrregues del lloc 29 del rànquing
+base arriba al segon lloc d'un xat general. Això és un efecte del diversificador, no del
+desempat, i queda obert.
+
+**Estat:** `IMPLEMENTED` amb un test (quatre prioritats) que fallava abans. Cerca real:
+Llama 3.1 passa del lloc 52 al 60 i Llama 2 del 51 al 61, o sigui que 3.1 ja precedeix 2.
+
+**Fonts:** [rànquing v2](../../src/jaull/recommendation/engine_v2.py),
+[diversitat](../../src/jaull/recommendation/diversity.py), D101, D102.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2342,7 +2376,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D102 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D103 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

@@ -226,6 +226,7 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "execution_fitness",
         "plan_confidence",
         "quantization_preference",
+        "popularity",
     ]
     assert payload["recommendations"][0]["ranking"]["quality_policy"]["measurement"] is None
 

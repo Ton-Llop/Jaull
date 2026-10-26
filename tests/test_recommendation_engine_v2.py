@@ -876,7 +876,7 @@ def test_speed_does_not_prefer_a_larger_q4_to_a_smaller_transformers_plan(status
     assert axes == [
         "viability", "plan_constraints", "requirement_confirmation", "suitability",
         "runnability", "executability", "memory_footprint", "plan_confidence",
-        "quantization_preference",
+        "quantization_preference", "popularity",
     ]
 
 
@@ -2118,3 +2118,27 @@ def test_a_weak_plan_goes_behind_every_capable_plan_that_is_at_least_as_viable()
         for item in weak_plans_last(ranked, RecommendationPriority.BALANCED)  # type: ignore[arg-type]
     ]
     assert names == ["offload", "big", "tiny"]
+
+
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+def test_plans_that_tie_on_every_axis_go_to_the_most_downloaded_repository(
+    priority: RecommendationPriority,
+) -> None:
+    """Regression found on a B60 box: Llama 2 7B (62k downloads) outranked Llama 3.1 8B (511k)
+    because, with every axis tied, the alphabetical repository name decided and uppercase
+    organisations sort first. Downloads decide a tie; the name only breaks an equal count."""
+
+    def with_downloads(repo_id: str, downloads: int) -> EvaluatedCandidate:
+        item = _evaluated_gguf(repo_id, priority=priority)
+        return item.model_copy(
+            update={"candidate": item.candidate.model_copy(update={"downloads": downloads})}
+        )
+
+    quiet = with_downloads("Alpha/Chat-7B-Instruct-GGUF", 62_000)
+    popular = with_downloads("zeta/Chat-7B-Instruct-GGUF", 511_000)
+
+    ranked = rank_execution_plans(
+        [quiet, popular], _requirements(priority), context=_ready_llama_context(),
+    )
+
+    assert ranked[0].evaluated.repo_id == popular.repo_id

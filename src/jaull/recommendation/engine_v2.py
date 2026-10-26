@@ -1181,6 +1181,8 @@ def _ranking_key(
         *priority_axes,
         _CONFIDENCE_RANK[assessment.confidence],
         _ladder_rank(item.plan, priority),
+        # Only a tie reaches here: with every axis equal, the better-known repository first.
+        -item.evaluated.candidate.downloads,
         item.evaluated.repo_id,
         item.plan.artifact.quantization or item.plan.artifact.precision or "",
         item.plan.runtime.runtime.value,
@@ -1315,6 +1317,11 @@ def ranking_criteria(
             "quantization_preference",
             item.plan.artifact.quantization or "n/a",
             _ladder_rank(item.plan, priority),
+        ),
+        (
+            "popularity",
+            f"{item.evaluated.candidate.downloads:,} downloads",
+            -item.evaluated.candidate.downloads,
         ),
     )
     axes: tuple[tuple[str, str, int | float], ...]

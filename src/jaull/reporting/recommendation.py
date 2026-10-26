@@ -563,12 +563,12 @@ def _ranking_to_dict(
     }
     if priority is RecommendationPriority.BALANCED:
         payload["selection_policy"] = {
-            "version": "balanced-capability-within-viability-v1",
+            "version": "balanced-capability-within-viability-v2",
             "stage": "before_measured_policy",
             "note": (
-                "Known strong/adequate capability is preferred within contiguous groups "
-                "of equal confirmed memory fit, rejection state and runnability. "
-                "Weak/unknown capability fills remaining positions. "
+                "A plan without known strong/adequate capability goes behind every capable "
+                "plan that is at least as viable as it (confirmed memory fit, rejection "
+                "state, runnability); capable plans keep their order. "
                 "Comparable measured evidence is applied afterwards."
             ),
             "base_pool_position": quality_position.lexicographic if quality_position else None,

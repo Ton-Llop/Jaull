@@ -47,9 +47,10 @@ Generated: <redacted>
 9. memory headroom: strong
 10. plan evidence confidence: medium
 11. quantization preference: n/a
+12. popularity: 10,000 downloads
 
 **Balanced selection** (before measured evidence):
-- Known strong/adequate capability is preferred within contiguous groups of equal confirmed memory fit, rejection state and runnability. Weak/unknown capability fills remaining positions. Comparable measured evidence is applied afterwards.
+- A plan without known strong/adequate capability goes behind every capable plan that is at least as viable as it (confirmed memory fit, rejection state, runnability); capable plans keep their order. Comparable measured evidence is applied afterwards.
 - Selection order: pool #1 -> #1 (before diversity).
 
 **Measured-balanced policy** (after base criteria, before diversity):
