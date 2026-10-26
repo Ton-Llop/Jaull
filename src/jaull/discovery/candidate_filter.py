@@ -76,6 +76,14 @@ _COARSE_DEFAULT_QUANTIZATION = estimator_policies.DEFAULT_GGUF_QUANTIZATION.lowe
 _COARSE_DEFAULT_BYTES_PER_PARAM = _COARSE_BYTES_PER_PARAM["q4"]
 _MIN_GPU_OFFLOAD_WEIGHT_FRACTION = 0.10
 _MAX_TOO_LARGE_FALLBACKS = 2
+# Shortlist scores are sums of the same terms, so candidates that are equally good have
+# equal scores; the epsilon only absorbs floating-point noise. Only inside such a tie may
+# the family-diversity preference decide, never to overrule a better score.
+_SCORE_TIE_EPSILON = 1e-9
+# A candidate whose size its name does not reveal gets one pick per shortlist, so a pile
+# of unsized repositories cannot take a quarter of the inspection budget. Further places
+# are earned by score in the fill-in pass.
+_UNKNOWN_SIZE_ROUND_PICKS = 1
 
 _QUANT_RE = re.compile(r"(?<![a-z0-9])q([2-8])(?:_k(?:_[ms])?|_0)?(?![a-z0-9])")
 
@@ -422,16 +430,21 @@ def _hardware_aware_shortlist(
     for bucket in buckets:
         bucket.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
 
+    unknown_size = [bool(bucket) and bucket[0].hint.mode is None for bucket in buckets]
+    round_picks = [0] * len(buckets)
     while len(selected) < limit:
         before = len(selected)
-        for bucket in buckets:
+        for position, bucket in enumerate(buckets):
             if len(selected) >= limit:
                 break
+            if unknown_size[position] and round_picks[position] >= _UNKNOWN_SIZE_ROUND_PICKS:
+                continue
             picked = _pop_bucket_candidate(
                 bucket, selected_redundancy, selected_families
             )
             if picked is None:
                 continue
+            round_picks[position] += 1
             _remember_selection(picked, selected, selected_redundancy, selected_families)
         if len(selected) == before:
             break
@@ -535,10 +548,22 @@ def _pop_bucket_candidate(
     selected_redundancy: set[tuple[str, str, HardwareFitMode | None]],
     selected_families: set[str],
 ) -> _ShortlistEntry | None:
+    """Take the best-scored entry; only among exact ties prefer one not yet represented.
+
+    The bucket is sorted best first. Preferring an unseen family *over* a better score
+    let a 39-download repository whose name started with a new word displace every
+    official model of an already-picked family.
+    """
     if not bucket:
         return None
-    best_index = 0
-    for index, entry in enumerate(bucket):
+    best = bucket[0].score
+    tied = [
+        index for index, entry in enumerate(bucket)
+        if entry.score >= best - _SCORE_TIE_EPSILON
+    ]
+    best_index = tied[0]
+    for index in tied:
+        entry = bucket[index]
         if (
             _redundancy_key(entry) not in selected_redundancy
             and _family_key(entry.candidate) not in selected_families
@@ -546,8 +571,8 @@ def _pop_bucket_candidate(
             best_index = index
             break
     else:
-        for index, entry in enumerate(bucket):
-            if _redundancy_key(entry) not in selected_redundancy:
+        for index in tied:
+            if _redundancy_key(bucket[index]) not in selected_redundancy:
                 best_index = index
                 break
     return bucket.pop(best_index)

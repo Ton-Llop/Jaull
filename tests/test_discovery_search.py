@@ -571,6 +571,55 @@ def test_hardware_aware_shortlist_uses_family_diversity_without_a_quota() -> Non
     assert sum(item.repo_id.startswith("Qwen/") for item in picked) > 1
 
 
+def test_family_diversity_does_not_beat_a_far_better_score() -> None:
+    """Regression found on a B60 box: with `qwen2` already picked, the shortlist skipped
+    every official Qwen coder (score ~22) for a 39-download repo (score ~7) whose name
+    started with a family it had not seen yet."""
+    req = _requirements()
+    gguf = ["gguf", "Q4_K_M"]
+    popular = {"downloads": 1_000_000, "likes": 5_000}
+    pool = [
+        candidate("Acme/Coder-1.5B-Instruct-GGUF", tags=gguf, **popular),
+        candidate("Acme/Coder-7B-Instruct-GGUF", tags=gguf, **popular),
+        candidate("Acme/Coder-14B-Instruct-GGUF", tags=gguf, **popular),
+        candidate("nobody/zebra-14b-gguf", tags=gguf, downloads=39, likes=0),
+    ]
+
+    picked = shortlist(pool, req, limit=3, hardware=hardware(vram_gib=24, ram_gib=16))
+
+    assert "nobody/zebra-14b-gguf" not in {item.repo_id for item in picked}
+    assert "Acme/Coder-14B-Instruct-GGUF" in {item.repo_id for item in picked}
+
+
+def test_unknown_size_candidates_get_one_round_pick_and_do_not_crowd_out_known_ones() -> None:
+    req = _requirements()
+    gguf = ["gguf", "Q4_K_M"]
+    popular = {"downloads": 1_000_000, "likes": 5_000}
+    known = [
+        candidate(f"Acme/Coder-{size}B-Instruct-GGUF", tags=gguf, **popular)
+        for size in (0.5, 0.6, 0.8, 1.5, 3, 4, 7, 8, 14)
+    ]
+    relevant_unknown = candidate("bigco/Wizard-Coder-GGUF", tags=gguf, **popular)
+    junk = [
+        candidate(
+            f"misc{index}/code_generation_model{index}", tags=gguf, downloads=40 + index, likes=0,
+        )
+        for index in range(4)
+    ]
+
+    picked = shortlist(
+        [*known, relevant_unknown, *junk],
+        req,
+        limit=8,
+        hardware=hardware(vram_gib=24, ram_gib=16),
+    )
+
+    names = {item.repo_id for item in picked}
+    unknown = [item for item in picked if parameter_count_hint(item.repo_id) is None]
+    assert len(unknown) == 1
+    assert "bigco/Wizard-Coder-GGUF" in names  # a relevant unknown still gets its slot
+
+
 def test_hardware_aware_shortlist_is_order_deterministic() -> None:
     req = _requirements()
     pool = [
