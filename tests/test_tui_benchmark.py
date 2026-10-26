@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,8 @@ def test_benchmark_screen_shows_the_saved_results_for_its_plan(tmp_path: Path) -
             assert "peak RAM" in text
             assert "Difference" not in text
             assert "not saved" not in text
+            # These are record-backed metrics, not a fresh measurement.
+            assert "stddev" in text
 
             # Another artifact must not borrow it.
             other = RecommendationBenchmarkScreen(
@@ -86,6 +89,112 @@ def test_benchmark_screen_shows_the_saved_results_for_its_plan(tmp_path: Path) -
             app.push_screen(other)
             await pilot.pause(0.5)
             assert not other.query(".benchmark-result-node")
+
+    _run(scenario())
+
+
+@pytest.mark.parametrize("runtime", ["cpu", "vulkan", "transformers"])
+def test_speed_reopens_metadata_history_without_executing_and_shows_all_saved_metrics(runtime):
+    from tests.test_results_speed import _gguf_history_case, _transformers_case
+    from tests.test_tui_evidence import _FakeStoreAdvisor
+
+    plan, original = (
+        _transformers_case() if runtime == "transformers"
+        else _gguf_history_case(ComputeBackend(runtime))
+    )
+    # Discovery and the record agree on metadata; neither a size conflict nor
+    # an unconfirmed Vulkan device may be disguised as saved speed evidence.
+    original = BenchmarkRecord.create(
+        hardware=original.hardware,
+        request=original.request.model_copy(update={
+            "artifact": original.artifact.model_copy(update={
+                "size_bytes": plan.artifact.size_bytes,
+            }),
+        }),
+        observation=original.observation,
+    )
+    if runtime == "vulkan":
+        capability = _runtime_capability(ComputeBackend.VULKAN).backend_capabilities[0]
+        capability = capability.model_copy(update={"devices": [
+            capability.devices[0].model_copy(update={
+                "name": plan.backend_selection.selected_accelerator.name,
+            }),
+        ]})
+        plan = plan.model_copy(update={
+            "execution_readiness": plan.execution_readiness.model_copy(update={
+                "selection": plan.backend_selection, "selected_backend_capability": capability,
+            }),
+        })
+    plan = plan.model_copy(update={"artifact": plan.artifact.model_copy(update={"sha256": None})})
+    record = original.model_copy(update={"observation": original.observation.model_copy(update={
+        "model_load_seconds": 2.5,
+        "time_to_first_token_seconds": 0.3,
+        "time_to_first_token_stddev_seconds": 0.02,
+        "generation_latency_seconds": 4.0,
+        "peak_ram_bytes": 2 * 1024**3,
+        "command": ("worker", "--saved-test"),
+        "raw_stderr": "Saved worker diagnostic.",
+    })})
+    newer = record.model_copy(update={"identity": record.identity.model_copy(update={
+        "benchmark_id": "bench-newest",
+        "created_at": record.identity.created_at + timedelta(days=1),
+    })})
+
+    class SavedAdvisor(_FakeStoreAdvisor):
+        services = None
+
+        def run_benchmark(self, *args, **kwargs):
+            pytest.fail("Viewing saved speed must not execute a benchmark")
+
+        def prepare_execution_plan(self, *args, **kwargs):
+            pytest.fail("Viewing saved speed must not prepare or download artifacts")
+
+    async def scenario():
+        advisor = SavedAdvisor(benchmarks={
+            r.identity.benchmark_id: r for r in (record, newer)
+        })
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        rec = _recommendation().model_copy(update={"plan": plan})
+        from tests.test_recommendation_engine_v2 import _requirements
+
+        state = RecommendationWorkflowState(requirements=_requirements(), recommendations=[rec])
+        async with app.run_test(size=(140, 55)) as pilot:
+            app.show_recommendations(state)
+            await _wait_until(pilot, lambda: (
+                bool(app.screen.query("#rec-speed-provenance-0"))
+                and "bench-newest" in str(
+                    app.screen.query_one("#rec-speed-provenance-0", Static).content,
+                )
+            ))
+            from jaull.tui.widgets.technical_details import TechnicalDetails
+
+            assert any(
+                widget.title == "Saved speed runs"
+                for widget in app.screen.query(TechnicalDetails)
+            )
+            history = str(app.screen.query_one("#rec-speed-provenance-0", Static).content)
+            assert record.identity.benchmark_id in history
+            assert "Generation 128:" in history
+            assert "Peak RAM: 2.00 GiB" in history
+            app.screen.query_one("#res-speed-0", Button).press()
+            await _wait_until(pilot, lambda: isinstance(app.screen, RecommendationBenchmarkScreen))
+            screen = app.screen
+            await _wait_until(pilot, lambda: bool(screen.query("#benchmark-detail-0")))
+            assert "Saved benchmarks · 2 runs" in _visible_text(screen)
+            assert screen._last_result.completed[0].record.identity.benchmark_id == "bench-newest"
+            assert screen._metadata_only_ids == frozenset(advisor._benchmarks)
+            inspector = screen.query_one("#benchmark-detail-0")
+            text = _visible_text(inspector)
+            for value in (
+                "Historical measurement matched by metadata", "not used for ranking",
+                "Prompt processing", "Generation", "Model load", "2.50 s",
+                "Time to first token", "0.30 ± 0.02 s", "Generation latency",
+                "2.00 GiB", "stddev", "worker --saved-test", "Saved worker diagnostic.",
+            ):
+                assert value in text
+            assert "Difference" not in text
+            assert "stored record" in text
+            assert advisor._benchmarks["bench-newest"] == newer
 
     _run(scenario())
 

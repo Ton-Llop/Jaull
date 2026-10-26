@@ -16,7 +16,7 @@ from huggingface_hub.errors import HfHubHTTPError
 
 from jaull.application.recommendation import policies
 from jaull.application.requirements import build_requirements
-from jaull.discovery import query_builder
+from jaull.discovery import candidate_filter, query_builder
 from jaull.discovery.candidate_filter import (
     coarse_placement_hint,
     deduplicate,
@@ -91,6 +91,36 @@ def test_queries_are_deduplicated() -> None:
     queries = query_builder.build_queries(_requirements())
     keys = [q.cache_key() for q in queries]
     assert len(keys) == len(set(keys))
+
+
+def test_a_scale_query_covers_the_sizes_that_fit_beyond_the_small_models() -> None:
+    """The plain queries sort by downloads, so the very popular small models fill every
+    page and the 7B-32B range this machine can hold is never listed."""
+    requirements = _requirements()
+    queries = query_builder.build_queries(requirements, max_billions=30)
+    scale = [q for q in queries if q.max_billions is not None]
+    assert len(scale) == 1
+    assert scale[0].min_billions == candidate_filter.LARGER_THAN_SMALL_BILLIONS
+    assert scale[0].max_billions == 30
+    assert scale[0].filter_tags == (requirements.preferred_formats[0],)
+
+
+@pytest.mark.parametrize("max_billions", [None, 4.0, 2.0])
+def test_no_scale_query_when_nothing_beyond_the_small_models_fits(
+    max_billions: float | None,
+) -> None:
+    queries = query_builder.build_queries(_requirements(), max_billions=max_billions)
+    assert all(q.max_billions is None for q in queries)
+
+
+def test_the_largest_fitting_size_follows_the_machine() -> None:
+    req = _requirements()
+    big = candidate_filter.largest_fitting_billions(hardware(vram_gib=24, ram_gib=16), req)
+    small = candidate_filter.largest_fitting_billions(hardware(vram_gib=4, ram_gib=8), req)
+    assert big is not None and small is not None
+    assert 14 < big < 60  # a 24 GiB card holds a 14B model, and not a 70B one
+    assert small < candidate_filter.LARGER_THAN_SMALL_BILLIONS * 2
+    assert small < big
 
 
 # ---------------------------------------------------------------------------
@@ -631,10 +661,12 @@ def test_family_diversity_does_not_beat_a_far_better_score() -> None:
         candidate("nobody/zebra-14b-gguf", tags=gguf, downloads=39, likes=0),
     ]
 
-    picked = shortlist(pool, req, limit=3, hardware=hardware(vram_gib=24, ram_gib=16))
+    picked = shortlist(pool, req, limit=2, hardware=hardware(vram_gib=24, ram_gib=16))
 
     assert "nobody/zebra-14b-gguf" not in {item.repo_id for item in picked}
-    assert "Acme/Coder-14B-Instruct-GGUF" in {item.repo_id for item in picked}
+    assert {item.repo_id for item in picked} == {
+        "Acme/Coder-7B-Instruct-GGUF", "Acme/Coder-14B-Instruct-GGUF",
+    }
 
 
 def test_unknown_size_candidates_get_one_round_pick_and_do_not_crowd_out_known_ones() -> None:
@@ -664,6 +696,31 @@ def test_unknown_size_candidates_get_one_round_pick_and_do_not_crowd_out_known_o
     unknown = [item for item in picked if parameter_count_hint(item.repo_id) is None]
     assert len(unknown) == 1
     assert "bigco/Wizard-Coder-GGUF" in names  # a relevant unknown still gets its slot
+
+
+def test_small_models_only_fill_what_larger_ones_that_fit_leave() -> None:
+    """Regression found on a 24 GiB box: five very popular sub-4B models took inspection
+    slots that no 7B-32B model fitting the same placement class got, so a whole size range
+    was never evaluated. On a machine where only small models fit, they still qualify."""
+    req = _requirements()
+    gguf = ["gguf", "Q4_K_M"]
+    tiny = [
+        candidate(f"Acme/Chat-{size}B-Instruct-GGUF", tags=gguf, downloads=5_000_000, likes=900)
+        for size in (0.5, 1.5, 3)
+    ]
+    larger = [
+        candidate(f"Acme/Chat-{size}B-Instruct-GGUF", tags=gguf, downloads=40_000, likes=10)
+        for size in (7, 8, 14, 32)
+    ]
+    pool = [*tiny, *larger]
+
+    big_box = shortlist(pool, req, limit=5, hardware=hardware(vram_gib=24, ram_gib=16))
+    sizes = {parameter_count_hint(item.repo_id) for item in big_box}
+    assert {7, 8, 14, 32} <= sizes  # every larger one, before any small one
+
+    small_box = shortlist(pool, req, limit=3, hardware=hardware(vram_gib=4, ram_gib=8))
+    small_sizes = {parameter_count_hint(item.repo_id) for item in small_box}
+    assert {0.5, 1.5, 3} <= small_sizes
 
 
 def test_hardware_aware_shortlist_is_order_deterministic() -> None:
@@ -738,3 +795,12 @@ def test_valid_gguf_and_transformers_repositories_survive() -> None:
         _requirements(),
     )
     assert {c.repo_id for c in outcome.kept} == {"org/gguf", "org/tf"}
+
+
+def test_the_client_sends_the_size_window_only_when_the_query_has_one() -> None:
+    api = _StubApi()
+    client = HfSearchClient(api=api)  # type: ignore[arg-type]
+    client.search(_query())
+    client.search(SearchQuery(label="scale", min_billions=4, max_billions=30.5))
+    assert "num_parameters" not in api.calls[0]
+    assert api.calls[1]["num_parameters"] == "min:4B,max:30.5B"

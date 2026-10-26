@@ -30,7 +30,9 @@ Generated: <redacted>
 - Context: 4096 tokens
 - Artifact: native float16 — confirmed
 - Parameter count: 7B (name inference, low confidence)
-- Memory estimation confidence: high
+- Weights estimate: high (exact size)
+- KV cache estimate: high (derived calculation)
+- Runtime overhead estimate: low (assumed heuristic)
 
 **Why this position?** Base criteria, compared in order, for `balanced`:
 
@@ -57,7 +59,11 @@ Generated: <redacted>
 <details>
 <summary>Technical details: confidence and diagnostics</summary>
 
+- Weights estimate: high (exact size): fixture
+- KV cache estimate: high (derived calculation): fixture
+- Runtime overhead estimate: low (assumed heuristic): fixture
 - Memory estimation confidence: high
+- Memory confidence aggregation: Weakest component or compatibility assessment; not a measured error probability or overall model reliability.
 - Plan evidence confidence: medium
 - Plan evidence basis: Metadata confidence: medium; without matching local execution evidence, the plan uses metadata and memory-estimate confidence, not runtime installation.
 - Performance evidence: No comparable benchmark for ranking

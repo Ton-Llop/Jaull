@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "timestamp": "<redacted>",
   "hardware": {
     "os": "Linux 6.8",
@@ -48,6 +48,7 @@
       "coding:safetensors",
       "coding:gguf",
       "coding:lang-es",
+      "coding:scale",
       "coding:trending"
     ],
     "candidate_count": 1,

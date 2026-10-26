@@ -19,6 +19,81 @@ class SpeedReadout:
     details: str = "No applicable speed measurement for this plan."
     measured: bool = False
     source: Literal["unknown", "measured", "historical"] = "unknown"
+    saved_runs: str = "No saved speed runs for this configuration on this machine."
+
+
+def historical_speed_benchmarks(
+    plan: ExecutionPlan, records: Sequence[BenchmarkRecord],
+) -> tuple[BenchmarkRecord, ...]:
+    """Metadata-matched history, never proof of exact bytes or ranking applicability."""
+    by_id: dict[str, BenchmarkRecord] = {}
+    for record in records:
+        key = record.identity.benchmark_id
+        if key in by_id and by_id[key] != record:
+            return ()
+        by_id[key] = record
+    return tuple(sorted(
+        (
+            record for record in by_id.values()
+            if record.observation.exit_code == 0
+            and (
+                plan.artifact.sha256 is None or record.artifact.sha256 is None
+                or plan.artifact.sha256.lower() == record.artifact.sha256.lower()
+            )
+            and sum(
+                m.kind is BenchmarkMeasurementKind.GENERATION and m.tokens == 128
+                for m in record.observation.measurements
+            ) == 1
+            and matching_benchmark(plan, [record]) is not None
+        ),
+        key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
+        reverse=True,
+    ))
+
+
+def _saved_runs_text(records: Sequence[BenchmarkRecord]) -> str:
+    if not records:
+        return SpeedReadout().saved_runs
+    sections = [
+        "Saved measurements for this configuration on this machine. "
+        "Matching metadata alone does not verify the current artifact bytes or execution."
+    ]
+    for record in records:
+        observation = record.observation
+        device = record.requested_device or (
+            "no GPU device" if record.requested_backend.value == "cpu" else "unknown device"
+        )
+        lines = [
+            f"{record.identity.created_at.isoformat()} · {record.runtime.runtime.value} · "
+            f"{record.requested_backend.value} · {device}",
+            f"Artifact: {record.artifact.repo_id}@{record.artifact.revision} / "
+            f"{record.artifact.filename} · "
+            f"{record.artifact.quantization or record.artifact.format}",
+            f"Methodology: {observation.methodology}; {record.request.repetitions} repetitions",
+        ]
+        for measurement in observation.measurements:
+            label = (
+                "Prompt" if measurement.kind is BenchmarkMeasurementKind.PREFILL else "Generation"
+            )
+            lines.append(
+                f"{label} {measurement.tokens}: {measurement.mean_tokens_per_second:.1f} "
+                f"± {measurement.stddev_tokens_per_second:.1f} tok/s (stddev)"
+            )
+        for label, value in (
+            ("Peak RAM", observation.peak_ram_bytes), ("Peak VRAM", observation.peak_vram_bytes),
+        ):
+            lines.append(f"{label}: {value / 1024**3:.2f} GiB" if value is not None
+                         else f"{label}: unavailable")
+        for label, seconds in (
+            ("Model load", observation.model_load_seconds),
+            ("Time to first token", observation.time_to_first_token_seconds),
+            ("Generation latency", observation.generation_latency_seconds),
+        ):
+            if seconds is not None:
+                lines.append(f"{label}: {seconds:.2f} s")
+        lines.append(f"Record: {record.identity.benchmark_id}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
 
 
 def speed_readout(
@@ -34,6 +109,8 @@ def speed_readout(
         if key in by_id and by_id[key] != record:
             return SpeedReadout(details="Conflicting benchmark IDs; speed evidence withheld.")
         by_id[key] = record
+    history_records = historical_speed_benchmarks(plan, tuple(by_id.values()))
+    saved_runs = _saved_runs_text(history_records)
     speed = assess_speed(plan, requirements, tuple(by_id.values()))
     if (measured := speed.applicable) is not None:
         latest = by_id[measured.benchmark_id]
@@ -55,20 +132,10 @@ def speed_readout(
             + ", ".join(measured.benchmark_ids or (measured.benchmark_id,)),
             measured=True,
             source="measured",
+            saved_runs=saved_runs,
         )
     if plan.runtime_family in {RuntimeName.TRANSFORMERS, RuntimeName.LLAMA_CPP}:
-        historical = matching_benchmark(plan, [
-            record for record in by_id.values()
-            if record.observation.exit_code == 0
-            and (
-                plan.artifact.sha256 is None or record.artifact.sha256 is None
-                or plan.artifact.sha256 == record.artifact.sha256.lower()
-            )
-            and sum(
-                m.kind is BenchmarkMeasurementKind.GENERATION and m.tokens == 128
-                for m in record.observation.measurements
-            ) == 1
-        ])
+        historical = matching_benchmark(plan, history_records)
         if historical is not None:
             generation = next(
                 m for m in historical.observation.measurements
@@ -90,9 +157,12 @@ def speed_readout(
                 f"device: {historical.requested_device or 'unknown'}; {flags}\n"
                 f"Benchmark ID: {historical.identity.benchmark_id}",
                 source="historical",
+                saved_runs=saved_runs,
             )
     history = "\n".join(
         f"Historical reference only: {ref.benchmark_id}; " + "; ".join(ref.blockers)
         for ref in speed.references
     )
-    return SpeedReadout(details="\n".join(filter(None, (SpeedReadout().details, history))))
+    return SpeedReadout(
+        details="\n".join(filter(None, (SpeedReadout().details, history))), saved_runs=saved_runs,
+    )

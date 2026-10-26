@@ -37,10 +37,15 @@ from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.selection import weak_plans_last
 from jaull.recommendation.shadow import POLICY_VERSION, apply_active_policy
 from jaull.reporting.estimation import estimate_to_json_dict
-from jaull.reporting.recommendation_labels import confidence_rows, ranking_axis_label, score_rows
+from jaull.reporting.recommendation_labels import (
+    confidence_rows,
+    memory_confidence_rows,
+    ranking_axis_label,
+    score_rows,
+)
 from jaull.workflow.state import RecommendationWorkflowState
 
-REPORT_SCHEMA_VERSION = 3
+REPORT_SCHEMA_VERSION = 4
 
 
 class _PolicyPositions(NamedTuple):
@@ -217,8 +222,12 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 f"- Runtime readiness: {readiness.status.value}"
                 + (f" — {readiness.message}" if readiness.message else "")
             )
-        lines += [f"- {label}: {value}" for label, value in confidence_rows(rec)
-                  if label in {"Memory estimation confidence", "Metadata confidence"}]
+        memory_rows = memory_confidence_rows(rec)
+        if memory_rows:
+            lines += [f"- {label}: {value}" for label, value in memory_rows]
+        else:
+            lines += [f"- {label}: {value}" for label, value in confidence_rows(rec)
+                      if label == "Metadata confidence"]
         lines.append("")
         ranking = _ranking_to_dict(
             rec,

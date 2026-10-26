@@ -42,9 +42,19 @@ class SearchQuery(BaseModel):
     filter_tags: tuple[str, ...] = ()
     sort: str = "downloads"
     limit: int = 20
+    # Optional parameter-count window, in billions, for the Hub's ``num_parameters`` filter.
+    min_billions: float | None = None
+    max_billions: float | None = None
 
-    def cache_key(self) -> tuple[str | None, str | None, tuple[str, ...], str, int]:
-        return (self.search, self.pipeline_tag, self.filter_tags, self.sort, self.limit)
+    def cache_key(
+        self,
+    ) -> tuple[
+        str | None, str | None, tuple[str, ...], str, int, float | None, float | None,
+    ]:
+        return (
+            self.search, self.pipeline_tag, self.filter_tags, self.sort, self.limit,
+            self.min_billions, self.max_billions,
+        )
 
 
 class ModelCandidate(BaseModel):

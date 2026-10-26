@@ -2090,3 +2090,31 @@ def test_balanced_list_puts_weak_plans_after_the_rest_without_dropping_them() ->
         RecommendationPriority.QUALITY,
     ):
         assert names(other) == ["tiny", "big", "mid", "tiny2"]
+
+
+def test_a_weak_plan_goes_behind_every_capable_plan_that_is_at_least_as_viable() -> None:
+    """Regression found on a B60 box: a plan that needs offloading but has a confirmed
+    licence sat between a 135M model and the capable models with an unknown licence, so the
+    weak model kept its slot. Only the weak plan moves; capable plans keep their order, and
+    a capable plan that is less viable than the weak one does not hold it back."""
+    from dataclasses import replace
+
+    from jaull.domain.recommendation import AssessmentLevel
+    from jaull.recommendation.selection import weak_plans_last
+    from tests.test_shadow_policies import _pool
+
+    _, pool = _pool("tiny", "offload", "big", priority=RecommendationPriority.BALANCED)
+
+    def with_(item: object, **update: object) -> object:
+        return replace(item, assessment=item.assessment.model_copy(update=update))  # type: ignore[attr-defined]
+
+    ranked = [
+        with_(pool[0], capability=AssessmentLevel.WEAK),
+        with_(pool[1], execution_fitness=AssessmentLevel.WEAK),  # capable, needs offloading
+        with_(pool[2]),
+    ]
+    names = [
+        item.evaluated.repo_id.split("/")[1].removesuffix("-7B-GGUF")  # type: ignore[attr-defined]
+        for item in weak_plans_last(ranked, RecommendationPriority.BALANCED)  # type: ignore[arg-type]
+    ]
+    assert names == ["offload", "big", "tiny"]

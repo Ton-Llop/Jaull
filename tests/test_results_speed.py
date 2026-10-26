@@ -19,7 +19,7 @@ from jaull.domain.runtime import (
     RuntimeFlagSource,
     RuntimeName,
 )
-from jaull.presentation.speed import speed_readout
+from jaull.presentation.speed import historical_speed_benchmarks, speed_readout
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_results import RecommendationResultsScreen
 from jaull.workflow.state import RecommendationWorkflowState
@@ -108,6 +108,11 @@ def test_results_show_latest_saved_speed_without_changing_the_ranking_median():
     assert "Ranking aggregate (median): 15.0 tok/s" in readout.details
     assert readout == speed_readout(plan, _requirements(), records[::-1])
     assert assess_speed(plan, _requirements(), records).applicable.tokens_per_second == 15.0
+    assert readout.saved_runs.index("Record: newer") < readout.saved_runs.index(
+        f"Record: {record.identity.benchmark_id}"
+    )
+    assert "Generation 128: 20.0" in readout.saved_runs
+    assert "stddev" in readout.saved_runs
 
 
 def _gguf_history_case(backend):
@@ -178,6 +183,7 @@ def test_conflicting_record_ids_withhold_speed_in_both_orders():
         assert readout.label == ""
         assert not readout.measured
         assert "Conflicting benchmark IDs" in readout.details
+        assert historical_speed_benchmarks(plan, records) == ()
 
 
 def test_inapplicable_measurement_is_only_a_historical_reference():
@@ -254,6 +260,8 @@ def test_transformers_measurement_is_visible_as_history_without_exact_identity_o
     assert record.identity.created_at.isoformat() in readout.details
     assert assess_speed(plan, _requirements(), [record]).applicable is None
     assert before == (record.model_dump_json(), plan.model_dump_json())
+    assert "Generation 128: 18.4" in readout.saved_runs
+    assert record.identity.benchmark_id in readout.saved_runs
 
 
 def test_transformers_history_uses_latest_successful_run_in_either_store_order():

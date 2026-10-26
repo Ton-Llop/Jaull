@@ -39,6 +39,7 @@ from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
     LlamaCppBackendCapability,
     LlamaCppRuntimeCapability,
+    PyTorchRuntimeCapability,
     RuntimeBackendSelection,
     RuntimeName,
     RuntimeRecommendation,
@@ -54,6 +55,7 @@ from jaull.presentation.plan_labels import (
     plan_backend,
     runtime_block_reason,
 )
+from jaull.presentation.speed import historical_speed_benchmarks
 from jaull.recommendation.models import ModelRecommendation
 from jaull.runtime.device_matching import match_runtime_device
 from jaull.tui import palette
@@ -78,9 +80,12 @@ _log = logging.getLogger(__name__)
 
 
 class _SavedBenchmarks(Message):
-    def __init__(self, records: tuple[BenchmarkRecord, ...]) -> None:
+    def __init__(
+        self, records: tuple[BenchmarkRecord, ...], metadata_only_ids: frozenset[str] = frozenset(),
+    ) -> None:
         super().__init__()
         self.records = records
+        self.metadata_only_ids = metadata_only_ids
 
 
 class _BenchmarkStep(Message):
@@ -238,10 +243,11 @@ class RecommendationBenchmarkScreen(Screen[None]):
     ) -> None:
         super().__init__()
         self._recommendation = recommendation
-        self._execution_plan = execution_plan
+        self._execution_plan = execution_plan or recommendation.plan
         self._log_messages: list[str] = []
         self._last_result: BenchmarkMatrixResult | None = None
         self._showing_saved = False
+        self._metadata_only_ids: frozenset[str] = frozenset()
         self._rows: list[_RunRow] = []
         self._selected = 0
         self._benchmark_closing = Event()
@@ -320,15 +326,27 @@ class RecommendationBenchmarkScreen(Screen[None]):
     def _saved_worker(self, advisor: AdvisorService, plan: ExecutionPlan) -> None:
         """Read what this plan has already been benchmarked with. Blocking."""
         try:
-            index = EvidenceIndex.load(advisor, plan.model_identity)
-            records = index.saved_benchmarks_for_plan(plan)
+            index = EvidenceIndex.load(advisor)
+            exact = index.saved_benchmarks_for_plan(plan)
+            exact_ids = {record.identity.benchmark_id for record in exact}
+            history = historical_speed_benchmarks(plan, index.benchmark_records())
+            metadata_only = tuple(
+                record for record in history if record.identity.benchmark_id not in exact_ids
+            )
+            records = tuple(sorted(
+                (*exact, *metadata_only),
+                key=lambda record: (record.identity.created_at, record.identity.benchmark_id),
+                reverse=True,
+            ))
         except Exception:
             # History enriches the screen; a store that cannot be read must not
             # stop the user from benchmarking.
             _log.debug("saved benchmarks unreadable", exc_info=True)
             return
         if records and not self._benchmark_closing.is_set():
-            self.post_message(_SavedBenchmarks(records))
+            self.post_message(_SavedBenchmarks(
+                records, frozenset(record.identity.benchmark_id for record in metadata_only),
+            ))
 
     @on(_SavedBenchmarks)
     def _saved_benchmarks_message(self, message: _SavedBenchmarks) -> None:
@@ -342,6 +360,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
                 records=list(message.records),
             ),
             saved=True,
+            metadata_only_ids=message.metadata_only_ids,
         )
 
     def _start_benchmark(self) -> None:
@@ -637,6 +656,12 @@ class RecommendationBenchmarkScreen(Screen[None]):
                         technical=_technical_rows(
                             run.record, run.persisted_path, saved=self._showing_saved,
                         ),
+                        note=(
+                            "Historical measurement matched by metadata. Exact artifact bytes "
+                            "and current execution are not verified; not used for ranking."
+                            if run.record.identity.benchmark_id in self._metadata_only_ids else None
+                        ),
+                        diagnostic_record=run.record,
                     ),
                     selected=not rows,
                 )
@@ -704,9 +729,6 @@ class RecommendationBenchmarkScreen(Screen[None]):
                 _result_table(self._last_result.completed),
                 classes="section",
             )
-        startup_rows = _startup_rows(self._last_result.completed)
-        if startup_rows:
-            yield MetricList("Startup", startup_rows)
         aggregate = aggregate_benchmark_records(
             [item.record for item in self._last_result.completed]
         )
@@ -741,7 +763,10 @@ class RecommendationBenchmarkScreen(Screen[None]):
         for row in self._rows:
             row.set_selected(row._index == index)
 
-    def _render_result(self, result: BenchmarkMatrixResult, *, saved: bool = False) -> None:
+    def _render_result(
+        self, result: BenchmarkMatrixResult, *, saved: bool = False,
+        metadata_only_ids: frozenset[str] = frozenset(),
+    ) -> None:
         """Result first, mechanism last.
 
         The order is deliberate: whether it worked, how fast it was, what it
@@ -752,6 +777,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
         self._clear_result()
         self._last_result = result
         self._showing_saved = saved
+        self._metadata_only_ids = metadata_only_ids
         body = self.query_one("#benchmark-result", Vertical)
         # The blurb explained what the button would do; once it has done it, it
         # goes. Saved results were not produced by this visit, so it stays.
@@ -766,7 +792,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             count = len(result.completed)
             heading = (
                 f"Saved benchmarks · {count} run{'' if count == 1 else 's'} "
-                "of this artifact on this machine"
+                "on this machine · inspect each run's artifact and configuration"
             )
         body.mount(
             Static(
@@ -915,6 +941,9 @@ def _performance_block(results: list[BenchmarkRunResult], *, titled: bool = True
                 emphasis="measured",
             ).add_class("-indented")
         )
+    startup = _startup_rows(results)
+    if startup:
+        children.append(MetricList("Startup and latency", startup))
     return Vertical(*children, classes="section")
 
 
@@ -951,7 +980,7 @@ def _memory_block(
 
 
 def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
-    """Load and first-token timings — Transformers only.
+    """Recorded load and inference timings, identically for fresh and saved runs.
 
     ``llama_bench_runner`` never populates these, so for a GGUF benchmark they
     are absent rather than "unavailable": a row of blanks would imply the
@@ -960,10 +989,6 @@ def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     for result in results:
         observation = result.record.observation
-        if observation.model_load_seconds is None and (
-            observation.time_to_first_token_seconds is None
-        ):
-            continue
         prefix = f"{_config_label(result.record)} " if len(results) > 1 else ""
         if observation.model_load_seconds is not None:
             rows.append((f"{prefix}Model load", _seconds(observation.model_load_seconds)))
@@ -971,9 +996,20 @@ def _startup_rows(results: list[BenchmarkRunResult]) -> list[tuple[str, str]]:
             rows.append(
                 (
                     f"{prefix}Time to first token",
-                    _seconds(observation.time_to_first_token_seconds),
+                    _seconds_with_stddev(
+                        observation.time_to_first_token_seconds,
+                        observation.time_to_first_token_stddev_seconds,
+                    ),
                 )
             )
+        if observation.generation_latency_seconds is not None:
+            rows.append((
+                f"{prefix}Generation latency",
+                _seconds_with_stddev(
+                    observation.generation_latency_seconds,
+                    observation.generation_latency_stddev_seconds,
+                ),
+            ))
     return rows
 
 
@@ -1060,6 +1096,8 @@ def _technical_rows(
         ("Peak RAM", _bytes(record.observation.peak_ram_bytes)),
         ("Peak VRAM", _bytes(record.observation.peak_vram_bytes)),
         ("Status", "success" if record.observation.success else "failure"),
+        ("Runtime", record.runtime.runtime.value),
+        ("Total benchmark duration", _seconds(record.observation.duration_seconds)),
         ("Saved", str(path) if path else "stored record" if saved else "not saved"),
     ]
     if capability is not None:
@@ -1072,6 +1110,21 @@ def _technical_rows(
         rows[8:8] = [
             ("Runtime capability", record.runtime_capability.runtime_family.value),
         ]
+        if isinstance(record.runtime_capability, PyTorchRuntimeCapability):
+            torch = record.runtime_capability
+            rows.extend([
+                ("Python executable", torch.python_executable or "not recorded"),
+                ("PyTorch version", torch.torch_version or "not recorded"),
+                ("Transformers version", torch.transformers_version or "not recorded"),
+            ])
+    rows.extend((flag.name, flag.value) for flag in record.runtime.flags)
+    for measurement in record.observation.measurements:
+        label = _metric_label(measurement.kind, measurement.tokens)
+        rows.append((f"{label} stddev", f"{measurement.stddev_tokens_per_second:.2f} tok/s"))
+        if measurement.mean_duration_seconds is not None:
+            rows.append((f"{label} duration", _seconds_with_stddev(
+                measurement.mean_duration_seconds, measurement.stddev_duration_seconds,
+            )))
     return rows
 
 

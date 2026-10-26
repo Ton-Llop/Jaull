@@ -2154,14 +2154,41 @@ el de Transformers segueix igual. El marge es mesura amb l'estat de l'estimador,
 amb una comprovació pròpia sobre la memòria disponible estimada: això queda pendent.
 Tests: quatre casos parametritzats a `tests/test_recommendation_configuration.py`.
 
+**7. Els models petits només omplen el que els grans deixen.** Amb una B60 de 24 GiB,
+cinc models de menys de 4B molt populars ocupaven places d'inspecció que cap model de
+7B-32B de la mateixa classe de col·locació tenia. **Decisió:** dins de la millor classe de
+col·locació, els models dels cubs `tiny` i `small` (els que ja defineix `_SCALE_BUCKETS`)
+només entren a la cobertura i al farciment quan no en queda cap de més gran; en una
+màquina on només caben models petits, la classe millor només en conté i entren igualment.
+No s'han afegit constants. Un test que abans afirmava que un 14B amb 39 descàrregues no
+desplaça els oficials s'ha ajustat a 2 places: ara un 14B poc conegut pot passar davant
+d'un 1,5B molt popular a la tercera plaça, que és la política decidida.
+
+**8. Consulta de cerca adaptada a la mida.** Totes les consultes ordenen per descàrregues,
+de manera que els models petits populars omplen cada pàgina i cap 14B de xat arribava als
+40 candidats (verificat amb la cerca real: l'únic 14B era un Coder de Transformers).
+**Decisió:** si caben mides per sobre de `small`, s'afegeix una consulta més amb el filtre
+`num_parameters` del Hub, entre el límit superior de `small` i la mida màxima que cap
+resident en aquesta màquina (`largest_fitting_billions`, amb les mateixes estimacions
+gruixudes de la preselecció). Si no hi caben, no s'afegeix res. Canvi visible a l'informe:
+l'etiqueta `<ús>:scale` a `search_queries` (snapshot `report.json` regenerat, una línia).
+La mida és només un filtre de cerca; la identitat del model no es dedueix del nom.
+
+**9. `weak_plans_last` ja no depèn de trams contigus.** La primera versió només reordenava
+dins de trams contigus de la mateixa viabilitat; un pla amb llicència confirmada que
+necessita offload (runnability 1) tallava el tram i el SmolLM2-135M conservava la plaça
+(reproduït amb l'estat real). **Decisió:** només es mou el pla sense capacitat coneguda i
+només cap enrere, darrere de cada pla capaç que sigui almenys tan viable com ell; els
+capaços mantenen l'ordre entre ells (la llicència primer i «executable abans que capaç» hi
+segueixen manant). Conseqüència acceptada: un pla feble que s'executa pot quedar darrere
+d'un capaç que necessita offload, perquè és l'únic que el feia sortir de la llista.
+
 **Resultat observat (cerca real, mateix perfil):** de `32B Q2_K, 1,5B, deepseek 7B, 3B,
 gpt2` a `7B Q8_0, 14B Q8_0 (19,6 GiB, GPU resident), 32B Q6_K, 1,5B, 3B`; a Balanced, de
 `Q2_K` a `Q5_K_M`.
 
 **Límits pendents, sense decidir:** (a) resolt a Balanced pel punt 6; el marge sobre la memòria disponible estimada
-encara no es comprova per separat; (b) la preselecció reparteix places per classe de mida sense tenir en
-compte la capacitat de la màquina, de manera que models minúsculs ocupen places a un
-equip de 24 GiB; (c) amb ús comercial demanat, la confirmació de llicència va abans de la
+encara no es comprova per separat; (b) resolt pels punts 4 i 7; (c) amb ús comercial demanat, la confirmació de llicència va abans de la
 capacitat (política vigent, no s'ha canviat; el punt 5 només evita que els febles
 omplin la llista); (d) `QUALITY` no distingeix la mida dins del
 mateix nivell de capacitat.

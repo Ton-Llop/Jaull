@@ -6,6 +6,36 @@ from jaull.domain.estimation import EstimateSource, EstimationConfidence
 from jaull.recommendation.models import ModelRecommendation
 
 
+def memory_confidence_rows(
+    rec: ModelRecommendation, *, detailed: bool = False,
+) -> list[tuple[str, str]]:
+    """Describe each existing component's confidence and source, without aggregating."""
+    estimate = rec.plan.memory_prediction if rec.plan is not None else None
+    estimate = estimate or rec.evaluated.memory_estimate
+    if estimate is None:
+        return []
+    sources = {
+        EstimateSource.EXACT: "exact size",
+        EstimateSource.METADATA: "metadata",
+        EstimateSource.GGUF_HEADER: "GGUF metadata",
+        EstimateSource.BASE_MODEL_CONFIG: "base-model configuration",
+        EstimateSource.DERIVED: "derived calculation",
+        EstimateSource.ASSUMED: "assumed heuristic",
+        EstimateSource.UNKNOWN: "insufficient data",
+    }
+    rows = []
+    for label, component in (
+        ("Weights estimate", estimate.weights.component),
+        ("KV cache estimate", estimate.kv_cache.component),
+        ("Runtime overhead estimate", estimate.runtime_overhead.component),
+    ):
+        value = f"{component.confidence.value} ({sources[component.source]})"
+        if detailed and component.explanation:
+            value += f": {component.explanation}"
+        rows.append((label, value))
+    return rows
+
+
 def confidence_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
     estimate = rec.plan.memory_prediction if rec.plan is not None else None
     estimate = estimate or rec.evaluated.memory_estimate
@@ -13,7 +43,13 @@ def confidence_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
     if estimate is None:
         rows.append(("Metadata confidence", rec.evaluated.candidate.metadata_confidence.value))
     else:
+        rows.extend(memory_confidence_rows(rec, detailed=True))
         rows.append(("Memory estimation confidence", estimate.assessment.confidence.value))
+        rows.append((
+            "Memory confidence aggregation",
+            "Weakest component or compatibility assessment; not a measured error probability "
+            "or overall model reliability.",
+        ))
         if estimate.assessment.confidence in {
             EstimationConfidence.LOW, EstimationConfidence.UNKNOWN,
         }:

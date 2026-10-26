@@ -61,6 +61,9 @@ class HfSearchClient:
             kwargs["pipeline_tag"] = query.pipeline_tag
         if query.filter_tags:
             kwargs["filter"] = list(query.filter_tags)
+        if query.max_billions is not None:
+            low = query.min_billions or 0
+            kwargs["num_parameters"] = f"min:{low:g}B,max:{query.max_billions:g}B"
 
         try:
             results = list(self._api.list_models(**kwargs))

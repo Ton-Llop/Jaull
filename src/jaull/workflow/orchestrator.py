@@ -231,7 +231,9 @@ def run_workflow(
         _check(cancelled)
         with telemetry.timed("query_build"):
             queries = query_builder.build_queries(
-                requirements, limit=policies.SEARCH_RESULTS_PER_QUERY
+                requirements,
+                limit=policies.SEARCH_RESULTS_PER_QUERY,
+                max_billions=candidate_filter.largest_fitting_billions(hardware, requirements),
             )
         reporter.done("queries", f"{len(queries)} queries")
 

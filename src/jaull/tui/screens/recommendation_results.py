@@ -35,7 +35,11 @@ from jaull.presentation.plan_labels import (
 from jaull.presentation.speed import SpeedReadout, speed_readout
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.tier import TIER_HEADINGS, RecommendationTier
-from jaull.reporting.recommendation_labels import confidence_rows, score_rows
+from jaull.reporting.recommendation_labels import (
+    confidence_rows,
+    memory_confidence_rows,
+    score_rows,
+)
 from jaull.reporting.writer import (
     default_report_name,
     default_reports_dir,
@@ -174,7 +178,7 @@ class _RecommendationInspector(Vertical):
         self._evidence = Static("", id=f"rec-evidence-{index}", classes="status-estimated")
         self._speed_detail = Static("", id=f"rec-speed-detail-{index}", classes="rec-speed-value")
         self._speed_provenance = Static(
-            "Speed evidence not loaded yet.", id=f"rec-speed-provenance-{index}", markup=False,
+            "Loading saved speed runs...", id=f"rec-speed-provenance-{index}", markup=False,
         )
         self._quality_empty = Static(
             "No measured evaluation for this exact artifact.",
@@ -234,7 +238,7 @@ class _RecommendationInspector(Vertical):
                 yield Static("Saved execution evidence", classes="section-title")
                 yield self._evidence
                 yield TechnicalDetails(
-                    title="Speed provenance",
+                    title="Saved speed runs",
                     extra=[self._speed_provenance],
                 )
                 yield TechnicalDetails(
@@ -242,11 +246,13 @@ class _RecommendationInspector(Vertical):
                     title="Confidence and diagnostics",
                 )
             with TabPane("Memory"), VerticalScroll():
-                estimate = rec.evaluated.memory_estimate
+                estimate = rec.plan.memory_prediction if rec.plan is not None else None
+                estimate = estimate or rec.evaluated.memory_estimate
                 if estimate is None:
                     yield Static("Memory breakdown unavailable.", classes="text-secondary")
                 else:
                     yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
+                    yield SummaryCard("Memory estimate basis", memory_confidence_rows(rec))
             with TabPane("Evaluation"), VerticalScroll():
                 yield Static("Published model references", classes="section-title")
                 yield self._published
@@ -320,7 +326,7 @@ class _RecommendationInspector(Vertical):
         widget.update(speed.label)
         widget.tooltip = speed.details
         widget.set_class(speed.measured, "status-ok")
-        self._speed_provenance.update(speed.details)
+        self._speed_provenance.update(f"{speed.saved_runs}\n\nApplicability\n{speed.details}")
 
     def show_alternative_quality(
         self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],
@@ -978,21 +984,25 @@ def _comparison_table(recommendations: list[ModelRecommendation]) -> DataTable[s
         "Configuration",
         "Memory",
         "Compatibility",
-        "Memory estimation confidence",
+        "Memory estimate basis",
         "License",
         "Main reason",
     )
     for rec in _logical_comparison_recommendations(recommendations):
-        confidence_label, confidence = confidence_rows(rec)[0]
+        components = memory_confidence_rows(rec)
+        basis = "\n".join(f"{label}: {value}" for label, value in components)
+        if not components:
+            metadata_confidence = rec.evaluated.candidate.metadata_confidence.value
+            basis = f"Unavailable (metadata confidence: {metadata_confidence})"
         table.add_row(
             _model_title(rec),
             _configuration_label(rec),
             _memory_label(rec),
             rec.status.value,
-            confidence if confidence_label.startswith("Memory")
-            else f"Unavailable (metadata: {confidence})",
+            basis,
             rec.evaluated.candidate.license or "not declared",
             rec.reasons[0] if rec.reasons else "-",
+            height=max(1, len(components)),
         )
     return table
 

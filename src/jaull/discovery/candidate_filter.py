@@ -101,6 +101,10 @@ _SCALE_BUCKETS: tuple[tuple[float, str], ...] = (
     (32.0, "large"),
 )
 
+# Sizes above this are not "small": the lower bound of the scale query and of the shortlist's
+# small/larger split.
+LARGER_THAN_SMALL_BILLIONS = _SCALE_BUCKETS[1][0]
+
 _FIT_BONUS: dict[HardwareFitMode | None, float] = {
     HardwareFitMode.GPU_RESIDENT: 4.0,
     HardwareFitMode.GPU_OFFLOAD: 3.0,
@@ -464,6 +468,13 @@ def _hardware_aware_shortlist(
         if bucket and bucket[0].hint.mode is not None
     ]
     best_class = min(placed_classes, default=None)
+    larger_in_best_class = any(
+        bucket
+        and bucket[0].hint.mode is not None
+        and _mode_order(bucket[0].hint.mode, hardware) == best_class
+        and not _is_small(bucket[0])
+        for bucket in buckets
+    )
     for bucket in buckets:
         if len(selected) >= limit:
             break
@@ -472,17 +483,24 @@ def _hardware_aware_shortlist(
         mode = bucket[0].hint.mode
         if mode is not None and _mode_order(mode, hardware) != best_class:
             continue
+        if larger_in_best_class and _is_small(bucket[0]):
+            continue
         picked = _pop_bucket_candidate(bucket, selected_redundancy, selected_families)
         if picked is not None:
             _remember_selection(picked, selected, selected_redundancy, selected_families)
 
-    # Relevance: the rest goes to the best remaining candidates, placement class first and
-    # score within it; family diversity only breaks exact ties.
+    # Relevance: the rest goes to the best remaining candidates, placement class first, then
+    # larger-than-small before small ones (a sub-4B model fills a slot only when nothing
+    # larger in that class is left), and score within it; family diversity only breaks
+    # exact ties.
     remaining = [entry for bucket in buckets for entry in bucket]
     while remaining and len(selected) < limit:
         remaining.sort(
             key=lambda entry: (
-                _mode_order(entry.hint.mode, hardware), -entry.score, entry.candidate.repo_id,
+                _mode_order(entry.hint.mode, hardware),
+                _is_small(entry),
+                -entry.score,
+                entry.candidate.repo_id,
             )
         )
         top = remaining[0]
@@ -491,6 +509,7 @@ def _hardware_aware_shortlist(
             entry
             for entry in remaining
             if _mode_order(entry.hint.mode, hardware) == top_class
+            and _is_small(entry) == _is_small(top)
             and entry.score >= top.score - _SCORE_TIE_EPSILON
         ]
         chosen = _pop_bucket_candidate(tied, selected_redundancy, selected_families)
@@ -652,6 +671,10 @@ def _mode_order(mode: HardwareFitMode | None, hardware: HardwareProfile) -> int:
     return order[mode]
 
 
+def _is_small(entry: _ShortlistEntry) -> bool:
+    return _scale_bucket(parameter_count_hint(entry.candidate.repo_id)) in {"tiny", "small"}
+
+
 def _scale_order(billions: float | None) -> int:
     bucket = _scale_bucket(billions)
     order = {
@@ -764,6 +787,40 @@ def _candidate_vram_bytes(candidate: ModelCandidate, hardware: HardwareProfile) 
     if not hardware.accelerators and ComputeBackend.CUDA in supported:
         capacities.extend(gpu.vram_total_bytes for gpu in hardware.gpus)
     return max(capacities, default=None)
+
+
+def largest_fitting_billions(
+    hardware: HardwareProfile, requirements: UserRequirements,
+) -> float | None:
+    """The largest parameter count that would sit entirely in this machine's memory.
+
+    Uses the shortlist's own coarse assumptions (default quantization, KV cache,
+    overhead, safety margin), so it is as approximate as they are. ``None`` when no
+    memory pool is known.
+    """
+    pool = _planning_vram_bytes(hardware) or hardware.memory.total_bytes
+    if not pool:
+        return None
+    per_parameter = _bytes_per_parameter_hint(_COARSE_DEFAULT_QUANTIZATION)
+    reserve = estimator_policies.DEVICE_RESERVE_DEFAULT_BYTES
+
+    def needed(billions: float) -> int:
+        weights = int(billions * 1e9 * per_parameter)
+        return _with_safety_margin(
+            _coarse_kv_cache_bytes(billions, requirements)
+            + reserve
+            + weights
+            + _coarse_overhead_bytes(weights)
+        )
+
+    low, high = 0.0, 1000.0
+    for _ in range(40):
+        middle = (low + high) / 2
+        if needed(middle) <= pool:
+            low = middle
+        else:
+            high = middle
+    return low
 
 
 def _bytes_per_parameter_hint(quantization: str) -> float:

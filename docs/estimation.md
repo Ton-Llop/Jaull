@@ -9,6 +9,17 @@ and the overall assessment carries a **confidence** (`high`, `medium`, `low`, `u
 reduced by the weakest link in the chain. Numbers are never presented with more precision
 than their provenance supports.
 
+Results (Memory and Compare) and Markdown reports show confidence separately for
+weights, KV cache and runtime overhead, alongside each component's source. Technical
+details retain the aggregate confidence and component explanations for auditing.
+The aggregate is a weakest-link indicator, not a measured error probability or an
+overall reliability grade for the model. Since runtime overhead is always an assumed
+heuristic with `low` confidence, ordinary estimates are capped at `low` (or `unknown`
+when a required component is unknown). A successful execution does not rewrite that
+prediction. This presentation does not change estimation formulas or ranking policy;
+recommendation report format v4 records the presentation change, with existing JSON
+confidence fields preserved.
+
 ---
 
 ## The four components

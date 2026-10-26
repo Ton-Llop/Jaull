@@ -8,6 +8,7 @@ testable without touching the network.
 
 from __future__ import annotations
 
+from jaull.discovery.candidate_filter import LARGER_THAN_SMALL_BILLIONS
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.requirements import UseCase, UserRequirements
 
@@ -53,15 +54,21 @@ _FORMAT_TAGS: dict[str, str] = {
 def build_queries(
     requirements: UserRequirements,
     limit: int = DEFAULT_RESULTS_PER_QUERY,
+    *,
+    max_billions: float | None = None,
 ) -> list[SearchQuery]:
     """Return the ordered, deduplicated set of queries for these requirements.
 
     ``limit`` is the ``list_models`` page size per query. The guided orchestrator
     supplies its own value from ``jaull.application.recommendation.policies``;
     callers that only want to build the queries can omit it.
+
+    ``max_billions`` is the largest size that fits the machine. Every plain query sorts
+    by downloads, so the most popular small models fill every page; when sizes beyond
+    the small ones fit, one more query is restricted to that range.
     """
     queries: list[SearchQuery] = []
-    seen: set[tuple[str | None, str | None, tuple[str, ...], str, int]] = set()
+    seen: set[object] = set()
 
     def add(query: SearchQuery) -> None:
         key = query.cache_key()
@@ -114,6 +121,24 @@ def build_queries(
                 filter_tags=(language,),
                 sort="downloads",
                 limit=limit,
+            )
+        )
+
+    if max_billions is not None and max_billions > LARGER_THAN_SMALL_BILLIONS:
+        fmt_tag = next(
+            (_FORMAT_TAGS[fmt] for fmt in requirements.preferred_formats if fmt in _FORMAT_TAGS),
+            None,
+        )
+        add(
+            SearchQuery(
+                label=f"{requirements.use_case.value}:scale",
+                search=primary_phrase,
+                pipeline_tag=requirements.pipeline_tag,
+                filter_tags=(fmt_tag,) if fmt_tag else (),
+                sort="downloads",
+                limit=limit,
+                min_billions=LARGER_THAN_SMALL_BILLIONS,
+                max_billions=max_billions,
             )
         )
 
