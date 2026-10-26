@@ -128,3 +128,15 @@ def test_results_keep_diagnostics_collapsed_and_do_not_mutate_recommendations():
             assert state.model_dump_json() == before
 
     asyncio.run(scenario())
+
+
+def test_the_context_bar_names_a_vulkan_card_that_nvml_does_not_see() -> None:
+    """Regression found on the B60 box: the bar showed only CPU and RAM while the plans ran
+    on the card, because only NVIDIA (NVML) GPUs were ever added to the summary."""
+    from jaull.presentation.plan_labels import hardware_summary
+    from tests._intel_fixtures import LINUX_OS, scan
+
+    summary = hardware_summary(scan(LINUX_OS))
+
+    assert "B60" in summary and "24 GiB" in summary  # the fixture's 24 GiB heap
+    assert "(R)" not in summary and "(TM)" not in summary

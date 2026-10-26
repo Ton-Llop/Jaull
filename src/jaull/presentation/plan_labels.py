@@ -23,7 +23,12 @@ from jaull.domain.execution_plans import (
     ModelIdentity,
     PlanCompatibilityStatus,
 )
-from jaull.domain.hardware import ComputeBackend, HardwareProfile
+from jaull.domain.hardware import (
+    AcceleratorProfile,
+    AcceleratorType,
+    ComputeBackend,
+    HardwareProfile,
+)
 from jaull.domain.runtime import (
     ExecutionReadinessReason,
     ExecutionReadinessStatus,
@@ -88,7 +93,25 @@ def hardware_summary(profile: HardwareProfile | None) -> str:
     if profile.gpus:
         gpu = profile.gpus[0]
         parts.append(f"{_short_gpu(gpu.name)} {_round_gib(gpu.vram_total_bytes)}")
+    elif (card := _dedicated_accelerator(profile)) is not None:
+        parts.append(f"{_short_gpu(card.name)} {_round_gib(card.dedicated_memory_bytes or 0)}")
     return " · ".join(parts)
+
+
+def _dedicated_accelerator(profile: HardwareProfile) -> AcceleratorProfile | None:
+    """The largest card with its own memory, for machines NVML does not describe.
+
+    A shared-memory iGPU adds nothing to the RAM figure already shown, so only a
+    dedicated device is worth a place in a three-fact line.
+    """
+    cards = [
+        accelerator
+        for accelerator in profile.accelerators
+        if accelerator.type is AcceleratorType.DEDICATED
+        and not accelerator.shared_memory
+        and accelerator.dedicated_memory_bytes
+    ]
+    return max(cards, key=lambda card: card.dedicated_memory_bytes or 0, default=None)
 
 
 def _round_gib(value: int) -> str:
@@ -110,8 +133,12 @@ def _short_cpu(model: str) -> str:
     return _CPU_NOISE.sub(" ", model).strip() or model
 
 
+_TRADEMARK_MARKS = re.compile(r"\((?:R|TM)\)", re.IGNORECASE)
+
+
 def _short_gpu(name: str) -> str:
-    return _GPU_NOISE.sub("", name).strip() or name
+    without_marks = _TRADEMARK_MARKS.sub("", name)
+    return _GPU_NOISE.sub("", without_marks).strip() or name
 
 
 def backend_hint(runtime: RuntimeRecommendation) -> str:

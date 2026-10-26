@@ -42,7 +42,12 @@ from jaull.domain.runtime import (
 from jaull.domain.runtime_support import available_compute_backends
 from jaull.exceptions import JaullError
 from jaull.observability.telemetry import PerformanceTelemetry
-from jaull.recommendation.engine_v2 import PlanRankingContext, generate_execution_plans
+from jaull.recommendation.engine_v2 import (
+    PlanRankingContext,
+    generate_execution_plans,
+    rank_execution_plans,
+    ranking_criteria,
+)
 from jaull.recommendation.local_evidence import matching_benchmark
 from jaull.reporting.recommendation import report_to_dict, report_to_markdown
 from jaull.runtime import service as runtimes
@@ -141,7 +146,7 @@ def test_cpu_selects_a_confirmed_viable_gguf_and_preserves_rejected_transformers
     )
     assert len(recs) == 1
     assert recs[0].plan.runtime_family is RuntimeName.LLAMA_CPP
-    assert recs[0].plan.artifact.quantization == "Q4_K_M"
+    assert recs[0].plan.artifact.quantization == "Q5_K_M"  # Balanced ladder head
     assert recs[0].alternative_plans
     assert any(
         plan.runtime_family is RuntimeName.TRANSFORMERS for plan in recs[0].alternative_plans
@@ -389,7 +394,7 @@ def test_targeted_discovery_confirms_lineage_and_stays_bounded():
     "priority,quantization",
     [
         (RecommendationPriority.QUALITY, "Q6_K"),
-        (RecommendationPriority.BALANCED, "Q4_K_M"),
+        (RecommendationPriority.BALANCED, "Q5_K_M"),  # head of its ladder
         (RecommendationPriority.SPEED, "Q4_K_M"),
         (RecommendationPriority.MEMORY, "Q4_K_M"),
     ],
@@ -407,6 +412,72 @@ def test_multiple_viable_quants_follow_existing_policy(priority, quantization):
     assert {plan.artifact.quantization for plan in recs[0].alternative_plans} >= (
         {"Q4_K_M", "Q5_K_M", "Q6_K"} - {quantization}
     )
+
+
+def test_equally_comfortable_quantizations_follow_the_priority_ladder_not_the_alphabet():
+    """Regression found on a B60 box: when every quantization fit equally, the plans fell back
+    to alphabetical order and Balanced recommended Q2_K (and a 32B at IQ2_M)."""
+    hw, req, _, estimate, evaluated = _setup(ram=64)
+    req = req.model_copy(update={"priority": RecommendationPriority.BALANCED})
+
+    recs = service.recommend(
+        [evaluated(BASE), evaluated(GGUF, base=BASE)], req, hardware=hw, estimate_fn=estimate,
+    )
+
+    assert recs[0].plan.artifact.quantization == "Q5_K_M"  # head of the Balanced ladder
+
+
+@pytest.mark.parametrize("priority", list(RecommendationPriority))
+@pytest.mark.parametrize("commercial", [True, False])
+def test_published_criteria_reproduce_order_for_variants_of_one_repository(priority, commercial):
+    hw, req, _, estimate, evaluated = _setup(ram=64)
+    req = req.model_copy(update={"priority": priority, "commercial_use_required": commercial})
+    ranked = rank_execution_plans(
+        [evaluated(GGUF, base=BASE)], req,
+        context=PlanRankingContext(hardware=hw), estimate_fn=estimate,
+    )
+    assert len(ranked) > 1
+    by_published_criteria = sorted(
+        ranked,
+        key=lambda item: (
+            tuple(c.rank for c in ranking_criteria(
+                item, priority, commercial_use_required=commercial,
+            )),
+            item.evaluated.repo_id,
+            item.plan.artifact.quantization or item.plan.artifact.precision or "",
+            item.plan.runtime.runtime.value,
+        ),
+    )
+    assert [item.plan.plan_id for item in ranked] == [
+        item.plan.plan_id for item in by_published_criteria
+    ]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_balanced_ladder_beats_repository_name_for_the_same_confirmed_model(reverse):
+    hw, req, analyses, estimate, _ = _setup(ram=64)
+    req = req.model_copy(update={"priority": RecommendationPriority.BALANCED})
+    source = analyses[GGUF]
+    pool = []
+    for repo, quant in (("aaa/Model-7B-GGUF", "Q4_K_M"), ("zzz/Model-7B-GGUF", "Q5_K_M")):
+        analyses[repo] = source.model_copy(update={
+            "repo": source.repo.model_copy(update={"repo_id": repo}),
+            "classification": source.classification.model_copy(update={"gguf_variants": [
+                variant for variant in source.classification.gguf_variants
+                if variant.quantization == quant
+            ]}),
+        })
+        pool.append(evaluate_candidate(
+            candidate(repo, base_model=BASE), req, hw,
+            inspect_fn=analyses.__getitem__, estimate_fn=estimate,
+        ))
+    if reverse:
+        pool.reverse()
+    recs = service.recommend(pool, req, hardware=hw, estimate_fn=estimate)
+    assert len(recs) == 1  # confirmed lineage, not matching names
+    assert recs[0].plan.artifact.repo_id == "zzz/Model-7B-GGUF"
+    assert recs[0].plan.artifact.quantization == "Q5_K_M"
+    assert any(plan.artifact.repo_id == "aaa/Model-7B-GGUF" for plan in recs[0].alternative_plans)
 
 
 def test_uncertain_conversion_cannot_rescue_a_blocked_model():
@@ -607,12 +678,13 @@ def test_selected_plan_drives_tui_helpers_and_json_markdown_export():
         estimate_fn=estimate,
     )
     rec = recs[0]
-    # The ladder initially chose Q5_K_M; Balanced's existing tie policy chose Q4_K_M.
+    # The ladder chooses Q5_K_M and the plan order now agrees with it. It used to end on
+    # Q4_K_M only because equal plans were ordered by the quantization's name.
     assert evaluated(GGUF, base=BASE).selected_configuration.quantization == "Q5_K_M"
-    assert rec.evaluated.selected_configuration.quantization == "Q4_K_M"
-    assert rec.plan.artifact.quantization == "Q4_K_M"
-    assert "Q4_K_M" in _recommendation_metadata(rec)
-    assert "Q5_K_M" not in _recommendation_metadata(rec)
+    assert rec.evaluated.selected_configuration.quantization == "Q5_K_M"
+    assert rec.plan.artifact.quantization == "Q5_K_M"
+    assert "Q5_K_M" in _recommendation_metadata(rec)
+    assert "Q4_K_M" not in _recommendation_metadata(rec)
     assert variant_from_recommendation(rec) is rec.plan.artifact
     assert execution_plan_for_recommendation(rec, hardware=hw).artifact == rec.plan.artifact
     blocked = next(plan for plan in rec.alternative_plans if plan.artifact.precision == "int4")
@@ -624,8 +696,12 @@ def test_selected_plan_drives_tui_helpers_and_json_markdown_export():
         evaluated_candidates=[rec.evaluated],
     )
     payload = report_to_dict(state)
-    assert payload["recommendations"][0]["artifact"]["quantization"] == "Q4_K_M"
-    assert "Q4_K_M" in report_to_markdown(state)
+    assert payload["recommendations"][0]["artifact"]["quantization"] == "Q5_K_M"
+    criteria = payload["recommendations"][0]["ranking"]["criteria"]
+    assert {"axis": "quantization_preference", "value": "Q5_K_M"} in criteria
+    markdown = report_to_markdown(state)
+    assert "Q5_K_M" in markdown
+    assert "quantization preference: Q5_K_M" in markdown
 
 
 def test_paths_keeps_the_selected_configuration_and_already_assessed_alternatives():
