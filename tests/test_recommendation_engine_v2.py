@@ -876,6 +876,7 @@ def test_speed_does_not_prefer_a_larger_q4_to_a_smaller_transformers_plan(status
     assert axes == [
         "viability", "plan_constraints", "requirement_confirmation", "suitability",
         "runnability", "executability", "memory_footprint", "plan_confidence",
+        "quantization_preference",
     ]
 
 
@@ -2060,3 +2061,32 @@ def test_every_priority_publishes_at_least_one_criterion() -> None:
         )
         assert criteria
         assert all(c.axis and c.value for c in criteria)
+
+
+def test_balanced_list_puts_weak_plans_after_the_rest_without_dropping_them() -> None:
+    """Regression found on a B60 box: with commercial use required, a 135M model with a
+    confirmed licence took slots from a strong 8B with an unknown one. The licence-first
+    order is kept; a weak plan only fills what the others leave, and only for Balanced."""
+    from dataclasses import replace
+
+    from jaull.domain.recommendation import AssessmentLevel
+    from jaull.recommendation.selection import weak_plans_last
+    from tests.test_shadow_policies import _pool
+
+    _, pool = _pool("tiny", "big", "mid", "tiny2", priority=RecommendationPriority.BALANCED)
+
+    weak, strong, medium = AssessmentLevel.WEAK, AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE
+    ranked = [replace(item, assessment=item.assessment.model_copy(update={"capability": level}))
+              for item, level in zip(pool, (weak, strong, medium, weak), strict=True)]
+
+    def names(priority: RecommendationPriority) -> list[str]:
+        return [item.evaluated.repo_id.split("/")[1].removesuffix("-7B-GGUF")
+                for item in weak_plans_last(ranked, priority)]
+
+    assert names(RecommendationPriority.BALANCED) == ["big", "mid", "tiny", "tiny2"]
+    for other in (
+        RecommendationPriority.SPEED,
+        RecommendationPriority.MEMORY,
+        RecommendationPriority.QUALITY,
+    ):
+        assert names(other) == ["tiny", "big", "mid", "tiny2"]

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
@@ -34,12 +34,19 @@ from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation.diversity import diversify_ranked_plans
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
-from jaull.recommendation.shadow import POLICY_VERSION, apply_measured_policy
+from jaull.recommendation.selection import weak_plans_last
+from jaull.recommendation.shadow import POLICY_VERSION, apply_active_policy
 from jaull.reporting.estimation import estimate_to_json_dict
 from jaull.reporting.recommendation_labels import confidence_rows, ranking_axis_label, score_rows
 from jaull.workflow.state import RecommendationWorkflowState
 
 REPORT_SCHEMA_VERSION = 3
+
+
+class _PolicyPositions(NamedTuple):
+    lexicographic: int
+    selected: int
+    measured: int
 
 
 def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
@@ -232,6 +239,14 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 f"{index}. {ranking_axis_label(item['axis'])}: {item['value']}"
                 for index, item in enumerate(criteria, start=1)
             ]
+            if selection := ranking.get("selection_policy"):
+                lines += ["", "**Balanced selection** (before measured evidence):",
+                          f"- {selection['note']}"]
+                if selection["base_pool_position"] is not None:
+                    lines.append(
+                        f"- Selection order: pool #{selection['base_pool_position']} -> "
+                        f"#{selection['selected_pool_position']} (before diversity)."
+                    )
             if (key := _policy_key(ranking)) is not None:
                 lines += ["", *_policy_markdown(key, ranking[key])]
             lines.append("")
@@ -480,11 +495,15 @@ _COMPOSITE_RANKING_NOTE = (
 )
 
 
-def _policy_positions(state: RecommendationWorkflowState) -> dict[str, tuple[int, int]]:
+def _policy_positions(state: RecommendationWorkflowState) -> dict[str, _PolicyPositions]:
     if state.requirements is None or state.requirements.priority not in _POLICY_KEYS:
         return {}
     base = {item.plan.plan_id: i + 1 for i, item in enumerate(state.ranked_plans)}
-    active = apply_measured_policy(state.ranked_plans, state.requirements)
+    selected = {
+        item.plan.plan_id: i + 1
+        for i, item in enumerate(weak_plans_last(state.ranked_plans, state.requirements.priority))
+    }
+    active = apply_active_policy(state.ranked_plans, state.requirements)
     expected = [item.primary.plan.plan_id for item in diversify_ranked_plans(
         active, limit=len(state.recommendations),
     )]
@@ -493,7 +512,9 @@ def _policy_positions(state: RecommendationWorkflowState) -> dict[str, tuple[int
     if expected != shown:
         return {}
     return {
-        item.plan.plan_id: (base[item.plan.plan_id], i + 1)
+        item.plan.plan_id: _PolicyPositions(
+            base[item.plan.plan_id], selected[item.plan.plan_id], i + 1,
+        )
         for i, item in enumerate(active)
     }
 
@@ -503,7 +524,7 @@ def _ranking_to_dict(
     priority: RecommendationPriority,
     *,
     commercial_use_required: bool = False,
-    quality_position: tuple[int, int] | None = None,
+    quality_position: _PolicyPositions | None = None,
 ) -> dict[str, Any]:
     # Without a plan there is no v2 assessment and the composite genuinely
     # ordered the list. Labelling that run "diagnostic" would be the same class
@@ -531,6 +552,19 @@ def _ranking_to_dict(
         "ranked_by": "plan_criteria",
         "note": _PLAN_RANKING_NOTE,
     }
+    if priority is RecommendationPriority.BALANCED:
+        payload["selection_policy"] = {
+            "version": "balanced-capability-within-viability-v1",
+            "stage": "before_measured_policy",
+            "note": (
+                "Known strong/adequate capability is preferred within contiguous groups "
+                "of equal confirmed memory fit, rejection state and runnability. "
+                "Weak/unknown capability fills remaining positions. "
+                "Comparable measured evidence is applied afterwards."
+            ),
+            "base_pool_position": quality_position.lexicographic if quality_position else None,
+            "selected_pool_position": quality_position.selected if quality_position else None,
+        }
     if (key := _POLICY_KEYS.get(priority)) is not None:
         quality = rec.plan_assessment.quality.applicable
         speed = rec.plan_assessment.speed.applicable
@@ -546,11 +580,16 @@ def _ranking_to_dict(
             "artifact_sha256": rec.plan.artifact.sha256,
             **{name: value.model_dump(mode="json") if value is not None else None
                for name, value in measurements.items()},
-            "base_pool_position": quality_position[0] if quality_position is not None else None,
+            "base_pool_position": quality_position.selected if quality_position else None,
             f"{stage}_pool_position": (
-                quality_position[1] if quality_position is not None else None
+                quality_position.measured if quality_position else None
             ),
         }
+    if priority is RecommendationPriority.BALANCED:
+        payload["note"] += (
+            " Balanced applies its capability preference within viability groups "
+            "before the measured stage; selection_policy records that separate step."
+        )
     return payload
 
 
@@ -574,7 +613,11 @@ def _policy_markdown(key: str, policy: dict[str, Any]) -> list[str]:
     speed = policy.get("measurement") if stage == "speed" else policy.get("speed_measurement")
     shown = {"quality": [quality], "speed": [speed], "balanced": [quality, speed]}[stage]
     if all(item is None for item in shown):
-        lines.append("- No applicable measurement; this plan keeps its base-pool slot.")
+        lines.append(
+            "- No applicable measurement; this plan keeps its selection-adjusted slot."
+            if stage == "balanced" else
+            "- No applicable measurement; this plan keeps its base-pool slot."
+        )
     if stage in ("quality", "balanced") and quality is not None:
         lines += [
             f"- {quality['suite']} / {quality['metric']}: {quality['value']:.1%} "
@@ -612,7 +655,7 @@ def _recommendation_to_dict(
     priority: RecommendationPriority,
     *,
     commercial_use_required: bool = False,
-    quality_position: tuple[int, int] | None = None,
+    quality_position: _PolicyPositions | None = None,
 ) -> dict[str, Any]:
     ranking = _ranking_to_dict(
         rec,

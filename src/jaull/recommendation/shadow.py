@@ -42,6 +42,7 @@ from jaull.recommendation.engine_v2 import RankedPlan, _requirement_confirmation
 from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
 from jaull.recommendation.quality import assess_quality, index_quality_records
+from jaull.recommendation.selection import weak_plans_last
 
 POLICY_VERSION = "shadow-v2"
 
@@ -197,6 +198,14 @@ def apply_measured_policy(
     return order
 
 
+def apply_active_policy(
+    ranked: Sequence[RankedPlan], requirements: UserRequirements,
+) -> list[RankedPlan]:
+    """Shared active order: selection preference, then comparable measured evidence."""
+    selected = weak_plans_last(ranked, requirements.priority)
+    return apply_measured_policy(selected, requirements)
+
+
 def build_shadow_report(
     ranked: Sequence[RankedPlan],
     requirements: UserRequirements,
@@ -205,6 +214,7 @@ def build_shadow_report(
     evidence: Mapping[str, PlanEvidence] | None = None,
 ) -> ShadowReport:
     priority = requirements.priority
+    ranked = weak_plans_last(ranked, priority)
     commercial = requirements.commercial_use_required is True
     found = evidence if evidence is not None else {
         item.plan.plan_id: production_evidence(item.assessment) for item in ranked
@@ -519,6 +529,7 @@ __all__ = [
     "Measured",
     "PlanEvidence",
     "ShadowReport",
+    "apply_active_policy",
     "apply_measured_policy",
     "build_shadow_report",
     "production_evidence",
