@@ -49,6 +49,28 @@ def test_gguf_multipart_variants_are_grouped() -> None:
     assert len(result.gguf_variants[0].files) == 2
 
 
+def test_a_quantization_published_whole_and_as_parts_is_counted_once() -> None:
+    """Regression found on a B60 box: Qwen's GGUF repos publish each quantization both as one
+    file and as its split parts, and the weights were counted twice (Q8_0 7B: 15 GiB, not 7.5)."""
+    files = [
+        ModelFile(path="m-q8_0.gguf", size_bytes=7_540),
+        ModelFile(path="m-q8_0-00001-of-00003.gguf", size_bytes=3_710),
+        ModelFile(path="m-q8_0-00002-of-00003.gguf", size_bytes=3_670),
+        ModelFile(path="m-q8_0-00003-of-00003.gguf", size_bytes=160),
+        ModelFile(path="m-q5_0-00001-of-00002.gguf", size_bytes=3_730),  # parts only
+        ModelFile(path="m-q5_0-00002-of-00002.gguf", size_bytes=1_220),
+        ModelFile(path="m-q2_k.gguf", size_bytes=2_810),  # one file only
+    ]
+
+    variants = {v.quantization: v for v in classify_repository(files).gguf_variants}
+
+    assert variants["Q8_0"].total_bytes == 7_540
+    assert [f.path for f in variants["Q8_0"].files] == ["m-q8_0.gguf"]
+    assert variants["Q5_0"].total_bytes == 4_950  # parts that are all there is still add up
+    assert len(variants["Q5_0"].files) == 2
+    assert variants["Q2_K"].total_bytes == 2_810
+
+
 def test_classifies_diffusers_repository() -> None:
     files = _files(
         "model_index.json",

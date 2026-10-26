@@ -102,7 +102,8 @@ def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
         buckets[quant].append(f)
 
     variants: list[GgufVariant] = []
-    for quant, group in sorted(buckets.items()):
+    for quant, raw_group in sorted(buckets.items()):
+        group = _without_duplicated_parts(raw_group)
         total = sum(f.size_bytes or 0 for f in group)
         variants.append(
             GgufVariant(
@@ -112,6 +113,28 @@ def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
             )
         )
     return variants
+
+
+def _without_duplicated_parts(group: list[ModelFile]) -> list[ModelFile]:
+    """Count a set of weights once when a repository publishes it both whole and in parts.
+
+    Several repositories (Qwen's among them) ship each quantization as ``name.gguf`` and also
+    as ``name-00001-of-0000N.gguf`` ... ``name-0000N-of-0000N.gguf``. They are the same
+    weights twice, so summing every file doubled the estimate and made the download twice the
+    size. Parts that are all the repository has for a name are kept, and so are unrelated
+    files that merely share a quantization label.
+    """
+
+    def stem(file: ModelFile) -> tuple[PurePosixPath, str]:
+        path = PurePosixPath(file.path)
+        return path.parent, _MULTIPART_SUFFIX_RE.sub("", path.name[: -len(".gguf")])
+
+    def is_part(file: ModelFile) -> bool:
+        name = PurePosixPath(file.path).name[: -len(".gguf")]
+        return _MULTIPART_SUFFIX_RE.search(name) is not None
+
+    whole_stems = {stem(file) for file in group if not is_part(file)}
+    return [file for file in group if not (is_part(file) and stem(file) in whole_stems)]
 
 
 def _detect_quantization(filename: str) -> str:

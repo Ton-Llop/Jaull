@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 # Config parsing now normalizes GPT-2's legacy architecture field names into
 # ModelConfig. Invalidate entries created before that normalization existed.
-ANALYSIS_CACHE_SCHEMA_VERSION = 3
+# Version 4: a GGUF quantization published both whole and as split parts is counted once;
+# earlier entries carry variant sizes (and file lists) that doubled such weights.
+ANALYSIS_CACHE_SCHEMA_VERSION = 4
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
 
