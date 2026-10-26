@@ -571,6 +571,52 @@ def test_hardware_aware_shortlist_uses_family_diversity_without_a_quota() -> Non
     assert sum(item.repo_id.startswith("Qwen/") for item in picked) > 1
 
 
+def test_the_coarse_hint_only_gives_a_gpu_to_formats_that_can_run_on_it() -> None:
+    """Regression found on a B60 box: nine of twelve inspections went to safetensors repos that
+    were rated GPU resident on a machine whose only accelerator is Vulkan, where Jaull's
+    Transformers loader cannot run; they were also sized as if 4-bit."""
+    from tests._intel_fixtures import LINUX_OS, scan
+
+    vulkan_only = scan(LINUX_OS).model_copy(update={"memory": hardware().memory})
+    req = _requirements()
+
+    gguf = coarse_placement_hint(
+        candidate("org/Model-7B-Instruct-GGUF", tags=["gguf", "Q4_K_M"]), req, vulkan_only,
+    )
+    plain = coarse_placement_hint(candidate("org/Model-7B-Instruct"), req, vulkan_only)
+    awq = coarse_placement_hint(candidate("org/Model-7B-Instruct-AWQ"), req, vulkan_only)
+    on_cuda = coarse_placement_hint(candidate("org/Model-7B-Instruct"), req, hardware(vram_gib=24))
+
+    assert gguf.mode is HardwareFitMode.GPU_RESIDENT
+    assert plain.mode is not HardwareFitMode.GPU_RESIDENT  # Transformers cannot use Vulkan
+    assert plain.quantization_hint == "float16"  # no 4-bit assumption without a hint
+    assert plain.estimated_weight_bytes > 13 * 1024**3  # 7B at two bytes per parameter
+    assert awq.mode is HardwareFitMode.TOO_LARGE  # AWQ needs CUDA, even on CPU
+    assert on_cuda.mode in {HardwareFitMode.GPU_RESIDENT, HardwareFitMode.GPU_OFFLOAD}
+
+
+def test_candidates_that_can_use_the_accelerator_are_not_displaced_by_cpu_only_ones() -> None:
+    """Regression found on a B60 box: the shortlist went round every placement class, so
+    when slots were scarce small CPU-only checkpoints took places from models that run
+    on the card."""
+    from tests._intel_fixtures import LINUX_OS, scan
+
+    vulkan_only = scan(LINUX_OS).model_copy(update={"memory": hardware(ram_gib=64).memory})
+    gguf = ["gguf", "Q4_K_M"]
+    on_the_card = [
+        candidate(f"org/Chat-{size}B-Instruct-GGUF", tags=gguf, downloads=100_000)
+        for size in (7, 8, 9, 12)
+    ]
+    cpu_only = [
+        candidate(f"vendor{index}/Tiny-3B-Instruct", downloads=5_000_000)
+        for index in range(4)
+    ]
+
+    picked = shortlist([*cpu_only, *on_the_card], _requirements(), limit=4, hardware=vulkan_only)
+
+    assert {item.repo_id for item in picked} == {item.repo_id for item in on_the_card}
+
+
 def test_family_diversity_does_not_beat_a_far_better_score() -> None:
     """Regression found on a B60 box: with `qwen2` already picked, the shortlist skipped
     every official Qwen coder (score ~22) for a 39-download repo (score ~7) whose name

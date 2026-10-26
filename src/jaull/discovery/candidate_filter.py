@@ -23,9 +23,19 @@ from jaull.domain.estimation import (
     HardwareFitMode,
     HardwareFitPlacementMethod,
 )
-from jaull.domain.hardware import HardwareProfile, planning_accelerator_memory_bytes
+from jaull.domain.hardware import (
+    AcceleratorType,
+    BackendAvailability,
+    ComputeBackend,
+    HardwareProfile,
+    planning_accelerator_memory_bytes,
+)
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import UserRequirements
+from jaull.domain.runtime_support import (
+    QUANTIZED_TRANSFORMERS_BACKENDS,
+    available_compute_backends,
+)
 from jaull.estimator import policies as estimator_policies
 
 # Tags that mean "this is not a plain text-generation model". This commit only
@@ -76,14 +86,11 @@ _COARSE_DEFAULT_QUANTIZATION = estimator_policies.DEFAULT_GGUF_QUANTIZATION.lowe
 _COARSE_DEFAULT_BYTES_PER_PARAM = _COARSE_BYTES_PER_PARAM["q4"]
 _MIN_GPU_OFFLOAD_WEIGHT_FRACTION = 0.10
 _MAX_TOO_LARGE_FALLBACKS = 2
+_CUDA_ONLY_QUANTIZATIONS = frozenset({"awq", "gptq"})
 # Shortlist scores are sums of the same terms, so candidates that are equally good have
 # equal scores; the epsilon only absorbs floating-point noise. Only inside such a tie may
 # the family-diversity preference decide, never to overrule a better score.
 _SCORE_TIE_EPSILON = 1e-9
-# A candidate whose size its name does not reveal gets one pick per shortlist, so a pile
-# of unsized repositories cannot take a quarter of the inspection budget. Further places
-# are earned by score in the fill-in pass.
-_UNKNOWN_SIZE_ROUND_PICKS = 1
 
 _QUANT_RE = re.compile(r"(?<![a-z0-9])q([2-8])(?:_k(?:_[ms])?|_0)?(?![a-z0-9])")
 
@@ -319,10 +326,26 @@ def coarse_placement_hint(
     kv_cache = _coarse_kv_cache_bytes(billions, requirements)
     overhead = _coarse_overhead_bytes(weights)
     ram_total = hardware.memory.total_bytes
-    vram_total = _planning_vram_bytes(hardware)
+    vram_total = _candidate_vram_bytes(candidate, hardware)
     unified = _has_unified_memory(hardware)
 
     cpu_total = _with_safety_margin(weights + kv_cache + overhead)
+    if (
+        quantization in _CUDA_ONLY_QUANTIZATIONS
+        and not _is_gguf_candidate(candidate)
+        and ComputeBackend.CUDA not in available_compute_backends(hardware)
+    ):
+        # Fitting in memory is not being able to run: Jaull's AWQ/GPTQ loader needs CUDA,
+        # on any placement.
+        return CoarsePlacementHint(
+            mode=HardwareFitMode.TOO_LARGE,
+            placement_method=HardwareFitPlacementMethod.NONE,
+            confidence=EstimationConfidence.LOW,
+            estimated_weight_bytes=weights,
+            estimated_total_bytes=cpu_total,
+            quantization_hint=quantization,
+            reason="AWQ/GPTQ loading requires an available CUDA backend.",
+        )
     if vram_total is None or unified:
         if cpu_total <= ram_total:
             return CoarsePlacementHint(
@@ -430,31 +453,51 @@ def _hardware_aware_shortlist(
     for bucket in buckets:
         bucket.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
 
-    unknown_size = [bool(bucket) and bucket[0].hint.mode is None for bucket in buckets]
-    round_picks = [0] * len(buckets)
-    while len(selected) < limit:
-        before = len(selected)
-        for position, bucket in enumerate(buckets):
-            if len(selected) >= limit:
-                break
-            if unknown_size[position] and round_picks[position] >= _UNKNOWN_SIZE_ROUND_PICKS:
-                continue
-            picked = _pop_bucket_candidate(
-                bucket, selected_redundancy, selected_families
-            )
-            if picked is None:
-                continue
-            round_picks[position] += 1
-            _remember_selection(picked, selected, selected_redundancy, selected_families)
-        if len(selected) == before:
-            break
-
-    remaining = [entry for bucket in buckets for entry in bucket]
-    remaining.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
-    for entry in remaining:
+    # Coverage: one candidate from each size class of the best placement class this machine
+    # offers (what can use its accelerator, or system memory when it has none), plus one
+    # whose size the name does not reveal. Going round every class repeatedly spent a
+    # quarter of the budget on models far below the machine's capacity and on ones that
+    # cannot use its accelerator at all.
+    placed_classes = [
+        _mode_order(bucket[0].hint.mode, hardware)
+        for bucket in buckets
+        if bucket and bucket[0].hint.mode is not None
+    ]
+    best_class = min(placed_classes, default=None)
+    for bucket in buckets:
         if len(selected) >= limit:
             break
-        _remember_selection(entry, selected, selected_redundancy, selected_families)
+        if not bucket:
+            continue
+        mode = bucket[0].hint.mode
+        if mode is not None and _mode_order(mode, hardware) != best_class:
+            continue
+        picked = _pop_bucket_candidate(bucket, selected_redundancy, selected_families)
+        if picked is not None:
+            _remember_selection(picked, selected, selected_redundancy, selected_families)
+
+    # Relevance: the rest goes to the best remaining candidates, placement class first and
+    # score within it; family diversity only breaks exact ties.
+    remaining = [entry for bucket in buckets for entry in bucket]
+    while remaining and len(selected) < limit:
+        remaining.sort(
+            key=lambda entry: (
+                _mode_order(entry.hint.mode, hardware), -entry.score, entry.candidate.repo_id,
+            )
+        )
+        top = remaining[0]
+        top_class = _mode_order(top.hint.mode, hardware)
+        tied = [
+            entry
+            for entry in remaining
+            if _mode_order(entry.hint.mode, hardware) == top_class
+            and entry.score >= top.score - _SCORE_TIE_EPSILON
+        ]
+        chosen = _pop_bucket_candidate(tied, selected_redundancy, selected_families)
+        if chosen is None:
+            break
+        remaining.remove(chosen)
+        _remember_selection(chosen, selected, selected_redundancy, selected_families)
 
     too_large_entries.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
     too_large_budget = min(_MAX_TOO_LARGE_FALLBACKS, limit - len(selected))
@@ -681,7 +724,46 @@ def _quantization_hint(candidate: ModelCandidate) -> str:
         return "float16"
     if match := _QUANT_RE.search(haystack):
         return f"q{match.group(1)}"
-    return _COARSE_DEFAULT_QUANTIZATION
+    # A repository with no hint is only a 4-bit file if it is GGUF; a Transformers
+    # checkpoint is stored in half precision, three times the size.
+    return _COARSE_DEFAULT_QUANTIZATION if _is_gguf_candidate(candidate) else "float16"
+
+
+def _is_gguf_candidate(candidate: ModelCandidate) -> bool:
+    return "gguf" in " ".join([candidate.repo_id, *candidate.tags]).lower()
+
+
+def _candidate_vram_bytes(candidate: ModelCandidate, hardware: HardwareProfile) -> int | None:
+    """Largest capacity of one device exposing a backend this format can use.
+
+    Never borrow memory from another device or add VRAM pools. Runtime installation
+    is intentionally irrelevant here; this is a metadata-only preselection hint.
+    """
+    if _is_gguf_candidate(candidate):
+        supported = {ComputeBackend.CUDA, ComputeBackend.HIP, ComputeBackend.VULKAN}
+    elif _quantization_hint(candidate) in _CUDA_ONLY_QUANTIZATIONS:
+        supported = {ComputeBackend.CUDA}
+    else:
+        supported = set(QUANTIZED_TRANSFORMERS_BACKENDS)
+    capacities = [
+        accelerator.dedicated_memory_bytes
+        for accelerator in hardware.accelerators
+        if accelerator.type is AcceleratorType.DEDICATED
+        and not accelerator.shared_memory
+        and accelerator.dedicated_memory_bytes is not None
+        and accelerator.dedicated_memory_bytes > 0
+        and any(
+            backend.backend in supported
+            and backend.availability is BackendAvailability.AVAILABLE
+            and not backend.software_renderer
+            for backend in accelerator.backends
+        )
+    ]
+    # Preserve the legacy NVML-only contract, but explicit accelerator probe
+    # results (including unavailable CUDA) take precedence over legacy snapshots.
+    if not hardware.accelerators and ComputeBackend.CUDA in supported:
+        capacities.extend(gpu.vram_total_bytes for gpu in hardware.gpus)
+    return max(capacities, default=None)
 
 
 def _bytes_per_parameter_hint(quantization: str) -> float:
