@@ -1180,10 +1180,25 @@ def _ranking_key(
         ),
         *priority_axes,
         _CONFIDENCE_RANK[assessment.confidence],
+        _ladder_rank(item.plan, priority),
         item.evaluated.repo_id,
         item.plan.artifact.quantization or item.plan.artifact.precision or "",
         item.plan.runtime.runtime.value,
     )
+
+
+def _ladder_rank(plan: ExecutionPlan, priority: RecommendationPriority) -> int:
+    """Where the plan's quantization sits on the priority's own ladder.
+
+    After all assessment axes tie, use the existing policy ladder before the
+    repository/name tie-breaks. This also applies to artifacts of the same logical
+    model published in different repositories.
+    """
+    if plan.artifact.format is not ArtifactVariantFormat.GGUF or not plan.artifact.quantization:
+        return 0
+    ladder = _quantization_ladder(priority)
+    quantization = plan.artifact.quantization.upper()
+    return ladder.index(quantization) if quantization in ladder else len(ladder)
 
 
 def _requirement_confirmation_rank(item: RankedPlan) -> int:
@@ -1295,6 +1310,11 @@ def ranking_criteria(
             "plan_confidence",
             assessment.confidence.value,
             _CONFIDENCE_RANK[assessment.confidence],
+        ),
+        (
+            "quantization_preference",
+            item.plan.artifact.quantization or "n/a",
+            _ladder_rank(item.plan, priority),
         ),
     )
     axes: tuple[tuple[str, str, int | float], ...]
