@@ -23,7 +23,11 @@ from jaull.recommendation import (
     tier,
 )
 from jaull.recommendation.actionability import assess_actionability
-from jaull.recommendation.diversity import DiversifiedRecommendation, diversify_ranked_plans
+from jaull.recommendation.diversity import (
+    DiversifiedRecommendation,
+    diversify_ranked_plans,
+    tie_key_for,
+)
 from jaull.recommendation.engine_v2 import (
     EstimatePlanFn,
     PlanRankingContext,
@@ -118,7 +122,9 @@ def recommend(
             # The base order: Recompare and the fallback baseline start from it.
             on_ranked_plans(ranked_plans)
         active_plans = apply_active_policy(ranked_plans, requirements)
-        diversified_items = diversify_ranked_plans(active_plans, limit=limit)
+        diversified_items = diversify_ranked_plans(
+            active_plans, limit=limit, tie_key=tie_key_for(requirements),
+        )
         v2_priority = {
             item.evaluated.repo_id: float(len(active_plans) - index)
             for index, item in enumerate(active_plans)

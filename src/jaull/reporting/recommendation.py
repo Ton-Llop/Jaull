@@ -31,7 +31,7 @@ from typing import Any, NamedTuple
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
 from jaull.domain.requirements import RecommendationPriority
-from jaull.recommendation.diversity import diversify_ranked_plans
+from jaull.recommendation.diversity import diversify_ranked_plans, tie_key_for
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.selection import weak_plans_last
@@ -514,7 +514,7 @@ def _policy_positions(state: RecommendationWorkflowState) -> dict[str, _PolicyPo
     }
     active = apply_active_policy(state.ranked_plans, state.requirements)
     expected = [item.primary.plan.plan_id for item in diversify_ranked_plans(
-        active, limit=len(state.recommendations),
+        active, limit=len(state.recommendations), tie_key=tie_key_for(state.requirements),
     )]
     shown = [rec.plan.plan_id for rec in state.recommendations if rec.plan is not None]
     # Older snapshots may predate activation; never attribute a swap they did not show.

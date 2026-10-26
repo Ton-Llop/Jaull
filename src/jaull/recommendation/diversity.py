@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, confirmed_model_repo_id
 from jaull.domain.recommendation import RecommendationPosition
-from jaull.recommendation.engine_v2 import RankedPlan
+from jaull.domain.requirements import UserRequirements
+from jaull.recommendation.engine_v2 import RankedPlan, ranking_tie_key
+
+TieKey = Callable[[RankedPlan], Hashable]
+
+
+def tie_key_for(requirements: UserRequirements) -> TieKey:
+    """The ranking's own definition of a tie for these requirements."""
+    commercial = requirements.commercial_use_required is True
+    return lambda plan: ranking_tie_key(
+        plan, requirements.priority, commercial_use_required=commercial,
+    )
 
 
 @dataclass(frozen=True)
@@ -21,12 +32,16 @@ def diversify_ranked_plans(
     ranked_plans: Sequence[RankedPlan],
     *,
     limit: int,
+    tie_key: TieKey | None = None,
 ) -> list[DiversifiedRecommendation]:
     """Select up to ``limit`` logical models without re-ranking plan internals.
 
     ``ranked_plans`` is already sorted by Recommendation Engine v2. The first
     plan per ``ModelIdentity`` stays the primary plan. Other plans for the same
     identity are retained as alternatives, but never consume another main slot.
+    The best-ranked plan always goes first; variety only chooses between plans the
+    ranking cannot tell apart. ``tie_key`` says what that means; without it, plans with
+    the same assessments and downloads count as tied.
     """
 
     if limit <= 0:
@@ -38,7 +53,7 @@ def diversify_ranked_plans(
     selected: list[_IdentityBucket] = [buckets[0]]
     remaining = buckets[1:]
     while remaining and len(selected) < limit:
-        candidate = _choose_next(selected, remaining)
+        candidate = _choose_next(selected, remaining, tie_key)
         selected.append(candidate)
         remaining.remove(candidate)
 
@@ -86,12 +101,14 @@ def _best_plan_per_identity(
 def _choose_next(
     selected: Sequence[_IdentityBucket],
     remaining: Sequence[_IdentityBucket],
+    tie_key: TieKey | None = None,
 ) -> _IdentityBucket:
     leader = remaining[0]
+    signature = tie_key or _assessment_signature
     comparable = [
         item
         for item in remaining
-        if _assessment_signature(item.primary) == _assessment_signature(leader.primary)
+        if signature(item.primary) == signature(leader.primary)
     ]
     return min(
         comparable,
@@ -113,6 +130,8 @@ def _assessment_signature(plan: RankedPlan) -> tuple[object, ...]:
         assessment.license_fit,
         assessment.language_fit,
         assessment.confidence,
+        # The ranking also breaks ties by downloads; plans it ranks apart on them are not tied.
+        plan.evaluated.candidate.downloads,
     )
 
 

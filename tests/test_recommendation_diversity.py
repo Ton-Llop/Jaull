@@ -245,6 +245,33 @@ def test_number_one_does_not_change_for_diversity() -> None:
     assert diversified[0].primary is ranked[0]
 
 
+def test_diversity_never_promotes_a_plan_the_ranking_put_behind() -> None:
+    """Regression found on a B60 box: a 12B code model ranked 29th reached the second slot of a
+    general chat list because its family had not been seen yet. Variety may only choose among
+    plans the ranking cannot tell apart; here the downloads tell them apart."""
+    from dataclasses import replace
+
+    ranked = _ranked_with_identities(
+        ("qwen", "Qwen-A", 1_500_000_000),
+        ("qwen", "Qwen-B", 1_600_000_000),
+        ("gemma", "Gemma", 2_000_000_000),
+    )
+    ranked = [
+        replace(item, evaluated=item.evaluated.model_copy(update={
+            "candidate": item.evaluated.candidate.model_copy(update={"downloads": downloads}),
+        }))
+        for item, downloads in zip(ranked, (900_000, 500_000, 100_000), strict=True)
+    ]
+
+    diversified = diversify_ranked_plans(ranked, limit=3)
+
+    assert [item.primary.plan.model_identity.family for item in diversified] == [
+        "qwen",
+        "qwen",
+        "gemma",
+    ]
+
+
 def test_diversity_can_reorder_comparable_later_slots() -> None:
     ranked = _ranked_with_identities(
         ("qwen", "Qwen-A", 1_500_000_000),

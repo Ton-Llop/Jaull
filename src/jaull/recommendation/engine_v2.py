@@ -1139,6 +1139,25 @@ def _ranking_key(
     *,
     commercial_use_required: bool = False,
 ) -> tuple[object, ...]:
+    return (
+        *ranking_tie_key(item, priority, commercial_use_required=commercial_use_required),
+        item.evaluated.repo_id,
+        item.plan.artifact.quantization or item.plan.artifact.precision or "",
+        item.plan.runtime.runtime.value,
+    )
+
+
+def ranking_tie_key(
+    item: RankedPlan,
+    priority: RecommendationPriority,
+    *,
+    commercial_use_required: bool = False,
+) -> tuple[object, ...]:
+    """Everything the ranking compares before the final name tie-breaks.
+
+    Two plans with an equal tie key are ones the ranking cannot tell apart on any axis,
+    which is the only case where variety may choose between them.
+    """
     assessment = item.assessment
     if priority is RecommendationPriority.QUALITY:
         priority_axes: tuple[int | float, ...] = (
@@ -1183,9 +1202,6 @@ def _ranking_key(
         _ladder_rank(item.plan, priority),
         # Only a tie reaches here: with every axis equal, the better-known repository first.
         -item.evaluated.candidate.downloads,
-        item.evaluated.repo_id,
-        item.plan.artifact.quantization or item.plan.artifact.precision or "",
-        item.plan.runtime.runtime.value,
     )
 
 

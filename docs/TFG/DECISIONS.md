@@ -2268,6 +2268,35 @@ Llama 3.1 passa del lloc 52 al 60 i Llama 2 del 51 al 61, o sigui que 3.1 ja pre
 **Fonts:** [rànquing v2](../../src/jaull/recommendation/engine_v2.py),
 [diversitat](../../src/jaull/recommendation/diversity.py), D101, D102.
 
+### D104. La diversitat només desempata entre plans que el rànquing no distingeix
+
+**Data i necessitat:** 2026-10-26. Un MoE de codi de 12B (lloc 29 del rànquing base) arribava
+al segon lloc d'un xat general perquè `diversify_ranked_plans` triava, entre plans amb la
+mateixa signatura d'avaluació, el de família no vista abans que el millor classificat. És el
+mateix defecte que la preselecció (D101, punt 1: família nova per sobre de millor
+puntuació), en un altre lloc. L'usuari ho va formular així: pot haver-hi tres Qwen seguits si
+són els millors, però no té sentit que un Qwen petit passi davant d'un model d'una altra
+família amb més paràmetres, i el criteri val per a totes les cerques.
+
+**Decisió:** el millor classificat va sempre primer; la varietat només tria entre plans que
+el rànquing no pot distingir. «Empat» es defineix amb la clau del propi rànquing
+(`ranking_tie_key`: tot el que compara abans del desempat final per nom), de manera que les
+descàrregues i l'escala de quantització també separen plans. Cada cridador (`recommend`, la
+instantània `shadow` i l'informe) passa `tie_key_for(requirements)`; sense clau, el
+diversificador usa la signatura d'avaluació més les descàrregues. `_ranking_key` es
+reescriu com a `ranking_tie_key` més el nom, la quantització i el runtime.
+
+**Límits:** «més paràmetres primer» no és una regla de diversitat i no s'ha tocat aquí. A
+Quality el rànquing ordena la quantització abans que la mida dins del mateix nivell de
+capacitat, de manera que un 7B `Q8_0` passa per davant d'un 14B `Q6_K`; és una política
+pendent (D101, límit d), i no té sentit a Speed i Memory, on el model petit és l'objectiu.
+
+**Estat:** `IMPLEMENTED` amb un test que fallava abans. Cerca real: Mellum2 passa del
+segon al quart lloc de General chat.
+
+**Fonts:** [diversitat](../../src/jaull/recommendation/diversity.py),
+[rànquing v2](../../src/jaull/recommendation/engine_v2.py), D101, D103.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2376,7 +2405,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D103 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D104 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

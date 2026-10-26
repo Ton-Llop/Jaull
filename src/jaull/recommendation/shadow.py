@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict
 from jaull.domain.benchmarks import BenchmarkRecord
 from jaull.domain.recommendation import PlanAssessment
 from jaull.domain.requirements import RecommendationPriority, UserRequirements
-from jaull.recommendation.diversity import diversify_ranked_plans
+from jaull.recommendation.diversity import diversify_ranked_plans, tie_key_for
 from jaull.recommendation.engine_v2 import RankedPlan, _requirement_confirmation_rank
 from jaull.recommendation.local_evidence import assess_speed
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
@@ -223,8 +223,15 @@ def build_shadow_report(
     shadow, groups, moves = _shadow_order(
         ranked, priority, commercial, lambda item: found.get(item.plan.plan_id, blank),
     )
-    base_top = [i.primary.plan.plan_id for i in diversify_ranked_plans(ranked, limit=limit)]
-    shadow_top = [i.primary.plan.plan_id for i in diversify_ranked_plans(shadow, limit=limit)]
+    tie_key = tie_key_for(requirements)
+    base_top = [
+        i.primary.plan.plan_id
+        for i in diversify_ranked_plans(ranked, limit=limit, tie_key=tie_key)
+    ]
+    shadow_top = [
+        i.primary.plan.plan_id
+        for i in diversify_ranked_plans(shadow, limit=limit, tie_key=tie_key)
+    ]
     moved = {move.plan_id for move in moves}
     in_group = {plan_id for group in groups for plan_id in group.plan_ids}
     return ShadowReport(
