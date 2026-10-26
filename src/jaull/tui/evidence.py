@@ -49,6 +49,7 @@ from jaull.evaluation.hardware_fingerprint import (
 from jaull.evaluation.quality_records import QualityEvidence, describe_record
 from jaull.presentation.plan_labels import is_ready_plan
 from jaull.presentation.published_evaluations import published_reference_text
+from jaull.presentation.speed import historical_speed_benchmarks
 from jaull.recommendation.capability_catalog import CatalogReadResult
 from jaull.runtime.device_matching import (
     names_agree,
@@ -109,6 +110,7 @@ class PlanEvidence:
     state: EvidenceState
     experiment_ids: tuple[str, ...] = ()
     benchmark_ids: tuple[str, ...] = ()
+    historical_benchmark_ids: tuple[str, ...] = ()
     quality_records: tuple[QualityEvidence, ...] = ()
     published_summary: str = "No published references loaded."
     published_provenance: str = ""
@@ -121,15 +123,19 @@ class PlanEvidence:
     def benchmarked(self) -> bool:
         return bool(self.benchmark_ids)
 
+    @property
+    def has_benchmark_history(self) -> bool:
+        return bool(self.benchmark_ids or self.historical_benchmark_ids)
+
     def summary(self) -> str:
         """The evidence line: every state earned, weakest first."""
-        if self.state is EvidenceState.ESTIMATED:
-            return "Estimated only"
-        parts = ["○ Ready"]
+        parts = ["Estimated only" if self.state is EvidenceState.ESTIMATED else "○ Ready"]
         if self.validated:
             parts.append("✓ Validated")
         if self.benchmarked:
             parts.append("✓ Benchmarked")
+        elif self.historical_benchmark_ids:
+            parts.append("Benchmark history (current plan not verified)")
         return " · ".join(parts)
 
     def quality_summary(self) -> str:
@@ -280,6 +286,20 @@ class EvidenceIndex:
             for benchmark_id, record in self._benchmarks.get(key, ())
             if _benchmark_matches_plan(record, plan)
         )
+        candidates = self._benchmarks.get(key, ())
+        metadata_matches = {
+            record.identity.benchmark_id
+            for record in historical_speed_benchmarks(plan, [record for _, record in candidates])
+        }
+        history = tuple(
+            record_id for record_id, record in candidates
+            if plan.backend_selection is not None
+            and record.requested_backend is plan.backend_selection.selected_backend
+            and (
+                _same_machine_and_artifact(record, plan)
+                or record.identity.benchmark_id in metadata_matches
+            )
+        )
         if benchmarks:
             state = EvidenceState.BENCHMARKED
         elif experiments:
@@ -302,6 +322,7 @@ class EvidenceIndex:
             state=state,
             experiment_ids=experiments,
             benchmark_ids=benchmarks,
+            historical_benchmark_ids=history,
             quality_records=quality,
             published_summary=published,
             published_provenance=provenance,
@@ -391,14 +412,7 @@ def _artifact_key(artifact: ModelArtifact, runtime: RuntimeName) -> str:
 
 
 def _plan_key(plan: ExecutionPlan) -> str:
-    artifact = plan.artifact
-    variant = (
-        artifact.quantization or artifact.filename or artifact.format.value
-    ).casefold()
-    return (
-        f"{artifact.repo_id.casefold()}|{plan.runtime_family.value}|"
-        f"{artifact.format.value.casefold()}|{variant}"
-    )
+    return _artifact_key(plan.artifact.to_model_artifact(), plan.runtime_family)
 
 
 def _same_machine_and_artifact(

@@ -313,7 +313,7 @@ def _exhausted_ladder_message(
     * the reported option would run with offloading - it fits, just not in VRAM
       alone;
     * nothing could be confirmed - an unsupported architecture, for example a
-      MoE whose per-expert KV footprint is not modelled. Unknown means "cannot
+      model with multi-head latent attention. Unknown means "cannot
       confirm", never "shown not to fit";
     * everything was measured as too large.
 

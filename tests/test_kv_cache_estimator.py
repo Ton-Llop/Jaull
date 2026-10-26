@@ -122,18 +122,33 @@ def test_kv_cache_unknown_when_fields_missing() -> None:
     assert "num_attention_heads" in est.component.explanation
 
 
-def test_kv_cache_flags_moe() -> None:
+def test_kv_cache_of_a_moe_uses_the_attention_dimensions_with_lower_confidence() -> None:
+    """Experts live in the feed-forward layers, so they do not change the KV cache. Found on a
+    B60 box: two MoE models that would fit were dropped for an unknown KV cache."""
+    attention = {"num_hidden_layers": 16, "num_attention_heads": 16, "hidden_size": 2048}
+    dense = kv_cache.estimate_kv_cache(
+        config=ModelConfig(**attention),
+        context_length=1024, batch_size=1, kv_dtype=WeightPrecision.FLOAT16,
+    )
+    moe = kv_cache.estimate_kv_cache(
+        config=ModelConfig(**attention, raw_flags={"num_experts": 8, "num_local_experts": 8}),
+        context_length=1024, batch_size=1, kv_dtype=WeightPrecision.FLOAT16,
+    )
+    assert moe.component.bytes == dense.component.bytes
+    assert dense.component.confidence is EstimationConfidence.HIGH
+    assert moe.component.confidence is EstimationConfidence.MEDIUM
+    assert any("Mixture-of-Experts" in note for note in moe.notes)
+
+
+def test_kv_cache_of_a_moe_with_latent_attention_stays_unknown() -> None:
     config = ModelConfig(
-        num_hidden_layers=16,
-        num_attention_heads=16,
-        hidden_size=2048,
-        raw_flags={"num_experts": 8, "num_local_experts": 8},
+        num_hidden_layers=16, num_attention_heads=16, hidden_size=2048,
+        raw_flags={"num_experts": 8, "kv_lora_rank": 512},
     )
     est = kv_cache.estimate_kv_cache(
         config=config, context_length=1024, batch_size=1, kv_dtype=WeightPrecision.FLOAT16
     )
     assert est.component.bytes is None
-    assert "Mixture-of-Experts" in est.component.explanation
 
 
 def test_kv_cache_flags_custom_architecture() -> None:

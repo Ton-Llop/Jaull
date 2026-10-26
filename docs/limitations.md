@@ -73,8 +73,11 @@ README roadmap says so.
 
 ## Estimation
 
-- KV cache assumes classic MHA / GQA, with `sliding_window` as the only refinement. MoE,
-  MLA and multimodal composites produce a warning and confidence `unknown`, not a number.
+- KV cache assumes classic MHA / GQA, with `sliding_window` as the only refinement. MLA and
+  multimodal composites produce a warning and confidence `unknown`, not a number. A
+  Mixture-of-Experts model gets the same formula (its experts do not change the KV cache) with
+  confidence `medium`, because it has not been validated against a MoE run; its weights and
+  expert placement are still not modelled.
 - Runtime overhead, device reserve and safety margin are heuristics, centralised in
   `estimator/policies.py` and explicitly tagged `ASSUMED`.
 - Weight bytes for theoretical dtypes ignore scales and block metadata (typically under

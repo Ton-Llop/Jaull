@@ -181,8 +181,10 @@ runtime knobs at their defaults; neither the sequence batch nor concurrency is
 translated into a prompt-token batch limit. The KV formula is unchanged, and these
 capacity inputs do not establish that Run/Validate executes a multi-sequence workload.
 
-Non-standard architectures (MoE, MLA / DeepSeek-style, multimodal composites, `auto_map`
-custom code) return `unknown` and a warning instead of a fabricated number.
+Non-standard architectures (MLA / DeepSeek-style, multimodal composites, `auto_map`
+custom code) return `unknown` and a warning instead of a fabricated number. A Mixture-of-Experts
+model keeps the dense formula, because its experts sit in the feed-forward layers, at confidence
+`medium` and with an explicit note.
 
 ### 3. Runtime overhead
 

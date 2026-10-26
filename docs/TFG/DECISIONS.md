@@ -406,7 +406,7 @@ com a no confirmat, no com a incompatibilitat demostrada.
 comportament d'arquitectures especials. El pool pot perdre un model viable; és una
 limitació explícita de cobertura, no evidència que no càpiga físicament.
 
-**Estat i fonts:** vigent; no hi ha suport general MoE. [Limitacions](../limitations.md),
+**Estat i fonts:** vigent, amb una excepció posterior: la KV d'un MoE ja no és desconeguda (D102); no hi ha suport general MoE. [Limitacions](../limitations.md),
 [auditoria del pool](../recommendation-vfinal-plan.md).
 
 ### D024. Overhead i marges són polítiques, no mesures
@@ -2203,6 +2203,37 @@ cerca en directe d'aquell dia, que pot variar.
 [analitzador d'ajust](../../src/jaull/estimator/hardware_fit.py),
 [emparellador](../../src/jaull/runtime/device_matching.py), D097, D098.
 
+### D102. KV cache d'un MoE amb la fórmula d'atenció i confiança mitjana
+
+**Data i necessitat:** 2026-10-26. A la cerca real de la B60, tres models de 12B-30B
+(un 27B multimodal, un MoE de 12B amb 2,5B actius i un MoE de 30B amb 3B actius) es van
+avaluar i es van rebutjar amb «memory estimate is incomplete». Eren justament els de la
+franja que l'usuari esperava veure. Es va mirar l'estimació de cada un abans de canviar res.
+
+**Causes (dues, no una):** (a) els dos MoE queden amb la KV `unknown` perquè
+`_detect_exotic_architecture` tractava qualsevol `num_experts` com a arquitectura no
+modelada (D023); (b) el 27B és un compost multimodal (`text_config`) i, a més, la lectura
+de la capçalera GGUF s'ha rendit pel límit de 8 MiB. **El punt (b) no s'ha tocat.**
+
+**Decisió:** D023 es manté per a MLA, compostos multimodals i `auto_map`, però ja no per a
+MoE en la KV cache. Els experts són a les capes FFN i no canvien la KV, que depèn només de
+capes, caps KV i dimensió de cap; la capçalera GGUF aporta aquestes tres xifres igual que a
+un model dens. Un MoE rep la fórmula de sempre amb confiança `MEDIUM` i una nota explícita
+que diu que no s'ha validat contra cap execució MoE (la validació del projecte és amb
+Qwen2.5 dens). Un MoE amb MLA (`kv_lora_rank`) continua desconegut. Els pesos d'un MoE
+continuen amb el repartiment uniforme i la col·locació d'experts no es modela.
+
+**Límits:** una arquitectura híbrida (atenció lineal o finestra alternant) sobreestimaria la
+KV, que és el sentit segur; no s'ha mesurat cap cas MoE. La velocitat d'un MoE amb offload
+no es prediu.
+
+**Estat:** `IMPLEMENTED` amb tests (la KV d'un MoE iguala la d'un dens i baixa la
+confiança; un MoE amb MLA continua desconegut). `UNVERIFIED` contra una execució real d'un
+MoE a la B60.
+
+**Fonts:** [KV cache](../../src/jaull/estimator/kv_cache.py),
+[tests](../../tests/test_kv_cache_estimator.py), D023, D101.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2311,7 +2342,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D101 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D102 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

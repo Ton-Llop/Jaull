@@ -72,7 +72,7 @@ _FILTERS: tuple[tuple[str, str], ...] = (
     ("all", "All"),
     ("ready", "Ready"),
     ("validated", "Validated"),
-    ("benchmarked", "Benchmarked"),
+    ("benchmarked", "Benchmarks"),
 )
 
 
@@ -87,6 +87,12 @@ class _ExecutionPathsFailed(Message):
     def __init__(self, message: str) -> None:
         super().__init__()
         self.message = message
+
+
+class _ExecutionPathsEvidenceLoaded(Message):
+    def __init__(self, evidence: EvidenceIndex) -> None:
+        super().__init__()
+        self.evidence = evidence
 
 
 class _ListMove(Message):
@@ -281,6 +287,7 @@ class ExecutionPathsScreen(Screen[None]):
             thread_name_prefix="jaull-execution-paths",
         )
         self._future: Future[None] | None = None
+        self._evidence_future: Future[None] | None = None
 
     def compose(self) -> ComposeResult:
         yield ContextBar(
@@ -301,11 +308,14 @@ class ExecutionPathsScreen(Screen[None]):
         yield Static("Execution paths", classes="section-title")
         with Horizontal(id="paths-filters"):
             for key, label in _FILTERS:
-                yield Button(
+                chip = Button(
                     label,
                     id=f"paths-filter-{key}",
                     classes="chip -active" if key == "all" else "chip",
                 )
+                if key == "benchmarked":
+                    chip.tooltip = "Saved benchmarks, including history not verified for this plan."
+                yield chip
         with Vertical(id="paths-list"):
             yield Static("", id="paths-empty", classes="text-muted")
 
@@ -381,7 +391,34 @@ class ExecutionPathsScreen(Screen[None]):
         if self._future is not None:
             self._future.cancel()
             self._future = None
+        if self._evidence_future is not None:
+            self._evidence_future.cancel()
+            self._evidence_future = None
         self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def on_screen_resume(self) -> None:
+        if self._paths_closing.is_set() or not self._plans:
+            return
+        if self._evidence_future is not None and not self._evidence_future.done():
+            return
+        self._evidence_future = self._executor.submit(self._reload_evidence, self._app().advisor)
+
+    def _reload_evidence(self, advisor: AdvisorService) -> None:
+        """Returning from Run/Validate/Benchmark reads stores, never rediscovers plans."""
+        try:
+            evidence = EvidenceIndex.load(advisor)
+        except Exception:
+            _log.debug("evidence refresh failed", exc_info=True)
+            return
+        if not self._paths_closing.is_set():
+            self.post_message(_ExecutionPathsEvidenceLoaded(evidence))
+
+    @on(_ExecutionPathsEvidenceLoaded)
+    async def _evidence_loaded(self, message: _ExecutionPathsEvidenceLoaded) -> None:
+        if self._paths_closing.is_set():
+            return
+        self._evidence = message.evidence
+        await self._render_plans()
 
     def _load_worker(self, advisor: AdvisorService, *, refresh: bool = False) -> None:
         try:
@@ -399,7 +436,7 @@ class ExecutionPathsScreen(Screen[None]):
         evidence = EvidenceIndex.empty()
         if plans and not self._paths_closing.is_set():
             try:
-                evidence = EvidenceIndex.load(advisor, plans[0].model_identity)
+                evidence = EvidenceIndex.load(advisor)
             except Exception:
                 _log.debug("evidence lookup failed", exc_info=True)
         if not self._paths_closing.is_set():
@@ -561,6 +598,13 @@ class ExecutionPathsScreen(Screen[None]):
             self._apply_selection()
             return
 
+        selected = self._selected_plan()
+        if selected is None or not self._plan_matches_filter(selected):
+            first = next((plan for plan in self._plans if self._plan_matches_filter(plan)), None)
+            if first is not None:
+                self._selected_plan_id = first.plan_id
+                self._expanded.add(execution_option_label(first))
+
         fitting, unfit = self._split_by_fit()
         recommended_id = self._recommended_plan_id()
         indexes = {plan.plan_id: index for index, plan in enumerate(self._plans)}
@@ -714,6 +758,8 @@ class ExecutionPathsScreen(Screen[None]):
     def _apply_selection(self) -> None:
         """Reflect the current plan everywhere, without rebuilding the list."""
         selected = self._selected_plan()
+        if selected is not None and not self._plan_matches_filter(selected):
+            selected = None
         evaluate = self.query_one("#paths-evaluate", Button)
         evaluation_reason = (
             quality_evaluation_block_reason(selected) if selected is not None
@@ -745,6 +791,9 @@ class ExecutionPathsScreen(Screen[None]):
             self.query_one("#paths-quality-details", Static).update("")
             for key in ("memory", "artifact", "evidence"):
                 self.query_one(f"#paths-fact-{key}", Static).update("")
+            self.query_one("#paths-facts").display = False
+            self.query_one("#paths-validate", ActionButton).set_action_label("Validate")
+            self.query_one("#paths-benchmark", ActionButton).set_action_label("Benchmark")
             self._set_actions(
                 enabled=False,
                 reason="No execution path is selected.",
@@ -752,6 +801,7 @@ class ExecutionPathsScreen(Screen[None]):
             return
 
         evidence = self._evidence.for_plan(selected)
+        self.query_one("#paths-facts").display = True
         self.query_one("#paths-published", Static).update(evidence.published_summary)
         self.query_one("#paths-published-details", Static).update(evidence.published_provenance)
         self.query_one("#paths-published-provenance").display = bool(evidence.published_provenance)
@@ -821,7 +871,8 @@ class ExecutionPathsScreen(Screen[None]):
             "Validate ✓" if evidence.validated else "Validate"
         )
         self.query_one("#paths-benchmark", ActionButton).set_action_label(
-            "Benchmark ✓" if evidence.benchmarked else "Benchmark"
+            "Benchmark ✓" if evidence.benchmarked else
+            "Benchmark history" if evidence.has_benchmark_history else "Benchmark"
         )
 
     # ------------------------------------------------------------------
@@ -842,7 +893,7 @@ class ExecutionPathsScreen(Screen[None]):
         if self._path_filter == "validated":
             return self._evidence.for_plan(plan).validated
         if self._path_filter == "benchmarked":
-            return self._evidence.for_plan(plan).benchmarked
+            return self._evidence.for_plan(plan).has_benchmark_history
         return True
 
     def _app(self) -> JaullApp:
@@ -940,6 +991,8 @@ def _evidence_short(evidence: PlanEvidence) -> str:
         parts.append("✓ validated")
     if evidence.benchmarked:
         parts.append("✓ benchmarked")
+    elif evidence.has_benchmark_history:
+        parts.append("benchmark history")
     return " · ".join(parts)
 
 
@@ -969,7 +1022,7 @@ def _empty_filter_label(path_filter: str) -> str:
     if path_filter == "validated":
         return "No validated execution options yet."
     if path_filter == "benchmarked":
-        return "No benchmarked execution options yet."
+        return "No saved benchmarks for these execution paths yet."
     return "No execution options match this filter."
 
 

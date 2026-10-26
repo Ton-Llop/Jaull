@@ -180,6 +180,15 @@ class _RecommendationInspector(Vertical):
         self._speed_provenance = Static(
             "Loading saved speed runs...", id=f"rec-speed-provenance-{index}", markup=False,
         )
+        self._speed_scope = Static(
+            "", id=f"rec-speed-scope-{index}", classes="text-secondary", markup=False,
+        )
+        self._speed_scope_note = Static(
+            "", id=f"rec-speed-scope-note-{index}", classes="text-muted", markup=False,
+        )
+        self._speed_matching_details = Static(
+            "", id=f"rec-speed-matching-details-{index}", markup=False,
+        )
         self._quality_empty = Static(
             "No measured evaluation for this exact artifact.",
             id=f"rec-quality-empty-{index}", classes="text-secondary",
@@ -239,7 +248,15 @@ class _RecommendationInspector(Vertical):
                 yield self._evidence
                 yield TechnicalDetails(
                     title="Saved speed runs",
-                    extra=[self._speed_provenance],
+                    extra=[
+                        self._speed_scope,
+                        self._speed_scope_note,
+                        self._speed_provenance,
+                        TechnicalDetails(
+                            title="Matching details", extra=[self._speed_matching_details],
+                            id=f"rec-speed-matching-{self._index}",
+                        ),
+                    ],
                 )
                 yield TechnicalDetails(
                     extra=[Static(_diagnostic_text(rec), markup=False)],
@@ -326,7 +343,11 @@ class _RecommendationInspector(Vertical):
         widget.update(speed.label)
         widget.tooltip = speed.details
         widget.set_class(speed.measured, "status-ok")
-        self._speed_provenance.update(f"{speed.saved_runs}\n\nApplicability\n{speed.details}")
+        self._speed_scope.update(speed.scope_label)
+        self._speed_scope.set_classes("status-ok" if speed.measured else "text-secondary")
+        self._speed_scope_note.update(speed.scope_note)
+        self._speed_provenance.update(speed.saved_runs)
+        self._speed_matching_details.update(speed.details)
 
     def show_alternative_quality(
         self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],

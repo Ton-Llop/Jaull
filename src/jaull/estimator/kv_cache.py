@@ -93,6 +93,14 @@ def estimate_kv_cache(
         * dtype_bytes
     )
 
+    mixture_of_experts = _is_mixture_of_experts(config)
+    if mixture_of_experts:
+        notes.append(
+            "Mixture-of-Experts: the experts sit in the feed-forward layers, so the KV cache "
+            "follows the attention dimensions; this has not been validated against a "
+            "Mixture-of-Experts run."
+        )
+
     if config.num_key_value_heads and config.num_key_value_heads < heads:
         notes.append(
             f"Grouped-Query Attention: {kv_heads} KV heads for {heads} attention heads."
@@ -116,7 +124,7 @@ def estimate_kv_cache(
             source=EstimateSource.DERIVED,
             confidence=(
                 EstimationConfidence.MEDIUM
-                if window_assumed
+                if window_assumed or mixture_of_experts
                 else EstimationConfidence.HIGH
             ),
             explanation=explanation,
@@ -234,10 +242,15 @@ def _unknown(
     )
 
 
+def _is_mixture_of_experts(config: ModelConfig) -> bool:
+    return any(
+        key in config.raw_flags
+        for key in ("num_experts", "num_local_experts", "moe_intermediate_size")
+    )
+
+
 def _detect_exotic_architecture(config: ModelConfig) -> str | None:
     flags = config.raw_flags
-    if any(k in flags for k in ("num_experts", "num_local_experts", "moe_intermediate_size")):
-        return "Mixture-of-Experts (per-expert KV footprint not modelled)"
     if any(k in flags for k in ("q_lora_rank", "kv_lora_rank")):
         return "Multi-head Latent Attention (Deepseek-style)"
     if any(k in flags for k in ("text_config", "vision_config", "audio_config")):

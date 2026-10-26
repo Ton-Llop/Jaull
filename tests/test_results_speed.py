@@ -22,6 +22,7 @@ from jaull.domain.runtime import (
 from jaull.presentation.speed import historical_speed_benchmarks, speed_readout
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.recommendation_results import RecommendationResultsScreen
+from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.workflow.state import RecommendationWorkflowState
 from tests.test_execution_plans import _gguf_recommendation
 from tests.test_fastest_v2_applicability import _cuda_case
@@ -394,6 +395,19 @@ def test_results_show_only_applicable_speed_and_keep_benchmark_accessible(size, 
             await pilot.pause()
             for suffix in ("0", "detail-0"):
                 assert str(screen.query_one(f"#rec-speed-{suffix}", Static).content) == expected
+            scope = str(screen.query_one("#rec-speed-scope-0", Static).content)
+            assert scope == (
+                "Comparable measurement" if mode == "measured" else
+                "Historical benchmark" if mode == "transformers_run" else
+                "No comparable measurement"
+            )
+            history = str(screen.query_one("#rec-speed-provenance-0", Static).content)
+            assert "Applicability" not in history
+            assert "Not used for ranking" not in history
+            assert screen.query_one("#rec-speed-matching-0", TechnicalDetails).collapsed
+            assert str(screen.query_one("#rec-speed-matching-details-0", Static).content) == str(
+                screen.query_one("#rec-speed-0", Static).tooltip,
+            )
             if mode == "historical":
                 assert "Historical reference only" in str(
                     screen.query_one("#rec-speed-0", Static).tooltip,

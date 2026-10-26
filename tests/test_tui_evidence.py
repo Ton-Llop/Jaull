@@ -338,6 +338,10 @@ def test_benchmark_badge_requires_the_selected_gpu_not_just_the_backend(tmp_path
     index = EvidenceIndex.load(_FakeStoreAdvisor(benchmarks={"bench-1": record}))
     assert index.saved_benchmarks_for_plan(plan) == (record,)
     assert index.for_plan(plan).benchmarked is matched
+    assert index.for_plan(plan).has_benchmark_history
+    if not matched:
+        assert "Benchmark history (current plan not verified)" in index.for_plan(plan).summary()
+        assert "✓ Benchmarked" not in index.for_plan(plan).summary()
 
 
 def test_loading_without_an_identity_indexes_every_model() -> None:

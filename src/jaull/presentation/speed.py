@@ -21,6 +21,22 @@ class SpeedReadout:
     source: Literal["unknown", "measured", "historical"] = "unknown"
     saved_runs: str = "No saved speed runs for this configuration on this machine."
 
+    @property
+    def scope_label(self) -> str:
+        if self.measured:
+            return "Comparable measurement"
+        if self.source == "historical":
+            return "Historical benchmark"
+        return "No comparable measurement"
+
+    @property
+    def scope_note(self) -> str:
+        if self.measured:
+            return "Eligible for speed ranking; not a prediction for this workload."
+        if self.source == "historical":
+            return "Saved result; excluded from the current speed ranking."
+        return "No matching measurement for the selected plan."
+
 
 def historical_speed_benchmarks(
     plan: ExecutionPlan, records: Sequence[BenchmarkRecord],
@@ -54,10 +70,7 @@ def historical_speed_benchmarks(
 def _saved_runs_text(records: Sequence[BenchmarkRecord]) -> str:
     if not records:
         return SpeedReadout().saved_runs
-    sections = [
-        "Saved measurements for this configuration on this machine. "
-        "Matching metadata alone does not verify the current artifact bytes or execution."
-    ]
+    sections = []
     for record in records:
         observation = record.observation
         device = record.requested_device or (
