@@ -27,7 +27,7 @@ from jaull.domain.inference import (
     WeightPrecision,
 )
 from jaull.domain.model import ModelAnalysis
-from jaull.domain.requirements import UserRequirements
+from jaull.domain.requirements import RecommendationPriority, UserRequirements
 from jaull.domain.runtime_support import (
     QUANTIZED_CPU_LIMITATION,
     available_compute_backends,
@@ -108,6 +108,7 @@ def _select_gguf(
     fallback_options: list[
         tuple[CompatibilityStatus, InferenceConfiguration, MemoryEstimate]
     ] = []
+    tight_fallback: tuple[str, InferenceConfiguration, MemoryEstimate] | None = None
 
     for rung in ordered:
         quantization = available[rung]
@@ -122,21 +123,28 @@ def _select_gguf(
         fallback_options.append((status, config, estimate))
 
         if status in _ACCEPTABLE:
-            if rung in policies.AGGRESSIVE_QUANTIZATIONS:
-                warnings.append(
-                    f"{quantization} is an aggressive quantization; it was chosen "
-                    "because nothing larger fits, and quality loss may be noticeable."
-                )
-            return ConfigurationChoice(
-                configuration=config,
-                estimate=estimate,
-                reason=(
-                    f"{quantization} is the first variant on the "
-                    f"{requirements.priority.value} ladder that fits the detected memory."
-                ),
-                considered=considered,
-                warnings=warnings,
+            if (
+                status is CompatibilityStatus.TIGHT
+                and requirements.priority is RecommendationPriority.BALANCED
+                and rung not in policies.AGGRESSIVE_QUANTIZATIONS
+            ):
+                # Balanced trades a little fidelity for headroom: remember the tight
+                # rung and only use it if no later reasonable rung fits comfortably.
+                tight_fallback = tight_fallback or (rung, config, estimate)
+                continue
+            if tight_fallback is not None and status is CompatibilityStatus.TIGHT:
+                continue
+            return _gguf_choice(
+                rung, config, estimate, requirements, considered, warnings,
             )
+
+    if tight_fallback is not None:
+        rung, config, estimate = tight_fallback
+        warnings.append(
+            f"{available[rung]} is a tight fit; no reasonable smaller variant fits "
+            "with more headroom."
+        )
+        return _gguf_choice(rung, config, estimate, requirements, considered, warnings)
 
     message = _exhausted_ladder_message(
         seen,
@@ -157,6 +165,32 @@ def _select_gguf(
             else None
         ),
         reason=f"{message} Reporting the closest option.",
+        considered=considered,
+        warnings=warnings,
+    )
+
+
+def _gguf_choice(
+    rung: str,
+    config: InferenceConfiguration,
+    estimate: MemoryEstimate,
+    requirements: UserRequirements,
+    considered: list[str],
+    warnings: list[str],
+) -> ConfigurationChoice:
+    quantization = config.quantization
+    if rung in policies.AGGRESSIVE_QUANTIZATIONS:
+        warnings.append(
+            f"{quantization} is an aggressive quantization; it was chosen "
+            "because nothing larger fits, and quality loss may be noticeable."
+        )
+    return ConfigurationChoice(
+        configuration=config,
+        estimate=estimate,
+        reason=(
+            f"{quantization} is the first variant on the "
+            f"{requirements.priority.value} ladder that fits the detected memory."
+        ),
         considered=considered,
         warnings=warnings,
     )

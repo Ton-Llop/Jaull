@@ -271,3 +271,52 @@ def test_guided_mode_never_asks_the_user_for_a_quantization() -> None:
     assert choice.configuration is not None
     assert choice.configuration.batch_size == 1
     assert choice.reason
+
+
+def _with_statuses(
+    statuses: dict[str, CompatibilityStatus],
+) -> object:
+    base = size_driven_estimator(vram_budget=24 * GIB)
+
+    def estimate(analysis: ModelAnalysis, config: InferenceConfiguration) -> MemoryEstimate:
+        result: MemoryEstimate = base(analysis, config)
+        status = statuses.get(config.quantization or "")
+        if status is None:
+            return result
+        return result.model_copy(update={
+            "assessment": result.assessment.model_copy(update={"status": status}),
+        })
+
+    return estimate
+
+
+@pytest.mark.parametrize(
+    ("q5", "q4", "priority", "expected", "warns"),
+    [
+        (CompatibilityStatus.COMFORTABLE, CompatibilityStatus.COMFORTABLE,
+         RecommendationPriority.BALANCED, "Q5_K_M", False),
+        (CompatibilityStatus.TIGHT, CompatibilityStatus.COMFORTABLE,
+         RecommendationPriority.BALANCED, "Q4_K_M", False),
+        (CompatibilityStatus.TIGHT, CompatibilityStatus.OFFLOADING_REQUIRED,
+         RecommendationPriority.BALANCED, "Q5_K_M", True),
+        # Quality keeps the best quantization that fits, even when tight.
+        (CompatibilityStatus.TIGHT, CompatibilityStatus.COMFORTABLE,
+         RecommendationPriority.QUALITY, "Q6_K", False),
+    ],
+)
+def test_balanced_prefers_a_comfortable_rung_over_a_tight_one(
+    q5: CompatibilityStatus,
+    q4: CompatibilityStatus,
+    priority: RecommendationPriority,
+    expected: str,
+    warns: bool,
+) -> None:
+    statuses = {"Q5_K_M": q5, "Q4_K_M": q4, "Q6_K": CompatibilityStatus.TIGHT}
+    choice = select_configuration(
+        gguf_analysis(quantizations=("Q4_K_M", "Q5_K_M", "Q6_K")),
+        _req(priority),  # type: ignore[arg-type]
+        _with_statuses(statuses),  # type: ignore[arg-type]
+    )
+    assert choice.configuration is not None
+    assert choice.configuration.quantization == expected
+    assert any("tight" in w.lower() for w in choice.warnings) is warns
