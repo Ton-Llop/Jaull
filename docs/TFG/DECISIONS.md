@@ -1857,6 +1857,11 @@ portàtil. Els registres experimentals històrics no es reescriuen.
 
 ### D098. Vulkan sobre Intel Arc a Windows i WSL2, sense donar res per validat
 
+**Actualització 2026-10-26:** la primera prova física a la B60 (WSL2 amb Mesa Dozen) ha
+refinat dues regles d'aquesta decisió: l'emparellament de noms (veure D100) i la memòria
+compartida d'una iGPU al costat d'una targeta dedicada (veure D099). La resta del text
+descriu l'abast original i no s'ha esborrat.
+
 **Actualització 2026-10-20:** l'ampliació posterior del pilot HellaSwag permet
 CPU/CUDA/Vulkan confirmat (schema 3); IFEval conserva el contracte CUDA auditat.
 La identitat efectiva es contrasta amb les capacitats, el comandament i les
@@ -2002,6 +2007,175 @@ commit independent de D097.
 [adaptadors de Windows](../../src/jaull/hardware/windows_adapters.py),
 [entorn d'execució](../../src/jaull/domain/execution_environment.py), D097.
 
+### D099. Una iGPU de memòria compartida no converteix la màquina en un únic pool
+
+**Data i necessitat:** 2026-10-26, primera prova física a la B60 (WSL2, Mesa Dozen; l'equip
+té també una iGPU Radeon del Ryzen 7 5700G). La recomanació sortia com a
+`llama.cpp · CPU · Tight` amb 11,90 GiB i cap model gran, tot i la targeta de 23,8 GiB.
+
+**Causa (amb evidència):** dues funcions independents deien «si *algun* accelerador
+comparteix memòria, tota la màquina és de memòria unificada»:
+`estimator/hardware_fit.py::_memory_topology` (l'anàlisi d'ajust) i
+`discovery/candidate_filter.py::_has_unified_memory` (la preselecció). Amb la iGPU
+present, tot es jutjava contra els 13,6 GiB de RAM i la B60 s'ignorava. La regla és
+d'agost (commits `8fea9e9` i `d904e6e`); no s'havia vist perquè fins ara cap equip havia
+combinat un dispositiu dedicat i una iGPU amb la detecció d'acceleradors genèrica.
+També afectaria un portàtil Ryzen amb una NVIDIA dedicada. **No era l'elecció del backend
+d'execució**, que ja triava bé la B60.
+
+**Decisió implementada:** la màquina només és un únic pool de memòria si no hi ha cap
+dispositiu dedicat amb memòria coneguda (pressupost observat a l'analitzador, capacitat
+a la preselecció, com ja feien `available_accelerator_memory_bytes` i
+`planning_accelerator_memory_bytes`). Si n'hi ha, es planifica contra la targeta dedicada
+i la iGPU compartida no hi compta. Una màquina només amb la iGPU continua sent unificada.
+
+**Proves:** un test per a l'analitzador (`test_hardware_fit_analyzer.py`) i un per a la
+preselecció (`test_accelerator_memory.py`), tots dos amb el cas «dedicada + iGPU», que van
+fallar abans del canvi. Cerca real amb un perfil equivalent: el primer model passa de
+`cpu_ram`/CPU/tight a `gpu_resident`/Vulkan.
+
+**Estat:** `IMPLEMENTED`; observat a la B60 amb la llista de recomanacions. `UNVERIFIED`
+que l'execució a la targeta sigui correcta per a aquests models (pendent de Run/Validate
+sobre la B60).
+
+### D100. Els noms de dispositiu de Dozen s'emboliquen en un parèntesi
+
+**Data i necessitat:** 2026-10-26, mateixa prova. Amb dues GPU, `jaull doctor` donava
+`Execution ready: unknown` i deia que cap dispositiu de llama.cpp es podia lligar a la B60,
+tot i que els dos noms eren literalment idèntics.
+
+**Causa (amb evidència):** la regla de D098 («una anotació final entre parèntesis es
+descarta») estava pensada per a `… Graphics (BMG G21)`, però Mesa Dozen emboliqua el nom
+real dins del parèntesi: `Microsoft Direct3D12 (Intel(R) Arc(TM) Pro B60 Graphics)` i
+`Microsoft Direct3D12 (AMD Radeon(TM) Graphics)`. En treure l'últim parèntesi tots dos es
+reduïen a `Microsoft Direct3D12`, es consideraven el mateix dispositiu i la preparació
+era ambigua. És exactament el cas que D098 preveia: l'emparellament estricte es mantenia
+fins a tenir sortides reals.
+
+**Decisió implementada:** el nom complet ha de coincidir (sense majúscules, puntuació ni
+`(R)`/`(TM)`), i el parèntesi final només es deixa de banda quan **un sol** dels dos noms
+el porta. Si tots dos en porten, forma part de la identitat. Més estricte, no més
+tolerant; sense noms, fabricants ni drivers fixats al codi (`names_agree`).
+
+**Proves:** `test_runtime_device_matching.py` amb els dos noms reals; abans fallava amb el
+mateix «ambiguous». Amb el `--list-devices` real, passat pel parser de Jaull: `Vulkan0`,
+`matched_by_name`, `ready`; a la B60, `doctor` passa a `Execution ready: yes`.
+
+**Estat:** `VALIDATED` a la B60 per a la detecció i l'emparellament; `UNVERIFIED` el
+mateix emparellament en Windows natiu, on els noms no porten embolcall.
+
+### D101. Tres defectes de la cadena de recomanació, trobats amb la cerca real a la B60
+
+**Data i necessitat:** 2026-10-26. Un cop la B60 comptava, la llista saltava de 7B a 32B,
+posava un 1,5B per sobre d'un 7B i, a Balanced, recomanava `Q2_K`. Es va guardar l'estat
+de cada etapa d'una sola cerca real i es va analitzar etapa per etapa, sense canviar res
+fins a tenir l'evidència.
+
+**1. Preselecció.** Només 12 candidats passen a la inspecció. Dins de cada grup es
+preferia un candidat d'una família no vista, i la família és el primer mot del nom (tots
+els `Qwen2.5-…` són `qwen2`): amb `qwen2` ja triat, els Qwen oficials (puntuació ~22) es
+saltaven per `secmlr/SWE-BENCH-…-qwen_code_14b` (39 descàrregues, ~7). Els 14B oficials
+no arribaven mai a la inspecció. **Decisió:** dins del grup mana la puntuació; la família
+només desempata entre puntuacions idèntiques (amb una tolerància de coma flotant, no de
+puntuació); els candidats de mida desconeguda en tenen una per ronda i la resta es guanya
+per puntuació al farciment. No s'ha introduït cap tolerància de puntuació: caldria
+justificar-la amb dades.
+
+**2. Pes dels GGUF doblat.** Els repos de Qwen publiquen cada quantització sencera i també
+en parts; se sumaven tots els fitxers (Q8_0 de 7B: 15,08 GiB en lloc de 7,54), el 14B Q8_0
+s'estimava en uns 29 GiB quan en cap 14,6, i es baixaven els dos conjunts. **Decisió:** si
+un mateix conjunt de pesos és publicat sencer i en parts, es compta el fitxer sencer
+(`file_count=1`); les parts que són tot el que hi ha d'aquell nom es mantenen. S'invalida
+la memòria cau d'anàlisis (esquema 3 → 4), que desava els totals doblats.
+
+**3. Desempat de Balanced.** Amb els vuit plans del 7B idèntics a tots els eixos, els
+desempatava el nom de la quantització en ordre alfabètic (`Q2_K` primer; al 32B, `IQ2_M`).
+El projecte ja tenia la política explícita (`QUANTIZATION_LADDERS`: Balanced
+`Q5_K_M, Q4_K_M, Q4_K_S, Q3_K_M`), que s'usa per generar els plans, però es perdia en
+reordenar-los. **Decisió:** el desempat dins d'un mateix model usa la posició a l'escala de
+la prioritat. Tres tests existents afirmaven `Q4_K_M` per a Balanced (un amb el comentari
+«la política d'empat de Balanced va triar Q4_K_M», mentre el selector triava `Q5_K_M`):
+eren l'efecte de l'ordre alfabètic documentat com a política, i s'han actualitzat a
+`Q5_K_M`. Si es prefereix `Q4_K_M`, el canvi correcte és l'escala, no l'ordre alfabètic.
+
+**4. Preselecció adaptada al maquinari.** El pas 1 no n'hi havia prou: les places es
+repartien per classe de mida sense mirar què cap a la màquina, de manera que a una B60 de
+24 GiB models minúsculs ocupaven places de la inspecció. L'indici de col·locació
+(`coarse_placement_hint`) també menteix si ignora que AWQ/GPTQ necessiten CUDA o que un
+repositori no GGUF no té camí de Vulkan; ara ho tenen en compte. La preselecció fa dues
+passades: cobertura (la millor classe de col·locació i un candidat de mida desconeguda) i
+després farciment per rellevància, ordenat per (mode de col·locació, puntuació) amb el
+mateix grup d'empat. Es va trobar que aplicar només la meitat de la cobertura empitjorava
+Balanced (es perdien llavors GGUF que després l'expansió havia de recuperar), per això
+els dos canvis van junts.
+
+**Revisió de l'auditoria:** la capacitat de VRAM de la preselecció es calcula només
+entre dispositius dedicats que exposen un backend compatible amb l'artifact. No es
+pot combinar «CUDA disponible» d'una targeta petita amb els 24 GiB d'una B60 que
+només exposa Vulkan. GGUF considera CUDA/HIP/Vulkan; Transformers, CUDA/HIP, i
+AWQ/GPTQ només CUDA segons el loader actual. Les disponibilitats `unknown` i
+`unavailable` no habiliten el pressupost; els perfils antics només NVML conserven
+el fallback CUDA. Es tria una capacitat, mai la suma de targetes. Això continua sent
+un indici de preselecció, no un pressupost observat per executar ara.
+
+**5. Sense farciment artificial a Balanced.** Amb ús comercial demanat, la confirmació de
+llicència és la primera clau, de manera que un 135M Apache passava per davant d'un Llama
+3.1 8B de llicència `unknown` (política vigent, no canviada) i omplia places que cap model
+capaç ocupava. Provar de fer-ho al rànquing (un terra de capacitat a la clau) trencava la
+política «executable abans que capaç» i la de llicència primer, i es va revertir.
+**Decisió:** a la selecció final de la llista (`weak_plans_last`), només per a Balanced, un
+pla de capacitat `WEAK` ocupa una plaça només després dels que no ho són; l'ordre dins de
+cada grup no es toca i els febles no s'eliminen si queden places. Speed, Memory i Quality
+no canvien.
+
+**Revisió de l'auditoria:** la partició global podia avançar un 7B amb ajust `unknown`
+davant d'un 135M `comfortable`. Ara la preferència opera només dins de grups contigus
+amb igual estat de rebuig, confirmació d'ajust i classe de viabilitat d'execució.
+`UNKNOWN` de capacitat no es considera millor que `WEAK`. La selecció precedeix les
+mesures i no en desfà l'ordre. `apply_active_policy` comparteix la seqüència entre
+recomanació i exportació, i Recompare usa la mateixa selecció de base. JSON/Markdown
+separen `selection_policy` de la política mesurada i conserven les posicions abans
+i després de cada etapa quan es poden reconstruir des del pool desat.
+
+**Validació d'aquest refinament:** tests offline amb perfils mixtos CUDA/HIP/Vulkan,
+viabilitat confirmada/desconeguda/offload, exportació immutable i evidència mesurada
+que preval sobre la preferència de metadades. No és una validació física addicional
+de la B60 ni una nova campanya de rendiment o qualitat.
+
+**6. Selector de configuració de Balanced.** El selector GGUF s'aturava al primer graó
+de l'escala amb ajust acceptable, i `TIGHT` ho era; així un `Q5_K_M` just guanyava a un
+`Q4_K_M` còmode. **Decisió:** només per a Balanced, un graó `TIGHT` es recorda però no
+s'agafa mentre n'hi hagi un de posterior, no agressiu, amb ajust `COMFORTABLE` o
+`COMPATIBLE`; si no n'hi ha cap, es manté el `TIGHT` amb un avís. Quality conserva la
+millor quantització que càpiga, fins i tot ajustada; Speed i Memory no canvien (Speed no
+suposa que Q4 sigui més ràpid sense mesures). Els graons agressius (`AGGRESSIVE_QUANTIZATIONS`)
+no es consideren «raonables» per fugir d'un ajust just. Només s'ha canviat el camí GGUF;
+el de Transformers segueix igual. El marge es mesura amb l'estat de l'estimador, no
+amb una comprovació pròpia sobre la memòria disponible estimada: això queda pendent.
+Tests: quatre casos parametritzats a `tests/test_recommendation_configuration.py`.
+
+**Resultat observat (cerca real, mateix perfil):** de `32B Q2_K, 1,5B, deepseek 7B, 3B,
+gpt2` a `7B Q8_0, 14B Q8_0 (19,6 GiB, GPU resident), 32B Q6_K, 1,5B, 3B`; a Balanced, de
+`Q2_K` a `Q5_K_M`.
+
+**Límits pendents, sense decidir:** (a) resolt a Balanced pel punt 6; el marge sobre la memòria disponible estimada
+encara no es comprova per separat; (b) la preselecció reparteix places per classe de mida sense tenir en
+compte la capacitat de la màquina, de manera que models minúsculs ocupen places a un
+equip de 24 GiB; (c) amb ús comercial demanat, la confirmació de llicència va abans de la
+capacitat (política vigent, no s'ha canviat; el punt 5 només evita que els febles
+omplin la llista); (d) `QUALITY` no distingeix la mida dins del
+mateix nivell de capacitat.
+
+**Estat:** `IMPLEMENTED` amb tests que van fallar abans; cerca real repetida amb el canvi.
+`UNVERIFIED` fora d'aquest perfil sintètic (B60 + iGPU AMD + 13,6 GiB de RAM) i de la
+cerca en directe d'aquell dia, que pot variar.
+
+**Fonts:** [preselecció](../../src/jaull/discovery/candidate_filter.py),
+[classificador GGUF](../../src/jaull/huggingface/classifiers.py),
+[rànquing v2](../../src/jaull/recommendation/engine_v2.py),
+[analitzador d'ajust](../../src/jaull/estimator/hardware_fit.py),
+[emparellador](../../src/jaull/runtime/device_matching.py), D097, D098.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2110,7 +2284,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D098 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D101 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

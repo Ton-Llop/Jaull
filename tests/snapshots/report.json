@@ -150,10 +150,21 @@
           {
             "axis": "plan_confidence",
             "value": "medium"
+          },
+          {
+            "axis": "quantization_preference",
+            "value": "n/a"
           }
         ],
         "ranked_by": "plan_criteria",
-        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here.",
+        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here. Balanced applies its capability preference within viability groups before the measured stage; selection_policy records that separate step.",
+        "selection_policy": {
+          "version": "balanced-capability-within-viability-v1",
+          "stage": "before_measured_policy",
+          "note": "Known strong/adequate capability is preferred within contiguous groups of equal confirmed memory fit, rejection state and runnability. Weak/unknown capability fills remaining positions. Comparable measured evidence is applied afterwards.",
+          "base_pool_position": 1,
+          "selected_pool_position": 1
+        },
         "balanced_policy": {
           "version": "shadow-v2",
           "artifact_sha256": null,

@@ -160,13 +160,49 @@ class _RecommendationInspector(Vertical):
         super().__init__(id=f"rec-detail-{index}")
         self._index = index
         self._rec = rec
+        # TabbedContent reparents panes during mounting. Keep references so an
+        # evidence message can update them before they enter this widget's DOM.
+        self._published = Static(
+            "Loading published references...", id=f"rec-published-{index}",
+            classes="text-secondary", markup=False,
+        )
+        self._published_details = Static("", id=f"rec-published-details-{index}", markup=False)
+        self._published_provenance = TechnicalDetails(
+            title="Published reference provenance", extra=[self._published_details],
+            id=f"rec-published-provenance-{index}",
+        )
+        self._evidence = Static("", id=f"rec-evidence-{index}", classes="status-estimated")
+        self._speed_detail = Static("", id=f"rec-speed-detail-{index}", classes="rec-speed-value")
+        self._speed_provenance = Static(
+            "Speed evidence not loaded yet.", id=f"rec-speed-provenance-{index}", markup=False,
+        )
+        self._quality_empty = Static(
+            "No measured evaluation for this exact artifact.",
+            id=f"rec-quality-empty-{index}", classes="text-secondary",
+        )
+        self._quality = Static(
+            "", id=f"rec-quality-{index}", classes="text-secondary", markup=False,
+        )
+        self._quality_details = Static("", id=f"rec-quality-details-{index}", markup=False)
+        self._quality_provenance = TechnicalDetails(
+            title="Artifact measurement provenance", extra=[self._quality_details],
+            id=f"rec-quality-provenance-{index}",
+        )
+        self._quality_alternatives = Static(
+            "", id=f"rec-quality-alternatives-{index}", classes="text-secondary", markup=False,
+        )
+        for widget in (
+            self._quality, self._quality_details, self._quality_provenance,
+            self._quality_alternatives, self._published_provenance,
+        ):
+            widget.display = False
 
     def compose(self) -> ComposeResult:
         rec = self._rec
         yield Static(_model_title(rec), classes="inspector-title", markup=False)
         yield Static(_plan_line(rec), classes="inspector-subtitle")
         yield from self._compose_actions()
-        yield from _speed_widgets(rec, self._index, detail=True)
+        yield from _speed_widgets(rec, self._index, detail=True, value=self._speed_detail)
         with TabbedContent():
             with TabPane("Plan"), VerticalScroll():
                 yield SummaryCard(
@@ -187,20 +223,19 @@ class _RecommendationInspector(Vertical):
                     classes="text-secondary",
                     markup=False,
                 )
-                yield Static(
+                action_reason = Static(
                     f"Actions unavailable: {_runtime_action_reason(rec)}"
                     if _runtime_action_reason(rec) else "",
                     id=f"rec-actions-reason-{self._index}",
                     classes="warning-line rec-actions-reason",
                 )
+                action_reason.display = _runtime_action_reason(rec) is not None
+                yield action_reason
                 yield Static("Saved execution evidence", classes="section-title")
-                yield Static("", id=f"rec-evidence-{self._index}", classes="status-estimated")
+                yield self._evidence
                 yield TechnicalDetails(
                     title="Speed provenance",
-                    extra=[Static(
-                        "Speed evidence not loaded yet.",
-                        id=f"rec-speed-provenance-{self._index}", markup=False,
-                    )],
+                    extra=[self._speed_provenance],
                 )
                 yield TechnicalDetails(
                     extra=[Static(_diagnostic_text(rec), markup=False)],
@@ -214,15 +249,8 @@ class _RecommendationInspector(Vertical):
                     yield SummaryCard("Memory breakdown", _breakdown_rows(estimate))
             with TabPane("Evaluation"), VerticalScroll():
                 yield Static("Published model references", classes="section-title")
-                yield Static(
-                    "Loading published references...", id=f"rec-published-{self._index}",
-                    classes="text-secondary", markup=False,
-                )
-                yield TechnicalDetails(
-                    title="Published reference provenance",
-                    extra=[Static("", id=f"rec-published-details-{self._index}", markup=False)],
-                    id=f"rec-published-provenance-{self._index}",
-                )
+                yield self._published
+                yield self._published_provenance
                 yield Static("Measured on this artifact", classes="section-title")
                 quality_plan = _quality_plan(rec)
                 quality_reason = (
@@ -239,29 +267,16 @@ class _RecommendationInspector(Vertical):
                     "Open evaluation setup; preflight is required before running."
                 )
                 yield evaluate
-                yield Static(
+                evaluate_reason = Static(
                     quality_reason or "", id=f"rec-evaluate-reason-{self._index}",
                     classes="warning-line", markup=False,
                 )
-                yield Static(
-                    "No measured evaluation for this exact artifact.",
-                    id=f"rec-quality-empty-{self._index}",
-                    classes="text-secondary",
-                )
-                yield Static(
-                    "", id=f"rec-quality-{self._index}", classes="text-secondary", markup=False
-                )
-                yield Static(
-                    "", id=f"rec-quality-alternatives-{self._index}",
-                    classes="text-secondary", markup=False,
-                )
-                yield TechnicalDetails(
-                    title="Artifact measurement provenance",
-                    extra=[Static(
-                        "", id=f"rec-quality-details-{self._index}", markup=False,
-                    )],
-                    id=f"rec-quality-provenance-{self._index}",
-                )
+                evaluate_reason.display = quality_reason is not None
+                yield evaluate_reason
+                yield self._quality_empty
+                yield self._quality
+                yield self._quality_alternatives
+                yield self._quality_provenance
 
     def _compose_actions(self) -> ComposeResult:
         rec = self._rec
@@ -283,55 +298,34 @@ class _RecommendationInspector(Vertical):
                 yield button
             yield ActionButton("Paths", id=f"res-paths-{self._index}")
 
-    def on_mount(self) -> None:
-        self.query_one(f"#rec-actions-reason-{self._index}").display = (
-            _runtime_action_reason(self._rec) is not None
-        )
-        self.query_one(f"#rec-quality-{self._index}").display = False
-        self.query_one(f"#rec-quality-details-{self._index}").display = False
-        self.query_one(f"#rec-quality-provenance-{self._index}").display = False
-        self.query_one(f"#rec-quality-alternatives-{self._index}").display = False
-        self.query_one(f"#rec-published-provenance-{self._index}").display = False
-        self.query_one(f"#rec-evaluate-reason-{self._index}").display = bool(
-            self.query_one(f"#res-evaluate-{self._index}", Button).disabled
-        )
-
     def show_evidence(self, evidence: PlanEvidence) -> None:
-        self.query_one(f"#rec-published-{self._index}", Static).update(evidence.published_summary)
-        self.query_one(f"#rec-published-details-{self._index}", Static).update(
-            evidence.published_provenance
-        )
-        self.query_one(f"#rec-published-provenance-{self._index}").display = bool(
-            evidence.published_provenance
-        )
-        widget = self.query_one(f"#rec-evidence-{self._index}", Static)
+        self._published.update(evidence.published_summary)
+        self._published_details.update(evidence.published_provenance)
+        self._published_provenance.display = bool(evidence.published_provenance)
+        widget = self._evidence
         widget.update(evidence.summary())
         widget.set_classes(state_class(evidence.state))
-        quality = self.query_one(f"#rec-quality-{self._index}", Static)
+        quality = self._quality
         quality.update(evidence.quality_readout())
         quality.tooltip = evidence.quality_details() or None
         quality.display = bool(evidence.quality_records)
-        self.query_one(f"#rec-quality-empty-{self._index}").display = not bool(
-            evidence.quality_records
-        )
-        details = self.query_one(f"#rec-quality-details-{self._index}", Static)
+        self._quality_empty.display = not bool(evidence.quality_records)
+        details = self._quality_details
         details.update(evidence.quality_details())
         details.display = bool(evidence.quality_records)
-        self.query_one(f"#rec-quality-provenance-{self._index}").display = (
-            bool(evidence.quality_records)
-        )
+        self._quality_provenance.display = bool(evidence.quality_records)
 
     def show_speed(self, speed: SpeedReadout) -> None:
-        widget = self.query_one(f"#rec-speed-detail-{self._index}", Static)
+        widget = self._speed_detail
         widget.update(speed.label)
         widget.tooltip = speed.details
         widget.set_class(speed.measured, "status-ok")
-        self.query_one(f"#rec-speed-provenance-{self._index}", Static).update(speed.details)
+        self._speed_provenance.update(speed.details)
 
     def show_alternative_quality(
         self, alternatives: list[tuple[ExecutionPlan, PlanEvidence]],
     ) -> None:
-        widget = self.query_one(f"#rec-quality-alternatives-{self._index}", Static)
+        widget = self._quality_alternatives
         sections = [
             f"{plan.artifact.repo_id}\n{plan.artifact.filename}\n{evidence.quality_readout()}"
             for plan, evidence in alternatives
@@ -944,11 +938,13 @@ class ExportReportModal(ModalScreen[None]):
 
 
 def _speed_widgets(
-    rec: ModelRecommendation, index: int, *, detail: bool = False,
+    rec: ModelRecommendation, index: int, *, detail: bool = False, value: Static | None = None,
 ) -> ComposeResult:
     suffix = f"detail-{index}" if detail else str(index)
     with Horizontal(classes="rec-speed-line" + (" -detail" if detail else "")):
-        yield Static("", id=f"rec-speed-{suffix}", classes="rec-speed-value")
+        yield value if value is not None else Static(
+            "", id=f"rec-speed-{suffix}", classes="rec-speed-value",
+        )
         reason = _runtime_action_reason(rec)
         button = ActionButton("Speed", id=f"res-speed-{suffix}", disabled=reason is not None)
         button.tooltip = reason or "Benchmark this exact plan and save its measured speed."

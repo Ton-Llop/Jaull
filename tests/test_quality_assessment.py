@@ -51,7 +51,13 @@ def test_quality_references_are_exact_historical_and_do_not_change_ranking(prior
         assert before.assessment.model_dump(exclude={"quality"}) == after.assessment.model_dump(
             exclude={"quality"},
         )
-        assert ranking_criteria(before, requirements) == ranking_criteria(after, requirements)
+        assert ranking_criteria(
+            before, requirements.priority,
+            commercial_use_required=requirements.commercial_use_required is True,
+        ) == ranking_criteria(
+            after, requirements.priority,
+            commercial_use_required=requirements.commercial_use_required is True,
+        )
         quality = after.assessment.quality
         assert quality.use_case == requirements.use_case
         assert quality.metadata_prior == before.assessment.capability

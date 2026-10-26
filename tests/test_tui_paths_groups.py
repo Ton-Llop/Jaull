@@ -124,10 +124,13 @@ def _headers(screen: ExecutionPathsScreen) -> list[str]:
 
 
 def _shown_names(screen: ExecutionPathsScreen) -> list[str]:
+    # A row just mounted by a rebuild has no children until its compose has run; it
+    # is not shown yet, so polling must not fail on it.
     return [
-        str(row.query_one(".po-name").content)
+        str(name.content)
         for row in screen.query(".path-option")
         if all(node.display for node in (row, *row.ancestors))
+        for name in row.query(".po-name")
     ]
 
 

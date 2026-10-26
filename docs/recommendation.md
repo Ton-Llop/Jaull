@@ -206,7 +206,20 @@ The quantization ladder still selects a configuration within each repository;
 it is not a global preference for GGUF/Q4 over other models or runtimes. Memory
 efficiency is a selection prior, not a predicted or measured tokens/s figure.
 
-**Measured evidence (Quality, Speed and Balanced).** After the key,
+**Balanced selection.** Before measured evidence, `weak_plans_last` prefers known
+strong/adequate capability within contiguous groups sharing confirmed memory fit,
+rejection state and runnability. Weak/unknown capability fills the other positions.
+A capable plan with unknown fit or offload cannot jump over a normally runnable
+plan across these boundaries. This metadata preference runs before measurements,
+so applicable comparable evidence can override it. The active order, Recompare and
+report export use the same sequence.
+
+Reports expose this step as `ranking.selection_policy`, including original and
+selected pool positions when the saved pool reproduces the displayed result.
+The measured policy's base position is the position after selection, so selection
+moves are not attributed to benchmarks. Missing historical positions stay unknown.
+
+**Measured evidence (Quality, Speed and Balanced).** After the key and selection,
 `apply_measured_policy` (`recommendation/shadow.py`) lets stored measurements reorder
 plans, under strict limits. Quality reads applicable quality: one complete audited IFEval
 run of the plan's exact GGUF bytes. Speed (Fastest) reads applicable speed: the plan's
