@@ -94,6 +94,23 @@ def test_runtime_name_may_carry_a_trailing_annotation() -> None:
     assert match.device is not None
 
 
+def test_dozen_names_wrap_the_real_name_in_parentheses_and_still_tell_cards_apart() -> None:
+    """Regression found on the B60 under WSL2: stripping the trailing parenthesis
+    reduced both Dozen devices to "Microsoft Direct3D12", so neither could be chosen."""
+    from jaull.runtime.device_matching import names_agree
+
+    dozen_b60 = f"Microsoft Direct3D12 ({B60})"
+    dozen_amd = "Microsoft Direct3D12 (AMD Radeon(TM) Graphics)"
+    capability = _capability(_device(0, dozen_b60), _device(1, dozen_amd))
+
+    chosen = match_runtime_device(_selection(dozen_b60), capability)
+    other = match_runtime_device(_selection(dozen_amd), capability)
+
+    assert chosen.device is not None and chosen.device.runtime_id == "Vulkan0"
+    assert other.device is not None and other.device.runtime_id == "Vulkan1"
+    assert not names_agree(dozen_b60, dozen_amd)
+
+
 def test_software_renderer_is_never_a_candidate() -> None:
     match = match_runtime_device(
         _selection(None), _capability(_device(0, "llvmpipe (LLVM 15.0.7, 256 bits)"))

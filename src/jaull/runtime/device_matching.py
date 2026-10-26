@@ -51,9 +51,9 @@ def match_runtime_device(
 
     Vulkan requires a unique name match. CUDA/HIP retain their single-device
     fallback; several candidates need a name that identifies exactly one. Names are
-    compared for equality after removing trademark marks and one trailing
-    annotation; a near name (``RTX 2060`` against ``RTX 2060 SUPER``) is a
-    different device.
+    compared for equality after removing trademark marks; a trailing annotation is
+    only set aside when just one of the two names has it (see ``names_agree``). A
+    near name (``RTX 2060`` against ``RTX 2060 SUPER``) is a different device.
     """
     candidates = [
         device for device in capability.devices if not _is_software_renderer(device)
@@ -62,12 +62,11 @@ def match_runtime_device(
         return RuntimeDeviceMatch(None, RuntimeDeviceMatchReason.NO_HARDWARE_DEVICE)
 
     accelerator = selection.selected_accelerator
-    wanted = _normalized_name(accelerator.name) if accelerator is not None else None
-    if wanted:
+    if accelerator is not None and _full_name(accelerator.name):
         named = [
             device
             for device in candidates
-            if device.name is not None and _normalized_name(device.name) == wanted
+            if device.name is not None and names_agree(device.name, accelerator.name)
         ]
         if len(named) == 1:
             return RuntimeDeviceMatch(named[0], RuntimeDeviceMatchReason.MATCHED_BY_NAME)
@@ -90,16 +89,39 @@ def _is_software_renderer(device: LlamaCppRuntimeDevice) -> bool:
     return any(marker in name for marker in _SOFTWARE_DEVICE_MARKERS)
 
 
-def _normalized_name(name: str) -> str:
+def _full_name(name: str) -> str:
+    """The whole name, without trademark marks, case or punctuation."""
     without_marks = _TRADEMARK_RE.sub("", name)
-    without_annotation = _TRAILING_ANNOTATION_RE.sub("", without_marks)
-    return _NON_ALNUM_RE.sub(" ", without_annotation.casefold()).strip()
+    return _NON_ALNUM_RE.sub(" ", without_marks.casefold()).strip()
+
+
+def _without_annotation(name: str) -> str:
+    return _full_name(_TRAILING_ANNOTATION_RE.sub("", _TRADEMARK_RE.sub("", name)))
+
+
+def _has_annotation(name: str) -> bool:
+    return _TRAILING_ANNOTATION_RE.search(_TRADEMARK_RE.sub("", name)) is not None
 
 
 def names_agree(left: str, right: str) -> bool:
-    """Whether two device names are the same device, by the same rule as matching."""
-    normalized = _normalized_name(left)
-    return bool(normalized) and normalized == _normalized_name(right)
+    """Whether two device names are the same device, by the same rule as matching.
+
+    The whole names must be equal. A trailing parenthesis is only set aside when
+    exactly one of the two names carries it (``... Graphics`` against
+    ``... Graphics (BMG G21)``): when both carry one, it is part of the identity.
+    Mesa's Dozen layer, for instance, wraps the real name in it
+    (``Microsoft Direct3D12 (Intel(R) Arc(TM) Pro B60 Graphics)``), so removing it
+    would make every Dozen device the same device.
+    """
+    full = _full_name(left)
+    if not full:
+        return False
+    if full == _full_name(right):
+        return True
+    return (
+        _has_annotation(left) != _has_annotation(right)
+        and _without_annotation(left) == _without_annotation(right)
+    )
 
 
 def selected_accelerator_matches(
