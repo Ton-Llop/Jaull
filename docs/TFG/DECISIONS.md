@@ -2329,6 +2329,200 @@ fallaven abans. Cerca real: General chat passa del 32B `IQ2_M` al `Q3_K_M`, i Co
 [selector](../../src/jaull/estimator/configuration.py),
 [rànquing v2](../../src/jaull/recommendation/engine_v2.py), D101, D104.
 
+### D106. Els plans sense capacitat coneguda també van al final a Quality
+
+**Data i necessitat:** 2026-10-27. La prova a la B60 va mostrar el SmolLM2-135M al quart lloc
+de Quality sobre xat general, per davant d'un Coder 7B. `weak_plans_last` (D101, punt 9) només
+s'aplicava a Balanced. L'usuari va demanar que el criteri valgui per a totes les cerques.
+
+**Decisió:** la regla s'aplica a Balanced i a Quality (`CAPABILITY_FIRST_PRIORITIES`), les
+dues prioritats que busquen un model capaç. **Speed i Memory no l'apliquen:** un model petit
+és el seu objectiu. L'informe publica `selection_policy` per a les dues prioritats, amb
+versió `<prioritat>-capability-within-viability-v2`, i la nota ja no parla de «grups de
+viabilitat contigus». El snapshot `report.json` canvia una línia (la nota).
+
+**Límits:** això no ordena la mida dins d'un mateix nivell de capacitat; un 7B `Q8_0`
+continua per davant d'un 14B `Q6_K` a Quality (D101, límit d). A Quality també poden entrar
+plans amb offload (un 32B `Q6_K` de 32,5 GiB), que són lents; el rànquing els ordena pel que
+cap, no per la velocitat.
+
+**Estat:** `IMPLEMENTED` amb un test que fallava abans. `VALIDATED` parcialment: la prova
+real a la B60 va mostrar el defecte; la correcció s'ha comprovat amb la cerca real a WSL i
+queda pendent de repetir-la a la B60.
+
+**Fonts:** [selecció](../../src/jaull/recommendation/selection.py),
+[informe](../../src/jaull/reporting/recommendation.py), D101, D104, D105.
+
+### D107. Quatre barreres que deixaven fora el Qwen3.8-27B de la B60
+
+**Data i necessitat:** 2026-10-27. L'usuari va assenyalar que a una B60 de 24 GiB hi cap un
+model de 27B i que Quality saltava del 30B al 14B. Es va comprovar a Hugging Face: no hi ha un
+Qwen2.5 de 27B oficial (només fine-tunes i LoRA de tercers), però el **Qwen3.8-27B** existeix i
+el seu GGUF d'`unsloth` té 5,9 M de descàrregues. Provant-lo sol amb el servei real, Jaull
+donava **zero recomanacions**. Hi havia quatre causes independents, resoltes en aquest ordre
+perquè desbloquejar l'estimació abans de netejar els fitxers hauria recomanat el projector de
+visió com si fos el model.
+
+**1. Fitxers auxiliars comptats com a quantitzacions.** El repositori publica
+`mmproj-F16.gguf` (0,86 GiB), `mmproj-BF16.gguf`, `imatrix_unsloth.gguf` i un `MTP/mtp-…gguf`
+al costat dels pesos; un altre repositori publica un model esborrany de decodificació
+especulativa (`…-draft-Q4_0.gguf`, 1,56 GiB) que es va arribar a recomanar com a «27B a
+`Q4_0`, 3,3 GiB». **Decisió:** el classificador deixa fora els `.gguf` amb els mots `mmproj`,
+`imatrix`, `mtp` o `draft` al nom, o dins una carpeta `MTP/`. Són convencions de noms de fitxer
+de l'ecosistema llama.cpp, usades només per excloure fitxers de la llista, mai per identificar
+un model. La memòria cau d'anàlisis passa a l'esquema 7.
+
+**2. Capçalera GGUF més gran que 8 MiB.** El vocabulari de 248 k tokens del Qwen3.5 supera el
+pressupost de descàrrega i la KV quedava desconeguda. Totes les claus que necessita
+l'estimació (arquitectura, `block_count`, `embedding_length`, `attention.head_count`) van
+**abans** del tokenitzador. **Decisió:** si la lectura s'acaba a mitja d'un valor però aquestes
+claus ja hi són, s'accepta la capçalera parcial; si no, es continua demanant bytes com abans.
+Això també estalvia rondes de descàrrega a tots els models.
+
+**3. Configuració «composta» multimodal.** La configuració base del repositori imbrica
+`text_config` i `vision_config`, i `_detect_exotic_architecture` marcava el GGUF com a
+compost (D023) encara que la capçalera ja dona les dimensions. **Decisió:** quan la capçalera
+GGUF aporta capes, caps i mida d'embedding, el fusionador de configuracions descarta
+`text_config`, `vision_config` i `audio_config`: un GGUF només conté el decoder de text. Sense
+capçalera es conserva l'avís.
+
+**4. Descobriment.** Cap consulta podia retornar-lo: el servidor filtra per
+`pipeline_tag=text-generation` (el repositori no en declara) i la cerca és per subcadena del
+nom (no conté «instruct» ni «coder»). **Decisió:** es duu una segona consulta de mida
+(`<ús>:scale-open`) sense frase ni `pipeline_tag`, només amb l'etiqueta del format i la
+finestra de paràmetres. El filtre del client continua descartant el que és multimodal o no de
+text. L'etiqueta `scale-open` arriba al snapshot de l'informe.
+
+**Resultat observat (cerca real, mateix perfil):** `unsloth/Qwen3.8-27B-GGUF` `Q4_K_M`,
+19,9 GiB, `compatible`, entra a General chat de Balanced. Fins llavors, zero recomanacions.
+
+**Límits pendents, sense decidir:** (a) Balanced posa qualsevol pla `comfortable` per davant
+d'un `compatible` (el 27B ocupa el 83 % de la memòria, per sobre del 75 %); l'usuari ha dit
+que Balanced ha de preferir els dos abans que `tight`; (b) a igualtat d'eixos, decideixen les
+descàrregues: dos models Ornith de 9B (5,1 M i 2,4 M de descàrregues, de procedència no
+verificada) passen per davant d'un 14B de Qwen; el que falta és la mida abans de les
+descàrregues; (c) el repositori de `JonathanColetti` publica cada quantització dues vegades
+(`…-noMTP-…`) i queda descartat per ambigu.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans (classificador, capçalera parcial,
+fusionador, consulta de mida). `UNVERIFIED` a la B60: cap execució real d'un 27B.
+
+**Fonts:** [classificador](../../src/jaull/huggingface/classifiers.py),
+[lector GGUF](../../src/jaull/metadata/gguf_reader.py),
+[fusionador](../../src/jaull/metadata/config_merger.py),
+[consultes](../../src/jaull/discovery/query_builder.py), D023, D101, D102.
+
+### D108. A Quality, un pla que càpiga a la GPU abans que una quantització millor amb offload
+
+**Data i necessitat:** 2026-10-27. A Quality un 32B es mostrava a `Q6_K` amb 32,5 GiB, uns 8,5 GiB
+volcats a una RAM de 13,6 GiB, perquè la clau ordenava la qualitat de la quantització
+(`_quantization_quality_rank`) abans de l'ajust a la GPU, mentre que un `Q3_K_M` residente de
+20,2 GiB cabia. L'usuari ho va formular així: val més un `Q4` sense offload que un `Q6` amb
+offload, que és molt més lent.
+
+**Decisió:** la clau de Quality passa a (idoneïtat, capacitat, **runnability**, qualitat de la
+quantització, ajust). La runnability agrupa «normalment executable» (ajust fort o adequat) i
+deixa l'offload en una classe degradada, igual que a Balanced. `ranking_criteria` publica
+l'eix nou a Quality i el test de fidelitat de l'informe s'actualitza.
+
+**Límits:** no ordena la mida del model dins d'un mateix nivell de capacitat; un 7B `Q8_0`
+continua per davant d'un 14B `Q6_K` (D101, límit d), i un 32B `Q3_K_M` residente queda per
+darrere d'un 14B `Q8_0`. Si això és millor per programar queda `UNVERIFIED`; es pot mesurar
+amb el pipeline d'avaluació de qualitat de Jaull.
+
+**Estat:** `IMPLEMENTED` amb un test que fallava abans.
+
+**Fonts:** [rànquing v2](../../src/jaull/recommendation/engine_v2.py), D101, D105, D106.
+
+### D109. A Balanced, `comfortable` i `compatible` tenen el mateix marge; `tight` va darrere
+
+**Data i necessitat:** 2026-10-27. Un 27B a `Q4_K_M` ocupava el 83 % de la B60 (`compatible`) i
+quedava al lloc 24 darrere de tots els plans per sota del 75 % (`comfortable`), encara que
+tots dos càpiguen amb marge. L'usuari va indicar (i ja ho feia el selector, D098) que Balanced
+ha de preferir `comfortable` o `compatible` abans que `tight`.
+
+**Causes (dues):** (a) `_comfortable_memory_rank` posava `compatible` darrere de `comfortable`;
+(b) l'eix `execution_fitness` de Balanced, que ordena `strong` abans que `adequate`, repetia la
+mateixa distinció després de la runnability. A més, la valoració posa `compatible` i `tight` al
+mateix nivell (`ADEQUATE`), de manera que Balanced no els havia distingit mai.
+**Decisió:** (1) a Balanced `comfortable` i `compatible` valen 0 i `tight` val 1, mirant l'estat
+de memòria del pla; (2) s'elimina l'eix `execution_fitness` de la clau i del criteri publicat de
+Balanced (la runnability ja és aquest nivell amb `strong` i `adequate` agrupats); (3) el criteri
+`memory_headroom` publica l'estat real (`comfortable`, `compatible`, `tight`) en lloc del nivell,
+perquè `tight` i `compatible` no semblin un ordre trencat. Quality conserva `execution_fitness`.
+
+**Resultat:** a la cerca real, l'efecte és petit perquè, amb tots els eixos empatats,
+decideixen les descàrregues (límit b de D107). El 30B-A3B de Coding passa del `Q4_K_M` `tight` al
+`Q3_K_M` `compatible`, que és el que demana la política.
+
+**Estat:** `IMPLEMENTED` amb un test que fallava abans; snapshots de l'informe regenerats.
+
+**Fonts:** [rànquing v2](../../src/jaull/recommendation/engine_v2.py), D098, D105, D107.
+
+### D110. Cerca més ampla i més ràpida: capçaleres en paral·lel, agrupació per model base i mida
+
+**Data i necessitat:** 2026-10-27. L'usuari va preguntar si la cerca era massa estreta i si es
+podia accelerar. Es va mesurar abans de canviar res. **Velocitat:** una cerca en fred (sense cap
+memòria cau) tardava 64 s; la cerca a Hugging Face són 1,4 s, la inspecció 2 s i la resta, uns
+60 s, és l'estimació: per a cada quantització de cada repositori GGUF es llegeix la capçalera
+(una petició de rang de 256 KiB o més), en sèrie, durant el rànquing. **Amplada:** a la B60 hi
+caben fins a 32B i dels 100 repositoris GGUF més descarregats entre 20B i 32B hi ha uns 46 noms
+diferents (Gemma 4 26B-A4B, gpt-oss-20b, Qwen3.6-27B…), però cada consulta torna només 20
+resultats per descàrregues i uns 12 eren recàrregues del mateix Qwen3.8-27B.
+
+**Decisions:**
+1. **Capçaleres en paral·lel** (`prefetch_gguf_headers`, 8 fils, `MAX_CONCURRENT_HEADER_READS`)
+   abans del rànquing, a la mateixa memòria cau de capçaleres que ja consulta l'estimador. No
+   canvia cap càlcul: el top 5 de la mateixa cerca va ser idèntic. **Mesurat: 61,4 s → 29,7 s**;
+   el rànquing passa de 44,9 s a 0,1 s i la precàrrega (147 capçaleres) en triga 15.
+2. **Agrupació per model base abans d'inspeccionar** (`collapse_quantized_reuploads`): els
+   repositoris GGUF amb la mateixa etiqueta `base_model:quantized:X` es redueixen al més
+   descarregat. Només s'agrupen còpies GGUF entre elles: un primer intent també fusionava les
+   quantitzacions AWQ, FP8 o MLX i un AWQ d'1 M de descàrregues va amagar el repositori GGUF
+   oficial del Qwen2.5-Coder-32B. Un fine-tune (que quantitza un altre repositori) no es fusiona.
+3. **Una consulta de mida per cubell** (`size_bands`, amb els cubells que ja existeixen: 4-14B,
+   14-32B i més enllà si la màquina ho permet), cadascuna amb frase i oberta. A la B60 passa de 8
+   a 12 consultes: +0,6 s. Per això `MAX_UNIQUE_CANDIDATES` passa de 40 a 100: els resultats ja
+   estan baixats, no costa xarxa, i amb 12 consultes el tall de 40 treia els repositoris oficials.
+4. **Mida del model abans de les descàrregues en un empat**, només a Balanced i Quality. La mida
+   ve de `general.size_label` de la capçalera GGUF (`14B`, `12B-A2.5B`, `30B-A3B`), que declara
+   l'artefacte i no el nom del repositori, i entra a `resolve_parameter_count` entre la
+   configuració i el nom (`GGUF_METADATA`, confiança mitjana). Per a un MoE es compta el total.
+   El nou criteri `model_size` va abans de l'escala de quantització i de les descàrregues.
+   Esquema de la memòria cau de capçaleres a 2.
+
+**Correccions per una auditoria posterior (tancades abans de tocar més el rànquing):**
+(1) *Agrupar sense perdre alternatives viables.* Compartir model base no vol dir compartir
+quantitzacions: la còpia més descarregada pot tenir només fitxers que no càpiguen. Ara
+`collapse_quantized_reuploads` retorna `Reuploads(kept, alternatives)` i
+`rescue_with_reupload_alternatives` inspecciona les còpies germanes, de més a menys descarregades,
+quan la còpia mantinguda no té cap col·locació confirmada, dins del pressupost de variants
+(`MAX_VARIANT_DEEP_INSPECTION`). (2) *Una capçalera parcial no és una completa.* Un tall dins del
+tokenitzador només s'accepta si ja hi són les cinc claus que llegeix l'estimació (context,
+embedding, capes, caps i caps KV); la capçalera es marca `is_complete=False`, no es dedueix cap
+clau absent i l'esquema de la memòria cau passa a 3. Si una clau pot encara venir després, es
+continua demanant bytes. (3) *Cancel·lar no espera peticions bloquejades.* La precàrrega consulta
+la cancel·lació abans d'enviar feina i cada 0,1 s, i en cancel·lar fa `shutdown(wait=False,
+cancel_futures=True)`; una petició ja a la xarxa acaba pel seu temps màxim HTTP (10 s). (4) *L'estat
+exportat té les mateixes dades que el rànquing:* la precàrrega i `declare_sizes` s'executen abans
+d'enriquir i publicar els candidats.
+
+**Límits pendents:** (a) la confiança del pla (metadades de la targeta més estimació) va abans
+de la mida: `unsloth/Qwen3.8-27B-GGUF` té dues penalitzacions (sense idiomes, sense
+`pipeline_tag`) i queda per darrere de models més petits; (b) un MoE es compta pel total, de
+manera que un 30B-A3B passa per davant d'un 14B dens, cosa discutible; (c) els derivats de
+tercers (abliterated, uncensored) segueixen ocupant places; (d) es llegeix una capçalera per
+quantització. Reutilitzar la informació d'arquitectura d'un repositori només seria acceptable
+revisant-ne la consistència, i mai les dades pròpies de cada artefacte o quantització.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans. Temps: `VALIDATED` al WSL (61,4 → 29,7 s,
+mateix top 5); `UNVERIFIED` a la B60.
+
+**Fonts:** [precàrrega](../../src/jaull/workflow/header_prefetch.py),
+[consultes](../../src/jaull/discovery/query_builder.py),
+[filtre de candidats](../../src/jaull/discovery/candidate_filter.py),
+[famílies](../../src/jaull/domain/families.py), D101, D107, D109.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2437,7 +2631,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D105 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D110 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
