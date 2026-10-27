@@ -28,12 +28,12 @@
   },
   "orders": {
     "quality": {
-      "before_diversity": ["large", "medium", "tiny", "mini", "small", "giant"],
-      "top_five": ["large", "medium", "tiny", "mini", "small"]
+      "before_diversity": ["large", "medium", "small", "mini", "tiny", "giant"],
+      "top_five": ["large", "medium", "small", "mini", "tiny"]
     },
     "balanced": {
-      "before_diversity": ["large", "medium", "tiny", "mini", "small", "giant"],
-      "top_five": ["large", "medium", "tiny", "mini", "small"]
+      "before_diversity": ["large", "medium", "small", "mini", "tiny", "giant"],
+      "top_five": ["large", "medium", "small", "mini", "tiny"]
     },
     "speed": {
       "before_diversity": ["tiny", "mini", "small", "medium", "large", "giant"],

@@ -115,6 +115,9 @@ class ModelAnalysis(BaseModel):
     # tests keep working; when present, downstream scoring can trust it as the
     # authoritative parameter count instead of guessing from names.
     safetensors_summary: SafetensorsSummary | None = None
+    # The size a GGUF header of this repository declares (`general.size_label`), read after the
+    # inspection and attached for the ranking; a stronger clue to the size than the repo name.
+    declared_size_label: str | None = None
 
 
 class DiagnosticResult(BaseModel):

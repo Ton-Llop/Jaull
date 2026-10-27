@@ -21,7 +21,7 @@ from jaull.recommendation.capability import (
     detect_family,
     parameter_count,
 )
-from tests._workflow_fixtures import transformers_analysis
+from tests._workflow_fixtures import gguf_analysis, transformers_analysis
 
 
 def _candidate(
@@ -266,3 +266,28 @@ def test_compatibility_wrapper_returns_analyzer_score() -> None:
     assert capability_score(candidate, None) == pytest.approx(
         MetadataCapabilityAnalyzer().analyze(candidate, None).score
     )
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [("14B", 14_000_000_000), ("12B-A2.5B", 12_000_000_000), ("0.5B", 500_000_000),
+     ("135M", 135_000_000), ("8x7B", None), ("big", None), ("", None)],
+)
+def test_the_size_a_gguf_header_declares_outranks_the_repository_name(
+    label: str, expected: int | None,
+) -> None:
+    """The header states the size of the artifact itself; the repository name is a weaker clue.
+    A mixture-of-experts label counts its total, not the active experts. `8x7B` does not say how
+    many are shared, so it is left to the name."""
+    candidate_ = _candidate("org/Model-7B-GGUF")
+    analysis = gguf_analysis(repo_id="org/Model-7B-GGUF").model_copy(
+        update={"declared_size_label": label},
+    )
+
+    resolved = resolve_parameter_count(candidate_, analysis)
+
+    if expected is None:
+        assert resolved.source is ParameterCountSource.NAME_INFERENCE  # the "7B" in the name
+        return
+    assert resolved.count == expected
+    assert resolved.source is ParameterCountSource.GGUF_METADATA

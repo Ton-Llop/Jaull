@@ -1117,6 +1117,12 @@ def _measured_memory(
     return max(values) if values else None
 
 
+# The priorities whose goal is a capable model. Speed and Memory want a small, light one, so a
+# tiny model is a legitimate winner there and is left where the ranking put it.
+CAPABILITY_FIRST_PRIORITIES = frozenset(
+    {RecommendationPriority.BALANCED, RecommendationPriority.QUALITY}
+)
+
 _LEVEL_RANK = {
     AssessmentLevel.STRONG: 0,
     AssessmentLevel.ADEQUATE: 1,
@@ -1163,6 +1169,8 @@ def ranking_tie_key(
         priority_axes: tuple[int | float, ...] = (
             _LEVEL_RANK[assessment.suitability],
             _LEVEL_RANK[assessment.capability],
+            # Runs-from-the-GPU before a better quantization: offloading is far slower.
+            _runnability_rank(assessment),
             _quantization_quality_rank(item.plan),
             _LEVEL_RANK[assessment.execution_fitness],
         )
@@ -1187,9 +1195,10 @@ def ranking_tie_key(
             _aggressive_quantization_rank(item.plan),
             _runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
-            _LEVEL_RANK[assessment.execution_fitness],
+            # No separate execution_fitness axis: runnability already is that level with
+            # strong and adequate grouped, and Balanced must not tell them apart.
             _LEVEL_RANK[assessment.executability],
-            _comfortable_memory_rank(assessment),
+            _comfortable_memory_rank(item),
         )
     return (
         1 if assessment.rejected else 0,
@@ -1200,10 +1209,24 @@ def ranking_tie_key(
         ),
         *priority_axes,
         _CONFIDENCE_RANK[assessment.confidence],
+        _model_size_rank(item, priority),
         _ladder_rank(item.plan, priority),
         # Only a tie reaches here: with every axis equal, the better-known repository first.
         -item.evaluated.candidate.downloads,
     )
+
+
+def _model_size_rank(item: RankedPlan, priority: RecommendationPriority) -> int:
+    """Where a tie goes by model size: the larger model first, only where capability is the goal.
+
+    Every plan of one model shares its size, so this never reorders the quantizations of a
+    model; across models it puts the larger first before the quantization ladder and before
+    downloads, which would otherwise rank a popular 9B above a quiet 14B. An unknown size comes
+    last. Speed and Memory do not prefer size.
+    """
+    if priority not in CAPABILITY_FIRST_PRIORITIES:
+        return 0
+    return -(item.plan.model_identity.parameter_count or 0)
 
 
 def _aggressive_quantization_rank(plan: ExecutionPlan) -> int:
@@ -1345,6 +1368,17 @@ def ranking_criteria(
             assessment.confidence.value,
             _CONFIDENCE_RANK[assessment.confidence],
         ),
+        *(
+            (
+                (
+                    "model_size",
+                    _size_label(item.plan.model_identity.parameter_count),
+                    _model_size_rank(item, priority),
+                ),
+            )
+            if priority in CAPABILITY_FIRST_PRIORITIES
+            else ()
+        ),
         (
             "quantization_preference",
             item.plan.artifact.quantization or "n/a",
@@ -1361,6 +1395,11 @@ def ranking_criteria(
         axes = (
             ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
             ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
+            (
+                "runnability",
+                assessment.execution_fitness.value,
+                _runnability_rank(assessment),
+            ),
             (
                 "quantization_quality",
                 item.plan.artifact.quantization or "n/a",
@@ -1425,24 +1464,26 @@ def ranking_criteria(
             ),
             ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
-                "execution_fitness",
-                assessment.execution_fitness.value,
-                _LEVEL_RANK[assessment.execution_fitness],
-            ),
-            (
                 "executability",
                 assessment.executability.value,
                 _LEVEL_RANK[assessment.executability],
             ),
             (
                 "memory_headroom",
-                assessment.feasibility.value,
-                _comfortable_memory_rank(assessment),
+                prediction.assessment.status.value if prediction is not None
+                else assessment.feasibility.value,
+                _comfortable_memory_rank(item),
             ),
         )
     return tuple(
         RankingCriterion(*axis) for axis in (*leading, *axes, *trailing)
     )
+
+
+def _size_label(parameter_count: int | None) -> str:
+    if not parameter_count:
+        return "unknown"
+    return f"{parameter_count / 1e9:g}B"
 
 
 def _bytes_label(assessment: PlanAssessment) -> str:
@@ -1509,16 +1550,21 @@ def _memory_efficiency_rank(assessment: PlanAssessment) -> int:
     return memory if memory is not None else 10**18
 
 
-def _comfortable_memory_rank(assessment: PlanAssessment) -> int:
+def _comfortable_memory_rank(item: RankedPlan) -> int:
     """Diminishing memory utility once a plan is comfortably runnable.
 
     Balanced ranking should care a lot about impossible/tight plans, but should
     not keep rewarding every extra unused GiB after the plan already fits well.
+    A comfortable fit (up to 75 % of the memory) and a compatible one (up to 90 %) both
+    leave margin, so they rank the same; a tight one, and worse, rank behind. The assessment
+    puts compatible and tight in one level, so the plan's own memory status decides.
     """
-    if assessment.feasibility is AssessmentLevel.STRONG:
-        return 0
-    if assessment.feasibility is AssessmentLevel.ADEQUATE:
+    assessment = item.assessment
+    prediction = item.plan.memory_prediction
+    if prediction is not None and prediction.assessment.status is CompatibilityStatus.TIGHT:
         return 1
+    if assessment.feasibility in {AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE}:
+        return 0
     if assessment.feasibility is AssessmentLevel.WEAK:
         return 2
     if assessment.feasibility is AssessmentLevel.UNKNOWN:

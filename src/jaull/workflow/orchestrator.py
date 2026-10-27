@@ -21,7 +21,10 @@ from huggingface_hub.hf_api import ModelInfo
 from jaull.application import requirements as requirements_service
 from jaull.application.recommendation import policies
 from jaull.application.recommendation import service as recommendation_service
-from jaull.application.recommendation.alternatives import expand_execution_candidates
+from jaull.application.recommendation.alternatives import (
+    expand_execution_candidates,
+    rescue_with_reupload_alternatives,
+)
 from jaull.bootstrap.container import ServiceContainer
 from jaull.discovery import candidate_filter, enrichment, query_builder
 from jaull.domain.candidates import (
@@ -48,6 +51,7 @@ from jaull.recommendation import explanations
 from jaull.recommendation.engine_v2 import PlanRankingContext, RankedPlan
 from jaull.recommendation.shadow import ShadowReport, build_shadow_report
 from jaull.workflow.cache import RunCache
+from jaull.workflow.header_prefetch import declare_sizes, prefetch_gguf_headers
 from jaull.workflow.models import WorkflowStep
 from jaull.workflow.progress import (
     DISCOVERY_STEPS,
@@ -253,7 +257,8 @@ def run_workflow(
         with telemetry.timed("filter"):
             outcome = candidate_filter.filter_candidates(candidates, requirements)
             # Rejected search hits must not consume the eligible-candidate budget.
-            candidates = outcome.kept[: policies.MAX_UNIQUE_CANDIDATES]
+            reuploads = candidate_filter.collapse_quantized_reuploads(outcome.kept)
+            candidates = reuploads.kept[: policies.MAX_UNIQUE_CANDIDATES]
             shortlist = candidate_filter.shortlist(
                 candidates,
                 requirements,
@@ -325,6 +330,26 @@ def run_workflow(
             estimate_fn=estimate_plan, check_cancelled=lambda: _check(cancelled),
             telemetry=telemetry,
         )
+        evaluated = rescue_with_reupload_alternatives(
+            evaluated, alternatives=reuploads.alternatives, requirements=requirements,
+            hardware=hardware, inspect_model=inspect_alternative, estimate_fn=estimate_plan,
+            check_cancelled=lambda: _check(cancelled),
+            max_inspections=policies.MAX_VARIANT_DEEP_INSPECTION,
+        )
+        # The sizes GGUF headers declare are attached before the candidates are published, so the
+        # exported state holds the same data the ranking used.
+        reporter.start("rank")
+        with telemetry.timed("header_prefetch"):
+            reporter.detail("rank", "reading GGUF headers")
+            prefetched = prefetch_gguf_headers(
+                evaluated,
+                range_client=range_client,  # type: ignore[arg-type]
+                header_cache=services.gguf_header_cache,
+                max_workers=policies.MAX_CONCURRENT_HEADER_READS,
+                check_cancelled=lambda: _check(cancelled),
+            )
+            telemetry.increment("gguf_headers_prefetched", prefetched)
+            evaluated = declare_sizes(evaluated, services.gguf_header_cache)
         # Publish the candidates *with* the features the ranker uses. Storing
         # the pre-enrichment list made the report show every score at its 0.0
         # default and `requirement_penalty` at 1.0 with no unmet requirements,
@@ -349,7 +374,6 @@ def run_workflow(
             }
         )
 
-        reporter.start("rank")
         with telemetry.timed("ranking"):
             usable = [item for item in evaluated if not item.failed]
             if not usable:

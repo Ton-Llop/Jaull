@@ -111,3 +111,112 @@ def test_array_of_strings_is_accepted() -> None:
     header = parse_header(data)
     assert header is not None
     assert isinstance(header.raw_kv["tokenizer.ggml.tokens"], list)
+
+
+def _architecture_then_tokenizer() -> tuple[bytes, int]:
+    """A header written the way llama.cpp writes it: architecture keys, then a huge tokenizer."""
+    architecture = build_header(
+        {
+            "general.architecture": "qwen3_5",
+            "qwen3_5.context_length": 262144,
+            "qwen3_5.embedding_length": 5120,
+            "qwen3_5.block_count": 64,
+            "qwen3_5.attention.head_count": 24,
+            "qwen3_5.attention.head_count_kv": 4,
+        }
+    )
+    full = build_header(
+        {
+            "general.architecture": "qwen3_5",
+            "qwen3_5.context_length": 262144,
+            "qwen3_5.embedding_length": 5120,
+            "qwen3_5.block_count": 64,
+            "qwen3_5.attention.head_count": 24,
+            "qwen3_5.attention.head_count_kv": 4,
+            "tokenizer.ggml.tokens": [f"token-{index}" for index in range(2000)],
+        }
+    )
+    return full, len(architecture)
+
+
+def test_a_header_cut_inside_the_tokenizer_still_gives_the_architecture() -> None:
+    """Regression found on a B60 box: Qwen3.8-27B's tokenizer pushed the header past the 8 MiB
+    download budget, so its KV cache stayed unknown and the model was never recommended, although
+    every key the memory estimate needs comes before the tokenizer."""
+    full, architecture_end = _architecture_then_tokenizer()
+
+    header = parse_header(full[: architecture_end + 200])  # ends inside the token list
+
+    assert header is not None
+    assert header.architecture == "qwen3_5"
+    assert header.block_count == 64
+    assert header.embedding_length == 5120
+    assert header.head_count == 24
+    assert header.head_count_kv == 4
+    assert header.is_complete is False  # keys not read yet are unknown, not absent
+
+
+def test_a_complete_header_says_so() -> None:
+    full, _ = _architecture_then_tokenizer()
+
+    header = parse_header(full)
+
+    assert header is not None and header.is_complete is True
+
+
+def test_a_cut_is_not_accepted_when_a_key_the_estimate_reads_may_still_follow() -> None:
+    """Found by an audit: a header written with `head_count_kv` and `context_length` after the
+    tokenizer was accepted at the cut, and both were then read as absent (a full read gave 4 and
+    32768). Unread keys are unknown; the reader keeps asking for bytes until it has them."""
+    late = build_header(
+        {
+            "general.architecture": "qwen2",
+            "qwen2.embedding_length": 3584,
+            "qwen2.block_count": 28,
+            "qwen2.attention.head_count": 28,
+            "tokenizer.ggml.tokens": [f"token-{index}" for index in range(2000)],
+            "qwen2.attention.head_count_kv": 4,
+            "qwen2.context_length": 32768,
+        }
+    )
+    cut = late.index(b"token-1000")
+
+    with pytest.raises(GgufHeaderIncompleteError):
+        parse_header(late[:cut])
+
+    header = parse_header(late)
+    assert header is not None and header.head_count_kv == 4 and header.context_length == 32768
+
+
+def test_a_cut_outside_the_tokenizer_is_never_accepted() -> None:
+    full = build_header(
+        {
+            "general.architecture": "qwen2",
+            "qwen2.context_length": 32768,
+            "qwen2.embedding_length": 3584,
+            "qwen2.block_count": 28,
+            "qwen2.attention.head_count": 28,
+            "qwen2.attention.head_count_kv": 4,
+            "qwen2.rope.dimension_count": 128,
+        }
+    )
+
+    with pytest.raises(GgufHeaderIncompleteError):
+        parse_header(full[:-3])  # inside the last architecture value
+
+
+def test_a_header_cut_before_the_architecture_keys_still_asks_for_more() -> None:
+    full, _ = _architecture_then_tokenizer()
+
+    with pytest.raises(GgufHeaderIncompleteError):
+        parse_header(full[:60])  # inside the architecture block
+
+
+def test_the_size_label_is_exposed_and_can_be_missing() -> None:
+    labelled = parse_header(build_header({
+        "general.architecture": "mellum", "general.size_label": "12B-A2.5B",
+    }))
+    plain = parse_header(build_header({"general.architecture": "mellum"}))
+
+    assert labelled is not None and labelled.size_label == "12B-A2.5B"
+    assert plain is not None and plain.size_label is None

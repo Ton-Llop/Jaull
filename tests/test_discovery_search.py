@@ -19,6 +19,7 @@ from jaull.application.requirements import build_requirements
 from jaull.discovery import candidate_filter, query_builder
 from jaull.discovery.candidate_filter import (
     coarse_placement_hint,
+    collapse_quantized_reuploads,
     deduplicate,
     filter_candidates,
     parameter_count_hint,
@@ -84,14 +85,20 @@ def test_documents_and_reasoning_include_general_instruct_discovery(
 
     # Every filtered angle uses a name that ordinary Instruct repositories can
     # actually match, not the task's multi-word description.
-    for suffix in ("gguf", "safetensors", "lang-es", "trending", "scale"):
+    for suffix in ("gguf", "safetensors", "lang-es", "trending"):
         matches = [q for q in queries if q.label == f"{use_case.value}:{suffix}"]
-        if suffix != "scale" or max_billions == 30.0:
-            assert len(matches) == 1
-            assert matches[0].search == "instruct"
-            assert matches[0].pipeline_tag == TEXT_GENERATION_PIPELINE
-        else:
-            assert not matches
+        assert len(matches) == 1
+        assert matches[0].search == "instruct"
+        assert matches[0].pipeline_tag == TEXT_GENERATION_PIPELINE
+    # One named query per size band when the machine holds sizes beyond the small ones.
+    bands = [
+        q for q in queries
+        if q.label.startswith(f"{use_case.value}:scale-") and q.search is not None
+    ]
+    assert len(bands) == (2 if max_billions == 30.0 else 0)
+    for band in bands:
+        assert band.search == "instruct"
+        assert band.pipeline_tag == TEXT_GENERATION_PIPELINE
 
     # One additional page only; shared inspection and candidate budgets do not change.
     baseline = query_builder.build_queries(_requirements(), max_billions=max_billions)
@@ -124,22 +131,34 @@ def test_queries_are_deduplicated() -> None:
     assert len(keys) == len(set(keys))
 
 
-def test_a_scale_query_covers_the_sizes_that_fit_beyond_the_small_models() -> None:
-    """The plain queries sort by downloads, so the very popular small models fill every
-    page and the 7B-32B range this machine can hold is never listed."""
+def test_the_sizes_that_fit_beyond_the_small_models_are_searched_band_by_band() -> None:
+    """The plain queries sort by downloads, so the very popular small models fill every page and
+    the 7B-32B range this machine can hold is never listed. Each size bucket the machine can hold
+    gets its own pair of queries, so the popular 9B models cannot crowd out the 14B-32B ones."""
     requirements = _requirements()
     queries = query_builder.build_queries(requirements, max_billions=30)
     scale = [q for q in queries if q.max_billions is not None]
-    assert len(scale) == 2
+    named = [q for q in scale if q.search is not None]
+    open_ = [q for q in scale if q.search is None]
+
+    bands = [(q.min_billions, q.max_billions) for q in named]
+    assert bands == [(candidate_filter.LARGER_THAN_SMALL_BILLIONS, 14.0), (14.0, 30)]
+    assert [(q.min_billions, q.max_billions) for q in open_] == bands
     for query in scale:
-        assert query.min_billions == candidate_filter.LARGER_THAN_SMALL_BILLIONS
-        assert query.max_billions == 30
         assert query.filter_tags == (requirements.preferred_formats[0],)
-    named, open_ = scale
-    assert named.search is not None and named.pipeline_tag == TEXT_GENERATION_PIPELINE
+    assert all(q.pipeline_tag == TEXT_GENERATION_PIPELINE for q in named)
     # Qwen3.8-27B's GGUF repository declares no pipeline and has neither "instruct" nor "coder" in
-    # its name, so no named query can return it; the open one is limited by size and format only.
-    assert open_.search is None and open_.pipeline_tag is None
+    # its name, so no named query can return it; the open ones are limited by size and format only.
+    assert all(q.pipeline_tag is None for q in open_)
+
+
+def test_a_machine_that_holds_very_large_models_gets_a_band_for_them() -> None:
+    queries = query_builder.build_queries(_requirements(), max_billions=70)
+    bands = [(q.min_billions, q.max_billions) for q in queries
+             if q.max_billions is not None and q.search is not None]
+    assert bands == [
+        (candidate_filter.LARGER_THAN_SMALL_BILLIONS, 14.0), (14.0, 32.0), (32.0, 70),
+    ]
 
 
 @pytest.mark.parametrize("max_billions", [None, 4.0, 2.0])
@@ -733,6 +752,49 @@ def test_unknown_size_candidates_get_one_round_pick_and_do_not_crowd_out_known_o
     unknown = [item for item in picked if parameter_count_hint(item.repo_id) is None]
     assert len(unknown) == 1
     assert "bigco/Wizard-Coder-GGUF" in names  # a relevant unknown still gets its slot
+
+
+def test_reuploads_of_one_model_take_a_single_candidate_slot() -> None:
+    """Found on a B60 box: twelve of the hundred most downloaded 20-32B GGUF repositories were
+    quantizations of the same Qwen3.8-27B, and a search page holds twenty. Hugging Face declares
+    that relation with a `base_model:quantized:` tag, so they are merged before inspection. A
+    fine-tune of the model, or a different model, is not a re-upload."""
+    base = "Qwen/Qwen3.8-27B"
+    quantized = [
+        candidate(repo_id=f"{owner}/Qwen3.8-27B-GGUF", downloads=downloads,
+                  tags=["gguf", f"base_model:quantized:{base}", f"base_model:{base}"])
+        for owner, downloads in (("unsloth", 5_900_000), ("ggml-org", 2_200_000), ("byte", 10))
+    ]
+    finetune = candidate(
+        repo_id="huihui/Qwen3.8-27B-abliterated-GGUF", downloads=2_600_000,
+        tags=["gguf", "base_model:quantized:huihui/Qwen3.8-27B-abliterated"],
+    )
+    other = candidate(repo_id="google/gemma-4-26B-it-GGUF", downloads=1_000_000, tags=["gguf"])
+    unlinked = candidate(repo_id="acme/Plain-7B-GGUF", downloads=5, tags=["gguf"])
+    # Found right after: Qwen's 1M-download AWQ build of the same base absorbed its GGUF repository.
+    # Only GGUF copies merge with each other; another quantization format is a different artifact.
+    awq = candidate(
+        repo_id="Qwen/Qwen3.8-27B-AWQ", downloads=9_000_000,
+        tags=["awq", f"base_model:quantized:{base}"],
+    )
+
+    reuploads = collapse_quantized_reuploads([awq, *quantized, finetune, other, unlinked])
+    kept = reuploads.kept
+
+    assert [item.repo_id for item in kept] == [
+        "Qwen/Qwen3.8-27B-AWQ",
+        "unsloth/Qwen3.8-27B-GGUF",
+        "huihui/Qwen3.8-27B-abliterated-GGUF",
+        "google/gemma-4-26B-it-GGUF",
+        "acme/Plain-7B-GGUF",
+    ]
+    # The copies that were merged are not lost: they wait, most downloaded first, to be
+    # inspected if the kept one turns out to have nothing that fits.
+    assert [item.repo_id for item in reuploads.alternatives["unsloth/qwen3.8-27b-gguf"]] == [
+        "ggml-org/Qwen3.8-27B-GGUF",
+        "byte/Qwen3.8-27B-GGUF",
+    ]
+    assert "huihui/qwen3.8-27b-abliterated-gguf" not in reuploads.alternatives
 
 
 def test_small_models_only_fill_what_larger_ones_that_fit_leave() -> None:

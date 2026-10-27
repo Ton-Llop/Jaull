@@ -32,7 +32,11 @@ from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
 from jaull.domain.requirements import RecommendationPriority
 from jaull.recommendation.diversity import diversify_ranked_plans, tie_key_for
-from jaull.recommendation.engine_v2 import RankedPlan, ranking_criteria
+from jaull.recommendation.engine_v2 import (
+    CAPABILITY_FIRST_PRIORITIES,
+    RankedPlan,
+    ranking_criteria,
+)
 from jaull.recommendation.models import ModelRecommendation
 from jaull.recommendation.selection import weak_plans_last
 from jaull.recommendation.shadow import POLICY_VERSION, apply_active_policy
@@ -249,7 +253,8 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 for index, item in enumerate(criteria, start=1)
             ]
             if selection := ranking.get("selection_policy"):
-                lines += ["", "**Balanced selection** (before measured evidence):",
+                lines += ["", f"**{_priority(state).value.capitalize()} selection** "
+                          "(before measured evidence):",
                           f"- {selection['note']}"]
                 if selection["base_pool_position"] is not None:
                     lines.append(
@@ -561,9 +566,9 @@ def _ranking_to_dict(
         "ranked_by": "plan_criteria",
         "note": _PLAN_RANKING_NOTE,
     }
-    if priority is RecommendationPriority.BALANCED:
+    if priority in CAPABILITY_FIRST_PRIORITIES:
         payload["selection_policy"] = {
-            "version": "balanced-capability-within-viability-v2",
+            "version": f"{priority.value}-capability-within-viability-v2",
             "stage": "before_measured_policy",
             "note": (
                 "A plan without known strong/adequate capability goes behind every capable "
@@ -594,10 +599,11 @@ def _ranking_to_dict(
                 quality_position.measured if quality_position else None
             ),
         }
-    if priority is RecommendationPriority.BALANCED:
+    if priority in CAPABILITY_FIRST_PRIORITIES:
         payload["note"] += (
-            " Balanced applies its capability preference within viability groups "
-            "before the measured stage; selection_policy records that separate step."
+            f" {priority.value.capitalize()} moves plans without known capability behind capable "
+            "ones that are at least as viable before the measured stage; selection_policy "
+            "records that separate step."
         )
     return payload
 

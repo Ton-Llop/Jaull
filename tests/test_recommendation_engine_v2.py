@@ -2070,10 +2070,11 @@ def test_every_priority_publishes_at_least_one_criterion() -> None:
         assert all(c.axis and c.value for c in criteria)
 
 
-def test_balanced_list_puts_weak_plans_after_the_rest_without_dropping_them() -> None:
+def test_capability_lists_put_weak_plans_after_the_rest_without_dropping_them() -> None:
     """Regression found on a B60 box: with commercial use required, a 135M model with a
-    confirmed licence took slots from a strong 8B with an unknown one. The licence-first
-    order is kept; a weak plan only fills what the others leave, and only for Balanced."""
+    confirmed licence took slots from a strong 8B with an unknown one, on Balanced and later
+    on Quality. The licence-first order is kept; a weak plan only fills what the others
+    leave. Speed and Memory keep it: a small model is what they are for."""
     from dataclasses import replace
 
     from jaull.domain.recommendation import AssessmentLevel
@@ -2090,12 +2091,9 @@ def test_balanced_list_puts_weak_plans_after_the_rest_without_dropping_them() ->
         return [item.evaluated.repo_id.split("/")[1].removesuffix("-7B-GGUF")
                 for item in weak_plans_last(ranked, priority)]
 
-    assert names(RecommendationPriority.BALANCED) == ["big", "mid", "tiny", "tiny2"]
-    for other in (
-        RecommendationPriority.SPEED,
-        RecommendationPriority.MEMORY,
-        RecommendationPriority.QUALITY,
-    ):
+    for capability_first in (RecommendationPriority.BALANCED, RecommendationPriority.QUALITY):
+        assert names(capability_first) == ["big", "mid", "tiny", "tiny2"]
+    for other in (RecommendationPriority.SPEED, RecommendationPriority.MEMORY):
         assert names(other) == ["tiny", "big", "mid", "tiny2"]
 
 
@@ -2188,3 +2186,101 @@ def test_an_aggressive_quantization_never_beats_one_that_fits(
         estimate_fn=estimator, context=_ready_llama_context(),
     )
     assert ranked[0].evaluated.repo_id == fits.repo_id
+
+
+def test_quality_prefers_a_resident_quantization_to_a_better_one_that_needs_offloading() -> None:
+    """Found on a B60 box: a 32B model was offered at `Q6_K` needing 8 GiB of offloading, because
+    Quality compared the quantization before whether the plan runs from the GPU alone, while a
+    `Q4_K_M` of the same model fitted. Offloading is much slower, so a plan that fits wins."""
+    base = size_driven_estimator(vram_budget=24 * GIB)
+    statuses = {
+        "Q4_K_M": CompatibilityStatus.COMFORTABLE,
+        "Q6_K": CompatibilityStatus.OFFLOADING_REQUIRED,
+    }
+
+    def estimate(analysis: object, config: object) -> object:
+        result = base(analysis, config)  # type: ignore[operator]
+        status = statuses.get(getattr(config, "quantization", None) or "")
+        if status is None:
+            return result
+        return result.model_copy(update={
+            "assessment": result.assessment.model_copy(update={"status": status}),
+        })
+
+    item = _evaluated_gguf(
+        "org/Code-32B-Instruct-GGUF", priority=RecommendationPriority.QUALITY,
+        quantizations=("Q4_K_M", "Q6_K"),
+    )
+    ranked = rank_execution_plans(
+        [item], _requirements(RecommendationPriority.QUALITY),
+        estimate_fn=estimate, context=_ready_llama_context(),  # type: ignore[arg-type]
+    )
+
+    assert ranked[0].plan.artifact.quantization == "Q4_K_M"
+
+
+def test_balanced_treats_comfortable_and_compatible_as_the_same_headroom() -> None:
+    """Found on a B60 box: a 27B model at `Q4_K_M` used 83 % of the card (compatible) and ranked
+    far behind every plan under the 75 % line (comfortable), although both fit with margin.
+    Only a tight fit, or worse, is a worse headroom. The order inside the tie is the normal one:
+    here the most downloaded repository."""
+
+    def with_downloads(repo_id: str, status: CompatibilityStatus, downloads: int) -> object:
+        item = _evaluated_gguf(repo_id, priority=RecommendationPriority.BALANCED, status=status)
+        return item.model_copy(
+            update={"candidate": item.candidate.model_copy(update={"downloads": downloads})}
+        )
+
+    def first(*candidates: object) -> str:
+        ranked = rank_execution_plans(
+            list(candidates),  # type: ignore[arg-type]
+            _requirements(RecommendationPriority.BALANCED),
+            context=_ready_llama_context(),
+        )
+        return ranked[0].evaluated.repo_id
+
+    popular_compatible = with_downloads(
+        "org/Large-27B-Instruct-GGUF", CompatibilityStatus.COMPATIBLE, 900_000,
+    )
+    quiet_comfortable = with_downloads(
+        "org/Small-27B-Instruct-GGUF", CompatibilityStatus.COMFORTABLE, 10_000,
+    )
+    tight = with_downloads("org/Tight-27B-Instruct-GGUF", CompatibilityStatus.TIGHT, 5_000_000)
+
+    assert first(quiet_comfortable, popular_compatible) == "org/Large-27B-Instruct-GGUF"
+    assert first(tight, popular_compatible) == "org/Large-27B-Instruct-GGUF"
+
+
+@pytest.mark.parametrize(
+    ("priority", "larger_first"),
+    [
+        (RecommendationPriority.BALANCED, True),
+        (RecommendationPriority.QUALITY, True),
+        (RecommendationPriority.SPEED, False),
+        (RecommendationPriority.MEMORY, False),
+    ],
+)
+def test_a_tie_goes_to_the_larger_model_before_the_more_downloaded_one(
+    priority: RecommendationPriority, larger_first: bool,
+) -> None:
+    """Found on a B60 box: two 9B models with five million downloads ranked above a 14B because
+    every axis tied and downloads decided. Where capability is the goal, the model that is larger
+    by its own header (`general.size_label`) comes first; Speed and Memory do not prefer size."""
+
+    def sized(repo_id: str, label: str, downloads: int) -> EvaluatedCandidate:
+        item = _evaluated_gguf(repo_id, priority=priority)
+        assert item.analysis is not None
+        return item.model_copy(update={
+            "analysis": item.analysis.model_copy(update={"declared_size_label": label}),
+            "candidate": item.candidate.model_copy(update={"downloads": downloads}),
+        })
+
+    small_popular = sized("org/Small-GGUF", "9B", 5_000_000)
+    large_quiet = sized("org/Large-GGUF", "14B", 40_000)
+
+    ranked = rank_execution_plans(
+        [small_popular, large_quiet], _requirements(priority), context=_ready_llama_context(),
+    )
+
+    expected = large_quiet if larger_first else small_popular
+    assert ranked[0].evaluated.repo_id == expected.repo_id

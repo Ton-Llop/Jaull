@@ -116,16 +116,17 @@ def test_balanced_shortlist_is_ordered_by_capability() -> None:
 
     All three small models land in the same capability bucket and fit equally
     comfortably, so their relative order falls through to the final tie-breaks in
-    ``_ranking_key`` — downloads, most first (8M, 1.5M, 400k), then ``repo_id``.
+    ``_ranking_key`` — model size, largest first (1.5B, 1.1B, 0.5B), then downloads, then
+    ``repo_id``.
     Update this list without ceremony if that tie-break changes; the invariants
     below are the part that carries meaning.
     """
     assert _shortlist(RecommendationPriority.BALANCED) == [
         "org/Large-8B-Instruct-GGUF",
         "org/Medium-4B-Instruct-GGUF",
-        "org/Tiny-0.5B-Instruct-GGUF",
-        "org/Mini-1.1B-Instruct-GGUF",
         "org/Small-1.5B-Instruct-GGUF",
+        "org/Mini-1.1B-Instruct-GGUF",
+        "org/Tiny-0.5B-Instruct-GGUF",
     ]
 
 

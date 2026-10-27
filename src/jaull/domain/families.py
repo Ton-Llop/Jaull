@@ -145,6 +145,15 @@ def resolve_parameter_count(
                 confidence=EstimationConfidence.MEDIUM,
             )
 
+    if analysis is not None:
+        label_count = _from_size_label(analysis.declared_size_label)
+        if label_count is not None:
+            return ParameterCount(
+                count=label_count,
+                source=ParameterCountSource.GGUF_METADATA,
+                confidence=EstimationConfidence.MEDIUM,
+            )
+
     name_count = _from_repo_id(candidate.repo_id)
     if name_count is not None:
         return ParameterCount(
@@ -182,6 +191,24 @@ def _from_config(config: ModelConfig | None) -> int | None:
     manufacturer-reported size — but honestly under ``MEDIUM`` confidence.
     """
     return estimate_total_parameters_from_config(config)
+
+
+_SIZE_LABEL_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([BM])(?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def _from_size_label(label: str | None) -> int | None:
+    """The total size in a GGUF `general.size_label`: `14B`, `135M`, `12B-A2.5B` (total 12B).
+
+    `8x7B` and anything else that does not start with a plain size return ``None``: the label
+    does not say how many parameters the experts share.
+    """
+    if not label:
+        return None
+    match = _SIZE_LABEL_RE.match(label)
+    if match is None:
+        return None
+    multiplier = 1_000_000_000 if match.group(2).upper() == "B" else 1_000_000
+    return int(float(match.group(1)) * multiplier)
 
 
 def _from_repo_id(repo_id: str) -> int | None:

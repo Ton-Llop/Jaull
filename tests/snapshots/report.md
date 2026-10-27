@@ -43,10 +43,10 @@ Generated: <redacted>
 5. aggressive quantization: n/a
 6. runnability: strong
 7. capability: adequate
-8. execution fitness: strong
-9. executability: strong
-10. memory headroom: strong
-11. plan evidence confidence: medium
+8. executability: strong
+9. memory headroom: comfortable
+10. plan evidence confidence: medium
+11. model size: 7B
 12. quantization preference: n/a
 13. popularity: 10,000 downloads
 

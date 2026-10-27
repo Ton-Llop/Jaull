@@ -937,3 +937,30 @@ def test_insufficient_candidates_never_reach_the_recommendations() -> None:
     state = orchestrator.run_workflow(answers(), hardware(), services)
     for rec in state.recommendations:
         assert rec.status is not CompatibilityStatus.INSUFFICIENT
+
+
+def test_the_exported_candidates_carry_the_sizes_the_ranking_used() -> None:
+    """Found by an audit: the state kept the candidates from before their GGUF headers declared a
+    size, while the recommendations were ranked with the updated ones, so an export could
+    disagree with the list it came with."""
+    import dataclasses
+
+    from tests.test_header_prefetch import _Cache, _Client
+
+    analyses = {
+        "org/Chat-GGUF": gguf_analysis(repo_id="org/Chat-GGUF", quantizations=("Q4_K_M",)),
+    }
+    container = dataclasses.replace(
+        _container(_search_with("org/Chat-GGUF"), analyses=analyses),
+        range_client_factory=lambda: _Client(),
+        gguf_header_cache=_Cache(),  # type: ignore[arg-type]
+    )
+
+    state = orchestrator.run_workflow(answers(), hardware(), container)
+
+    assert state.current_step is WorkflowStep.COMPLETED
+    exported = state.evaluated_candidates[0].analysis
+    assert exported is not None and exported.declared_size_label == "14B"
+    ranked_with = state.recommendations[0].plan
+    assert ranked_with is not None
+    assert ranked_with.model_identity.parameter_count == 14_000_000_000

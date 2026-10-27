@@ -48,7 +48,10 @@
       "coding:safetensors",
       "coding:gguf",
       "coding:lang-es",
-      "coding:scale",
+      "coding:scale-4-14B",
+      "coding:scale-open-4-14B",
+      "coding:scale-14-15B",
+      "coding:scale-open-14-15B",
       "coding:trending"
     ],
     "candidate_count": 1,
@@ -141,20 +144,20 @@
             "value": "adequate"
           },
           {
-            "axis": "execution_fitness",
-            "value": "strong"
-          },
-          {
             "axis": "executability",
             "value": "strong"
           },
           {
             "axis": "memory_headroom",
-            "value": "strong"
+            "value": "comfortable"
           },
           {
             "axis": "plan_confidence",
             "value": "medium"
+          },
+          {
+            "axis": "model_size",
+            "value": "7B"
           },
           {
             "axis": "quantization_preference",
@@ -166,7 +169,7 @@
           }
         ],
         "ranked_by": "plan_criteria",
-        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here. Balanced applies its capability preference within viability groups before the measured stage; selection_policy records that separate step.",
+        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here. Balanced moves plans without known capability behind capable ones that are at least as viable before the measured stage; selection_policy records that separate step.",
         "selection_policy": {
           "version": "balanced-capability-within-viability-v2",
           "stage": "before_measured_policy",

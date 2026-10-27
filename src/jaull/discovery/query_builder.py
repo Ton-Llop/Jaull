@@ -8,7 +8,7 @@ testable without touching the network.
 
 from __future__ import annotations
 
-from jaull.discovery.candidate_filter import LARGER_THAN_SMALL_BILLIONS
+from jaull.discovery.candidate_filter import LARGER_THAN_SMALL_BILLIONS, size_bands
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.requirements import UseCase, UserRequirements
 
@@ -135,32 +135,35 @@ def build_queries(
             (_FORMAT_TAGS[fmt] for fmt in requirements.preferred_formats if fmt in _FORMAT_TAGS),
             None,
         )
-        add(
-            SearchQuery(
-                label=f"{requirements.use_case.value}:scale",
-                search=primary_phrase,
-                pipeline_tag=requirements.pipeline_tag,
-                filter_tags=(fmt_tag,) if fmt_tag else (),
-                sort="downloads",
-                limit=limit,
-                min_billions=LARGER_THAN_SMALL_BILLIONS,
-                max_billions=max_billions,
-            )
-        )
-        if fmt_tag is not None:
-            # No phrase and no pipeline: repositories such as Qwen3.8-27B's GGUF declare neither
-            # and do not carry "instruct" in their name. The client still drops multimodal and
-            # non-text candidates, and the ranking decides suitability from their metadata.
+        for low, high in size_bands(max_billions):
+            band = f"{low:.0f}-{high:.0f}B"  # a label only; the query keeps the exact bounds
             add(
                 SearchQuery(
-                    label=f"{requirements.use_case.value}:scale-open",
-                    filter_tags=(fmt_tag,),
+                    label=f"{requirements.use_case.value}:scale-{band}",
+                    search=primary_phrase,
+                    pipeline_tag=requirements.pipeline_tag,
+                    filter_tags=(fmt_tag,) if fmt_tag else (),
                     sort="downloads",
                     limit=limit,
-                    min_billions=LARGER_THAN_SMALL_BILLIONS,
-                    max_billions=max_billions,
+                    min_billions=low,
+                    max_billions=high,
                 )
             )
+            if fmt_tag is not None:
+                # No phrase and no pipeline: repositories such as Qwen3.8-27B's GGUF declare
+                # neither and do not carry "instruct" in their name. The client still drops
+                # multimodal and non-text candidates, and the ranking decides suitability from
+                # their metadata.
+                add(
+                    SearchQuery(
+                        label=f"{requirements.use_case.value}:scale-open-{band}",
+                        filter_tags=(fmt_tag,),
+                        sort="downloads",
+                        limit=limit,
+                        min_billions=low,
+                        max_billions=high,
+                    )
+                )
 
     # A trending query gives recent releases a chance against the all-time
     # download leaders, which otherwise dominate every `sort="downloads"` page.

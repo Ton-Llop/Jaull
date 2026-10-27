@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field, replace
+from itertools import pairwise
 
 from jaull.domain import licenses
 from jaull.domain.candidates import ModelCandidate
@@ -105,6 +106,20 @@ _SCALE_BUCKETS: tuple[tuple[float, str], ...] = (
 # small/larger split.
 LARGER_THAN_SMALL_BILLIONS = _SCALE_BUCKETS[1][0]
 
+def size_bands(max_billions: float) -> list[tuple[float, float]]:
+    """The size buckets above the small ones, cut at the largest size the machine holds.
+
+    One band per bucket (`medium`, `large`, and beyond when the machine can hold it), so a page
+    of search results is not filled by whichever band has the most popular models.
+    """
+    inner = (
+        upper for upper, _ in _SCALE_BUCKETS
+        if LARGER_THAN_SMALL_BILLIONS < upper < max_billions
+    )
+    edges = [LARGER_THAN_SMALL_BILLIONS, *inner, max_billions]
+    return [(low, high) for low, high in pairwise(edges) if high > low]
+
+
 _FIT_BONUS: dict[HardwareFitMode | None, float] = {
     HardwareFitMode.GPU_RESIDENT: 4.0,
     HardwareFitMode.GPU_OFFLOAD: 3.0,
@@ -160,6 +175,73 @@ def deduplicate(candidates: list[ModelCandidate]) -> list[ModelCandidate]:
         else:
             merged[candidate.repo_id] = existing.merged_with(candidate)
     return [merged[repo_id] for repo_id in order]
+
+
+_QUANTIZED_BASE_PREFIX = "base_model:quantized:"
+
+
+@dataclass(frozen=True)
+class Reuploads:
+    """GGUF candidates merged by base model, and the copies set aside for each one kept."""
+
+    kept: list[ModelCandidate]
+    # Keyed by the casefolded repository of the kept copy; most downloaded first.
+    alternatives: dict[str, list[ModelCandidate]]
+
+
+def collapse_quantized_reuploads(candidates: list[ModelCandidate]) -> Reuploads:
+    """Keep one GGUF candidate for each model that several repositories merely re-quantize.
+
+    The Hub marks a quantization of ``X`` with a ``base_model:quantized:X`` tag, so ten GGUF
+    repositories of the same model share one value. Search pages are short and sorted by
+    downloads, and these copies filled them. The most downloaded copy stays, at its own place in
+    the order, and takes the inspection slot. The others are not discarded: sharing a base does
+    not mean sharing quantizations, so they are returned as ``alternatives`` to be inspected if
+    the kept copy has nothing that fits. Only that tag merges candidates: a fine-tune (it
+    quantizes another repository, or carries ``base_model:finetune:``), a merge or an unrelated
+    model keeps its own slot.
+    """
+    best: dict[str, ModelCandidate] = {}
+    for candidate in candidates:
+        base = _quantized_base(candidate)
+        if base is None:
+            continue
+        current = best.get(base)
+        if current is None or _more_popular(candidate, current):
+            best[base] = candidate
+    kept = [
+        candidate
+        for candidate in candidates
+        if (base := _quantized_base(candidate)) is None or best[base] is candidate
+    ]
+    alternatives: dict[str, list[ModelCandidate]] = {}
+    for candidate in candidates:
+        base = _quantized_base(candidate)
+        if base is not None and best[base] is not candidate:
+            alternatives.setdefault(best[base].repo_id.casefold(), []).append(candidate)
+    for siblings in alternatives.values():
+        siblings.sort(key=lambda item: (-item.downloads, -item.likes, item.repo_id))
+    return Reuploads(kept=kept, alternatives=alternatives)
+
+
+def _quantized_base(candidate: ModelCandidate) -> str | None:
+    """The base repository of a GGUF re-upload, from its `base_model:quantized:` tag.
+
+    Only GGUF copies merge with each other: an AWQ, FP8 or MLX build of the same base is another
+    artifact, often one this machine cannot run, and must not hide the GGUF repository.
+    """
+    if "gguf" not in {tag.lower() for tag in candidate.tags}:
+        return None
+    for tag in candidate.tags:
+        if tag.lower().startswith(_QUANTIZED_BASE_PREFIX):
+            return tag[len(_QUANTIZED_BASE_PREFIX):].lower()
+    return None
+
+
+def _more_popular(candidate: ModelCandidate, other: ModelCandidate) -> bool:
+    return (candidate.downloads, candidate.likes, other.repo_id) > (
+        other.downloads, other.likes, candidate.repo_id,
+    )
 
 
 def filter_candidates(

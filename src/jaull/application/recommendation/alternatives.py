@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from jaull.application.discovery.artifact_variants import discover_artifact_variants
 from jaull.application.recommendation import policies
@@ -26,6 +26,68 @@ from jaull.recommendation.engine_v2 import (
     generate_execution_plans,
 )
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
+
+
+def rescue_with_reupload_alternatives(
+    evaluated: Sequence[EvaluatedCandidate],
+    *,
+    alternatives: Mapping[str, Sequence[ModelCandidate]],
+    requirements: UserRequirements,
+    hardware: HardwareProfile,
+    inspect_model: Callable[[ModelCandidate], ModelAnalysis],
+    estimate_fn: EstimatePlanFn,
+    check_cancelled: Callable[[], None],
+    max_inspections: int,
+) -> list[EvaluatedCandidate]:
+    """Inspect the merged copies of a GGUF model whose kept copy has nothing that fits.
+
+    The search keeps the most downloaded copy of a model, but copies of one base model do not
+    share quantizations: the popular one can publish only files that do not fit, or only parts,
+    while a sibling has the file that does. For each kept copy without a confirmed placement the
+    siblings are inspected, most downloaded first, until one has it, within ``max_inspections``.
+    """
+    result = list(evaluated)
+    present = {item.repo_id.casefold() for item in result}
+    inspections = 0
+    for item in evaluated:
+        siblings = alternatives.get(item.repo_id.casefold())
+        if not siblings or _has_confirmed_placement(item):
+            continue
+        for sibling in siblings:
+            if inspections >= max_inspections:
+                return result
+            if sibling.repo_id.casefold() in present:
+                continue
+            check_cancelled()
+            inspections += 1
+            present.add(sibling.repo_id.casefold())
+            try:
+                analysis = inspect_model(sibling)
+            except JaullError:
+                continue
+            if analysis.classification.primary_type is not RepositoryType.GGUF:
+                continue
+            found = enrichment.evaluate_candidate(
+                sibling, requirements, hardware,
+                inspect_fn=_already_inspected(analysis), estimate_fn=estimate_fn,
+            )
+            result.append(found)
+            if _has_confirmed_placement(found):
+                break
+    return result
+
+
+def _already_inspected(analysis: ModelAnalysis) -> Callable[[str], ModelAnalysis]:
+    return lambda _repo: analysis
+
+
+def _has_confirmed_placement(item: EvaluatedCandidate) -> bool:
+    estimate = item.memory_estimate
+    return (
+        not item.failed
+        and estimate is not None
+        and has_confirmed_memory_compatibility(estimate.assessment.status)
+    )
 
 
 def expand_execution_candidates(

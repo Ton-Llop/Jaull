@@ -33,7 +33,12 @@ class GgufHeaderMetadata(BaseModel):
     head_count: int | None = None
     head_count_kv: int | None = None
     rope_dim: int | None = None
+    # `general.size_label` ("14B", "12B-A2.5B"): the size the artifact itself declares.
+    size_label: str | None = None
     source_repository: str | None = None
+    # False when the read stopped inside the tokenizer: every key the memory estimate reads is
+    # present, but keys not read yet are unknown, never absent.
+    is_complete: bool = True
     raw_kv: dict[str, object] = Field(default_factory=dict)
 
 

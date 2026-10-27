@@ -222,9 +222,11 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "requirement_confirmation",
         "suitability",
         "capability",
+        "runnability",
         "quantization_quality",
         "execution_fitness",
         "plan_confidence",
+        "model_size",
         "quantization_preference",
         "popularity",
     ]

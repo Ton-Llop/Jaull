@@ -4,7 +4,11 @@ from collections.abc import Sequence
 
 from jaull.domain.recommendation import AssessmentLevel
 from jaull.domain.requirements import RecommendationPriority
-from jaull.recommendation.engine_v2 import RankedPlan, _runnability_rank
+from jaull.recommendation.engine_v2 import (
+    CAPABILITY_FIRST_PRIORITIES,
+    RankedPlan,
+    _runnability_rank,
+)
 from jaull.recommendation.policies import has_confirmed_memory_compatibility
 
 
@@ -21,8 +25,8 @@ def weak_plans_last(
     plans: Sequence[RankedPlan],
     priority: RecommendationPriority,
 ) -> list[RankedPlan]:
-    """Balanced: a plan without known capability goes behind every capable plan that is at
-    least as viable as it, and nowhere else.
+    """Balanced and Quality: a plan without known capability goes behind every capable plan
+    that is at least as viable as it, and nowhere else.
 
     Only the plans that are not capable move, and only backwards; capable plans keep their
     relative order, so the licence-first and runnable-before-capable orders still decide
@@ -31,7 +35,7 @@ def weak_plans_last(
     capable ones that run. Unknown capability cannot leapfrog weak capability merely
     because it is not labelled weak.
     """
-    if priority is not RecommendationPriority.BALANCED:
+    if priority not in CAPABILITY_FIRST_PRIORITIES:
         return list(plans)
     capable_levels = {AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE}
     capable = [p for p in plans if p.assessment.capability in capable_levels]

@@ -76,7 +76,7 @@ def enrich(
         if header_cache is not None:
             gguf_header = header_cache.get(analysis, variant)
         if gguf_header is None and range_client is not None:
-            gguf_header = _read_variant_header(
+            gguf_header = read_variant_header(
                 variant=variant,
                 repo_id=analysis.repo.repo_id,
                 range_client=range_client,
@@ -116,12 +116,13 @@ def enrich(
     )
 
 
-def _read_variant_header(
+def read_variant_header(
     variant: GgufVariant,
     repo_id: str,
     range_client: HttpRangeClient,
     warnings: list[str],
 ) -> GgufHeaderMetadata | None:
+    """Read the GGUF header of one variant (its first shard) with ranged requests."""
     if not variant.files:
         return None
     # Multipart GGUFs put the metadata KV in the first shard.

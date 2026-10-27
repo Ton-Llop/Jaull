@@ -124,11 +124,48 @@ def parse_header(data: bytes) -> GgufHeaderMetadata | None:
 
     cursor = _Cursor(data)
     cursor.offset = 4  # skip magic
-    _, raw_kv = _read_metadata(cursor)
+    raw_kv: dict[str, object] = {}
+    reading: list[str] = []
+    try:
+        _read_metadata(cursor, raw_kv, reading)
+    except GgufHeaderIncompleteError:
+        # The tokenizer (hundreds of thousands of strings) follows the architecture keys and can
+        # exceed the download budget on its own. A cut inside it is accepted, as a *partial*
+        # header, only when every key the estimate reads is already in: keys not read yet are
+        # unknown, and one of them could still follow the tokenizer.
+        if not (_cut_inside_tokenizer(reading) and _has_estimate_keys(raw_kv)):
+            raise
+        return _build_header(raw_kv, complete=False)
     return _build_header(raw_kv)
 
 
-def _read_metadata(cursor: _Cursor) -> tuple[int, dict[str, object]]:
+def _cut_inside_tokenizer(reading: list[str]) -> bool:
+    return bool(reading) and reading[0].startswith("tokenizer.")
+
+
+# What the memory estimate reads from a header. `head_count_kv` can be absent for a model without
+# grouped-query attention; such a header is then read to the end rather than assumed complete.
+_ESTIMATE_KEYS = (
+    "context_length",
+    "embedding_length",
+    "block_count",
+    "attention.head_count",
+    "attention.head_count_kv",
+)
+
+
+def _has_estimate_keys(raw_kv: dict[str, object]) -> bool:
+    architecture = raw_kv.get("general.architecture")
+    if not isinstance(architecture, str) or not architecture:
+        return False
+    return all(type(raw_kv.get(f"{architecture}.{name}")) is int for name in _ESTIMATE_KEYS)
+
+
+def _read_metadata(
+    cursor: _Cursor,
+    raw_kv: dict[str, object] | None = None,
+    reading: list[str] | None = None,
+) -> tuple[int, dict[str, object]]:
     version = cursor.read_u32()
     if version not in _SUPPORTED_VERSIONS:
         raise GgufHeaderInvalidError(f"Unsupported GGUF version: {version}")
@@ -141,9 +178,13 @@ def _read_metadata(cursor: _Cursor) -> tuple[int, dict[str, object]]:
             f"Metadata KV count {metadata_kv_count} is implausible."
         )
 
-    raw_kv: dict[str, object] = {}
+    raw_kv = {} if raw_kv is None else raw_kv
     for _ in range(metadata_kv_count):
+        if reading is not None:
+            reading.clear()  # a cut inside a key name is not a cut inside a known value
         key = cursor.read_string()
+        if reading is not None:
+            reading.append(key)
         raw_kv[key] = _read_value(cursor)
 
     return tensor_count, raw_kv
@@ -268,7 +309,7 @@ def _read_array(cursor: _Cursor, depth: int = 0) -> list[object]:
     return result
 
 
-def _build_header(raw_kv: dict[str, object]) -> GgufHeaderMetadata:
+def _build_header(raw_kv: dict[str, object], *, complete: bool = True) -> GgufHeaderMetadata:
     architecture = _str_or_none(raw_kv.get("general.architecture"))
     prefix = f"{architecture}." if architecture else ""
 
@@ -286,6 +327,8 @@ def _build_header(raw_kv: dict[str, object]) -> GgufHeaderMetadata:
         head_count=_int_or_none(arch_key("attention.head_count")),
         head_count_kv=_int_or_none(arch_key("attention.head_count_kv")),
         rope_dim=_int_or_none(arch_key("rope.dimension_count")),
+        size_label=_str_or_none(raw_kv.get("general.size_label")),
+        is_complete=complete,
         source_repository=_str_or_none(
             raw_kv.get("general.source.huggingface.repository")
         ),

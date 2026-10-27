@@ -129,6 +129,11 @@ def fetch_gguf_header(url: str, http_client: HttpRangeClient) -> HeaderFetchResu
                 header=None, bytes_downloaded=last_downloaded, warnings=warnings
             )
 
+        if not header.is_complete:
+            warnings.append(
+                "GGUF header read up to its tokenizer; every key the memory estimate reads was "
+                "present, the rest was not fetched."
+            )
         return HeaderFetchResult(header=header, bytes_downloaded=last_downloaded, warnings=warnings)
 
     warnings.append(
