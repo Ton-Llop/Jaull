@@ -94,6 +94,16 @@ def task_match(candidate: ModelCandidate, requirements: UserRequirements) -> flo
     return _clamp(score)
 
 
+def targets_another_task(candidate: ModelCandidate, requirements: UserRequirements) -> bool:
+    """Whether the repository advertises a different task than the use case asks for.
+
+    The same keywords `task_match` already halves its score for (a `coder` in a chat search).
+    It is a statement about what the repository says it is for, not about how good it is.
+    """
+    tokens = _candidate_tokens(candidate)
+    return any(_has_signal(tokens, word) for word in _NEGATIVE_KEYWORDS[requirements.use_case])
+
+
 def _candidate_tokens(candidate: ModelCandidate) -> set[str]:
     values = [
         candidate.repo_id.split("/")[-1],

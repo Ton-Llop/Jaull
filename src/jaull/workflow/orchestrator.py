@@ -47,7 +47,7 @@ from jaull.exceptions import (
 from jaull.huggingface.client import HfClientProtocol
 from jaull.observability.telemetry import PerformanceTelemetry
 from jaull.ports.cache import GgufHeaderCacheProtocol
-from jaull.recommendation import explanations
+from jaull.recommendation import explanations, scoring
 from jaull.recommendation.engine_v2 import PlanRankingContext, RankedPlan
 from jaull.recommendation.shadow import ShadowReport, build_shadow_report
 from jaull.workflow.cache import RunCache
@@ -265,6 +265,7 @@ def run_workflow(
                 policies.MAX_DEEP_INSPECTION,
                 budget_bytes=_memory_budget(hardware),
                 hardware=hardware,
+                targets_other_task=lambda item: scoring.targets_another_task(item, requirements),
             )
         reporter.done(
             "filter",

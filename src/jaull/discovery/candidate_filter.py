@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
 
@@ -308,12 +309,14 @@ def _apply_penalties(candidate: ModelCandidate) -> ModelCandidate:
     if not candidate.license:
         penalties.append("No license declared in the model card.")
         confidence = _lower(confidence)
-    if not candidate.languages:
-        penalties.append("No languages declared in the model card.")
-        confidence = _lower(confidence)
+    # Undeclared languages are not a penalty: most cards omit the field, so it says nothing about
+    # the model. They stay "unknown" in the language fit, the requirement check and the
+    # explanation, which is where a requested language is reported as not confirmed.
     if candidate.pipeline_tag is None:
+        # A warning, not a loss of confidence: the pipeline tag names the task, which the
+        # suitability already weighs (the task match loses its pipeline bonus). It does not say
+        # anything about the format or the runtime, which the inspection confirms.
         penalties.append("No pipeline tag declared; task match is inferred from tags.")
-        confidence = _lower(confidence)
 
     if not penalties:
         return candidate
@@ -353,6 +356,7 @@ def shortlist(
     budget_bytes: int | None = None,
     *,
     hardware: HardwareProfile | None = None,
+    targets_other_task: Callable[[ModelCandidate], bool] | None = None,
 ) -> list[ModelCandidate]:
     """Choose which candidates are worth the cost of deep inspection.
 
@@ -372,7 +376,9 @@ def shortlist(
     3B one, and the run returns almost nothing.
     """
     if hardware is not None:
-        return _hardware_aware_shortlist(candidates, requirements, limit, hardware)
+        return _hardware_aware_shortlist(
+            candidates, requirements, limit, hardware, targets_other_task,
+        )
 
     preferred = requirements.preferred_formats[:1]
     budget_gib = budget_bytes / 1024**3 if budget_bytes else None
@@ -508,6 +514,7 @@ def _hardware_aware_shortlist(
     requirements: UserRequirements,
     limit: int,
     hardware: HardwareProfile,
+    targets_other_task: Callable[[ModelCandidate], bool] | None = None,
 ) -> list[ModelCandidate]:
     if limit <= 0:
         return []
@@ -521,9 +528,10 @@ def _hardware_aware_shortlist(
                 candidate=candidate,
                 hint=hint,
                 score=_cheap_desirability(candidate, preferred) + _FIT_BONUS[hint.mode],
+                other_task=bool(targets_other_task and targets_other_task(candidate)),
             )
         )
-    entries.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
+    entries.sort(key=lambda entry: (entry.other_task, -entry.score, entry.candidate.repo_id))
     too_large_entries = [
         entry for entry in entries if entry.hint.mode is HardwareFitMode.TOO_LARGE
     ]
@@ -534,10 +542,11 @@ def _hardware_aware_shortlist(
     selected: list[_ShortlistEntry] = []
     selected_redundancy: set[tuple[str, str, HardwareFitMode | None]] = set()
     selected_families: set[str] = set()
+    selected_versions: set[tuple[str, float | None]] = set()
 
     buckets = _group_shortlist_buckets(plausible_entries, hardware)
     for bucket in buckets:
-        bucket.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
+        bucket.sort(key=lambda entry: (entry.other_task, -entry.score, entry.candidate.repo_id))
 
     # Coverage: one candidate from each size class of the best placement class this machine
     # offers (what can use its accelerator, or system memory when it has none), plus one
@@ -569,35 +578,49 @@ def _hardware_aware_shortlist(
             continue
         picked = _pop_bucket_candidate(bucket, selected_redundancy, selected_families)
         if picked is not None:
+            selected_versions.add(_version_key(picked))
             _remember_selection(picked, selected, selected_redundancy, selected_families)
 
     # Relevance: the rest goes to the best remaining candidates, placement class first, then
     # larger-than-small before small ones (a sub-4B model fills a slot only when nothing
-    # larger in that class is left), and score within it; family diversity only breaks
-    # exact ties.
+    # larger in that class is left), then repositories that do not advertise another task
+    # before those that do, and score within it. Family diversity only breaks exact ties.
+    # A second version of a model already chosen (same family and size) waits behind the
+    # other candidates of its group; it is reserve, not merged, and fills a slot only if the
+    # budget is not used up.
     remaining = [entry for bucket in buckets for entry in bucket]
     while remaining and len(selected) < limit:
         remaining.sort(
             key=lambda entry: (
                 _mode_order(entry.hint.mode, hardware),
                 _is_small(entry),
+                entry.other_task,
                 -entry.score,
                 entry.candidate.repo_id,
             )
         )
         top = remaining[0]
         top_class = _mode_order(top.hint.mode, hardware)
-        tied = [
+        group = [
             entry
             for entry in remaining
             if _mode_order(entry.hint.mode, hardware) == top_class
             and _is_small(entry) == _is_small(top)
-            and entry.score >= top.score - _SCORE_TIE_EPSILON
+            and entry.other_task == top.other_task
+        ]
+        first = next(
+            (entry for entry in group if _version_key(entry) not in selected_versions), group[0],
+        )
+        tied = [first] + [
+            entry
+            for entry in group
+            if entry is not first and abs(entry.score - first.score) <= _SCORE_TIE_EPSILON
         ]
         chosen = _pop_bucket_candidate(tied, selected_redundancy, selected_families)
         if chosen is None:
             break
         remaining.remove(chosen)
+        selected_versions.add(_version_key(chosen))
         _remember_selection(chosen, selected, selected_redundancy, selected_families)
 
     too_large_entries.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
@@ -619,6 +642,13 @@ class _ShortlistEntry:
     candidate: ModelCandidate
     hint: CoarsePlacementHint
     score: float
+    # The repository advertises a different task than the use case (a coder for chat).
+    other_task: bool = False
+
+
+def _version_key(entry: _ShortlistEntry) -> tuple[str, float | None]:
+    """Two repositories with the same key are versions of one model, not different options."""
+    return (_family_key(entry.candidate), parameter_count_hint(entry.candidate.repo_id))
 
 
 def _cheap_desirability(
@@ -703,7 +733,7 @@ def _pop_bucket_candidate(
     best = bucket[0].score
     tied = [
         index for index, entry in enumerate(bucket)
-        if entry.score >= best - _SCORE_TIE_EPSILON
+        if entry.score >= best - _SCORE_TIE_EPSILON and entry.other_task == bucket[0].other_task
     ]
     best_index = tied[0]
     for index in tied:

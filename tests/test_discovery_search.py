@@ -35,6 +35,7 @@ from jaull.domain.estimation import EstimationConfidence, HardwareFitMode
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
 from jaull.domain.requirements import CommercialUse, UseCase
 from jaull.exceptions import HuggingFaceUnavailableError
+from jaull.recommendation.scoring import targets_another_task
 from tests._workflow_fixtures import answers, candidate, hardware
 
 
@@ -446,6 +447,38 @@ def test_incomplete_metadata_is_penalised_not_rejected() -> None:
     kept = outcome.kept[0]
     assert kept.penalties
     assert kept.metadata_confidence is not EstimationConfidence.HIGH
+
+
+def test_undeclared_languages_are_unknown_not_a_penalty() -> None:
+    """A model card that does not list its languages says nothing about them: most cards omit the
+    field. That is unknown, which the language fit, the requirement check and the explanation
+    already report; it must not also lower the candidate's metadata confidence or its place in
+    the inspection budget as if the card were doubtful."""
+    complete = candidate(repo_id="org/complete", languages=["en"])
+    no_languages = candidate(repo_id="org/no-languages", languages=[])
+    no_pipeline = candidate(repo_id="org/no-pipeline", languages=["en"], pipeline_tag=None)
+    nothing_declared = candidate(repo_id="org/nothing", languages=[], pipeline_tag=None)
+
+    kept = {
+        item.repo_id: item
+        for item in filter_candidates(
+            [complete, no_languages, no_pipeline, nothing_declared], _requirements(),
+        ).kept
+    }
+
+    assert kept["org/no-languages"].penalties == []
+    assert kept["org/no-languages"].metadata_confidence == kept["org/complete"].metadata_confidence
+    # An absent pipeline tag leaves a visible warning but does not lower the confidence: it says
+    # what the task is, which the suitability already weighs, not the format or the runtime that
+    # the inspection confirms. A missing license is a different matter and still does.
+    assert len(kept["org/no-pipeline"].penalties) == 1
+    assert kept["org/no-pipeline"].metadata_confidence == kept["org/complete"].metadata_confidence
+    assert len(kept["org/nothing"].penalties) == 1
+    assert kept["org/nothing"].metadata_confidence == kept["org/complete"].metadata_confidence
+    unlicensed = filter_candidates(
+        [candidate(repo_id="org/unlicensed", license_value=None)], _requirements(),
+    ).kept[0]
+    assert unlicensed.metadata_confidence is not kept["org/complete"].metadata_confidence
 
 
 def test_shortlist_spends_the_inspection_budget_on_plausible_repositories() -> None:
@@ -903,3 +936,94 @@ def test_the_client_sends_the_size_window_only_when_the_query_has_one() -> None:
     client.search(SearchQuery(label="scale", min_billions=4, max_billions=30.5))
     assert "num_parameters" not in api.calls[0]
     assert api.calls[1]["num_parameters"] == "min:4B,max:30.5B"
+
+
+# The candidates the B60 preselection of "general chat / balanced" had to choose from, with the
+# numbers it saw: (repository, downloads, likes, queries that returned it, penalties).
+_SAVED_CHAT_POOL = (
+    ("unsloth/Qwen3.8-27B-GGUF", 6_009_562, 5364, 1, 2),
+    ("ornith-ai/Ornith-1.5-9B-GGUF", 5_217_055, 600, 1, 1),
+    ("unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF", 466_321, 1179, 3, 1),
+    ("Qwen/Qwen2.5-7B-Instruct-GGUF", 631_948, 203, 3, 0),
+    ("ornith-ai/Ornith-1.0-9B-GGUF", 2_411_812, 697, 1, 1),
+    ("Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", 306_996, 593, 3, 0),
+    ("bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", 512_555, 426, 2, 0),
+    ("ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF", 1_528_033, 447, 1, 1),
+    ("bartowski/Qwen2.5-32B-Instruct-GGUF", 926_783, 92, 2, 0),
+    ("Qwen/Qwen2.5-Coder-14B-Instruct-GGUF", 177_825, 265, 3, 0),
+    ("tencent/Hy-MT2-7B-GGUF", 1_003_884, 96, 1, 2),
+    ("bartowski/Qwen2.5-14B-Instruct-GGUF", 159_000, 75, 2, 0),
+    ("TheBloke/Llama-2-7B-Chat-GGUF", 61_995, 517, 1, 0),
+    ("LessThanThreeAI/Qwen3.8-27B-Humanlike-Chat-GGUF", 86_800, 216, 1, 0),
+    ("JetBrains/Mellum2-12B-A2.5B-Instruct-GGUF-Q8_0", 140_000, 9, 2, 0),
+    ("MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF", 67_000, 103, 1, 1),
+    ("bartowski/Qwen2.5-Coder-14B-Instruct-abliterated-GGUF", 42_000, 70, 1, 0),
+    ("openthaigpt/openthaigpt1.5-7b-instruct", 69_000, 17, 1, 0),
+    ("bartowski/Qwen_Qwen3-30B-A3B-Instruct-2507-GGUF", 69_000, 30, 1, 2),
+    ("MaziyarPanahi/Qwen2-7B-Instruct-GGUF", 62_000, 10, 1, 2),
+    ("MaziyarPanahi/Yi-Coder-9B-Chat-GGUF", 49_000, 10, 1, 2),
+    ("MaziyarPanahi/Yi-1.5-6B-Chat-GGUF", 47_000, 9, 1, 2),
+)
+
+
+def _saved_chat_candidates() -> list[Any]:
+    return [
+        candidate(repo, downloads=downloads, likes=likes, tags=["gguf", "text-generation"])
+        .model_copy(update={
+            "source_queries": [f"q{index}" for index in range(queries)],
+            "penalties": [f"penalty {index}" for index in range(penalties)],
+        })
+        for repo, downloads, likes, queries, penalties in _SAVED_CHAT_POOL
+    ]
+
+
+def _chat_shortlist(limit: int = 12, pool: list[Any] | None = None) -> list[str]:
+    requirements = _requirements(UseCase.GENERAL_CHAT)
+    picked = shortlist(
+        pool if pool is not None else _saved_chat_candidates(), requirements, limit,
+        hardware=hardware(vram_gib=24, ram_gib=16),
+        targets_other_task=lambda item: targets_another_task(item, requirements),
+    )
+    return [item.repo_id for item in picked]
+
+
+def test_a_chat_candidate_does_not_lose_every_slot_to_specialists_of_another_task() -> None:
+    """Found on a B60 box: the 14B chat model missed the last inspection slot by 0.21 points while
+    three code models took slots in a general-chat search, because three queries had returned
+    them. A repository that advertises another task (a `coder` for chat) fills a slot only after
+    the others; popularity, likes and the number of queries order what is left."""
+    picked = _chat_shortlist()
+
+    assert "bartowski/Qwen2.5-14B-Instruct-GGUF" in picked
+    assert not [repo for repo in picked if "coder" in repo.lower()]
+    assert len(picked) == 12
+
+
+def test_a_specialist_of_another_task_still_fills_a_slot_nothing_else_wants() -> None:
+    pool = [item for item in _saved_chat_candidates()
+            if item.repo_id in {"Qwen/Qwen2.5-7B-Instruct-GGUF",
+                                "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"}]
+
+    assert sorted(_chat_shortlist(limit=5, pool=pool)) == sorted(item.repo_id for item in pool)
+
+
+def test_two_versions_of_one_model_do_not_take_two_early_slots_but_stay_as_reserve() -> None:
+    """The second Ornith of the same size waits behind other candidates; it is not merged into the
+    first, and it is inspected if the budget is not used up. A different size, a different family
+    or a fine-tune of another family is a different option and is not held back."""
+    picked = _chat_shortlist()
+    assert "ornith-ai/Ornith-1.5-9B-GGUF" in picked
+    assert "ornith-ai/Ornith-1.0-9B-GGUF" not in picked  # reserve: enough others to fill 12
+
+    pool = [item for item in _saved_chat_candidates() if item.repo_id in {
+        "ornith-ai/Ornith-1.5-9B-GGUF", "ornith-ai/Ornith-1.0-9B-GGUF",
+        "unsloth/Qwen3.8-27B-GGUF", "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF",
+        "bartowski/Qwen2.5-14B-Instruct-GGUF", "Qwen/Qwen2.5-7B-Instruct-GGUF",
+    }]
+    everyone = _chat_shortlist(limit=6, pool=pool)
+    assert len(everyone) == 6  # the reserve is used when nothing else is left
+    four = _chat_shortlist(limit=4, pool=pool)
+    assert "ornith-ai/Ornith-1.0-9B-GGUF" not in four
+    assert {"unsloth/Qwen3.8-27B-GGUF", "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF"} <= set(
+        _chat_shortlist(limit=5, pool=pool)
+    )
