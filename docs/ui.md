@@ -148,8 +148,13 @@ cool-down between calls; a plan with three or more ticked by hand gets one extra
 It needs no Docker or dataset, and shows median, calls and observed range per plan,
 highlighting a winner only when its range is above every comparable peer. Balanced runs IFEval and then
 speed on the same GGUFs. A candidate is pre-checked only when the chosen suite
-still lacks an applicable result for it. **Free disk space** (end of Results) lists
-downloaded models and evaluation output folders for deletion; stored records stay.
+still lacks an applicable result for it. **Free disk space**, available below Advanced tools
+on the welcome screen, inside Advanced tools, and at the end of evaluation Results, lists
+local model files managed by Jaull and evaluation output folders. It shows removable sizes,
+supports Select all, Clear selection and Refresh, and requires a second confirmation before
+deletion. Changing the selection resets confirmation. Stored quality results, benchmarks
+and experiments stay; external model directories and the global Hugging Face cache are not
+included.
 
 The quality workspace separates **Candidates** (or **Artifact**), **Settings**
 and **Results** into tabs. Candidate rows distinguish local bytes from required

@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 from textual.containers import Vertical
-from textual.widgets import Button, Checkbox, Static
+from textual.widgets import Button, Checkbox, ListItem, Static
 
 from jaull.artifacts.errors import ArtifactError
 from jaull.artifacts.storage import ArtifactStorage, LocalModelFile
 from jaull.tui.app import JaullApp
+from jaull.tui.screens.advanced_tools import AdvancedToolsScreen
 from jaull.tui.screens.storage import StorageScreen
 from tests.test_tui_quality import FakeAdvisor, _wait_until
 
@@ -87,7 +89,7 @@ def test_nothing_is_deleted_until_the_second_press() -> None:
             delete = screen.query_one("#storage-delete", Button)
             status = screen.query_one("#storage-status", Static)
             assert delete.disabled  # Nothing chosen yet.
-            assert "they stay after deleting" in "\n".join(
+            assert "Quality results saved" in "\n".join(
                 str(note.render()) for note in screen.query(".storage-note")
             )
             screen.query_one("#storage-model-0", Checkbox).value = True
@@ -96,7 +98,7 @@ def test_nothing_is_deleted_until_the_second_press() -> None:
             assert "2.29 GiB" in str(status.render())
             delete.press()
             await pilot.pause()
-            assert advisor.deleted == [] and "Press Delete again" in str(status.render())
+            assert advisor.deleted == [] and "Press Confirm deletion" in str(status.render())
             delete.press()
             await _wait_until(pilot, lambda: advisor.deleted and not screen._busy)
             assert advisor.deleted == ["a.gguf", "runs"]
@@ -137,4 +139,188 @@ def test_storage_stays_busy_until_the_list_and_status_are_updated(monkeypatch) -
             assert "Updated local files." in str(
                 screen.query_one("#storage-status", Static).render(),
             )
+    asyncio.run(scenario())
+
+
+def test_storage_is_reachable_from_welcome_and_advanced_without_a_search() -> None:
+    async def scenario() -> None:
+        advisor = StorageAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            items = [item.id for item in app.screen.query(ListItem)]
+            assert items.index("welcome-storage") == items.index("welcome-advanced") + 1
+            await pilot.click("#welcome-storage")
+            await _wait_until(pilot, lambda: isinstance(app.screen, StorageScreen)
+                              and not app.screen._busy)
+            await pilot.press("escape")
+            await pilot.click("#welcome-advanced")
+            assert isinstance(app.screen, AdvancedToolsScreen)
+            app.screen._activate("storage")
+            await _wait_until(pilot, lambda: isinstance(app.screen, StorageScreen)
+                              and not app.screen._busy)
+            assert advisor.deleted == []
+            assert app.workflow_state is None
+            await pilot.press("escape")
+            assert isinstance(app.screen, AdvancedToolsScreen)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 48)])
+def test_bulk_selection_refresh_and_confirmation_reset(size: tuple[int, int]) -> None:
+    async def scenario() -> None:
+        advisor = StorageAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            summary = str(screen.query_one("#storage-summary", Static).render())
+            assert "Model files  2" in summary and "Evaluation folders  3" in summary
+            assert "3.29 GiB" in summary
+            screen.query_one("#storage-all", Button).press()
+            await pilot.pause()
+            assert all(c.value for c in screen.query(Checkbox))
+            delete = screen.query_one("#storage-delete", Button)
+            delete.press()
+            await pilot.pause()
+            assert str(delete.label) == "Confirm deletion"
+            screen.query_one("#storage-model-1", Checkbox).value = False
+            await pilot.pause()
+            assert str(delete.label) == "Delete selected"
+            assert screen._armed is None
+            screen.query_one("#storage-clear", Button).press()
+            await pilot.pause()
+            assert not any(c.value for c in screen.query(Checkbox))
+            assert delete.disabled
+            for _ in range(2):
+                screen.query_one("#storage-refresh", Button).press()
+                await _wait_until(pilot, lambda: not screen._busy)
+                await pilot.pause()
+                assert len(screen.query(Checkbox)) == 3
+            assert advisor.deleted == []
+            for button in screen.query(Button):
+                assert button.region.right <= size[0]
+                assert button.region.bottom <= size[1]
+
+    asyncio.run(scenario())
+
+
+def test_inventory_errors_are_recoverable() -> None:
+    class Advisor(StorageAdvisor):
+        fail = True
+
+        def local_models(self) -> list[Any]:
+            if self.fail:
+                raise OSError("Cannot read model folder")
+            return super().local_models()
+
+    async def scenario() -> None:
+        advisor = Advisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test() as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            assert "Cannot read model folder" in str(
+                screen.query_one("#storage-status", Static).render(),
+            )
+            assert not screen.query_one("#storage-refresh", Button).disabled
+            advisor.fail = False
+            screen.query_one("#storage-refresh", Button).press()
+            await _wait_until(pilot, lambda: not screen._busy and len(screen.query(Checkbox)) == 3)
+            assert advisor.deleted == []
+
+    asyncio.run(scenario())
+
+
+def test_empty_storage_and_zero_byte_files_are_handled() -> None:
+    async def scenario() -> None:
+        advisor = StorageAdvisor()
+        advisor.models = []
+        advisor.runs = (0, 0)
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test() as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            assert not screen.query(Checkbox)
+            assert screen.query_one("#storage-all", Button).disabled
+            assert screen.query_one("#storage-delete", Button).disabled
+            advisor.models = [(LocalModelFile(
+                "org/Empty-GGUF", "empty.gguf", Path("/m/empty.gguf"), 0, None,
+            ), False)]
+            screen.query_one("#storage-refresh", Button).press()
+            await _wait_until(pilot, lambda: not screen._busy and bool(screen.query(Checkbox)))
+            screen.query_one("#storage-model-0", Checkbox).value = True
+            await pilot.pause()
+            delete = screen.query_one("#storage-delete", Button)
+            assert not delete.disabled
+            delete.press()
+            await pilot.pause()
+            delete.press()
+            await _wait_until(pilot, lambda: advisor.deleted == ["empty.gguf"] and not screen._busy)
+            assert not screen.query(Checkbox)
+
+    asyncio.run(scenario())
+
+
+def test_partial_deletion_and_evaluation_errors_keep_the_screen_usable() -> None:
+    class Advisor(StorageAdvisor):
+        def delete_local_model(self, repo_id: str, filename: str) -> int:
+            if filename == "a.gguf":
+                raise PermissionError("File is locked")
+            return super().delete_local_model(repo_id, filename)
+
+        def delete_quality_run_folders(self) -> int:
+            raise OSError("Cannot remove logs")
+
+    async def scenario() -> None:
+        advisor = Advisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test() as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            screen.query_one("#storage-all", Button).press()
+            await pilot.pause()
+            delete = screen.query_one("#storage-delete", Button)
+            delete.press()
+            await pilot.pause()
+            delete.press()
+            await _wait_until(pilot, lambda: advisor.deleted == ["b.gguf"] and not screen._busy)
+            status = str(screen.query_one("#storage-status", Static).render())
+            assert "Freed 1.00 GiB" in status
+            assert "File is locked" in status and "Cannot remove logs" in status
+            assert len(screen.query(Checkbox)) == 2
+            assert screen._armed is None
+            assert not screen.query_one("#storage-refresh", Button).disabled
+
+    asyncio.run(scenario())
+
+
+def test_leaving_during_inventory_does_not_wait_for_the_worker() -> None:
+    entered, release = threading.Event(), threading.Event()
+
+    class Advisor(StorageAdvisor):
+        def local_models(self) -> list[Any]:
+            entered.set()
+            release.wait(timeout=5)
+            return super().local_models()
+
+    async def scenario() -> None:
+        app = JaullApp(advisor=Advisor())  # type: ignore[arg-type]
+        async with app.run_test() as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            try:
+                await _wait_until(pilot, entered.is_set)
+                async with asyncio.timeout(2):
+                    await pilot.press("escape")
+                    assert app.screen is not screen
+                assert screen._storage_closing.is_set()
+            finally:
+                release.set()
+            await _wait_until(pilot, lambda: screen._future is not None and screen._future.done())
+
     asyncio.run(scenario())

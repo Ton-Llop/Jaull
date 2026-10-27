@@ -22,6 +22,7 @@ _MENU_ITEMS = [
     ("estimate", "Estimate model memory"),
     ("doctor", "Run diagnostics"),
     ("quality", "Evaluate local GGUF quality"),
+    ("storage", "Free disk space"),
     ("welcome", "Back to welcome"),
 ]
 
@@ -78,6 +79,11 @@ class AdvancedToolsScreen(Screen[None]):
             return
         if key == "quality":
             app.evaluate_quality()
+            return
+        if key == "storage":
+            from jaull.tui.screens.storage import StorageScreen
+
+            app.push_screen(StorageScreen())
             return
         if key in {"scan", "inspect", "estimate", "doctor"}:
             app.push_screen(key)

@@ -162,8 +162,7 @@ async def _wait_for(
 # ---------------------------------------------------------------------------
 # Welcome
 # ---------------------------------------------------------------------------
-def test_welcome_screen_offers_guided_and_advanced() -> None:
-    """Two product decisions, and only two: `q` already quits."""
+def test_welcome_screen_offers_guided_advanced_and_storage() -> None:
 
     async def scenario() -> None:
         app = JaullApp(services=_services())
@@ -171,7 +170,7 @@ def test_welcome_screen_offers_guided_and_advanced() -> None:
             screen = pilot.app.screen
             assert isinstance(screen, WelcomeScreen)
             ids = {item.id for item in screen.query("ListItem")}
-            assert ids == {"welcome-guided", "welcome-advanced"}
+            assert ids == {"welcome-guided", "welcome-advanced", "welcome-storage"}
 
     _run(scenario())
 

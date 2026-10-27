@@ -14,8 +14,7 @@ from jaull.tui.widgets.ocean import OceanBand
 if TYPE_CHECKING:
     from jaull.tui.app import JaullApp
 
-# Two ways in, and nothing else: quitting already has a key and a footer entry,
-# so listing it as a third "choice" only dilutes the actual decision.
+# Guided analysis comes first; maintenance stays available without starting a search.
 _MENU_ITEMS = [
     (
         "guided",
@@ -27,11 +26,16 @@ _MENU_ITEMS = [
         "Advanced tools",
         "Scan, inspect, estimate, doctor",
     ),
+    (
+        "storage",
+        "Free disk space",
+        "Remove local model files and evaluation logs; keep saved results",
+    ),
 ]
 
 
 class WelcomeScreen(Screen[None]):
-    """Entry point: two ways in, guided first."""
+    """Entry point, with guided analysis first."""
 
     BINDINGS = [
         # ListView already activates on Enter; the binding is a fallback for
@@ -84,6 +88,10 @@ class WelcomeScreen(Screen[None]):
             app.start_guided_workflow()
         elif key == "advanced":
             app.push_screen("advanced")
+        elif key == "storage":
+            from jaull.tui.screens.storage import StorageScreen
+
+            app.push_screen(StorageScreen())
 
     def _app(self) -> JaullApp:
         from jaull.tui.app import JaullApp
