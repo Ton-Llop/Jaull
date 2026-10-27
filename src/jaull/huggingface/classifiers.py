@@ -86,13 +86,16 @@ def _pick_primary(detected: set[RepositoryType]) -> RepositoryType:
     return RepositoryType.UNKNOWN
 
 
+_AUXILIARY_GGUF_TOKENS = frozenset({"mmproj", "imatrix", "mtp", "draft"})
+
+
 def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
     """Keep each whole file and each shard set as an independent representation."""
     buckets: dict[tuple[str, str, str, int], list[ModelFile]] = defaultdict(list)
     for f in files:
         path = PurePosixPath(f.path)
         name = path.name
-        if not name.lower().endswith(".gguf"):
+        if not name.lower().endswith(".gguf") or _is_auxiliary_gguf(path):
             continue
         quant = _detect_quantization(name)
         stem = name[: -len(".gguf")]
@@ -125,6 +128,20 @@ def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
             )
         )
     return variants
+
+
+def _is_auxiliary_gguf(path: PurePosixPath) -> bool:
+    """A GGUF that ships beside the weights but is not a loadable text model.
+
+    llama.cpp repositories publish the vision projector (`mmproj-*.gguf`), the importance matrix
+    used to quantize (`imatrix*.gguf`), multi-token-prediction heads (an `MTP/` folder or `mtp`
+    in the name) and speculative-decoding draft models (`draft` in the name) as ordinary `.gguf`
+    files. These are file-name conventions of that ecosystem, used only to leave such files out
+    of the quantization list, never to identify a model.
+    """
+    tokens = set(re.split(r"[^a-z0-9]+", path.name.lower()))
+    folders = {part.lower() for part in path.parts[:-1]}
+    return bool(tokens & _AUXILIARY_GGUF_TOKENS) or "mtp" in folders
 
 
 def _detect_quantization(filename: str) -> str:

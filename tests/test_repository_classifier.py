@@ -76,6 +76,29 @@ def test_a_quantization_published_whole_and_as_parts_is_counted_once() -> None:
     assert variants["Q2_K"].total_bytes == 2_810
 
 
+def test_auxiliary_gguf_files_are_not_model_variants() -> None:
+    """Regression found on a B60 box: Qwen3.8-27B's GGUF repo ships a 0.87 GiB vision projector
+    (`mmproj-F16.gguf`), an importance matrix and a multi-token-prediction draft head next to the
+    weights, and another repository published a 1.5 GiB speculative-decoding draft model that was
+    recommended as "27B at `Q4_0`, 3.3 GiB". They were counted as quantizations, so a 27B model
+    could be offered as an `F16` that needs 0.86 GiB, and the draft head made `Q4_0` ambiguous."""
+    files = [
+        ModelFile(path="Qwen3.8-27B-Q4_K_M.gguf", size_bytes=16_000),
+        ModelFile(path="Qwen3.8-27B-Q4_0.gguf", size_bytes=15_000),
+        ModelFile(path="MTP/mtp-Qwen3.8-27B-Q4_0.gguf", size_bytes=900),
+        ModelFile(path="Qwen3.8-27B-Uncensored-draft-Q8_0.gguf", size_bytes=1_600),  # draft model
+        ModelFile(path="mmproj-F16.gguf", size_bytes=900),
+        ModelFile(path="mmproj-BF16.gguf", size_bytes=900),
+        ModelFile(path="imatrix_unsloth.gguf", size_bytes=10),
+    ]
+
+    classification = classify_repository(files)
+
+    assert {v.quantization for v in classification.gguf_variants} == {"Q4_K_M", "Q4_0"}
+    q4_0 = next(v for v in classification.gguf_variants if v.quantization == "Q4_0")
+    assert [f.path for f in q4_0.files] == ["Qwen3.8-27B-Q4_0.gguf"]
+
+
 def test_classifies_diffusers_repository() -> None:
     files = _files(
         "model_index.json",

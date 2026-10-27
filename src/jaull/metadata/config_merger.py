@@ -14,6 +14,8 @@ from jaull.domain.enrichment import (
 from jaull.domain.estimation import ConfigurationSource
 from jaull.domain.model import ModelConfig
 
+_COMPOSITE_FLAGS = ("text_config", "vision_config", "audio_config")
+
 
 def merge(
     gguf_header: GgufHeaderMetadata | None,
@@ -141,6 +143,11 @@ def merge(
         sources["quantization_config"] = ConfigurationSource.BASE_MODEL_CONFIG
 
     raw_flags = dict(base.raw_flags) if base else {}
+    if header is not None and layers is not None and heads is not None and hidden is not None:
+        # A GGUF holds only the text decoder and its header states the attention dimensions, so
+        # the nested text/vision/audio configs of a multimodal base repository do not apply to it.
+        for composite in _COMPOSITE_FLAGS:
+            raw_flags.pop(composite, None)
 
     config = ModelConfig(
         architectures=architectures,

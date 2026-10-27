@@ -141,3 +141,28 @@ def test_merge_leaves_the_flag_unset_when_the_base_config_omits_it() -> None:
     assert enriched.config.sliding_window == 4096
     assert enriched.config.use_sliding_window is None
     assert "use_sliding_window" not in enriched.sources
+
+
+def test_a_multimodal_base_config_does_not_mark_a_text_only_gguf_as_composite() -> None:
+    """Regression found on a B60 box: Qwen3.8-27B's base config nests a text and a vision
+    config, which marked its GGUF as a multimodal composite and left the KV cache unknown. The
+    GGUF holds only the text decoder and its header states the attention dimensions itself."""
+    base = ModelConfig(
+        raw_flags={"text_config": {"num_hidden_layers": 64}, "vision_config": {}, "tie": True},
+    )
+    header = GgufHeaderMetadata(
+        architecture="qwen35", embedding_length=5120, block_count=64,
+        head_count=24, head_count_kv=4,
+    )
+
+    enriched = config_merger.merge(gguf_header=header, base_config=base)
+
+    assert enriched is not None
+    assert enriched.config.num_hidden_layers == 64
+    assert "text_config" not in enriched.config.raw_flags
+    assert "vision_config" not in enriched.config.raw_flags
+    assert enriched.config.raw_flags["tie"] is True  # everything else is kept
+
+    without_header = config_merger.merge(gguf_header=None, base_config=base)
+    assert without_header is not None
+    assert "text_config" in without_header.config.raw_flags
