@@ -83,7 +83,12 @@ limits, and is never logged or exported.
 
 The query builder issues several complementary queries per use case (task wording, one per
 preferred weight format, one per non-English language, plus a trending query) rather than
-relying on a single string. Results are then:
+relying on a single string. Documents and reasoning retain their task-specific phrases
+and add one general `instruct` query. Their format, language, named size-range and trending
+queries also use `instruct`: a general instruction-tuned model need not advertise
+"long context" or "reasoning" in its repository name to be considered. This broadens
+discovery only; it does not establish task quality or change ranking, memory checks,
+eligibility or inspection budgets. Results are then:
 
 1. **Interleaved** round-robin across queries, so the format and language queries are not
    starved by the first one.
@@ -206,13 +211,13 @@ The quantization ladder still selects a configuration within each repository;
 it is not a global preference for GGUF/Q4 over other models or runtimes. Memory
 efficiency is a selection prior, not a predicted or measured tokens/s figure.
 
-**Balanced selection.** Before measured evidence, `weak_plans_last` moves a plan
+**Balanced and Quality selection.** Before measured evidence, `weak_plans_last` moves a plan
 without known strong/adequate capability behind every capable plan that is at least
 as viable as it (confirmed memory fit, rejection state, runnability). Only that plan
 moves, and only backwards: capable plans keep their order, so the licence-first and
 runnable-before-capable orders still decide between them. A weak plan that runs can
 therefore end up behind a capable plan that needs offloading, which is what keeps it
-from filling a slot. This metadata preference runs before measurements,
+from filling a slot. Speed and Memory do not apply it: a small model is their goal. This metadata preference runs before measurements,
 so applicable comparable evidence can override it. The active order, Recompare and
 report export use the same sequence.
 

@@ -69,6 +69,37 @@ def test_queries_are_not_a_single_literal_string() -> None:
     assert len({q.search for q in queries}) > 1
 
 
+@pytest.mark.parametrize("use_case", [UseCase.DOCUMENT_QA, UseCase.REASONING])
+@pytest.mark.parametrize("max_billions", [None, 2.0, 30.0])
+def test_documents_and_reasoning_include_general_instruct_discovery(
+    use_case: UseCase, max_billions: float | None,
+) -> None:
+    requirements = _requirements(use_case)
+    queries = query_builder.build_queries(requirements, max_billions=max_billions)
+    broad = next(q for q in queries if q.label == f"{use_case.value}:instruct")
+    assert broad.search == "instruct"
+    assert broad.pipeline_tag == TEXT_GENERATION_PIPELINE
+    assert broad.max_billions is None
+    assert broad.filter_tags == ()
+
+    # Every filtered angle uses a name that ordinary Instruct repositories can
+    # actually match, not the task's multi-word description.
+    for suffix in ("gguf", "safetensors", "lang-es", "trending", "scale"):
+        matches = [q for q in queries if q.label == f"{use_case.value}:{suffix}"]
+        if suffix != "scale" or max_billions == 30.0:
+            assert len(matches) == 1
+            assert matches[0].search == "instruct"
+            assert matches[0].pipeline_tag == TEXT_GENERATION_PIPELINE
+        else:
+            assert not matches
+
+    # One additional page only; shared inspection and candidate budgets do not change.
+    baseline = query_builder.build_queries(_requirements(), max_billions=max_billions)
+    assert len(queries) == len(baseline) + 1
+    assert all(q.limit == policies.SEARCH_RESULTS_PER_QUERY for q in queries)
+    assert len({q.cache_key() for q in queries}) == len(queries)
+
+
 def test_format_queries_are_generated_for_preferred_formats() -> None:
     queries = query_builder.build_queries(_requirements())
     tags = {tag for q in queries for tag in q.filter_tags}
@@ -99,10 +130,16 @@ def test_a_scale_query_covers_the_sizes_that_fit_beyond_the_small_models() -> No
     requirements = _requirements()
     queries = query_builder.build_queries(requirements, max_billions=30)
     scale = [q for q in queries if q.max_billions is not None]
-    assert len(scale) == 1
-    assert scale[0].min_billions == candidate_filter.LARGER_THAN_SMALL_BILLIONS
-    assert scale[0].max_billions == 30
-    assert scale[0].filter_tags == (requirements.preferred_formats[0],)
+    assert len(scale) == 2
+    for query in scale:
+        assert query.min_billions == candidate_filter.LARGER_THAN_SMALL_BILLIONS
+        assert query.max_billions == 30
+        assert query.filter_tags == (requirements.preferred_formats[0],)
+    named, open_ = scale
+    assert named.search is not None and named.pipeline_tag == TEXT_GENERATION_PIPELINE
+    # Qwen3.8-27B's GGUF repository declares no pipeline and has neither "instruct" nor "coder" in
+    # its name, so no named query can return it; the open one is limited by size and format only.
+    assert open_.search is None and open_.pipeline_tag is None
 
 
 @pytest.mark.parametrize("max_billions", [None, 4.0, 2.0])

@@ -6,11 +6,22 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
+import pytest
+
 from jaull.adapters.cache.model_analysis_cache import ModelAnalysisCache
 from jaull.application.recommendation import policies
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.hardware import (
+    AcceleratorProfile,
+    AcceleratorType,
+    AcceleratorVendor,
+    BackendAvailability,
+    ComputeBackend,
+    ComputeBackendInfo,
+)
+from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
     ModelNotFoundError,
@@ -116,6 +127,55 @@ def test_full_successful_run() -> None:
     assert state.requirements is not None
     assert state.search_queries
     assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
+
+
+@pytest.mark.parametrize("use_case", [UseCase.DOCUMENT_QA, UseCase.REASONING])
+def test_general_instruct_fallback_reaches_inspection_on_a_24_gib_vulkan_card(
+    use_case: UseCase,
+) -> None:
+    tiny = "org/Assistant-135M-Instruct"
+    large = "org/Assistant-14B-Instruct-GGUF"
+    search = FakeSearchClient(
+        default=[candidate(tiny)],
+        results={
+            f"{use_case.value}:instruct": [
+                candidate(large, tags=["gguf", "instruct", "text-generation"]),
+            ],
+        },
+    )
+    profile = hardware(ram_gib=16, vram_gib=None).model_copy(update={
+        "accelerators": [AcceleratorProfile(
+            name="Intel Arc Pro B60",
+            vendor=AcceleratorVendor.INTEL,
+            type=AcceleratorType.DEDICATED,
+            dedicated_memory_bytes=24 * GIB,
+            available_memory_bytes=24 * GIB,
+            backends=[ComputeBackendInfo(
+                backend=ComputeBackend.VULKAN,
+                availability=BackendAvailability.AVAILABLE,
+            )],
+        )],
+    })
+    services = _container(
+        search,
+        analyses={large: gguf_analysis(large, base_bytes=9 * GIB)},
+        profile=profile,
+    )
+    state = orchestrator.run_workflow(
+        answers(use_case=use_case, priority=RecommendationPriority.QUALITY),
+        profile,
+        services,
+    )
+
+    assert state.current_step is WorkflowStep.COMPLETED
+    assert large in {item.repo_id for item in state.candidates}
+    assert large in {item.repo_id for item in state.evaluated_candidates}
+    assert large in {item.repo_id for item in state.recommendations}
+    assert len(state.candidates) <= policies.MAX_UNIQUE_CANDIDATES
+    assert len(state.evaluated_candidates) <= policies.MAX_DEEP_INSPECTION
+    assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
+    broad = next(q for q in search.seen if q.label == f"{use_case.value}:instruct")
+    assert broad.search == "instruct"
 
 
 def test_run_without_a_gpu_still_produces_recommendations() -> None:
