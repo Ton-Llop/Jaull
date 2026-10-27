@@ -12,6 +12,8 @@ MAX_DEEP_INSPECTION = 12
 MAX_CONCURRENT_INSPECTIONS = 4
 # Ranged GGUF header reads are small and independent; they only wait on the network.
 MAX_CONCURRENT_HEADER_READS = 8
+# Repository lookups for the task a re-quantization inherits from its declared base.
+MAX_CONCURRENT_LINEAGE_READS = 8
 MAX_VARIANT_DEEP_INSPECTION = 6
 MAX_TARGETED_VARIANT_SEARCHES = 3
 
@@ -23,6 +25,7 @@ __all__ = [
     "MAX_ALTERNATIVES",
     "MAX_CONCURRENT_HEADER_READS",
     "MAX_CONCURRENT_INSPECTIONS",
+    "MAX_CONCURRENT_LINEAGE_READS",
     "MAX_DEEP_INSPECTION",
     "MAX_RECOMMENDATIONS",
     "MAX_TARGETED_VARIANT_SEARCHES",

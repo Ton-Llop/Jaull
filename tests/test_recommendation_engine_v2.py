@@ -2370,3 +2370,74 @@ def test_quality_prefers_the_larger_model_at_a_good_quantization_to_a_smaller_on
     unknown = unknown.model_copy(update={"candidate": unknown.candidate.model_copy(
         update={"downloads": 99_000_000})})
     assert order(unknown, small_q8)[0] == "org/Small-9B-GGUF"
+
+
+def _coding_suitability(repo_id: str, tags: list[str], capability_score: float = 0.8) -> object:
+    req = _requirements(use_case=UseCase.CODING)
+    evaluated = _evaluated_gguf(repo_id=repo_id, tags=tags)
+    evaluated = evaluated.model_copy(update={"capability_score": capability_score})
+    plan = generate_execution_plans(evaluated, req)[0]
+    return assess_plan(evaluated, plan, req).suitability
+
+
+def test_a_general_instruct_model_is_adequate_for_coding_without_evidence() -> None:
+    """Found on a B60 box: a 27B general model with chat and instruct tags ranked 49th for coding
+    because only a `coder` in the name counted as suitability. Not advertising the task is not
+    evidence of incapacity, so an instruction-tuned generalist with adequate capability is
+    `adequate`: a prudent fallback, inferred from its profile and not confirmed by an evaluation."""
+    assert _coding_suitability(
+        "org/General-27B-GGUF", ["text-generation", "conversational", "instruct"],
+    ) is AssessmentLevel.ADEQUATE
+    only_chat = _coding_suitability("org/General-27B-GGUF", ["conversational"])
+    assert only_chat is AssessmentLevel.ADEQUATE
+
+
+def test_a_base_model_lineage_tag_is_not_a_base_model_signal() -> None:
+    """Found right after: the tag `base_model:org/Model` that every GGUF re-quantization carries
+    names its origin, but split into words it produced the signal `base`, so the real
+    Qwen3.8-27B GGUF was treated as a pretrained base model and kept `weak`."""
+    lineage = [
+        "conversational", "base_model:org/General-27B", "base_model:quantized:org/General-27B",
+    ]
+    assert _coding_suitability("org/General-27B-GGUF", lineage) is AssessmentLevel.ADEQUATE
+    # A repository that really is a base model still is not lifted, by name or by tag.
+    assert _coding_suitability(
+        "org/General-27B-base-GGUF", ["conversational", "base_model:org/General-27B"],
+    ) is AssessmentLevel.WEAK
+
+
+def test_the_generalist_fallback_does_not_lift_what_is_not_a_capable_generalist() -> None:
+    weak = AssessmentLevel.WEAK
+    # Naming "instruct" is not enough: a specialist of another task does not rise.
+    assert _coding_suitability(
+        "org/Translator-7B-GGUF", ["text-generation", "instruct", "translation"],
+    ) is weak
+    assert _coding_suitability(
+        "org/Summarizer-7B-GGUF", ["text-generation", "instruct", "summarization"],
+    ) is weak
+    # A base model has no instruction tuning to infer from.
+    assert _coding_suitability("org/Plain-7B-GGUF", ["text-generation"]) is weak
+    # A model too small to be called capable does not get the benefit of the doubt.
+    assert _coding_suitability(
+        "org/Tiny-instruct-GGUF", ["text-generation", "instruct"], capability_score=0.3,
+    ) is weak
+
+
+def test_a_model_that_advertises_coding_is_not_changed_by_the_fallback() -> None:
+    assert _coding_suitability(
+        "org/Coder-7B-Instruct-GGUF", ["text-generation", "instruct", "code"],
+    ) is AssessmentLevel.STRONG
+
+
+def test_the_generalist_inference_is_explained_and_not_claimed_as_evidence() -> None:
+    from jaull.recommendation import explanations
+
+    req = _requirements(use_case=UseCase.CODING)
+    general = _evaluated_gguf(repo_id="org/General-27B-GGUF", tags=["conversational", "instruct"])
+    coder = _evaluated_gguf(repo_id="org/Coder-7B-Instruct-GGUF", tags=["instruct", "code"])
+
+    inferred = explanations.build_warnings(general, req)
+    profile = "inferred from its general-purpose, instruction-tuned profile"
+    assert any(profile in w for w in inferred)
+    assert any("not confirmed" in w for w in inferred)
+    assert not any(profile in w for w in explanations.build_warnings(coder, req))

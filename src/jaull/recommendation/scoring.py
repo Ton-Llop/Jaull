@@ -94,14 +94,99 @@ def task_match(candidate: ModelCandidate, requirements: UserRequirements) -> flo
     return _clamp(score)
 
 
+# The capability score from which the engine calls a model's capability `adequate`.
+ADEQUATE_CAPABILITY_SCORE = 0.55
+
+# Signals that a repository is an instruction-tuned generalist, and signals of a model that is not.
+_INSTRUCTION_SIGNALS = ("instruct", "instruction", "chat", "assistant", "conversational")
+_BASE_SIGNALS = ("base", "pretrain", "foundation")
+# What a generalist says about itself; every other strong keyword names a task of its own.
+_GENERALIST_TOKENS = frozenset({"chat", "assistant", "conversational", "multilingual"})
+
+
+def infers_generalist_suitability(
+    evaluated: EvaluatedCandidate, requirements: UserRequirements,
+) -> bool:
+    """Whether the suitability for the use case rests only on a general, instruction-tuned profile.
+
+    A repository that does not advertise the task (no `coder` for coding) says nothing against it,
+    so an instruction-tuned generalist of adequate capability is considered suitable by inference.
+    That is a prudent fallback, not evidence: it does not apply to a base model, to a specialist of
+    another task (a translator or summarizer that also says "instruct"), or to a model too small
+    to be called capable, and it never replaces an evaluation. Naming the task still counts more.
+    """
+    if evaluated.task_match_score >= _ADEQUATE_TASK_MATCH:
+        return False
+    if evaluated.capability_score < ADEQUATE_CAPABILITY_SCORE:
+        return False
+    tokens = _candidate_tokens(
+        evaluated.candidate.model_copy(update={"tags": _without_lineage(evaluated.candidate.tags)})
+    )
+    if not any(_has_signal(tokens, word) for word in _INSTRUCTION_SIGNALS):
+        return False
+    if any(_has_signal(tokens, word) for word in _BASE_SIGNALS):
+        return False
+    return not any(
+        _has_signal(tokens, word) for word in _other_task_tokens(requirements.use_case)
+    )
+
+
+def _without_lineage(tags: list[str]) -> list[str]:
+    """The tags that describe what the repository is, not where it comes from.
+
+    `base_model:org/Model` (and `base_model:quantized:...`) names the origin of a re-quantization;
+    split into words it would read as the signal `base` and mark a chat model as a pretrained one.
+    """
+    return [tag for tag in tags if not tag.lower().startswith("base_model:")]
+
+
+# Task match from which the engine calls a suitability `adequate`.
+_ADEQUATE_TASK_MATCH = 0.45
+
+
+def _other_task_tokens(use_case: UseCase) -> frozenset[str]:
+    names = {
+        word
+        for other, words in _STRONG_KEYWORDS.items()
+        if other is not use_case
+        for word in words
+    }
+    return frozenset(names - _GENERALIST_TOKENS)
+
+
+# Tasks that are different in kind from a general or coding use: a model built for one of them
+# is not a general model that happens to be good at it.
+_SPECIALIST_TASKS: dict[str, UseCase] = {
+    "translation": UseCase.WRITING_TRANSLATION,
+    "translate": UseCase.WRITING_TRANSLATION,
+    "summarization": UseCase.SUMMARIZATION_EXTRACTION,
+    "extraction": UseCase.SUMMARIZATION_EXTRACTION,
+}
+
+
+def task_vocabulary() -> frozenset[str]:
+    """Every word the use-case keywords look for, lowercased: the tags that name a task."""
+    words = {word.lower() for words in _USE_CASE_KEYWORDS.values() for word in words}
+    words.update(word.lower() for words in _STRONG_KEYWORDS.values() for word in words)
+    return frozenset(words)
+
+
 def targets_another_task(candidate: ModelCandidate, requirements: UserRequirements) -> bool:
     """Whether the repository advertises a different task than the use case asks for.
 
-    The same keywords `task_match` already halves its score for (a `coder` in a chat search).
-    It is a statement about what the repository says it is for, not about how good it is.
+    The keywords `task_match` already halves its score for (a `coder` in a chat search), and the
+    tasks of a different kind (translation, summarization, extraction) when they are not what
+    was asked. It is a statement about what the repository says it is for, not about how good it
+    is.
     """
     tokens = _candidate_tokens(candidate)
-    return any(_has_signal(tokens, word) for word in _NEGATIVE_KEYWORDS[requirements.use_case])
+    if any(_has_signal(tokens, word) for word in _NEGATIVE_KEYWORDS[requirements.use_case]):
+        return True
+    return any(
+        _has_signal(tokens, word)
+        for word, task in _SPECIALIST_TASKS.items()
+        if task is not requirements.use_case
+    )
 
 
 def _candidate_tokens(candidate: ModelCandidate) -> set[str]:

@@ -27,6 +27,7 @@ from jaull.application.recommendation.alternatives import (
 )
 from jaull.bootstrap.container import ServiceContainer
 from jaull.discovery import candidate_filter, enrichment, query_builder
+from jaull.discovery.lineage import inherit_task_signals
 from jaull.domain.candidates import (
     EvaluatedCandidate,
     ModelCandidate,
@@ -258,7 +259,14 @@ def run_workflow(
             outcome = candidate_filter.filter_candidates(candidates, requirements)
             # Rejected search hits must not consume the eligible-candidate budget.
             reuploads = candidate_filter.collapse_quantized_reuploads(outcome.kept)
-            candidates = reuploads.kept[: policies.MAX_UNIQUE_CANDIDATES]
+            with telemetry.timed("lineage"):
+                kept = inherit_task_signals(
+                    reuploads.kept,
+                    fetch=services.hf_client.model_info,
+                    max_workers=policies.MAX_CONCURRENT_LINEAGE_READS,
+                    check_cancelled=lambda: _check(cancelled),
+                )
+            candidates = kept[: policies.MAX_UNIQUE_CANDIDATES]
             shortlist = candidate_filter.shortlist(
                 candidates,
                 requirements,

@@ -23,6 +23,7 @@ from jaull.domain.licenses import LicenseCategory, classify_license
 from jaull.domain.requirements import UseCase, UserRequirements
 from jaull.domain.runtime import RuntimeExecutability
 from jaull.estimator.policies import THEORETICAL_DTYPES
+from jaull.recommendation import scoring
 
 _USE_CASE_LABEL: dict[UseCase, str] = {
     UseCase.GENERAL_CHAT: "general chat and assistant use",
@@ -128,6 +129,12 @@ def build_warnings(
     """Limitations the user needs to see before trusting the recommendation."""
     warnings: list[str] = list(evaluated.warnings)
     candidate = evaluated.candidate
+    if scoring.infers_generalist_suitability(evaluated, requirements):
+        warnings.append(
+            f"Suitability for {_USE_CASE_LABEL[requirements.use_case]} is inferred from its "
+            "general-purpose, instruction-tuned profile; it is not confirmed by an applicable "
+            "evaluation."
+        )
     assessment = (
         selected_estimate.assessment
         if selected_estimate is not None

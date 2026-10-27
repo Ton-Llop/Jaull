@@ -63,6 +63,7 @@ from jaull.estimator.configuration import (
 from jaull.exceptions import JaullError
 from jaull.execution_plans.quantization import packed_transformers_quantization_label
 from jaull.execution_plans.service import build_execution_plan, resolve_model_identity
+from jaull.recommendation import scoring
 from jaull.recommendation.capability import CapabilitySignal, MetadataCapabilityAnalyzer
 from jaull.recommendation.local_evidence import (
     assess_speed,
@@ -864,6 +865,9 @@ def _task_suitability(
         return AssessmentLevel.STRONG
     if task_score >= 0.45:
         return AssessmentLevel.ADEQUATE
+    if scoring.infers_generalist_suitability(evaluated, requirements):
+        # Not advertising the task is not evidence of incapacity; see the predicate.
+        return AssessmentLevel.ADEQUATE
     if task_score > 0:
         return AssessmentLevel.WEAK
     if evaluated.candidate.metadata_confidence is EstimationConfidence.LOW:
@@ -897,7 +901,7 @@ def _has_signal(tokens: set[str], signal: str) -> bool:
 def _capability_level(capability: CapabilitySignal) -> AssessmentLevel:
     if capability.score >= 0.72:
         return AssessmentLevel.STRONG
-    if capability.score >= 0.55:
+    if capability.score >= scoring.ADEQUATE_CAPABILITY_SCORE:
         return AssessmentLevel.ADEQUATE
     if capability.score > 0:
         return AssessmentLevel.WEAK
