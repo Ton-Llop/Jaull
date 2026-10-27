@@ -49,7 +49,17 @@ class ArtifactStorage:
         return self._safe_path(artifact.repo_id, artifact.filename)
 
     def exists(self, artifact: ModelArtifact) -> bool:
-        return self.path_for(artifact).is_file()
+        """Whether the artifact is already stored here.
+
+        A name this storage cannot hold (a file inside a repository folder, an absolute path,
+        a traversal) is not stored, so the answer is no. It must not raise: callers ask this for
+        every variant of a repository, and one unstorable file would hide all of them. Building
+        a path to write to (`path_for`) still refuses such names.
+        """
+        try:
+            return self.path_for(artifact).is_file()
+        except ArtifactError:
+            return False
 
     def save_sha256(self, path: Path, hex_digest: str) -> None:
         sidecar = self._sidecar(path)
