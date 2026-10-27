@@ -8,7 +8,7 @@ testable without touching the network.
 
 from __future__ import annotations
 
-from jaull.discovery.candidate_filter import LARGER_THAN_SMALL_BILLIONS, size_bands
+from jaull.discovery.candidate_filter import size_bands
 from jaull.domain.candidates import SearchQuery
 from jaull.domain.requirements import UseCase, UserRequirements
 
@@ -67,9 +67,9 @@ def build_queries(
     supplies its own value from ``jaull.application.recommendation.policies``;
     callers that only want to build the queries can omit it.
 
-    ``max_billions`` is the largest size that fits the machine. Every plain query sorts
-    by downloads, so the most popular small models fill every page; when sizes beyond
-    the small ones fit, one more query is restricted to that range.
+    ``max_billions`` is a coarse planning ceiling. Size bands keep popular
+    repositories from monopolising every page; constrained machines also get
+    bounded tiny/small queries. Actual memory feasibility is evaluated later.
     """
     queries: list[SearchQuery] = []
     seen: set[object] = set()
@@ -130,7 +130,7 @@ def build_queries(
             )
         )
 
-    if max_billions is not None and max_billions > LARGER_THAN_SMALL_BILLIONS:
+    if max_billions is not None and max_billions > 0:
         fmt_tag = next(
             (_FORMAT_TAGS[fmt] for fmt in requirements.preferred_formats if fmt in _FORMAT_TAGS),
             None,

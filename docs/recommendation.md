@@ -108,6 +108,20 @@ and to do it **without treating RAM and VRAM as a single memory pool**. A parame
 hint parsed from the repository name (`…-7B-…`) only orders this queue; it is never
 presented as a measurement.
 
+When the coarse planning ceiling reaches at most the existing medium size class
+(14B), discovery also searches bounded ranges below 1B, from 1B to 2B and from 2B to 4B, clipped
+to that ceiling. The shortlist keeps one plausible larger candidate first and
+then covers each small size class in the best placement class before filling
+the remaining inspection slots. The 1B-4B class has two coverage slots, so a popular
+1.5B cannot exclude every 3B candidate. Thus a 7B that appears to fit a small laptop
+cannot prevent every smaller alternative from being inspected. This is a
+coverage heuristic, not a guarantee of fit or measured capability.
+On these constrained machines, the remaining slots do not automatically favour
+models above 4B; placement, task relevance, popularity and diversity still apply.
+Machines reaching beyond 14B, including the synthetic 24 GiB B60 profile, keep
+their existing size queries and larger-model-first shortlist. Candidate and
+inspection budgets, memory formulas and final ranking policies are unchanged.
+
 Budgets are centralised in `application/recommendation/policies.py`:
 
 | Budget | Value |

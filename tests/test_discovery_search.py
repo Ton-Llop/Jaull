@@ -96,7 +96,7 @@ def test_documents_and_reasoning_include_general_instruct_discovery(
         q for q in queries
         if q.label.startswith(f"{use_case.value}:scale-") and q.search is not None
     ]
-    assert len(bands) == (2 if max_billions == 30.0 else 0)
+    assert len(bands) == (0 if max_billions is None else 2)
     for band in bands:
         assert band.search == "instruct"
         assert band.pipeline_tag == TEXT_GENERATION_PIPELINE
@@ -162,8 +162,8 @@ def test_a_machine_that_holds_very_large_models_gets_a_band_for_them() -> None:
     ]
 
 
-@pytest.mark.parametrize("max_billions", [None, 4.0, 2.0])
-def test_no_scale_query_when_nothing_beyond_the_small_models_fits(
+@pytest.mark.parametrize("max_billions", [None, 0.0, -1.0])
+def test_no_scale_query_without_a_positive_planning_ceiling(
     max_billions: float | None,
 ) -> None:
     queries = query_builder.build_queries(_requirements(), max_billions=max_billions)
@@ -1027,3 +1027,24 @@ def test_two_versions_of_one_model_do_not_take_two_early_slots_but_stay_as_reser
     assert {"unsloth/Qwen3.8-27B-GGUF", "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF"} <= set(
         _chat_shortlist(limit=5, pool=pool)
     )
+
+
+def test_a_translation_or_summarization_model_is_another_task_unless_that_is_the_task() -> None:
+    """Found on a B60 box: a translation model (declared by its base repository) took a slot of a
+    general-chat search. Tasks of a different kind count as another task, except when they are
+    what was asked for; a coder still counts for chat as before."""
+    chat = _requirements(UseCase.GENERAL_CHAT)
+    translating = _requirements(UseCase.WRITING_TRANSLATION)
+    summarizing = _requirements(UseCase.SUMMARIZATION_EXTRACTION)
+
+    translator = candidate("org/MT-7B-GGUF", tags=["gguf", "conversational", "translation"])
+    summarizer = candidate("org/Sum-7B-GGUF", tags=["gguf", "instruct", "summarization"])
+    coder = candidate("org/Coder-7B-GGUF", tags=["gguf", "instruct"])
+    plain = candidate("org/Plain-7B-Instruct-GGUF", tags=["gguf", "instruct"])
+
+    assert targets_another_task(translator, chat) and targets_another_task(summarizer, chat)
+    assert targets_another_task(coder, chat)
+    assert not targets_another_task(plain, chat)
+    assert not targets_another_task(translator, translating)
+    assert targets_another_task(translator, summarizing)
+    assert not targets_another_task(summarizer, summarizing)

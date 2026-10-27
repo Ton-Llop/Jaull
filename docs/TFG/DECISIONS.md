@@ -2654,6 +2654,152 @@ repositoris no GGUF, on la inspecció no confirma tant com a un GGUF.
 [rànquing v2](../../src/jaull/recommendation/engine_v2.py),
 [recomanació](../recommendation.md), D111, D112.
 
+### D114. Idoneïtat per inferència d'un perfil generalista (recurs prudent, sense evidència)
+
+**Data i necessitat:** 2026-10-27. A Coding, el Qwen3.8-27B (un bon model tant per programar com per
+xatejar) quedava al lloc 49 amb idoneïtat `weak`: la idoneïtat només mesura si el repositori
+**anuncia** la tasca pel nom o les etiquetes (`coder`, `code`), no si hi serveix. Una revisió va
+demanar combinar l'evidència publicada, quan sigui aplicable, amb un recurs prudent quan falti,
+sense tractar l'absència d'evidència com a incapacitat.
+
+**Decisió (opció A; l'opció B queda com a política a part):** un model instruct o de xat amb
+capacitat almenys `adequate` (puntuació de capacitat ≥ 0,55, el llindar que ja usa el motor) és
+`adequate` per a una tasca que el seu nom no anuncia. La regla és `infers_generalist_suitability`
+(a `scoring.py`) i només s'aplica si **tot** això és cert: la `task_match` és sota `adequate`; hi
+ha una senyal d'ajust a instruccions (`instruct`, `instruction`, `chat`, `assistant`,
+`conversational`); no hi ha senyal de model base; no hi ha cap paraula forta d'una **altra** tasca
+(traducció, resum, extracció, matemàtiques, RAG, codi quan no s'ha demanat) i la capacitat és
+`adequate` o millor. La paraula `instruct` no n'hi ha prou: un especialista d'una altra tasca no
+puja, ni un model base, ni un model massa petit. L'etiqueta de **llinatge** `base_model:org/Model`
+no compta com a senyal de model base (partida en paraules donava `base` i el Qwen3.8-27B
+semblava un model preentrenat); un nom amb `base` sí.
+L'explicació diu: «La idoneïtat per a [tasca] s'infereix del seu perfil generalista i instruct; no
+està confirmada per cap avaluació aplicable.»
+
+**Efecte observat (offline, sobre el conjunt guardat de Coding, sense cerques noves):** el
+Qwen3.8-27B passa de `weak` (lloc 49) a `adequate` (lloc 7), per darrere dels models amb `coder`
+al nom, que continuen `strong`. Els Ornith també passen a `adequate`; que el Qwen els avanci no
+està forçat: decideixen els criteris següents (la mida, en aquest cas).
+
+**Límits acceptats, sense corregir amb regles de nom:**
+- Els models orientats explícitament a codi continuen per davant: la idoneïtat va abans que la
+  mida. No es promociona cap model concret.
+- Un especialista d'una altra tasca que no ho diu a les etiquetes es cola. `tencent/Hy-MT2-7B-GGUF`
+  era el cas: només té `gguf` i `conversational`. Ho resol D116 quan el repositori base ho declara
+  (aquí ho fa: `translation`); si no ho declara enlloc, continua passant per generalista.
+- No s'ha tocat el catàleg d'avaluacions ni s'ha introduït cap llindar.
+
+**Pendent (opció B, política a part):** que una avaluació publicada **aplicable** pugi la
+idoneïtat. Cal una regla explícita: identitat exacta o llinatge confirmat, font, tasca, metodologia
+i resultat conservats, la referència publicada separada d'una avaluació local del GGUF, i una
+comparació amb protocol comparable. Les referències no es poden triar només perquè portin `coder`
+al nom, i el catàleg actual (11 avaluacions, cap d'un model d'aquest tipus) no en té. Una avaluació
+publicada que dona mal resultat no es pot tractar com un punt a favor.
+
+**Estat:** `IMPLEMENTED` amb tests (generalista, especialista, base, capacitat baixa, llinatge,
+coder sense canvis i explicació). `UNVERIFIED` a la B60.
+
+**Fonts:** [senyal](../../src/jaull/recommendation/scoring.py),
+[motor](../../src/jaull/recommendation/engine_v2.py),
+[explicacions](../../src/jaull/recommendation/explanations.py), D111, D113.
+
+### D115. Cobertura de models petits en equips limitats, sense canviar la preselecció de la B60
+
+**Data i necessitat:** 2026-10-27. En un portàtil amb uns 7,5 GiB de RAM, l'usuari trobava
+només una recomanació de 7B a Quality i trobava a faltar alternatives petites. Es va reproduir
+offline un mecanisme que ho podia explicar: el càlcul preliminar considerava plausible un
+7B GGUF (uns 5,55 GiB) i dotze candidats d'aquesta mida ocupaven totes les inspeccions, deixant
+fora models de 0,5B, 1,5B i 3B. La regla de cobertura que evitava omplir la B60 de models petits
+s'aplicava també al portàtil. Les consultes acotades per mida començaven a 4B i no compensaven
+aquesta manca de cobertura. No s'ha reproduït la cerca real del portàtil.
+
+**Decisió:** adaptar la cobertura al sostre preliminar de paràmetres que ja calcula Jaull,
+sense classificar equips pel fabricant ni modificar les fórmules de memòria.
+- Si el sostre arriba com a màxim al cubell mitjà existent (14B), les consultes inclouen els
+  intervals 0-1B, 1-2B i 2-4B, retallats pel sostre, a més dels intervals més grans que hi càpiguen.
+  Cada interval manté una consulta amb frase i una d'oberta, amb el límit habitual per pàgina.
+- La preselecció conserva primer un candidat més gran plausible i després cobreix cadascun
+  dels tres cubells petits, quan hi ha candidats en la millor classe de col·locació. En equips
+  limitats, les places restants no donen prioritat automàtica als models de més de 4B;
+  es mantenen els criteris de col·locació, tasca, popularitat i diversitat. Amb una sola plaça
+  no es desplaça el candidat més gran per reservar cobertura petita.
+- Si el sostre supera 14B, es mantenen les consultes i la prioritat anterior pels models més
+  grans. La regla depèn del context i la concurrència sol·licitats, no només del dispositiu.
+- No es modifica el rànquing final, la idoneïtat, la confiança, la quantització ni els límits
+  globals de candidats i inspeccions. Un 7B pot continuar sent la primera recomanació.
+
+**Verificat:** tests offline amb 7,5 GiB de RAM, CPU i integrada Vulkan amb memòria compartida,
+per a Coding i General chat. Les alternatives petites arriben a la inspecció encara que
+hi hagi dotze 7B més populars; un test del workflow també les conserva a Results quan la
+inspecció revela que la majoria dels 7B no caben. El conjunt guardat de General chat de 24 GiB
+manté exactament els dotze candidats i el seu ordre, també amb una B60 Vulkan sintètica al
+costat d'una integrada i afegint candidats petits molt populars al conjunt. Es comproven
+els límits dels intervals, el pressupost i el determinisme.
+
+**Comprovacions executades:** 399 tests seleccionats aprovats, incloent discovery, workflow,
+rànquing, informes i arquitectura; Ruff, mypy, compileall i `git diff --check` correctes.
+No s'ha executat la suite completa per aquest canvi ni s'han fet cerques de xarxa,
+descàrregues de pesos o inferències per validar-lo.
+
+**Revisió posterior:** la primera correcció només reservava una plaça per a tot l'interval
+1-4B. L'usuari encara trobava un 1,5B però cap 3B; es va reproduir que el segon quedava fora de
+la inspecció. Ara es divideix aquell interval en 1-2B i 2-4B, tant a les consultes com a la
+preselecció. El test exigeix simultàniament 0,5B, 1,5B i 3B i també comprova que un 3B viable
+arribi a Results. Les cinc recomanacions continuen sent un màxim, no una quota a omplir.
+El recompte anterior de 399 tests correspon a la primera correcció.
+La revisió passa 406 tests seleccionats, incloent arquitectura i regressió de la B60;
+Ruff, mypy, compileall i `git diff --check` també passen. La suite completa continua pendent.
+
+**Límits:** el sostre és una heurística de cobertura, no una garantia de viabilitat. En equips
+limitats s'afegeixen com a màxim sis consultes de metadades respecte de la cerca original sense
+cobertura petita; aquesta revisió n'afegeix dues respecte de la primera correcció. No s'ha mesurat
+la seva latència real. La preservació de la B60 s'ha comprovat amb dades guardades i perfils sintètics,
+no amb una nova execució física. Cal comprovar els resultats reals al portàtil.
+
+**Estat:** `IMPLEMENTED`, amb regressions offline; `UNVERIFIED` a les màquines físiques.
+
+**Fonts:** [preselecció](../../src/jaull/discovery/candidate_filter.py),
+[consultes](../../src/jaull/discovery/query_builder.py),
+[regressions](../../tests/test_small_machine_discovery.py),
+[recomanació](../recommendation.md), D110, D112.
+
+### D116. Una re-quantització hereta la tasca que declara el seu repositori base
+
+**Data i necessitat:** 2026-10-27. Amb el recurs generalista de D114, `tencent/Hy-MT2-7B-GGUF`, que
+és un model fet només per traduir, passava a `adequate` per programar. Les seves etiquetes són
+`gguf`, un identificador d'article i `conversational`: res en un repositori GGUF dona la tasca. El
+repositori **base** que declara (`base_model:quantized:tencent/Hy-MT2-7B`) sí que ho diu:
+`pipeline_tag = translation` i l'etiqueta `translation`. Un repositori que re-quantitza un altre
+rarament copia els seus camps de tasca.
+
+**Decisió:** abans de la preselecció, les re-quantitzacions **sense `pipeline_tag` propi** consulten
+el seu repositori base declarat (una consulta per base, 8 fils, tolerant a errors) i hereten
+**només les etiquetes que anomenen una tasca** que el motor entén (`task_vocabulary`: les paraules
+clau de cada cas d'ús). És la mateixa evidència estructurada (linatge declarat) que ja confirma la
+identitat d'un model, no una regla de nom. **No s'hereta el `pipeline_tag`:** el del Qwen3.8-27B
+base és `image-text-to-text` (multimodal) i heretar-lo rebutjaria un GGUF que carrega com a model de
+text. Si la base no es pot llegir, el candidat queda com estava.
+
+`targets_another_task` (D112) també considera una altra tasca la traducció, el resum i l'extracció
+(i continua comptant `coder` en una cerca de xat), llevat que sigui la tasca demanada. Així Hy-MT2,
+amb `translation` heretada, no passa a `adequate` per programar (D114) i es relega a la preselecció
+d'una cerca de xat.
+
+**Cost mesurat (conjunt guardat de 100 candidats, consultes reals només a les bases):** 3
+re-quantitzacions sense pipeline, 3 bases, **0,2 s amb 8 fils** (0,5 s en sèrie). Només Hy-MT2 hereta
+una etiqueta (`translation`); el Qwen3.8-27B no canvia ni es rebutja.
+
+**Límits:** només cobreix les re-quantitzacions que declaren la base i no tenen pipeline; un
+especialista que no ho declara enlloc continua passant per generalista; el vocabulari és el dels
+casos d'ús, de manera que una tasca no llistada (embeddings, OCR) no es detecta aquí.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans (herència, pipeline multimodal, una consulta per
+base, errors, paral·lelisme i cancel·lació, i `targets_another_task`). `UNVERIFIED` a la B60.
+
+**Fonts:** [linatge](../../src/jaull/discovery/lineage.py),
+[senyals de tasca](../../src/jaull/recommendation/scoring.py),
+[preselecció](../../src/jaull/discovery/candidate_filter.py), D112, D114.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2762,7 +2908,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D113 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D116 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

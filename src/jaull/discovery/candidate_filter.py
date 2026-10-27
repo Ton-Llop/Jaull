@@ -106,18 +106,37 @@ _SCALE_BUCKETS: tuple[tuple[float, str], ...] = (
 # Sizes above this are not "small": the lower bound of the scale query and of the shortlist's
 # small/larger split.
 LARGER_THAN_SMALL_BILLIONS = _SCALE_BUCKETS[1][0]
+# On constrained machines, 1.5B and 3B must not compete for one coverage slot.
+_SMALL_MODEL_COVERAGE_SPLIT_BILLIONS = 2.0
+
+
+def needs_small_model_coverage(max_billions: float | None) -> bool:
+    """Keep small alternatives when the coarse budget reaches at most the medium class.
+
+    This controls discovery coverage, not final ranking or memory feasibility.
+    Machines reaching the large class retain their existing inspection policy.
+    """
+    return max_billions is not None and 0 < max_billions <= _SCALE_BUCKETS[2][0]
+
 
 def size_bands(max_billions: float) -> list[tuple[float, float]]:
-    """The size buckets above the small ones, cut at the largest size the machine holds.
+    """Bounded size buckets, including small alternatives on constrained machines.
 
-    One band per bucket (`medium`, `large`, and beyond when the machine can hold it), so a page
-    of search results is not filled by whichever band has the most popular models.
+    Larger machines keep the existing bands above 4B. Smaller ones also search
+    the tiny/small classes so popular 7B repositories cannot fill every page.
     """
+    if max_billions <= 0:
+        return []
+    cover_small = needs_small_model_coverage(max_billions)
+    lower = 0.0 if cover_small else LARGER_THAN_SMALL_BILLIONS
+    upper_bounds = [upper for upper, _ in _SCALE_BUCKETS]
+    if cover_small:
+        upper_bounds.append(_SMALL_MODEL_COVERAGE_SPLIT_BILLIONS)
     inner = (
-        upper for upper, _ in _SCALE_BUCKETS
-        if LARGER_THAN_SMALL_BILLIONS < upper < max_billions
+        upper for upper in sorted(upper_bounds)
+        if lower < upper < max_billions
     )
-    edges = [LARGER_THAN_SMALL_BILLIONS, *inner, max_billions]
+    edges = [lower, *inner, max_billions]
     return [(low, high) for low, high in pairwise(edges) if high > low]
 
 
@@ -544,9 +563,16 @@ def _hardware_aware_shortlist(
     selected_families: set[str] = set()
     selected_versions: set[tuple[str, float | None]] = set()
 
-    buckets = _group_shortlist_buckets(plausible_entries, hardware)
+    cover_small = needs_small_model_coverage(largest_fitting_billions(hardware, requirements))
+    buckets = _group_shortlist_buckets(plausible_entries, hardware, cover_small=cover_small)
     for bucket in buckets:
         bucket.sort(key=lambda entry: (entry.other_task, -entry.score, entry.candidate.repo_id))
+    if cover_small:
+        # Keep a larger candidate first even with a one-slot budget, then reserve
+        # one slot per small class before filling the remaining budget as usual.
+        buckets.sort(key=lambda bucket: (
+            _mode_order(bucket[0].hint.mode, hardware), _is_small(bucket[0]),
+        ))
 
     # Coverage: one candidate from each size class of the best placement class this machine
     # offers (what can use its accelerator, or system memory when it has none), plus one
@@ -574,16 +600,16 @@ def _hardware_aware_shortlist(
         mode = bucket[0].hint.mode
         if mode is not None and _mode_order(mode, hardware) != best_class:
             continue
-        if larger_in_best_class and _is_small(bucket[0]):
+        if larger_in_best_class and not cover_small and _is_small(bucket[0]):
             continue
         picked = _pop_bucket_candidate(bucket, selected_redundancy, selected_families)
         if picked is not None:
             selected_versions.add(_version_key(picked))
             _remember_selection(picked, selected, selected_redundancy, selected_families)
 
-    # Relevance: the rest goes to the best remaining candidates, placement class first, then
-    # larger-than-small before small ones (a sub-4B model fills a slot only when nothing
-    # larger in that class is left), then repositories that do not advertise another task
+    # Relevance: placement class first, with larger-than-small priority only on
+    # larger machines; constrained machines keep both sizes competing for the
+    # remaining slots. Then repositories that do not advertise another task
     # before those that do, and score within it. Family diversity only breaks exact ties.
     # A second version of a model already chosen (same family and size) waits behind the
     # other candidates of its group; it is reserve, not merged, and fills a slot only if the
@@ -593,7 +619,7 @@ def _hardware_aware_shortlist(
         remaining.sort(
             key=lambda entry: (
                 _mode_order(entry.hint.mode, hardware),
-                _is_small(entry),
+                _is_small(entry) if not cover_small else False,
                 entry.other_task,
                 -entry.score,
                 entry.candidate.repo_id,
@@ -605,7 +631,7 @@ def _hardware_aware_shortlist(
             entry
             for entry in remaining
             if _mode_order(entry.hint.mode, hardware) == top_class
-            and _is_small(entry) == _is_small(top)
+            and (cover_small or _is_small(entry) == _is_small(top))
             and entry.other_task == top.other_task
         ]
         first = next(
@@ -705,13 +731,22 @@ def _coarse_offload_hint(
 
 
 def _group_shortlist_buckets(
-    entries: list[_ShortlistEntry], hardware: HardwareProfile
+    entries: list[_ShortlistEntry], hardware: HardwareProfile, *, cover_small: bool = False,
 ) -> list[list[_ShortlistEntry]]:
     buckets: dict[tuple[int, int], list[_ShortlistEntry]] = {}
     for entry in entries:
+        billions = parameter_count_hint(entry.candidate.repo_id)
+        scale = _scale_order(billions)
+        if cover_small:
+            scale *= 2
+            if (
+                billions is not None
+                and _SMALL_MODEL_COVERAGE_SPLIT_BILLIONS < billions <= LARGER_THAN_SMALL_BILLIONS
+            ):
+                scale += 1
         key = (
             _mode_order(entry.hint.mode, hardware),
-            _scale_order(parameter_count_hint(entry.candidate.repo_id)),
+            scale,
         )
         buckets.setdefault(key, []).append(entry)
     return [buckets[key] for key in sorted(buckets)]
