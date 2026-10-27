@@ -231,6 +231,13 @@ timestamps deterministically. Failed experiments remain negative evidence;
 failed benchmarks do not become strong performance evidence. Records are never
 rewritten or deleted by matching.
 
+Matching a stored experiment or benchmark does not upgrade global plan confidence.
+That confidence continues to use metadata and memory-prediction confidence; a recorded
+run does not validate either in full. Local IDs, observations and measured memory remain
+available in their own dimensions. Comparable speed and quality measurements can still
+affect ranking through their explicit policies, not through a blanket `HIGH` confidence
+bonus. This also applies to historical benchmarks that are retained only as references.
+
 Speed ranking uses a separate derived assessment: median tg128, call count, observed
 min/max and every contributing benchmark ID. All distinct unblocked calls in the newest
 applicable cohort contribute, regardless of date or measured value. Other cohorts remain

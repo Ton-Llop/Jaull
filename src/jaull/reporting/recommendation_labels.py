@@ -77,7 +77,11 @@ def confidence_rows(rec: ModelRecommendation) -> list[tuple[str, str]]:
                     ("benchmark", assessment.local_benchmark_id),
                 ) if identity
             )
-            basis = f"Matching local evidence: {basis}. Not a change to memory-estimate confidence."
+            basis = (
+                f"Matching local evidence: {basis}. Not a change to memory-estimate confidence. "
+                "Stored runs do not upgrade plan confidence; comparable measurements are "
+                "assessed separately."
+            )
         else:
             basis = (
                 f"Metadata confidence: {rec.evaluated.candidate.metadata_confidence.value}; "

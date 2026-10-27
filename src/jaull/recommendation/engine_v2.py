@@ -365,7 +365,7 @@ def assess_plan(
         ),
         license_fit=_license_fit(evaluated, requirements),
         language_fit=_language_fit(evaluated, requirements),
-        confidence=_confidence(evaluated, plan, local_experiment, local_benchmark),
+        confidence=_confidence(evaluated, plan),
         evidence=evidence,
         external_evaluations=external,
         reasons=_with_capability_reasons(reasons, capability),
@@ -1030,11 +1030,10 @@ def _declared_language_mismatch(
 def _confidence(
     evaluated: EvaluatedCandidate,
     plan: ExecutionPlan,
-    experiment: ExperimentRecord | None,
-    benchmark: BenchmarkRecord | None,
 ) -> EstimationConfidence:
-    if experiment is not None or benchmark is not None:
-        return EstimationConfidence.HIGH
+    # A successful execution or benchmark is evidence for its measured dimensions,
+    # not increased confidence in metadata or the memory prediction. Comparable
+    # measurements can affect ranking only through their explicit evidence policy.
     # An installed runtime used to upgrade a metadata-poor candidate to MEDIUM.
     # That leaked readiness into both the ranking tie-break and the diversity
     # signature, so installing llama.cpp changed the order. Confidence now

@@ -2863,6 +2863,58 @@ d'on prové la inferència, no una mesura de qualitat.
 i arquitectura passen. Les quatre variants de la regressió principal fallen en restaurar
 el criteri anterior en memòria, sense modificar fitxers. Ruff i mypy també passen.
 
+### D119. Tenir una execució guardada no eleva la confiança global del pla
+
+**Data i necessitat:** 2026-10-27. A Coding · Balanced, el Coder de 7B amb un benchmark guardat
+sortia davant dels models grans. `_confidence` retornava `high` quan trobava qualsevol
+experiment o benchmark coincident. Balanced compara aquesta confiança abans de la mida:
+una referència històrica `llama_bench_v1`/tg64 podia alterar l'ordre encara que l'avaluació de
+velocitat no la considerés comparable. El comentari que deia que aquestes referències no
+ordenaven els plans no cobria aquest camí indirecte.
+
+**Decisió:** la confiança del pla continua derivant dels metadades i de la predicció de memòria,
+també quan hi ha registres locals. L'existència d'una execució o benchmark no demostra qualitat
+ni valida totes les hipòtesis de memòria. Es mantenen els identificadors, les observacions,
+la memòria mesurada i l'historial. Les polítiques explícites de mesures comparables no canvien.
+També s'elimina l'ascens per tenir només una validació guardada, pel mateix motiu.
+
+**Límit:** no es prohibeix que una mesura pertinent afecti el seu eix. Per exemple, el criteri
+de petjada de memòria de Speed/Memory continua podent consultar memòria mesurada. El canvi
+elimina el bonus global de confiança, no totes les formes d'evidència local.
+
+**Evidència:** vuit regressions cobreixen Balanced/Quality, benchmark històric/validació i
+els dos ordres d'entrada. Comproven l'ordre base i les recomanacions finals, que la confiança
+no puja, i que els IDs i mesures es conserven. Les vuit fallen en reinstaurar en memòria
+l'ascens antic a `high` i passen amb la correcció. No s'han modificat els registres guardats.
+
+**Auditoria de cobertura, separada del fix:** s'han revisat dos estats antics locals de
+depuració, amb 85 candidats de Quality i 86 de Balanced. No són el JSON de 74 candidats
+que l'usuari ha tornat a enviar (`2026-10-27T11:36:48Z`) ni la captura posterior amb el 27B
+segon. En el pool Quality antic hi ha onze repositoris amb mida inferida superior a 9B
+fora de Qwen, tots EXAONE de 32B; no equivalen a onze models base diferents ni a onze
+alternatives confirmades. Cap no figura entre els avaluats d'aquell estat. En reproduir
+la preselecció actual sobre aquell pool entren `LGAI-EXAONE/EXAONE-4.0-32B-GGUF` i el
+Coder oficial de 32B: és una reproducció de la selecció, no una inspecció ni prova de fit.
+DeepSeek-Coder-V2-Lite sí que s'havia inspeccionat, però quedava `unknown` per MLA i amb
+llicència comercial sense confirmar. No és una demostració que no càpiga.
+
+**Què no es pot concloure:** l'exportació rebuda mostra els 14 avaluats, no els altres 60
+candidats ni les respostes originals de cada consulta. No permet atribuir l'absència d'una
+altra família a una frontera concreta. Les consultes amb `coder instruct` depenen del nom
+del repositori, i les obertes continuen sent pàgines limitades per descàrregues; no garanteixen
+cobertura exhaustiva. No s'han afegit marques, quotes ni excepcions al selector per maquillar
+aquesta incertesa. Falta una captura nova amb el pool complet per auditar el cas actual.
+
+**Traça local dels estats auditats (no versionats):**
+`b60_state_quality.pkl`, SHA-256
+`9cc839daa829380c024e69d861e330c3e99119a1b4050cacf84a71621c7ec832`;
+`b60_state_balanced.pkl`, SHA-256
+`edb8049cfa2a2e988a6c0d133d7f31959ce48774b324a4f2e0ff36f4a4bfab77`.
+
+**Fonts:** [motor](../../src/jaull/recommendation/engine_v2.py),
+[evidència](../evidence.md), D114-D118. Substitueix la implicació de D117 que una mesura
+guardada eleva per si sola la confiança global; no canvia el tier ni l'estimador.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2971,7 +3023,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D118 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D119 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
