@@ -511,17 +511,49 @@ def test_license_confirmation_does_not_reorder_when_commercial_use_is_not_requir
     ]
 
 
-def test_language_hard_constraint_when_metadata_explicitly_conflicts() -> None:
-    evaluated = _evaluated_gguf(languages=["fr"])
+def test_declaring_only_other_languages_lowers_suitability_without_rejecting_the_plan() -> None:
+    """A card that lists only other languages is unfavourable evidence, not proof that the model
+    cannot handle the requested one (cards list the languages of the training focus, and many omit
+    English). It used to remove the plan; it now ranks it one level lower and keeps it."""
     req = _requirements(languages=["Spanish"])
-    plan = generate_execution_plans(evaluated, req)[0]
 
-    assessment = assess_plan(evaluated, plan, req)
+    def assess(languages: list[str]) -> object:
+        evaluated = _evaluated_gguf(languages=languages)
+        return assess_plan(evaluated, generate_execution_plans(evaluated, req)[0], req)
 
-    assert assessment.language_fit is AssessmentLevel.BLOCKED
-    assert HardConstraintCode.LANGUAGE_INCOMPATIBLE in {
-        constraint.code for constraint in assessment.hard_constraints
+    other_only = assess(["fr"])
+    matching = assess(["es"])
+    undeclared = assess([])
+
+    assert not other_only.rejected  # type: ignore[attr-defined]
+    assert HardConstraintCode.LANGUAGE_INCOMPATIBLE not in {
+        constraint.code for constraint in other_only.hard_constraints  # type: ignore[attr-defined]
     }
+    assert other_only.language_fit is AssessmentLevel.WEAK  # type: ignore[attr-defined]
+    assert matching.language_fit is AssessmentLevel.STRONG  # type: ignore[attr-defined]
+    assert undeclared.language_fit is AssessmentLevel.UNKNOWN  # type: ignore[attr-defined]
+    levels = [AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE, AssessmentLevel.WEAK]
+    assert (
+        levels.index(other_only.suitability)  # type: ignore[attr-defined]
+        == levels.index(matching.suitability) + 1  # type: ignore[attr-defined]
+    )
+    # Undeclared is unknown, not unfavourable: it does not lower the suitability.
+    assert undeclared.suitability == matching.suitability  # type: ignore[attr-defined]
+
+
+def test_a_model_declaring_the_requested_language_ranks_above_one_declaring_only_others() -> None:
+    req = _requirements(languages=["Spanish"])
+    spanish = _evaluated_gguf("org/Spanish-7B-GGUF", languages=["es"])
+    french = _evaluated_gguf("org/French-7B-GGUF", languages=["fr"])
+
+    ranked = rank_execution_plans(
+        [french, spanish], req, context=_ready_llama_context(),
+    )
+
+    assert [item.evaluated.repo_id for item in ranked] == [
+        "org/Spanish-7B-GGUF", "org/French-7B-GGUF",
+    ]
+    assert not any(item.assessment.rejected for item in ranked)
 
 
 def test_use_case_suitability_and_missing_metadata_confidence() -> None:
@@ -2284,3 +2316,57 @@ def test_a_tie_goes_to_the_larger_model_before_the_more_downloaded_one(
 
     expected = large_quiet if larger_first else small_popular
     assert ranked[0].evaluated.repo_id == expected.repo_id
+
+
+def test_quality_prefers_the_larger_model_at_a_good_quantization_to_a_smaller_one_at_q8() -> None:
+    """Found on a B60 box: two 9B models at `Q8_0` ranked above a 27B at `Q4_K_M` on Quality,
+    because the quantization was compared before the size of the model. A larger model at a
+    reasonable quantization is the better answer where quality is the goal, and fitting with
+    less headroom (`compatible`) is not a reason to rank it lower. An aggressive quantization
+    still does not buy size, and a model of unknown size does not outrank one that is known."""
+    estimator = size_driven_estimator(vram_budget=24 * GIB)
+
+    def sized(
+        repo_id: str, label: str | None, quantizations: tuple[str, ...], base_bytes: int,
+    ) -> EvaluatedCandidate:
+        item = _evaluated_gguf(
+            repo_id, priority=RecommendationPriority.QUALITY,
+            quantizations=quantizations, base_bytes=base_bytes,
+        )
+        assert item.analysis is not None
+        return item.model_copy(update={
+            "analysis": item.analysis.model_copy(update={"declared_size_label": label}),
+        })
+
+    def order(*candidates: EvaluatedCandidate) -> list[str]:
+        ranked = rank_execution_plans(
+            list(candidates), _requirements(RecommendationPriority.QUALITY),
+            estimate_fn=estimator, context=_ready_llama_context(),
+        )
+        seen: list[str] = []
+        for plan in ranked:
+            if plan.evaluated.repo_id not in seen:
+                seen.append(plan.evaluated.repo_id)
+        return seen
+
+    small_q8 = sized("org/Small-9B-GGUF", "9B", ("Q8_0",), 12 * GIB)  # comfortable
+    large_q4 = sized("org/Large-27B-GGUF", "27B", ("Q4_K_M",), 20 * GIB)  # compatible
+    assert order(small_q8, large_q4) == ["org/Large-27B-GGUF", "org/Small-9B-GGUF"]
+
+    # The quantization of a model is still chosen by quality: Q8_0 beats Q4_K_M for one model.
+    both = sized("org/Large-27B-GGUF", "27B", ("Q4_K_M", "Q6_K"), 14 * GIB)
+    ranked = rank_execution_plans(
+        [both], _requirements(RecommendationPriority.QUALITY),
+        estimate_fn=estimator, context=_ready_llama_context(),
+    )
+    assert ranked[0].plan.artifact.quantization == "Q6_K"
+
+    # An aggressive quantization does not outrank a smaller model at a good one.
+    aggressive = sized("org/Huge-32B-GGUF", "32B", ("Q2_K",), 10 * GIB)
+    assert order(aggressive, small_q8) == ["org/Small-9B-GGUF", "org/Huge-32B-GGUF"]
+
+    # Unknown size comes after every known one.
+    unknown = sized("org/Mystery-GGUF", None, ("Q8_0",), 12 * GIB)
+    unknown = unknown.model_copy(update={"candidate": unknown.candidate.model_copy(
+        update={"downloads": 99_000_000})})
+    assert order(unknown, small_q8)[0] == "org/Small-9B-GGUF"

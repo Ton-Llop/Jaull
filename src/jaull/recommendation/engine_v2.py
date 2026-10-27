@@ -705,14 +705,10 @@ def _hard_constraints(
                     evidence_key="license",
                 )
             )
-    if _declared_language_mismatch(evaluated, requirements):
-        constraints.append(
-            HardConstraint(
-                code=HardConstraintCode.LANGUAGE_INCOMPATIBLE,
-                message="Declared model languages do not include the required language.",
-                evidence_key="language",
-            )
-        )
+    # A card that declares only other languages is unfavourable evidence, not an incompatibility:
+    # it lowers the suitability (see `_suitability`) and never removes the plan. Cards list the
+    # languages of the training focus and many omit English, so it does not show that the model
+    # cannot handle the requested one.
     # A missing binary is deliberately absent from this list. It is an
     # operational condition of this machine at this moment, not an
     # incompatibility of the plan, so it must not reject a recommendation.
@@ -817,7 +813,27 @@ def _external_evidence(
     ]
 
 
+_ONE_LEVEL_LOWER = {
+    AssessmentLevel.STRONG: AssessmentLevel.ADEQUATE,
+    AssessmentLevel.ADEQUATE: AssessmentLevel.WEAK,
+}
+
+
 def _suitability(
+    evaluated: EvaluatedCandidate,
+    requirements: UserRequirements,
+) -> AssessmentLevel:
+    """Task suitability, one level lower when the card declares only other languages.
+
+    Undeclared languages do not lower it: that is unknown, and it is reported by `language_fit`.
+    """
+    level = _task_suitability(evaluated, requirements)
+    if _declared_language_mismatch(evaluated, requirements):
+        return _ONE_LEVEL_LOWER.get(level, level)
+    return level
+
+
+def _task_suitability(
     evaluated: EvaluatedCandidate,
     requirements: UserRequirements,
 ) -> AssessmentLevel:
@@ -982,7 +998,7 @@ def _language_fit(
     if not requirements.languages:
         return AssessmentLevel.UNKNOWN
     if _declared_language_mismatch(evaluated, requirements):
-        return AssessmentLevel.BLOCKED
+        return AssessmentLevel.WEAK
     declared = {language.lower().split("-")[0] for language in evaluated.candidate.languages}
     if declared and all(language.split("-")[0] in declared for language in requirements.languages):
         return AssessmentLevel.STRONG
@@ -1169,8 +1185,13 @@ def ranking_tie_key(
         priority_axes: tuple[int | float, ...] = (
             _LEVEL_RANK[assessment.suitability],
             _LEVEL_RANK[assessment.capability],
+            # An aggressive quantization is only worth offering when nothing else fits.
+            _aggressive_quantization_rank(item.plan),
             # Runs-from-the-GPU before a better quantization: offloading is far slower.
             _runnability_rank(assessment),
+            # The larger model first, then the better quantization of it: a 27B at Q4_K_M is a
+            # better answer than a 9B at Q8_0, and `compatible` is not a reason to rank lower.
+            _model_size_rank(item, priority),
             _quantization_quality_rank(item.plan),
             _LEVEL_RANK[assessment.execution_fitness],
         )
@@ -1376,7 +1397,7 @@ def ranking_criteria(
                     _model_size_rank(item, priority),
                 ),
             )
-            if priority in CAPABILITY_FIRST_PRIORITIES
+            if priority is RecommendationPriority.BALANCED
             else ()
         ),
         (
@@ -1396,9 +1417,20 @@ def ranking_criteria(
             ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
             ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
+                "aggressive_quantization",
+                (item.plan.artifact.quantization or "n/a")
+                + (" (aggressive)" if _aggressive_quantization_rank(item.plan) else ""),
+                _aggressive_quantization_rank(item.plan),
+            ),
+            (
                 "runnability",
                 assessment.execution_fitness.value,
                 _runnability_rank(assessment),
+            ),
+            (
+                "model_size",
+                _size_label(item.plan.model_identity.parameter_count),
+                _model_size_rank(item, priority),
             ),
             (
                 "quantization_quality",

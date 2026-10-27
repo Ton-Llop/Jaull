@@ -169,7 +169,7 @@
           }
         ],
         "ranked_by": "plan_criteria",
-        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here. Balanced moves plans without known capability behind capable ones that are at least as viable before the measured stage; selection_policy records that separate step.",
+        "note": "Base order comes from `ranking.criteria`, compared in order. `ranking.balanced_policy` then swaps comparable measured plans within one stratum; diversity selects the displayed recommendations afterwards. `score` is diagnostic and does not determine the order shown here. Balanced moves plans without known capability behind capable ones that are at least as viable before the measured stage; selection_policy records that separate step. Where the `model_size` criterion puts the larger model first, that is an explicit heuristic from the declared parameter count, not measured or demonstrated quality.",
         "selection_policy": {
           "version": "balanced-capability-within-viability-v2",
           "stage": "before_measured_policy",

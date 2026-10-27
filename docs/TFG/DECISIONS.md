@@ -2523,6 +2523,137 @@ mateix top 5); `UNVERIFIED` a la B60.
 [filtre de candidats](../../src/jaull/discovery/candidate_filter.py),
 [famílies](../../src/jaull/domain/families.py), D101, D107, D109.
 
+### D111. Quality: la mida del model abans de la quantització (preferència heurística) i diagnòstic de la preselecció
+
+**Data i necessitat:** 2026-10-27. A la B60, Quality · General chat posava dos 9B a `Q8_0` per
+davant d'un Qwen3.8-27B a `Q4_K_M`. La clau de Quality comparava la qualitat de la quantització
+abans que la mida del model, i la capacitat s'agrupa en nivells (un 7B i un 27B són tots dos
+`strong`), de manera que `Q8_0` guanyava a `Q4_K_M` abans de mirar la mida. Això barreja la
+fidelitat de la quantització amb la capacitat del model. Una revisió externa va confirmar el
+mecanisme reproduint-lo amb candidats controlats.
+
+**Decisió:** la clau de Quality passa a (idoneïtat, capacitat, **quantització agressiva**,
+runnability, **mida del model**, qualitat de la quantització, ajust). Dins d'un mateix model la
+quantització continua decidint (`Q6_K` abans de `Q4_K_M`); entre models, el més gran primer.
+**És una preferència heurística explícita, no una demostració de qualitat:** la mida declarada
+(`general.size_label`) no mesura què fa millor un model, i un 9B pot ser millor que un 27B per a
+una tasca concreta. L'informe ho diu a la nota del rànquing de Balanced i Quality, i `ranking.criteria`
+publica `aggressive_quantization` i `model_size` com a eixos de Quality. **No es canvia la regla
+d'agressives de D105:** un 32B a `Q2_K` no passa automàticament per davant d'un 9B a `Q8_0`, ni
+tampoc s'afirma que el 9B sigui millor; falta evidència per resoldre aquest intercanvi.
+
+**Diagnòstic de la preselecció (fet offline sobre l'estat guardat de Balanced · General chat,
+sense noves cerques):**
+1. *El 14B de xat no arriba a la inspecció.* `bartowski/Qwen2.5-14B-Instruct-GGUF` és al conjunt de
+   100 candidats, però queda amb 20,90 punts i l'última plaça (12a) la té `tencent/Hy-MT2-7B-GGUF`
+   amb 21,11, per 0,21. Els 12 triats inclouen tres especialitzats en codi en una cerca de xat
+   (Qwen3-Coder-30B-A3B, Qwen2.5-Coder-14B i -7B, que sumen +1,5 per coincidir amb 3 consultes), dos
+   Ornith i dues variants del Qwen3.8-27B. El punt de tall és una puntuació de popularitat
+   (`log` de descàrregues i de m'agrada), no un criteri d'idoneïtat.
+2. *Per què el 27B queda darrere del Qwen2.5-7B a Balanced:* el primer criteri que els separa és
+   `plan_confidence` (`low` abans de `unknown`), perquè el 27B té dues penalitzacions de metadades
+   (sense idiomes i sense `pipeline_tag`). Aquí la confiança sí intervé, a diferència del 14B,
+   que no hi arriba. No s'ha canviat.
+3. *Una diferència de mida petita decideix:* Ornith 1.0 (9B) passa per davant del Qwen2.5-7B (7,6B)
+   per `model_size`, però `9B` és una etiqueta arrodonida i `7.6B` una de precisa; comparar-les
+   com a exactes és soroll.
+4. *Les 26 candidates de format no GGUF* queden fora (`too_large`), amb un màxim de 2 de recurs.
+
+**Pendent:** (a) i (d) resolts a D112 (idoneïtat abans que popularitat; versions repetides com a
+reserva, sense fusionar-les ni ampliar la inspecció); (b) la confiança de metadades abans de la mida
+i (c) un marge a `model_size` continuen oberts.
+
+**Estat:** Quality `IMPLEMENTED` amb un test que fallava abans; el diagnòstic és una execució
+offline, no una prova. `UNVERIFIED` a la B60.
+
+**Fonts:** [rànquing v2](../../src/jaull/recommendation/engine_v2.py),
+[preselecció](../../src/jaull/discovery/candidate_filter.py),
+[informe](../../src/jaull/reporting/recommendation.py), D105, D110.
+
+### D112. Preselecció: una altra tasca no desplaça els adequats, i les versions repetides esperen
+
+**Data i necessitat:** 2026-10-27. El diagnòstic de D111 va mostrar que el Qwen2.5-14B-Instruct de
+xat no arribava a la inspecció (20,90 punts contra 21,11 de l'última plaça) mentre tres models de
+codi hi ocupaven lloc en una cerca de xat, perquè tres consultes els havien retornat (+1,5). Una
+revisió externa va demanar corregir la selecció de candidats sense barrejar-la amb la confiança, i
+sense ampliar les inspeccions per quedar «a pocs dècims».
+
+**Decisions:**
+1. *Idoneïtat abans que popularitat, amb la senyal que ja existia.* `targets_another_task` reutilitza
+   les paraules clau negatives de `task_match` (un `coder` en una cerca de xat; vegeu
+   `_NEGATIVE_KEYWORDS`). Un repositori que anuncia una altra tasca omple plaça només després dels
+   altres, dins del seu grup de col·locació i mida; les descàrregues, els m'agrada i el nombre de
+   consultes ordenen el que queda. És una afirmació sobre el que diu el repositori, no sobre la
+   seva qualitat. **No s'ha usat `task_match` com a número:** el Qwen3.8-27B oficial puntua 0,78
+   només per no declarar `pipeline_tag` i quedaria darrere de molts models petits. A Coding no hi ha
+   paraules negatives, de manera que la preselecció no hi canvia.
+2. *Diversitat sense fusionar.* Una segona versió del mateix model (mateixa família i mateixa mida
+   declarada pel nom, per exemple Ornith 1.0 i 1.5 de 9B) espera darrere dels altres candidats del
+   seu grup; es manté com a reserva i s'inspecciona si el pressupost no s'esgota. No s'eliminen com a duplicats:
+   una altra mida, una altra família, o un fine-tune d'una altra família no s'endarrereix. Això
+   és diferent del defecte de D101 (una família nova passant per sobre d'una millor puntuació): aquí
+   només s'endarrereix una còpia de la mateixa família i mida, i només dins del grup.
+3. *Els 12 llocs d'inspecció no s'amplien.*
+
+**Verificat (offline, sobre el conjunt guardat de 100 candidats, sense cerques noves):** el 14B de xat
+entra; Qwen3-Coder-30B-A3B i Qwen2.5-Coder-14B surten de la preselecció. Regressió amb els números
+reals del cas (`_SAVED_CHAT_POOL`) a `tests/test_discovery_search.py`.
+
+**Pendent, sense canviar:** (a) SmolLM2-135M continua ocupant la plaça de «mida desconeguda» (una
+per ronda, de D101); (b) la confiança de metadades abans de la mida, que fa baixar el 27B:
+primer cal revisar quina incertesa continua vigent després d'inspeccionar (un `pipeline_tag` absent
+no hauria de continuar significant format desconegut si ja s'ha confirmat; l'idioma desconegut
+sí que continua sent informació); (c) un marge a `model_size` només amb justificació explícita i
+coneixent la precisió de l'etiqueta.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans. `UNVERIFIED` a la B60.
+
+**Fonts:** [preselecció](../../src/jaull/discovery/candidate_filter.py),
+[senyal de tasca](../../src/jaull/recommendation/scoring.py), D101, D111.
+
+### D113. Menys conservadorisme amb la evidència dels metadades (idioma i pipeline_tag)
+
+**Data i necessitat:** 2026-10-27. L'usuari va assenyalar que de vegades som massa conservadors i
+que en alguns casos podem ser més permissius. S'ha separat en dos tipus, perquè no costen el mateix
+si s'equivoquen: el conservadorisme sobre la **evidència dels metadades** (idioma, `pipeline_tag`,
+confiança), on un excés només fa que una bona opció quedi pitjor col·locada, i el sobre la
+**memòria**, on l'error és asimètric (sobreestimar la capacitat acaba en un error de memòria). Els
+llindars de memòria (75 %, 90 %, marge del 10 %) no es toquen sense una mesura.
+
+**Decisions:**
+1. *Un idioma sense declarar és desconegut, sense penalització global.* La majoria de les targetes
+   ometen el camp, de manera que no diu res del model. Ja es reflecteix a `language_fit`
+   (desconegut), al requisit («suport no confirmat als metadades») i a l'explicació. Abans, a més,
+   baixava un nivell la confiança dels metadades i restava 0,5 a la preselecció. Ara no.
+2. *Un `pipeline_tag` absent és un avís, no una pèrdua de confiança.* Diu quina és la tasca, que la
+   idoneïtat ja pondera (el `task_match` perd la bonificació del pipeline); no diu res del format ni
+   del runtime, que confirma la inspecció. L'avís continua visible. Una llicència absent continua
+   baixant la confiança: és una altra cosa.
+3. *«Només altres idiomes declarats» ja no rebutja el pla.* Era una porta dura
+   (`LANGUAGE_INCOMPATIBLE`). Les targetes declaren els idiomes de l'enfocament d'entrenament i moltes
+   ometen l'anglès, de manera que no demostra que el model no pugui amb l'idioma demanat. Ara baixa
+   la idoneïtat un nivell i `language_fit` passa de `blocked` a `weak`. El codi
+   `LANGUAGE_INCOMPATIBLE` es manté al model per als informes desats, però ja no es genera.
+4. *La confiança abans que la mida (Balanced) no es toca.* Amb 1 i 2, el Qwen3.8-27B passa de
+   confiança `unknown` a `low`, igual que els rivals, i la clau no ha de canviar.
+
+**Verificat (offline, sense cerques noves):** el rànquing guardat de Balanced · General chat, refet
+amb les regles velles, es reprodueix exactament; amb les noves, el Qwen3.8-27B puja del lloc 5 al 2.
+La reconstrucció només coneix la confiança base `high` o `medium`; no sap si la targeta no tenia
+dades (`low`), de manera que és una aproximació per a aquest conjunt. La puntuació composta
+diagnòstica d'un cas fix del test d'informe passa de 46 a 47 perquè el seu terme de metadades
+compta penalitzacions; l'ordre no canvia.
+
+**Pendent:** la política de llicència amb ús comercial es manté fixa; un marge a `model_size` només
+amb justificació explícita i coneixent la precisió de l'etiqueta; un `pipeline_tag` absent a
+repositoris no GGUF, on la inspecció no confirma tant com a un GGUF.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans. `UNVERIFIED` a la B60.
+
+**Fonts:** [filtre de candidats](../../src/jaull/discovery/candidate_filter.py),
+[rànquing v2](../../src/jaull/recommendation/engine_v2.py),
+[recomanació](../recommendation.md), D111, D112.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2631,7 +2762,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D110 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D113 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

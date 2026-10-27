@@ -222,11 +222,12 @@ def test_published_criteria_are_the_axes_that_ordered() -> None:
         "requirement_confirmation",
         "suitability",
         "capability",
+        "aggressive_quantization",
         "runnability",
+        "model_size",
         "quantization_quality",
         "execution_fitness",
         "plan_confidence",
-        "model_size",
         "quantization_preference",
         "popularity",
     ]
@@ -560,7 +561,9 @@ def test_reporting_changes_did_not_move_a_single_decision() -> None:
 
     primary = payload["recommendations"][0]
     assert primary["compatibility"] == "tight"
-    assert primary["score"] == 46
+    # 46 before undeclared languages stopped counting as a metadata penalty: the composite is
+    # diagnostic and its metadata term counts penalties; the order below is unchanged.
+    assert primary["score"] == 47
     assert primary["score_breakdown"]["hard_penalty"] == 0.85
     assert primary["memory"]["inference_configuration"]["quantization"] == "Q4_K_M"
     assert primary["memory"]["memory"]["total_bytes"] == 8160437862

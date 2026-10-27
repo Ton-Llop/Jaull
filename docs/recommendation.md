@@ -279,7 +279,11 @@ A plan carrying any `HardConstraint` is rejected before ordering begins. These c
 | `RUNTIME_UNDETERMINED` | No runtime could be planned, usually because the memory estimate is incomplete |
 | `MEMORY_INSUFFICIENT` | The model does not fit, offload included |
 | `LICENSE_INCOMPATIBLE` | Commercial use is required and the license forbids it |
-| `LANGUAGE_INCOMPATIBLE` | A required language the model does not declare |
+
+A card that declares only other languages no longer removes a plan: it lowers the plan's
+suitability by one level and its language fit reads `weak`. Declaring no languages at all is
+`unknown` and lowers nothing. `LANGUAGE_INCOMPATIBLE` is kept in the model for saved reports but
+is no longer raised.
 
 Compatibility therefore remains a hard gate: a plan assessed `insufficient` never appears at
 all. A plan whose fit is unknown because no runtime could be planned is also rejected, under

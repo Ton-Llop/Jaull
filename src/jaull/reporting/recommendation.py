@@ -603,7 +603,9 @@ def _ranking_to_dict(
         payload["note"] += (
             f" {priority.value.capitalize()} moves plans without known capability behind capable "
             "ones that are at least as viable before the measured stage; selection_policy "
-            "records that separate step."
+            "records that separate step. Where the `model_size` criterion puts the larger model "
+            "first, that is an explicit heuristic from the declared parameter count, not "
+            "measured or demonstrated quality."
         )
     return payload
 
