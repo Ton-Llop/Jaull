@@ -2441,3 +2441,23 @@ def test_the_generalist_inference_is_explained_and_not_claimed_as_evidence() -> 
     assert any(profile in w for w in inferred)
     assert any("not confirmed" in w for w in inferred)
     assert not any(profile in w for w in explanations.build_warnings(coder, req))
+
+
+def test_a_card_that_does_not_list_its_languages_keeps_the_tier_of_one_that_does() -> None:
+    """The tier heading drops to best-effort whenever the requirement multiplier is below 1. A card
+    that did not list its languages cost 15 % there and turned a result into "Best-Effort
+    Suggestion"; undeclared languages are unknown, not a cost, so the multiplier and the tier match
+    those of a card that lists them, and the notice stays visible."""
+    listed = _evaluated_gguf("org/Listed-7B-GGUF", languages=["en"])
+    unlisted = _evaluated_gguf("org/Unlisted-7B-GGUF", languages=[])
+
+    recommendations = {
+        item.repo_id: item
+        for item in ranking.recommend([listed, unlisted], _requirements(), hardware=hardware())
+    }
+
+    unlisted_card = recommendations["org/Unlisted-7B-GGUF"]
+    listed_card = recommendations["org/Listed-7B-GGUF"]
+    assert unlisted_card.evaluated.requirement_penalty == 1.0
+    assert unlisted_card.tier == listed_card.tier
+    assert any("EN" in label for label in unlisted_card.evaluated.unmet_requirement_labels)

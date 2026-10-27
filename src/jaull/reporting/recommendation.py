@@ -30,7 +30,8 @@ from typing import Any, NamedTuple
 
 from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.licenses import LEGAL_DISCLAIMER
-from jaull.domain.requirements import RecommendationPriority
+from jaull.domain.recommendation import AssessmentLevel
+from jaull.domain.requirements import RecommendationPriority, UseCase
 from jaull.recommendation.diversity import diversify_ranked_plans, tie_key_for
 from jaull.recommendation.engine_v2 import (
     CAPABILITY_FIRST_PRIORITIES,
@@ -79,6 +80,7 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             _recommendation_to_dict(
                 rec,
                 _priority(state),
+                use_case=state.requirements.use_case if state.requirements else None,
                 commercial_use_required=_commercial_use_required(state),
                 quality_position=quality_positions.get(rec.plan.plan_id) if rec.plan else None,
             )
@@ -236,6 +238,7 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
         ranking = _ranking_to_dict(
             rec,
             _priority(state),
+            use_case=state.requirements.use_case if state.requirements else None,
             commercial_use_required=_commercial_use_required(state),
             quality_position=quality_positions.get(rec.plan.plan_id) if rec.plan else None,
         )
@@ -252,6 +255,15 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
                 f"{index}. {ranking_axis_label(item['axis'])}: {item['value']}"
                 for index, item in enumerate(criteria, start=1)
             ]
+            if (
+                state.requirements is not None
+                and state.requirements.use_case is UseCase.CODING
+                and _priority(state) in CAPABILITY_FIRST_PRIORITIES
+                and rec.plan_assessment is not None
+                and rec.plan_assessment.suitability is AssessmentLevel.ADEQUATE
+                and rec.plan_assessment.language_fit is not AssessmentLevel.WEAK
+            ):
+                lines += ["", _CODING_SUITABILITY_NOTE]
             if selection := ranking.get("selection_policy"):
                 lines += ["", f"**{_priority(state).value.capitalize()} selection** "
                           "(before measured evidence):",
@@ -491,6 +503,12 @@ def _commercial_use_required(state: RecommendationWorkflowState) -> bool:
     return bool(state.requirements and state.requirements.commercial_use_required)
 
 
+_CODING_SUITABILITY_NOTE = (
+    "Strong and adequate coding suitability share one eligible-task rank unless "
+    "the declared languages mismatch. Task keywords are orientation signals, not "
+    "measured coding quality; the original suitability level remains visible."
+)
+
 _PLAN_RANKING_NOTE = (
     "Position comes from `ranking.criteria`, compared in order. `score` is a "
     "weighted composite kept for compatibility and for comparing candidates "
@@ -537,6 +555,7 @@ def _ranking_to_dict(
     rec: ModelRecommendation,
     priority: RecommendationPriority,
     *,
+    use_case: UseCase | None = None,
     commercial_use_required: bool = False,
     quality_position: _PolicyPositions | None = None,
 ) -> dict[str, Any]:
@@ -551,7 +570,7 @@ def _ranking_to_dict(
             "note": _COMPOSITE_RANKING_NOTE,
         }
     ranked = RankedPlan(
-        evaluated=rec.evaluated, plan=rec.plan, assessment=rec.plan_assessment
+        evaluated=rec.evaluated, plan=rec.plan, assessment=rec.plan_assessment, use_case=use_case,
     )
     payload: dict[str, Any] = {
         "ordered_by": priority.value,
@@ -607,6 +626,13 @@ def _ranking_to_dict(
             "first, that is an explicit heuristic from the declared parameter count, not "
             "measured or demonstrated quality."
         )
+    if (
+        use_case is UseCase.CODING
+        and priority in CAPABILITY_FIRST_PRIORITIES
+        and rec.plan_assessment.suitability is AssessmentLevel.ADEQUATE
+        and rec.plan_assessment.language_fit is not AssessmentLevel.WEAK
+    ):
+        payload["note"] += " " + _CODING_SUITABILITY_NOTE
     return payload
 
 
@@ -671,12 +697,14 @@ def _recommendation_to_dict(
     rec: ModelRecommendation,
     priority: RecommendationPriority,
     *,
+    use_case: UseCase | None = None,
     commercial_use_required: bool = False,
     quality_position: _PolicyPositions | None = None,
 ) -> dict[str, Any]:
     ranking = _ranking_to_dict(
         rec,
         priority,
+        use_case=use_case,
         commercial_use_required=commercial_use_required,
         quality_position=quality_position,
     )

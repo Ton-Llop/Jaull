@@ -215,6 +215,15 @@ first*, not how much weight it carries:
 | **Memory** | memory efficiency → execution fitness → executability |
 | **Balanced** | suitability → runnability → capability → execution fitness → executability → memory headroom |
 
+For **Coding in Quality and Balanced**, strong and adequate suitability share the same
+eligible-task rank, except when the declared languages mismatch the request. An explicit
+`coder` signal describes task orientation; it is not measured superiority over a capable
+instruction-tuned generalist. The assessment and reports keep the original level (including
+`adequate` by inference), and weak/unknown profiles remain behind eligible ones. Subsequent
+capability, placement and quantization criteria still apply. Declared model size remains a
+heuristic, not proof that a larger model writes better code. Speed, Memory and other use
+cases retain their existing suitability rules.
+
 Every key ends with the same tail — confidence, `repo_id`,
 quantization, runtime name — so ties break deterministically and identical inputs always
 produce an identical report.

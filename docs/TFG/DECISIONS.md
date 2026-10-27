@@ -2800,6 +2800,69 @@ base, errors, paral·lelisme i cancel·lació, i `targets_another_task`). `UNVER
 [senyals de tasca](../../src/jaull/recommendation/scoring.py),
 [preselecció](../../src/jaull/discovery/candidate_filter.py), D112, D114.
 
+### D117. Un idioma sense declarar no degrada l'etiqueta de la recomanació
+
+**Data i necessitat:** 2026-10-27. A la B60, tres de les quatre llistes (Coding · Quality, xat ·
+Quality i xat · Balanced) deien «Best-Effort Suggestion» i només una deia «Recommended». L'usuari va
+demanar no ser tan conservadors. Amb les dades guardades, els quatre resultats que baixaven a
+`best_effort` tenien **la mateixa i única causa**: la targeta no declarava idiomes, el filtre de
+requisits ho comptava com a requisit no complert («Support for EN not confirmed in metadata»,
+penalització del 15 %, multiplicador 0,85) i `choose_tier` baixa a `best_effort` amb qualsevol
+multiplicador inferior a 1. Els models que declaraven `en` sortien com a `recommended`. És el mateix
+conservadorisme que D113 va treure de la preselecció i de la confiança, en un camí que D113 no tocava.
+
+**Decisió:** al filtre de requisits (`requirements_gate`), un idioma demanat es classifica en tres
+estats. *Confirmat* (el declara o la targeta és `multilingual`): sense cost. *Sense declarar*: és
+desconegut; es manté l'avís («no confirmat als metadades») però **no costa res** i no degrada
+l'etiqueta. *Només declara altres idiomes*: continua sent una penalització suau del 15 %, amb l'avís
+«la targeta només declara altres idiomes». L'etiqueta de la recomanació no canvia de regla
+(`choose_tier`): només deixa de rebre un multiplicador artificial.
+
+**Efecte (offline, sobre els resultats guardats de les captures):** els quatre `best_effort` (Ornith
+1.5, Ornith 1.0, Qwen3.8-27B i Qwen3-Coder-30B-A3B) passen a `recommended`; la resta no canvia. La
+puntuació composta diagnòstica del test d'informe passa de 47 a 55 i el seu `hard_penalty` de 0,85 a
+1,0; l'ordre no canvia.
+
+**Límits, sense canviar:** `BEST MATCH` continua sent pràcticament inabastable amb una estimació de
+GGUF perquè la confiança del pla és `low` (suposicions de política documentades, com el marge de
+sobrecàrrega) i `choose_tier` la limita a `recommended`; només l'evidència mesurada la puja. I un
+pla `tight` pot quedar primer a Quality (el 30B-A3B a 22,42 GiB de la captura), perquè la
+runnability agrupa `tight` amb `compatible` i Quality prioritza la mida; si cal ser més estrictes
+amb `tight` a Quality és una decisió pendent.
+
+**Estat:** `IMPLEMENTED` amb tests que fallaven abans. `UNVERIFIED` a la B60.
+
+**Fonts:** [filtre de requisits](../../src/jaull/recommendation/requirements_gate.py),
+[etiqueta](../../src/jaull/recommendation/tier.py), D113, D114.
+
+### D118. La paraula Coder no demostra superioritat davant d'un generalista adequat
+
+**Data i necessitat:** 2026-10-27. L'informe Coding · Quality de la B60 inclou un generalista
+de 27B inspeccionat, amb Q4_K_M compatible, però recomana especialistes de 8-9B. La idoneïtat
+inferida de D114 continua sent `adequate`, mentre que anunciar codi dona `strong`; aquest
+eix es comparava abans de la capacitat i de la mida. És una preferència pels metadades de
+tasca, no una comparació de qualitat de programació.
+
+**Decisió:** només a Coding · Quality i Balanced, `strong` i `adequate` comparteixen el rang
+d'idoneïtat elegible. No es modifica la valoració original ni s'atribueix evidència mesurada
+al generalista. Es conserva la degradació quan els idiomes declarats no coincideixen, i no
+s'eleven perfils `weak`, `unknown`, traductors o models base. La resta de criteris, restriccions,
+estimacions i polítiques mesurades continuen vigents; no hi ha excepcions per noms de models.
+L'informe JSON i Markdown explica l'agrupació i manté visible el nivell original.
+
+**Límits:** no garanteix que un 27B sigui millor que un 8B ni que entrin cinc models grans.
+No canvia la descoberta, la confiança derivada de benchmarks històrics ni el càlcul de KV.
+La B60 real i el seu conjunt complet de candidats encara s'han de tornar a provar.
+
+**Evidència:** regressions offline amb generalista de 27B Q4 compatible i Coder de 8B Q8
+comfortable, en ambdós ordres d'entrada i prioritats; proteccions per tasca, idioma i Speed;
+coherència entre els criteris del motor i els informes. D114 i D116 continuen descrivint
+d'on prové la inferència, no una mesura de qualitat.
+
+**Verificació:** 438 tests de recomanació, workflow, informes, cobertura de màquines petites
+i arquitectura passen. Les quatre variants de la regressió principal fallen en restaurar
+el criteri anterior en memòria, sense modificar fitxers. Ruff i mypy també passen.
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -2908,7 +2971,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D116 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D118 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

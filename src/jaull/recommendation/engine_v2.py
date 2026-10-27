@@ -103,6 +103,7 @@ class RankedPlan:
     evaluated: EvaluatedCandidate
     plan: ExecutionPlan
     assessment: PlanAssessment
+    use_case: UseCase | None = None
 
 
 def rank_execution_plans(
@@ -132,7 +133,9 @@ def rank_execution_plans(
                 requirements,
                 context=ctx,
             )
-            ranked.append(RankedPlan(evaluated=item, plan=plan, assessment=assessment))
+            ranked.append(RankedPlan(
+                evaluated=item, plan=plan, assessment=assessment, use_case=requirements.use_case,
+            ))
     ordered = sorted(
         ranked,
         key=lambda item: _ranking_key(
@@ -1173,6 +1176,20 @@ def _ranking_key(
     )
 
 
+def _suitability_rank(item: RankedPlan, priority: RecommendationPriority) -> int:
+    # Coding keywords describe orientation, not demonstrated superiority over generalists.
+    # Keep the assessment intact; only group eligible profiles in the ranking policy.
+    level = item.assessment.suitability
+    if (
+        item.use_case is UseCase.CODING
+        and priority in CAPABILITY_FIRST_PRIORITIES
+        and level in {AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE}
+        and item.assessment.language_fit is not AssessmentLevel.WEAK
+    ):
+        return _LEVEL_RANK[AssessmentLevel.STRONG]
+    return _LEVEL_RANK[level]
+
+
 def ranking_tie_key(
     item: RankedPlan,
     priority: RecommendationPriority,
@@ -1187,14 +1204,13 @@ def ranking_tie_key(
     assessment = item.assessment
     if priority is RecommendationPriority.QUALITY:
         priority_axes: tuple[int | float, ...] = (
-            _LEVEL_RANK[assessment.suitability],
+            _suitability_rank(item, priority),
             _LEVEL_RANK[assessment.capability],
             # An aggressive quantization is only worth offering when nothing else fits.
             _aggressive_quantization_rank(item.plan),
             # Runs-from-the-GPU before a better quantization: offloading is far slower.
             _runnability_rank(assessment),
-            # The larger model first, then the better quantization of it: a 27B at Q4_K_M is a
-            # better answer than a 9B at Q8_0, and `compatible` is not a reason to rank lower.
+            # Declared size is a quality heuristic, not proof of superiority.
             _model_size_rank(item, priority),
             _quantization_quality_rank(item.plan),
             _LEVEL_RANK[assessment.execution_fitness],
@@ -1216,7 +1232,7 @@ def ranking_tie_key(
         )
     else:
         priority_axes = (
-            _LEVEL_RANK[assessment.suitability],
+            _suitability_rank(item, priority),
             _aggressive_quantization_rank(item.plan),
             _runnability_rank(assessment),
             _LEVEL_RANK[assessment.capability],
@@ -1418,7 +1434,7 @@ def ranking_criteria(
     axes: tuple[tuple[str, str, int | float], ...]
     if priority is RecommendationPriority.QUALITY:
         axes = (
-            ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            ("suitability", assessment.suitability.value, _suitability_rank(item, priority)),
             ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
                 "aggressive_quantization",
@@ -1486,7 +1502,7 @@ def ranking_criteria(
         )
     else:
         axes = (
-            ("suitability", assessment.suitability.value, _LEVEL_RANK[assessment.suitability]),
+            ("suitability", assessment.suitability.value, _suitability_rank(item, priority)),
             (
                 "aggressive_quantization",
                 (item.plan.artifact.quantization or "n/a")

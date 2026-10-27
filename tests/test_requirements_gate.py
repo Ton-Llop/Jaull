@@ -70,16 +70,26 @@ def test_permissive_license_satisfies_the_check() -> None:
     assert result.unmet_labels == []
 
 
-def test_language_missing_is_a_soft_penalty() -> None:
+def test_undeclared_languages_are_unknown_and_cost_nothing() -> None:
+    """Found on a B60 box: three of five results read "Best-Effort Suggestion" for one reason, the
+    card did not list its languages, which cost 15 % and demoted the tier. Most cards omit the
+    field, so it says nothing about the model. It stays visible as a notice and costs nothing."""
     result = evaluate_requirements(
         _evaluated(license="apache-2.0", languages=[]),
         _requirements(languages=["es"]),
     )
-    # Language check is `required=False` → soft penalty. Multiplier drops
-    # noticeably but the candidate is not eliminated.
-    assert result.penalty_multiplier < 1.0
-    assert result.penalty_multiplier > 0.7
-    assert any("ES" in label for label in result.unmet_labels)
+    assert result.penalty_multiplier == 1.0
+    assert any("ES" in label and "not confirmed" in label for label in result.unmet_labels)
+
+
+def test_declaring_only_other_languages_keeps_the_soft_penalty() -> None:
+    result = evaluate_requirements(
+        _evaluated(license="apache-2.0", languages=["fr"]),
+        _requirements(languages=["es"]),
+    )
+    # A soft check (`required=False`): the multiplier drops noticeably, the candidate stays.
+    assert 0.7 < result.penalty_multiplier < 1.0
+    assert any("ES" in label and "only other languages" in label for label in result.unmet_labels)
 
 
 def test_concurrency_zero_fit_adds_soft_penalty() -> None:

@@ -561,10 +561,12 @@ def test_reporting_changes_did_not_move_a_single_decision() -> None:
 
     primary = payload["recommendations"][0]
     assert primary["compatibility"] == "tight"
-    # 46 before undeclared languages stopped counting as a metadata penalty: the composite is
-    # diagnostic and its metadata term counts penalties; the order below is unchanged.
-    assert primary["score"] == 47
-    assert primary["score_breakdown"]["hard_penalty"] == 0.85
+    # 46 before undeclared languages stopped counting as a metadata penalty (47) and stopped
+    # costing 15 % in the requirement multiplier (55): the composite is diagnostic and both terms
+    # feed it; the order below is unchanged.
+    assert primary["score"] == 55
+    # 0.85 while an undeclared language list cost 15 %; it is unknown now and costs nothing.
+    assert primary["score_breakdown"]["hard_penalty"] == 1.0
     assert primary["memory"]["inference_configuration"]["quantization"] == "Q4_K_M"
     assert primary["memory"]["memory"]["total_bytes"] == 8160437862
 

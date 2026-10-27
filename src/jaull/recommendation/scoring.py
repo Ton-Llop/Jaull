@@ -113,7 +113,8 @@ def infers_generalist_suitability(
     so an instruction-tuned generalist of adequate capability is considered suitable by inference.
     That is a prudent fallback, not evidence: it does not apply to a base model, to a specialist of
     another task (a translator or summarizer that also says "instruct"), or to a model too small
-    to be called capable, and it never replaces an evaluation. Naming the task still counts more.
+    to be called capable, and it never replaces an evaluation. The assessment retains this
+    distinction; the priority policy decides whether it should separate otherwise eligible plans.
     """
     if evaluated.task_match_score >= _ADEQUATE_TASK_MATCH:
         return False

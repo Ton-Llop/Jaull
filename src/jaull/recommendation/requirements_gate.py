@@ -11,6 +11,8 @@ that satisfy every hard requirement (``penalty < 1.0``).
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from jaull.domain.candidates import EvaluatedCandidate
@@ -110,14 +112,24 @@ def evaluate_requirements(
 
     # Language coverage ------------------------------------------------------
     for language in requirements.languages:
-        satisfied = _language_supported(language, evaluated)
+        support = _language_support(language, evaluated)
+        label = language.upper()
+        if support is not _LanguageSupport.OTHER_ONLY:
+            # Confirmed, or undeclared: most cards omit the field, so that is unknown, which is
+            # shown as a notice and never costs anything.
+            description, penalty = f"Support for {label} not confirmed in metadata.", 0.0
+        else:
+            description = (
+                f"Support for {label} not confirmed: the card declares only other languages."
+            )
+            penalty = 0.15
         checks.append(
             RequirementCheck(
                 name=f"language:{language}",
-                description=f"Support for {language.upper()} not confirmed in metadata.",
+                description=description,
                 required=False,
-                satisfied=satisfied,
-                penalty=0.0 if satisfied else 0.15,
+                satisfied=support is _LanguageSupport.CONFIRMED,
+                penalty=penalty,
             )
         )
 
@@ -139,13 +151,19 @@ def evaluate_requirements(
     return RequirementSatisfaction(checks=checks)
 
 
-def _language_supported(language: str, evaluated: EvaluatedCandidate) -> bool:
+class _LanguageSupport(StrEnum):
+    CONFIRMED = "confirmed"
+    UNDECLARED = "undeclared"
+    OTHER_ONLY = "other_only"
+
+
+def _language_support(language: str, evaluated: EvaluatedCandidate) -> _LanguageSupport:
     wanted = language.lower().split("-")[0]
     declared = {code.lower().split("-")[0] for code in evaluated.candidate.languages}
-    if wanted in declared:
-        return True
     tags = {tag.lower() for tag in evaluated.candidate.tags}
-    return "multilingual" in tags
+    if wanted in declared or "multilingual" in tags:
+        return _LanguageSupport.CONFIRMED
+    return _LanguageSupport.OTHER_ONLY if declared else _LanguageSupport.UNDECLARED
 
 
 __all__ = [
