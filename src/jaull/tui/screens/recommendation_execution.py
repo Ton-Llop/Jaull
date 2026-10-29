@@ -37,6 +37,7 @@ from jaull.tui.artifact_preparation import (
     transformers_recommendation_artifact,
 )
 from jaull.tui.widgets.context_bar import ContextBar
+from jaull.workflow.download_progress import is_progress_line, record_step
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -354,8 +355,8 @@ class RecommendationExecutionScreen(Screen[None]):
         widget.display = False
 
     def _record_step(self, message: str) -> None:
-        self._log_messages.append(message)
-        if message in {
+        record_step(self._log_messages, message)
+        if is_progress_line(message) or message in {
             "Downloading artifact",
             "Generating",
             "Preparing Transformers runtime",

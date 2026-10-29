@@ -11,6 +11,7 @@ Composes:
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,6 +39,7 @@ DownloaderFn = Callable[..., str]
 ProgressCallback = Callable[[int, int], None]
 
 _HASH_BLOCK_BYTES = 1024 * 1024  # 1 MiB
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -65,13 +67,13 @@ class ArtifactService:
         artifact: ModelArtifact,
         progress_callback: ProgressCallback | None = None,
     ) -> ModelArtifact:
-        # ``progress_callback`` is accepted for forward compatibility but is
-        # not wired to ``hf_hub_download`` yet — that helper renders its own
-        # tqdm bar. The next phase (Runner/UI) will replace this with a
-        # streaming download that reports byte-level progress.
-        del progress_callback
-
         target = self.storage.path_for(artifact)
+        # Only a listener gets the progress class, so a downloader that knows nothing about it
+        # (the tests' fakes, an older huggingface_hub) is called exactly as before.
+        extra = (
+            {"tqdm_class": _byte_progress_class(progress_callback)}
+            if progress_callback is not None else {}
+        )
 
         try:
             self.storage.ensure_parent(target)
@@ -82,6 +84,7 @@ class ArtifactService:
                 filename=artifact.filename,
                 revision=artifact.revision or None,
                 local_dir=str(target.parent),
+                **extra,
             )
             local_path = Path(local_str).resolve()
             digest = _sha256_of(local_path)
@@ -91,13 +94,13 @@ class ArtifactService:
                     f"expected {artifact.sha256}, downloaded {digest}."
                 )
             self.storage.save_sha256(local_path, digest)
-        except (EntryNotFoundError, RepositoryNotFoundError) as exc:
-            raise ArtifactNotFoundError(
-                f"{artifact.repo_id}/{artifact.filename} not found on Hugging Face."
-            ) from exc
         except GatedRepoError as exc:
             raise ArtifactDownloadError(
                 f"{artifact.repo_id} is gated. Set HF_TOKEN and request access."
+            ) from exc
+        except (EntryNotFoundError, RepositoryNotFoundError) as exc:
+            raise ArtifactNotFoundError(
+                f"{artifact.repo_id}/{artifact.filename} not found on Hugging Face."
             ) from exc
         except HfHubHTTPError as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -188,6 +191,34 @@ class ArtifactService:
                 )
             update["sha256"] = stored
         return artifact.model_copy(update=update)
+
+
+def _byte_progress_class(callback: ProgressCallback) -> type:
+    """A `tqdm` stand-in for `hf_hub_download` that reports bytes instead of drawing a bar.
+
+    The library draws its own bar on the terminal, which is useless (and garbles the screen)
+    inside the TUI. It is built disabled, so nothing is drawn, and counts the bytes itself.
+    """
+    from tqdm.auto import tqdm  # type: ignore[import-untyped]
+
+    class _ByteProgress(tqdm):  # type: ignore[misc]
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self._counts_bytes = kwargs.get("unit") == "B"
+            self._received = int(kwargs.get("initial") or 0)
+            kwargs["disable"] = True
+            super().__init__(*args, **kwargs)
+
+        def update(self, n: float | None = 1) -> bool | None:
+            if not self._counts_bytes or not n:
+                return None
+            self._received += int(n)
+            try:
+                callback(self._received, int(self.total or 0))
+            except Exception:  # a listener must never break the download
+                logger.debug("download progress listener failed", exc_info=True)
+            return None
+
+    return _ByteProgress
 
 
 def _sha256_of(path: Path) -> str:

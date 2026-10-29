@@ -41,6 +41,8 @@ identity, with a deep-inspection budget, and each match is labelled `confirmed`,
 
 1. **Resolve** — `repo_id` + optional quantization + optional revision → a single-file GGUF
    `ModelArtifact` at a concrete revision (the commit sha when the Hub reports one).
+   Metadata is fetched at the requested revision, and the resolved commit is pinned
+   for downloading. Run-local metadata caches keep different revisions separate.
 2. **Download** — into `<user data dir>/models/<owner>/<repo>/<filename>`, with path
    traversal and unsafe-filename rejection. A SHA-256 is computed, checked against the
    expected digest when known, and only then written to a sidecar.
@@ -55,6 +57,10 @@ identity, with a deep-inspection budget, and each match is labelled `confirmed`,
 Multipart GGUF and Transformers repositories are rejected by the resolver with specific
 errors. Transformers execution takes a different route: the repository reference is passed
 to the runtime, which loads it through the Hugging Face cache.
+
+Access-restricted repositories report an access/token requirement rather than a missing
+model. Download progress includes existing bytes in the completion percentage, but speed
+and ETA use only bytes received after the progress session's baseline, including on resume.
 
 ## Runtimes and backends
 

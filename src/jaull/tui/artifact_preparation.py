@@ -8,6 +8,7 @@ from jaull.advisor.service import AdvisorService
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.runtime import RuntimeName
 from jaull.recommendation.models import ModelRecommendation
+from jaull.workflow.download_progress import DownloadProgressReporter
 
 
 def prepare_recommendation_artifact(
@@ -31,7 +32,7 @@ def prepare_recommendation_artifact(
     )
     if not artifact.is_downloaded:
         report_step("Downloading artifact")
-        artifact = advisor.download_artifact(artifact)
+        artifact = advisor.download_artifact(artifact, DownloadProgressReporter(report_step))
     else:
         report_step(f"Reuse local artifact {artifact.filename}")
     report_step("Verifying artifact")

@@ -129,12 +129,16 @@ def test_full_successful_run() -> None:
     assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
 
 
-@pytest.mark.parametrize("use_case", [UseCase.DOCUMENT_QA, UseCase.REASONING])
+@pytest.mark.parametrize("use_case", [UseCase.CODING, UseCase.DOCUMENT_QA, UseCase.REASONING])
+@pytest.mark.parametrize("size", [14, 22])
+@pytest.mark.parametrize(
+    "priority", [RecommendationPriority.QUALITY, RecommendationPriority.BALANCED],
+)
 def test_general_instruct_fallback_reaches_inspection_on_a_24_gib_vulkan_card(
-    use_case: UseCase,
+    use_case: UseCase, size: int, priority: RecommendationPriority,
 ) -> None:
     tiny = "org/Assistant-135M-Instruct"
-    large = "org/Assistant-14B-Instruct-GGUF"
+    large = f"org/Assistant-{size}B-Instruct-GGUF"
     search = FakeSearchClient(
         default=[candidate(tiny)],
         results={
@@ -162,7 +166,7 @@ def test_general_instruct_fallback_reaches_inspection_on_a_24_gib_vulkan_card(
         profile=profile,
     )
     state = orchestrator.run_workflow(
-        answers(use_case=use_case, priority=RecommendationPriority.QUALITY),
+        answers(use_case=use_case, priority=priority),
         profile,
         services,
     )

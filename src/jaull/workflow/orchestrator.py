@@ -120,19 +120,21 @@ class _RunMetadataClient:
 
     def __init__(self, delegate: HfClientProtocol, telemetry: PerformanceTelemetry) -> None:
         self._delegate = delegate
-        self._model_info: RunCache[str, ModelInfo] = RunCache()
+        self._model_info: RunCache[tuple[str, str | None], ModelInfo] = RunCache()
         self._small_files: RunCache[tuple[str, str], _SmallFileOutcome] = RunCache()
         self._summaries: RunCache[str, SafetensorsSummary | None] = RunCache()
         self._telemetry = telemetry
 
-    def model_info(self, repo_id: str) -> ModelInfo:
-        if repo_id in self._model_info:
+    def model_info(self, repo_id: str, *, revision: str | None = None) -> ModelInfo:
+        key = (repo_id, revision)
+        if key in self._model_info:
             self._telemetry.increment("run_model_info_cache_hits")
         else:
             self._telemetry.increment("run_model_info_cache_misses")
         return self._model_info.get_or_compute(
-            repo_id,
-            lambda: self._delegate.model_info(repo_id),
+            key,
+            lambda: (self._delegate.model_info(repo_id, revision=revision)
+                     if revision is not None else self._delegate.model_info(repo_id)),
         )
 
     def download_small_file(self, repo_id: str, filename: str) -> Path:

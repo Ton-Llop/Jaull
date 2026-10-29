@@ -45,6 +45,7 @@
       "coding:coder instruct",
       "coding:code generation",
       "coding:programming assistant",
+      "coding:instruct",
       "coding:safetensors",
       "coding:gguf",
       "coding:lang-es",
@@ -55,7 +56,17 @@
       "coding:trending"
     ],
     "candidate_count": 1,
-    "evaluated_count": 1
+    "evaluated_count": 1,
+    "retained_candidates": [
+      {
+        "repo_id": "org/Coder-7B",
+        "source_queries": [
+          "q1"
+        ],
+        "downloads": 10000,
+        "evaluation_status": "evaluated"
+      }
+    ]
   },
   "evaluated_candidates": [
     {

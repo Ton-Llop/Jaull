@@ -194,3 +194,28 @@ def test_prepared_plan_retains_the_verified_digest_without_mutating_the_search(m
     prepared = advisor.prepare_execution_plan(plan, hardware=hw)
     assert prepared.plan.artifact.sha256 == prepared.artifact.sha256 == "b" * 64
     assert plan.model_dump_json() == before
+
+
+def test_preparing_a_path_reports_the_download_as_it_arrives():
+    """Found on a B60 box: the paths flow (Paths, Run, Speed, Benchmark) downloads a model in
+    `_prepare_plan_artifact`, which showed only "Downloading artifact" for the minutes it takes."""
+    hw, req, _, estimate, evaluated = _setup()
+    plan = service.recommend([evaluated(GGUF, base=BASE)], req, hardware=hw,
+                             estimate_fn=estimate)[0].plan
+    missing = plan.artifact.to_model_artifact().model_copy(update={"is_downloaded": False})
+    steps = []
+
+    def download(artifact, on_progress=None):
+        for done in (250, 500, 1000):
+            on_progress(done, 1000)
+        return artifact.model_copy(update={"is_downloaded": True})
+
+    advisor = SimpleNamespace(
+        resolve_artifact=lambda **kwargs: missing, download_artifact=download,
+        verify_artifact=lambda artifact, **kwargs: artifact,
+    )
+    AdvisorService._prepare_plan_artifact(advisor, plan, plan.runtime, steps.append)
+
+    progress = [step for step in steps if step.startswith("Downloading artifact ")]
+    assert progress and "100 %" in progress[-1]
+    assert steps[-1] == "Model ready"

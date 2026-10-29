@@ -71,9 +71,9 @@ def test_queries_are_not_a_single_literal_string() -> None:
     assert len({q.search for q in queries}) > 1
 
 
-@pytest.mark.parametrize("use_case", [UseCase.DOCUMENT_QA, UseCase.REASONING])
+@pytest.mark.parametrize("use_case", [UseCase.CODING, UseCase.DOCUMENT_QA, UseCase.REASONING])
 @pytest.mark.parametrize("max_billions", [None, 2.0, 30.0])
-def test_documents_and_reasoning_include_general_instruct_discovery(
+def test_tasks_include_general_instruct_discovery(
     use_case: UseCase, max_billions: float | None,
 ) -> None:
     requirements = _requirements(use_case)
@@ -102,7 +102,9 @@ def test_documents_and_reasoning_include_general_instruct_discovery(
         assert band.pipeline_tag == TEXT_GENERATION_PIPELINE
 
     # One additional page only; shared inspection and candidate budgets do not change.
-    baseline = query_builder.build_queries(_requirements(), max_billions=max_billions)
+    baseline = query_builder.build_queries(
+        _requirements(UseCase.WRITING_TRANSLATION), max_billions=max_billions,
+    )
     assert len(queries) == len(baseline) + 1
     assert all(q.limit == policies.SEARCH_RESULTS_PER_QUERY for q in queries)
     assert len({q.cache_key() for q in queries}) == len(queries)

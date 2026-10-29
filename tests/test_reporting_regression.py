@@ -120,3 +120,33 @@ def test_report_json_exposes_technical_latency_separately() -> None:
     assert isinstance(telemetry["phase_seconds"], dict)
     assert isinstance(telemetry["counters"], dict)
     assert telemetry["candidate_latency"]
+
+
+def test_report_distinguishes_uninspected_candidates_from_failed_inspections() -> None:
+    from jaull.domain.candidates import EvaluatedCandidate
+    from jaull.reporting.recommendation import report_to_dict
+    from tests._workflow_fixtures import candidate
+
+    state = _canonical_state()
+    unseen = candidate("other/General-22B-Instruct-GGUF", queries=["coding:instruct"])
+    broken = candidate("other/Broken-24B-GGUF")
+    state = state.model_copy(update={
+        "candidates": [*state.candidates, unseen, broken],
+        "evaluated_candidates": [
+            *state.evaluated_candidates, EvaluatedCandidate(candidate=broken, failed=True),
+        ],
+    })
+    payload = report_to_dict(state)
+    rows = {row["repo_id"]: row for row in payload["search_strategy"]["retained_candidates"]}
+    assert rows[unseen.repo_id] == {
+        "repo_id": unseen.repo_id,
+        "source_queries": ["coding:instruct"],
+        "downloads": unseen.downloads,
+        "evaluation_status": "not_evaluated",
+    }
+    assert rows[broken.repo_id]["evaluation_status"] == "inspection_failed"
+    assert rows[state.candidates[0].repo_id]["evaluation_status"] == "evaluated"
+    assert payload["search_strategy"]["candidate_count"] == len(rows)
+    assert [item["repo_id"] for item in payload["recommendations"]] == [
+        item.repo_id for item in state.recommendations
+    ]

@@ -45,7 +45,9 @@ _USE_CASE_PHRASES: dict[UseCase, tuple[str, ...]] = {
 
 # These tasks can use general instruction-tuned models whose repository names
 # do not advertise the task. Suitability is assessed after discovery.
-_GENERAL_INSTRUCT_USE_CASES = frozenset({UseCase.DOCUMENT_QA, UseCase.REASONING})
+_GENERAL_INSTRUCT_USE_CASES = frozenset({
+    UseCase.CODING, UseCase.DOCUMENT_QA, UseCase.REASONING,
+})
 
 # Tag filters worth adding as their own query so quantized builds surface even
 # when the plain-text search is dominated by the original repositories.
@@ -97,8 +99,8 @@ def build_queries(
             )
         )
 
-    # Format queries must also reach general Instruct builds for documents and
-    # reasoning, without requiring the task wording in the repository name.
+    # Format queries must also reach general Instruct builds without requiring
+    # the task wording in the repository name. Specialist phrases remain above.
     for fmt in requirements.preferred_formats:
         tag = _FORMAT_TAGS.get(fmt)
         if tag is None:

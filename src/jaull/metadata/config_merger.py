@@ -103,7 +103,8 @@ def merge(
 
     head_dim = pick(
         "head_dim",
-        header.rope_dim if header else None,
+        _as_int(header.raw_kv.get(f"{header.architecture}.attention.key_length"))
+        if header else None,
         base.head_dim if base else None,
     )
 
@@ -143,6 +144,14 @@ def merge(
         sources["quantization_config"] = ConfigurationSource.BASE_MODEL_CONFIG
 
     raw_flags = dict(base.raw_flags) if base else {}
+    if header is not None:
+        # RoPE can rotate only part of a head. K/V dimensions are separate GGUF keys.
+        value_dim = _as_int(header.raw_kv.get(f"{header.architecture}.attention.value_length"))
+        key_dim = _as_int(head_dim)
+        if key_dim is None and isinstance(hidden, int) and isinstance(heads, int) and heads > 0:
+            key_dim = hidden // heads
+        if value_dim is not None and value_dim != key_dim:
+            raw_flags["unsupported_kv_head_dimensions"] = True
     if header is not None and layers is not None and heads is not None and hidden is not None:
         # A GGUF holds only the text decoder and its header states the attention dimensions, so
         # the nested text/vision/audio configs of a multimodal base repository do not apply to it.

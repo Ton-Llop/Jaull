@@ -97,6 +97,7 @@ from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
 from jaull.ports.cache import ModelAnalysisCacheProtocol
 from jaull.recommendation.engine_v2 import PlanRankingContext
+from jaull.workflow.download_progress import DownloadProgressReporter
 from jaull.workflow.progress import ProgressCallback
 from jaull.workflow.state import RecommendationWorkflowState
 
@@ -412,11 +413,10 @@ class AdvisorService:
     def download_artifact(
         self,
         artifact: ModelArtifact,
-        on_progress: object | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> ModelArtifact:
-        # ``on_progress`` accepted for forward compatibility; see
-        # ``ArtifactService.download`` for the current wiring.
-        return self._artifacts().download(artifact, on_progress)  # type: ignore[arg-type]
+        """Download the artifact; `on_progress(bytes_done, bytes_total)` reports as it arrives."""
+        return self._artifacts().download(artifact, on_progress)
 
     def verify_artifact(
         self,
@@ -1644,7 +1644,7 @@ class AdvisorService:
             raise ExecutionPlanningError(str(exc)) from exc
         if not artifact.is_downloaded:
             report_step("Downloading artifact")
-            artifact = self.download_artifact(artifact)
+            artifact = self.download_artifact(artifact, DownloadProgressReporter(report_step))
         else:
             report_step(f"Reuse local artifact {artifact.filename}")
         report_step("Verifying artifact")

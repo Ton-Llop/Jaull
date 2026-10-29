@@ -71,6 +71,7 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             "queries": list(state.search_queries),
             "candidate_count": len(state.candidates),
             "evaluated_count": len(state.evaluated_candidates),
+            "retained_candidates": _retained_candidates(state),
         },
         "workflow_telemetry": _telemetry_to_dict(state),
         "evaluated_candidates": [
@@ -93,6 +94,28 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
         "no_results_reason": list(state.no_results_reason),
         "disclaimer": LEGAL_DISCLAIMER,
     }
+
+
+def _retained_candidates(state: RecommendationWorkflowState) -> list[dict[str, Any]]:
+    """Expose inspection coverage, without calling uninspected models incompatible.
+
+    This is the retained pool, not every Hub hit: rejected, collapsed and
+    budget-truncated search results are not preserved in workflow state.
+    """
+    evaluated = {item.repo_id: item for item in state.evaluated_candidates}
+    rows: list[dict[str, Any]] = []
+    for candidate in state.candidates:
+        item = evaluated.get(candidate.repo_id)
+        status = "not_evaluated" if item is None else (
+            "inspection_failed" if item.failed else "evaluated"
+        )
+        rows.append({
+            "repo_id": candidate.repo_id,
+            "source_queries": list(candidate.source_queries),
+            "downloads": candidate.downloads,
+            "evaluation_status": status,
+        })
+    return rows
 
 
 def report_to_json(state: RecommendationWorkflowState, indent: int = 2) -> str:

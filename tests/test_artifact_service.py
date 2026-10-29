@@ -5,9 +5,11 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
+import httpx
 import pytest
-from huggingface_hub.errors import EntryNotFoundError
+from huggingface_hub.errors import EntryNotFoundError, GatedRepoError
 
 from jaull.artifacts.errors import (
     ArtifactDownloadError,
@@ -19,8 +21,35 @@ from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.model import SafetensorsSummary
-from jaull.exceptions import QuantizationNotFoundError
+from jaull.exceptions import ModelAccessDeniedError, QuantizationNotFoundError
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
+from jaull.huggingface.client import HfClient
+
+
+def _denied():
+    return GatedRepoError("Access required", response=httpx.Response(
+        403, request=httpx.Request("GET", "https://example.invalid"),
+    ))
+
+
+@pytest.mark.parametrize("operation", ["model_info", "download_small_file"])
+def test_hf_gated_errors_keep_access_guidance(operation, monkeypatch):
+    api = Mock()
+    api.model_info.side_effect = _denied()
+    monkeypatch.setattr("jaull.huggingface.client.hf_hub_download", Mock(side_effect=_denied()))
+    client = HfClient(api=api)
+    args = ("owner/repo",) if operation == "model_info" else ("owner/repo", "config.json")
+    with pytest.raises(ModelAccessDeniedError, match="HF_TOKEN"):
+        getattr(client, operation)(*args)
+
+
+def test_artifact_gated_errors_keep_access_guidance(tmp_path):
+    service = _make_service(
+        tmp_path, _gguf_repo([("m-q5_k_m.gguf", 100)]), Mock(side_effect=_denied()),
+    )
+    artifact = service.resolve("owner/repo", "Q5_K_M")
+    with pytest.raises(ArtifactDownloadError, match="HF_TOKEN"):
+        service.download(artifact)
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +72,7 @@ class _FakeInfo:
 class _FakeHfClient:
     info: _FakeInfo
 
-    def model_info(self, repo_id: str) -> _FakeInfo:
+    def model_info(self, repo_id: str, *, revision: str | None = None) -> _FakeInfo:
         return self.info
 
     def download_small_file(self, repo_id: str, filename: str) -> Path:
@@ -157,13 +186,13 @@ def test_multipart_gguf_variant_rejected(tmp_path: Path) -> None:
         service.resolve("owner/repo", quantization="Q5_K_M")
 
 
-def test_revision_from_caller_wins_over_hub_sha(tmp_path: Path) -> None:
+def test_requested_revision_is_pinned_to_its_resolved_commit(tmp_path: Path) -> None:
     client = _gguf_repo([("m-q5_k_m.gguf", 100)])
     service = _make_service(tmp_path, client)
 
     artifact = service.resolve("owner/repo", quantization="Q5_K_M", revision="v1")
 
-    assert artifact.revision == "v1"
+    assert artifact.revision == "sha_from_hub"
 
 
 # ---------------------------------------------------------------------------

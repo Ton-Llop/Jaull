@@ -34,7 +34,10 @@ class HuggingFaceArtifactResolver:
         quantization: str | None,
         revision: str | None = None,
     ) -> ModelArtifact:
-        info = self._client.model_info(repo_id)
+        info = (
+            self._client.model_info(repo_id, revision=revision)
+            if revision is not None else self._client.model_info(repo_id)
+        )
         files = files_from_metadata(info)
         if not files:
             raise ArtifactNotFoundError(
@@ -58,7 +61,7 @@ class HuggingFaceArtifactResolver:
             )
 
         file = variant.files[0]
-        resolved_revision = revision or self._extract_sha(info) or "main"
+        resolved_revision = self._extract_sha(info) or revision or "main"
 
         return ModelArtifact(
             repo_id=repo_id,

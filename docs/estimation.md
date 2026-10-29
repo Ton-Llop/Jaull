@@ -350,9 +350,15 @@ instance) are recorded as warnings and shown in the "Configuration source" row.
 | `num_hidden_layers` | GGUF `block_count` | base config | — | KV = unknown |
 | `num_attention_heads` | GGUF `head_count` | base config | — | KV = unknown |
 | `num_key_value_heads` | GGUF `head_count_kv` | base config | `num_attention_heads` (MHA) | — |
-| `head_dim` | GGUF `rope_dim` | base config `head_dim` | `hidden // heads` | — |
+| `head_dim` | GGUF `attention.key_length` | base config `head_dim` | `hidden // heads` | — |
 | `sliding_window` | base config | — | — | no cap |
 | architecture | GGUF `general.architecture` | base config `model_type` | — | warning |
+
+`rope.dimension_count` describes rotary dimensions, which can cover only part of a
+head; it is never used as the KV head size. An explicit GGUF `attention.value_length`
+that differs from the resolved key dimension makes the KV estimate unknown: the current
+symmetric formula does not model unequal K/V heads. These are separate fields in the
+[GGUF specification](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md).
 
 ### Turning enrichment off
 

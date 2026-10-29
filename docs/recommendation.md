@@ -427,6 +427,27 @@ use below a user threshold that this tool cannot verify.
 
 ---
 
+## Discovery coverage and audit
+
+Coding searches retain their specialist phrases and also search general `instruct`
+repositories. Format, language, size-band and trending queries use that broader term;
+open size-band queries still cover repositories without an instruction marker. This
+does not grant coding capability to a search hit: inspection and ranking still assess
+suitability, memory fit and requirements. No model name or family is promoted by this
+discovery rule, and the search/inspection budgets are unchanged.
+
+JSON reports include `search_strategy.retained_candidates`, with each repository's
+source queries, downloads and `evaluation_status`: `evaluated`, `inspection_failed`
+or `not_evaluated`. The last status is not evidence that a model is incompatible or
+less capable. This list covers the retained candidate pool only, not rejected search
+hits, collapsed copies or hits removed by the candidate budget. Additional repositories
+found during variant discovery can appear in `evaluated_candidates` outside this pool.
+
+The shortlist remains bounded and popularity influences which repositories reach
+inspection. A gap between displayed parameter counts does not establish that no useful
+model exists between them. Offline discovery tests validate coverage and policy, not
+real coding quality or throughput on a particular GPU.
+
 ## From recommendation to evidence
 
 Results shows a speed readout and a **Speed** shortcut beside each plan, also in the

@@ -71,6 +71,7 @@ from jaull.tui.widgets.progress_step import format_step_log
 from jaull.tui.widgets.selection_workspace import SelectionWorkspace
 from jaull.tui.widgets.technical_details import TechnicalDetails
 from jaull.tui.widgets.warnings_panel import WarningsPanel
+from jaull.workflow.download_progress import record_step
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -604,7 +605,7 @@ class RecommendationBenchmarkScreen(Screen[None]):
             self.post_message(_BenchmarkFailed(message))
 
     def _record_step(self, message: str) -> None:
-        self._log_messages.append(message)
+        record_step(self._log_messages, message)
         self._set_status(format_step_log(self._log_messages))
 
     def _set_busy(self, busy: bool) -> None:

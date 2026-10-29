@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class HfClientProtocol(Protocol):
-    def model_info(self, repo_id: str) -> ModelInfo: ...
+    def model_info(self, repo_id: str, *, revision: str | None = None) -> ModelInfo: ...
     def download_small_file(self, repo_id: str, filename: str) -> Path: ...
     def safetensors_summary(self, repo_id: str) -> SafetensorsSummary | None: ...
 
@@ -42,15 +42,19 @@ class HfClient:
         self._token = token or os.environ.get("HF_TOKEN")
         self._api = api or HfApi(token=self._token)
 
-    def model_info(self, repo_id: str) -> ModelInfo:
+    def model_info(self, repo_id: str, *, revision: str | None = None) -> ModelInfo:
         try:
-            return self._api.model_info(repo_id=repo_id, files_metadata=True)
-        except RepositoryNotFoundError as exc:
-            raise ModelNotFoundError(f"Model not found: {repo_id}") from exc
+            if revision is None:
+                return self._api.model_info(repo_id=repo_id, files_metadata=True)
+            return self._api.model_info(
+                repo_id=repo_id, files_metadata=True, revision=revision,
+            )
         except GatedRepoError as exc:
             raise ModelAccessDeniedError(
                 f"Model {repo_id} is gated and requires access approval or an HF_TOKEN."
             ) from exc
+        except RepositoryNotFoundError as exc:
+            raise ModelNotFoundError(f"Model not found: {repo_id}") from exc
         except HfHubHTTPError as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status in {401, 403}:
@@ -79,12 +83,12 @@ class HfClient:
             raise ConfigurationNotFoundError(
                 f"File {filename!r} was not found in repository {repo_id}."
             ) from exc
-        except RepositoryNotFoundError as exc:
-            raise ModelNotFoundError(f"Model not found: {repo_id}") from exc
         except GatedRepoError as exc:
             raise ModelAccessDeniedError(
                 f"Model {repo_id} is gated and requires access approval or an HF_TOKEN."
             ) from exc
+        except RepositoryNotFoundError as exc:
+            raise ModelNotFoundError(f"Model not found: {repo_id}") from exc
         except HfHubHTTPError as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status in {401, 403}:

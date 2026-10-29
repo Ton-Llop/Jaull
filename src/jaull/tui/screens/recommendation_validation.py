@@ -63,6 +63,7 @@ from jaull.tui.widgets.metric_list import MetricList, MetricRow
 from jaull.tui.widgets.progress_step import format_step_log
 from jaull.tui.widgets.summary_card import SummaryCard
 from jaull.tui.widgets.technical_details import TechnicalDetails
+from jaull.workflow.download_progress import record_step
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
@@ -477,7 +478,7 @@ class RecommendationValidationScreen(Screen[None]):
             self.post_message(_ValidationFailed(message))
 
     def _record_step(self, message: str) -> None:
-        self._log_messages.append(message)
+        record_step(self._log_messages, message)
         self._set_status(format_step_log(self._log_messages))
 
     def _set_busy(self, busy: bool) -> None:

@@ -251,6 +251,8 @@ def _is_mixture_of_experts(config: ModelConfig) -> bool:
 
 def _detect_exotic_architecture(config: ModelConfig) -> str | None:
     flags = config.raw_flags
+    if flags.get("unsupported_kv_head_dimensions"):
+        return "Unequal or unresolved key/value head dimensions"
     if any(k in flags for k in ("q_lora_rank", "kv_lora_rank")):
         return "Multi-head Latent Attention (Deepseek-style)"
     if any(k in flags for k in ("text_config", "vision_config", "audio_config")):

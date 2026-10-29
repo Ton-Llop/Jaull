@@ -169,8 +169,8 @@ class _FrozenPredictionClient:
     def __init__(self, analysis: ModelAnalysis) -> None:
         self._analysis = analysis
 
-    def model_info(self, repo_id: str) -> Any:
-        del repo_id
+    def model_info(self, repo_id: str, *, revision: str | None = None) -> Any:
+        del repo_id, revision
         raise HuggingFaceUnavailableError(
             "Offline re-evaluation cannot query Hugging Face model info."
         )
