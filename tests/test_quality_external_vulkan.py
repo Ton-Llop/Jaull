@@ -246,7 +246,9 @@ def test_external_bundle_snapshot_reconstructs_chat_http_not_hellaswag(tmp_path,
     for name, data in extra.items():
         raw[name] = json.dumps(data)
     for name, text in raw.items():
-        (tmp_path / name).write_text(text, encoding="utf-8")
+        # Bytes, not write_text: on Windows write_text turns "\n" into "\r\n", and the
+        # evidence reader keeps server-before.log byte-exact.
+        (tmp_path / name).write_bytes(text.encode("utf-8"))
     monkeypatch.setattr(records.ifeval, "verified_dataset_bytes", lambda path: dataset)
     profile = {"suite": "ifeval", "task": "jaull-ifeval-chat-v1",
                "sample_ids": [0, 1], "classification": "full"}
@@ -292,7 +294,7 @@ def test_external_producer_respects_exclusive_output_ownership(tmp_path, monkeyp
     manifest["capability"]["binary_path"] = str(binary)
     manifest["command"][0] = str(binary)
     manifest.update(device_name="Synthetic GPU", port=8080, server_log=str(tmp_path / "server.log"))
-    Path(manifest["server_log"]).write_text(raw["server.log"], encoding="utf-8")
+    Path(manifest["server_log"]).write_bytes(raw["server.log"].encode("utf-8"))
     manifest_file = tmp_path / "external.json"
     manifest_file.write_text(json.dumps(manifest), encoding="utf-8")
     artifact_file = tmp_path / "artifact.json"
