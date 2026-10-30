@@ -135,6 +135,8 @@ class QualityRunRequest:
     backend: ComputeBackend | None = (
         None  # None: automatic evaluation placement, not normal-plan placement.
     )
+    external_server: Path | None = None
+    server_endpoint: str | None = None
 
 
 _SETUP_KEYS = ("dataset", "server", "root", "image")
@@ -291,6 +293,21 @@ def prepare_quality_setup(
     """Shared preflight, before any model download; optional pinned dataset preparation."""
     _check_cancel(is_cancelled)
     root = _pilot_root(request)
+    external = request.external_server is not None
+    if external != (request.server_endpoint is not None) or (external and (
+        request.profile is not QualityProfile.IFEVAL or request.backend is not ComputeBackend.VULKAN
+    )):
+        raise QualityEvaluationError(
+            "External server and endpoint require each other, "
+            "--profile ifeval and --backend vulkan."
+        )
+    if external:
+        from jaull.evaluation.quality_external import validate_endpoint
+
+        validate_endpoint(request.server_endpoint or "")
+        assert request.external_server is not None
+        if not request.external_server.is_file():
+            raise QualityEvaluationError("External server manifest is missing.")
     if not request.llama_server.expanduser().is_file():
         raise QualityEvaluationError(f"Runtime input missing: {request.llama_server}")
     if not request.dataset_file.expanduser().is_file() and not request.allow_dataset_download:
@@ -311,8 +328,10 @@ def prepare_quality_setup(
     ]
     if request.allow_dataset_download:
         command.append("--allow-dataset-download")
-    if request.profile is not QualityProfile.IFEVAL:
+    if request.profile is not QualityProfile.IFEVAL or external:
         command.append("--observable-runtime")
+    if external:
+        command.append("--external-runtime")
     try:
         if request.backend not in {
             None,
@@ -321,7 +340,7 @@ def prepare_quality_setup(
             ComputeBackend.VULKAN,
         }:
             raise QualityEvaluationError("Quality evaluation supports CPU, CUDA or Vulkan.")
-        if request.profile is QualityProfile.IFEVAL and request.backend not in {
+        if request.profile is QualityProfile.IFEVAL and not external and request.backend not in {
             None,
             ComputeBackend.CUDA,
         }:
@@ -414,9 +433,13 @@ def run_quality_evaluation(
             str(bundle),
             *(
                 ["--backend", request.backend.value if request.backend else "auto"]
-                if request.profile is not QualityProfile.IFEVAL
+                if (request.profile is not QualityProfile.IFEVAL
+                    or request.external_server is not None)
                 else []
             ),
+            *(["--external-server", str(request.external_server.expanduser().resolve()),
+               "--server-endpoint", request.server_endpoint or ""]
+              if request.external_server is not None else []),
         ],
         root,
         output / "run.log",
@@ -432,7 +455,9 @@ def run_quality_evaluation(
         raise QualityEvaluationError("Produced record belongs to a different artifact.")
     if record["classification"] != PROFILE_GRADE[request.profile]:
         raise QualityEvaluationError("Produced record belongs to a different evaluation profile.")
-    if request.backend is not None and request.profile is not QualityProfile.IFEVAL:
+    if request.backend is not None and (
+        request.profile is not QualityProfile.IFEVAL or request.external_server is not None
+    ):
         execution = record["identity"]["runtime"].get("execution", {})
         if execution.get("backend") != request.backend.value:
             raise QualityEvaluationError("Produced record used a different evaluation backend.")

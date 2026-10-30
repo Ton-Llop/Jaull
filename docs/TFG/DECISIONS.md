@@ -2971,6 +2971,101 @@ corregeixen aquí; en són millores a part, cadascuna amb la seva evidència.
 [estimació](../estimation.md), [política](../../src/jaull/estimator/policies.py). Relacionada amb
 D102 (KV de MoE) i D098 (B60 sobre WSL2).
 
+### D121. Les mesures de la B60 es fan amb el binari de Windows i no amb WSL2
+
+**Data i necessitat:** 2026-10-30. Jaull executa llama.cpp dins de WSL2, i a la B60 de Biosfer això
+passa per Mesa Dozen (Vulkan sobre Direct3D 12). Calia decidir amb quin entorn es fan les mesures
+de velocitat i la prova d'IFEval que s'inclouen a la memòria.
+
+**Evidència que ho motiva** (detall a [la comparativa](../b60-comparativa-wsl2-windows.md)): mateix
+driver d'Intel (`32.0.101.8976`), mateix llama.cpp (b11889), mateixos GGUF.
+
+| Model | Generació a WSL2 + Dozen | Generació a Windows natiu |
+|---|---:|---:|
+| Ornith 9B Q8_0 | 4,1 t/s | 36,2 t/s |
+| Qwen3-Coder 30B-A3B Q4_K_M | 2,5 t/s | 99,2 t/s |
+| Qwen3.8-27B Q4_K_M | cau (`Segmentation fault`) | 15,55 t/s |
+
+A WSL2 la B60 va entre 8 i 40 vegades més lenta, i el Qwen3.8-27B cau sempre dins de `libLLVM-14.so`
+(driver d'Intel exposat a WSL, mateix offset en quatre caigudes). **VALIDATED:** la diferència
+i la caiguda. **UNVERIFIED:** quin shader provoca la caiguda i per què el 9B de la mateixa
+família no cau.
+
+**Decisió (de l'autor):** les mesures de rendiment de la B60 que van a la memòria es fan amb el
+**binari de Vulkan de Windows** (`llama-b11889-bin-win-vulkan-x64`). La mesura en WSL2 + Dozen es
+conserva només com a comparació i com a limitació de l'entorn, no com a xifra representativa de la
+targeta.
+
+**Com es fa:** `llama-server.exe` s'executa a Windows lligat a `127.0.0.1`. El cortafuegs de Windows
+no deixa que WSL hi arribi directament, de manera que s'obre un túnel SSH invers amb el client de
+Windows (`ssh.exe -R`), que el deixa visible dins de WSL. L'avaluador (`lm-evaluation-harness`,
+tasca `ifeval`) corre a WSL i parla amb aquell port. No s'ha modificat el cortafuegs.
+
+**Què no es decideix aquí:**
+- Jaull no passa a ser natiu de Windows: el seu pilot de qualitat exigeix Linux o WSL i
+  bloqueja IFEval amb Vulkan a propòsit.
+- El pont dins de Jaull (perquè el seu propi IFEval faci servir un servidor de Windows) **no és una
+  decisió presa**: s'explora per separat, sense ser part d'aquesta decisió. Els resultats de la
+  prova externa no s'han de confondre amb l'IFEval de Jaull.
+- SYCL i OpenVINO queden fora d'abast. Hi ha xifres a articles externs que no s'han verificat.
+
+**Efecte sobre Jaull:** el Run, Speed i Benchmark de Jaull a WSL2 no són representatius de la
+velocitat real de la B60. És una limitació de l'entorn, no un defecte de l'estimador ni del
+llançador: la mesura de Jaull (4,8 t/s) coincideix amb `llama-bench` a mà (4,10 t/s) al mateix entorn.
+
+**Límits:** una sola màquina i una sola execució per model. A WSL2 es va fer servir flash attention
+desactivada i a Windows el valor per defecte; la mesura estricta a Windows amb `-fa off` és
+**PENDENT**. La prova d'IFEval és externa i té una sola execució per model.
+
+**Fonts:** [comparativa](../b60-comparativa-wsl2-windows.md), [taula](../b60-taula-comparativa.md),
+[registre de la prova d'IFEval](../ifeval-b60-prova.md), D098 i D120.
+
+### D122. IFEval amb servidor Vulkan natiu de Windows i Jaull a WSL2
+
+**Data i necessitat:** 2026-10-30. La comparativa de la B60 ja mesura la penalització de
+WSL2 + Dozen (aproximadament 8x i 40x en generació) i la caiguda del 27B que no es produeix
+a Windows, amb el mateix build i controlador. No es repeteixen ni es reinterpreten aquelles
+mesures. Cal permetre que la inferència d'IFEval passi pel binari Windows, sense traslladar
+Jaull ni l'avaluador a Windows.
+
+**Decisió:** contracte `ifeval-external-vulkan-v1`, registre schema 4. Jaull continua a
+WSL2; l'operador inicia `llama-server.exe` natiu mitjançant interoperabilitat WSL. El
+contenidor només envia HTTP a l'endpoint loopback explícit que proporciona l'operador,
+normalment un túnel SSH invers. No s'obre el tallafoc ni s'assumeixen ports o índexs Vulkan.
+La primera topologia admesa exigeix Docker Engine Linux local al mateix WSL, amb xarxa host.
+Docker Desktop, daemons remots/rootless i Jaull natiu a Windows queden fora d'abast.
+
+**Identitat i garanties:** el protocol CUDA existent, la seva comanda i identitat schema 2
+no canvien; una regressió fixa el digest sintètic i els arguments de llançament anteriors.
+HellaSwag conserva `observable-runtime-v2`/schema 3. La ruta nova declara expressament
+servidor `externally_supplied`, OS Windows, endpoint i digest del manifest. Dispositiu
+confirmat amb l'emparellador D098, sense fallback a CPU, pressupost lliure/total observat
+pel binari natiu abans de carregar, comprovació de cabuda, offload complet i assignació
+model/compute al dispositiu en el log, SHA256/build del binari abans i després, model
+rehashat abans/després i plantilla pròpia del GGUF. El camí Windows del model es comprova
+contra el mateix fitxer accessible a WSL. Un pressupost desconegut o evidència contradictòria
+impedeix importar el resultat. El servidor i el túnel són de l'operador: no es tanquen des
+de Jaull, ni en cancel·lar. Només es neteja el contenidor propi.
+
+**Límits:** evidència subministrada per un operador de confiança, no atestació remota del
+procés. Cal una sessió dedicada, el manifest recent, la comanda generada i logs sense editar;
+no es pot compartir el slot ni substituir el model. El pressupost de memòria és una
+observació prèvia, no una reserva de VRAM. No s'ha canviat el rànquing. Es mantenen els
+541 prompts, generació greedy, context 4096, límit 1280, reasoning i caché desactivats, i el
+detector de llengua amb llavor: **és l'IFEval de Jaull, no comparable amb xifres publicades**.
+
+**Estat:** IMPLEMENTED (proves offline); ruta física B60 UNVERIFIED, cap execució IFEval
+d'aquest camí VALIDATED. Biosfer té Docker Desktop 4.95.0 (comprovat el 2026-10-30 amb
+`docker version` al seu WSL2), i aquest contracte el refusa: el preparador exigeix un Engine
+Linux local amb xarxa host (`docker_host_network()` retorna fals amb Docker Desktop). Amb la
+topologia actual la prova física és, doncs, BLOCKED_BY_ENVIRONMENT: cal decidir amb l'autor si s'instal·la a WSL o es dissenya
+una altra topologia, sense ampliar silenciosament l'abast a Jaull natiu de Windows.
+
+**Fonts:** [comparativa B60](../b60-comparativa-wsl2-windows.md), D098,
+[protocol i comandes de validació](../quality-evaluation-pilot.md),
+[servidor extern](../../pilot/quality_eval/external_server.py),
+[contracte](../../src/jaull/evaluation/quality_external.py).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3079,7 +3174,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D120 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D122 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

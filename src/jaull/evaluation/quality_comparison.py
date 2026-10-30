@@ -7,7 +7,6 @@ from typing import Any
 
 from jaull.evaluation.quality_records import (
     GENERATION_PROTOCOL,
-    GENERATION_SCHEMA_VERSION,
     INSTRUCTION_METRICS,
     NON_REUSABLE_SUITES,
     PLUMBING_SUITES,
@@ -27,7 +26,8 @@ def compare_quality_records(
     for record in records:
         validate_record(record)
     identities = [record["identity"] for record in records]
-    generation = [record["schema_version"] == GENERATION_SCHEMA_VERSION for record in records]
+    generation = [identity_mode(record["identity"]) == GENERATION_PROTOCOL["mode"]
+                  for record in records]
     checks: list[dict[str, Any]] = [
         {"field": field, "match": digest(_comparable(identities[0], field))
          == digest(_comparable(identities[1], field))}

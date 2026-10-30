@@ -158,11 +158,13 @@ def validate_chat_request(payload: dict[str, Any]) -> None:
         raise ValueError("Chat request differs from the audited IFEval protocol")
 
 
-def validate_chat_response(response: dict[str, Any]) -> str:
+def validate_chat_response(
+    response: dict[str, Any], *, expected_fingerprint: str = RUNTIME_FINGERPRINT,
+) -> str:
     """Return finish_reason after checking runtime, reasoning, cache and context."""
     choices = response.get("choices")
     usage = response.get("usage") or {}
-    if response.get("system_fingerprint") != RUNTIME_FINGERPRINT:
+    if response.get("system_fingerprint") != expected_fingerprint:
         raise ValueError("Response came from a runtime other than the audited build")
     if not isinstance(choices, list) or len(choices) != 1:
         raise ValueError("Chat response must carry exactly one choice")
@@ -228,6 +230,27 @@ def run(output: Path, base_url: str, profile_name: str) -> None:
     config["task"] = task
     artifact = json.loads((output / "verified-artifact.json").read_text())
     validate_artifact_identity(artifact)
+    commands = json.loads((output / "commands.json").read_text())
+    execution = commands.get("execution")
+    fingerprint = RUNTIME_FINGERPRINT
+    server_artifact = artifact
+    if execution is not None:
+        import re
+
+        builds = re.findall(
+            r"(?:version:\s*(?:\S+\s*\(build\s+)?|\bb)(\d+)(?:,\s*commit\s+|\s*(?:\(|-))"
+            r"([0-9a-f]{7,40})\)?", execution["version_text"],
+        )
+        if (
+            execution["protocol"] != "ifeval-external-vulkan-v1"
+            or execution["backend"] != "vulkan" or len(set(builds)) != 1
+            or execution["fingerprint"] != f"b{builds[0][0]}-{builds[0][1]}"
+            or execution["server_sha256"] != commands["server_sha256"]
+            or base_url != execution["external_server"]["endpoint"]
+        ):
+            raise ValueError("Missing/mismatched external IFEval runtime identity")
+        fingerprint = execution["fingerprint"]
+        server_artifact = artifact | {"local_path": execution["external_server"]["model_path"]}
     with Path("/artifact/model.gguf").open("rb") as model:
         digest = hashlib.file_digest(model, "sha256").hexdigest()
     if digest != artifact["sha256"]:
@@ -237,7 +260,7 @@ def run(output: Path, base_url: str, profile_name: str) -> None:
     props.raise_for_status()
     props = props.json()
     write_json(output / "server-props.json", props)
-    template_sha256 = validate_server_props(props, artifact)
+    template_sha256 = validate_server_props(props, server_artifact)
     dataset = verified_dataset_bytes(Path("/dataset/ifeval.jsonl"))
     dataset_path = output / "dataset-ifeval.jsonl"
     with dataset_path.open("xb") as handle:
@@ -297,7 +320,9 @@ def run(output: Path, base_url: str, profile_name: str) -> None:
                     response = requests.post(chat_url, json=payload, timeout=self.timeout)
                     response.raise_for_status()
                     entry["response"] = response.json()
-                    entry["finish_reason"] = validate_chat_response(entry["response"])
+                    entry["finish_reason"] = validate_chat_response(
+                        entry["response"], expected_fingerprint=fingerprint,
+                    )
                     return entry["response"]
                 except Exception as exc:
                     entry["error"] = f"{type(exc).__name__}: {exc}"

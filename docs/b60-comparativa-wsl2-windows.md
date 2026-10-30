@@ -132,7 +132,7 @@ L'article de `dirtysouthalpha.com` cita el 27B dens a 4,4 t/s (amb `IQ4_XS`). La
 
 ## 7. Decisió d'abast que això reobre
 
-La nota del projecte deia que el pont WSL2 → Windows quedava sense implementar fins que es demostrés que Vulkan natiu a WSL2 no funciona bé. Aquestes dades hi apunten: funciona, però és molt més lent i cau amb alguns models. Reconsiderar-ho és una **decisió de l'autor**, i no s'ha implementat res.
+La nota del projecte deia que el pont WSL2 → Windows quedava sense implementar fins que es demostrés que Vulkan natiu a WSL2 no funciona bé. Aquestes dades hi apunten: funciona, però és molt més lent i cau amb alguns models. Per a les mesures, l'autor ha decidit fer servir el binari de Windows (D121). Reconsiderar el pont dins de Jaull continua sent una **decisió de l'autor** sense prendre, i no s'ha implementat res.
 
 ## 8. Com reproduir-ho
 

@@ -121,6 +121,7 @@ def prepare_infrastructure(
     allow_download: bool = False,
     suite: str = "hellaswag",
     observable_runtime: bool = False,
+    external_runtime: bool = False,
 ) -> dict[str, Any]:
     if not server.is_file() or not os.access(server, os.X_OK):
         raise ValueError("Runtime unavailable: select an executable pinned llama-server.")
@@ -143,6 +144,13 @@ def prepare_infrastructure(
         raise ValueError("Invalid evaluator image inspection response.")
     image = images[0]
     validate_evaluator_image(image, suite=suite)
+    if external_runtime:
+        from jaull.evaluation.quality_external import EXTERNAL_LABEL, EXTERNAL_PROTOCOL
+
+        if image["Config"]["Labels"].get(EXTERNAL_LABEL) != EXTERNAL_PROTOCOL:
+            raise ValueError("Rebuild evaluator image: external Vulkan IFEval contract missing.")
+        if not docker_host_network():
+            raise ValueError("External IFEval needs a local Linux/WSL Docker Engine host network.")
     if observable_runtime:
         from jaull.evaluation.quality_runtime import QUALITY_RUNTIME_LABEL, QUALITY_RUNTIME_PROTOCOL
 
@@ -202,6 +210,7 @@ def main() -> None:
     # Which pinned dataset and image capability to check; HellaSwag keeps its old call.
     parser.add_argument("--suite", choices=("hellaswag", "ifeval"), default="hellaswag")
     parser.add_argument("--observable-runtime", action="store_true")
+    parser.add_argument("--external-runtime", action="store_true")
     args = parser.parse_args()
     try:
         image = prepare_infrastructure(
@@ -211,6 +220,7 @@ def main() -> None:
             allow_download=args.allow_dataset_download,
             suite=args.suite,
             observable_runtime=args.observable_runtime,
+            external_runtime=args.external_runtime,
         )
     except (OSError, ValueError) as exc:
         write_json(args.output, {"status": "blocked", "error": str(exc)})

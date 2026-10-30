@@ -28,7 +28,9 @@ QUALITY_RUNTIME_LABEL = "io.jaull.quality.runtime-contract"
 QUALITY_RUNTIME_SCHEMA = 3
 
 
-def validate_runtime_observation(runtime: dict[str, Any], raw: dict[str, str]) -> None:
+def validate_runtime_observation(
+    runtime: dict[str, Any], raw: dict[str, str], *, context: int = 2048,
+) -> None:
     """Schema 3 must retain positive execution evidence, not just requested flags."""
     # quality_records calls this validator, so import its digest after module loading.
     from jaull.evaluation.quality_records import digest
@@ -53,7 +55,7 @@ def validate_runtime_observation(runtime: dict[str, Any], raw: dict[str, str]) -
             or commands["server"][1:3] != ["--model", props["model_path"]]
             or selection.selected_backend.value != execution["backend"]
             or props["total_slots"] != 1
-            or props["default_generation_settings"]["n_ctx"] != 2048
+            or props["default_generation_settings"]["n_ctx"] != context
             or props["default_generation_settings"]["params"]["seed"] != 0
             or props["default_generation_settings"]["params"]["post_sampling_probs"] is not False
             or {int(value) for value in re.findall(r"\bn_threads\s*=\s*(\d+)", log)} != {4}
@@ -143,7 +145,15 @@ def fingerprint_from_version(version: str) -> str:
     return f"b{build}-{commit}"
 
 
-def validate_runtime_execution(execution: dict[str, Any], runtime: dict[str, Any]) -> None:
+def validate_runtime_execution(
+    execution: dict[str, Any], runtime: dict[str, Any], *, context: int = 2048,
+    port: int = 18083, chat: bool = False,
+) -> None:
+    if execution.get("protocol") == "ifeval-external-vulkan-v1":
+        from jaull.evaluation.quality_external import validate_external_execution
+
+        validate_external_execution(execution, runtime)
+        return
     if (
         set(execution)
         != {
@@ -179,7 +189,7 @@ def validate_runtime_execution(execution: dict[str, Any], runtime: dict[str, Any
         name = flags[index]
         if name in values:
             raise ValueError("Ambiguous quality server flags")
-        if name in {"--no-context-shift", "--no-cache-prompt"}:
+        if name in {"--no-context-shift", "--no-cache-prompt"} | ({"--jinja"} if chat else set()):
             values[name] = "true"
             index += 1
         else:
@@ -189,8 +199,8 @@ def validate_runtime_execution(execution: dict[str, Any], runtime: dict[str, Any
             index += 2
     fixed = {
         "--host": "127.0.0.1",
-        "--port": "18083",
-        "--ctx-size": "2048",
+        "--port": str(port),
+        "--ctx-size": str(context),
         "--parallel": "1",
         "--threads": "4",
         "--seed": "0",
@@ -198,6 +208,8 @@ def validate_runtime_execution(execution: dict[str, Any], runtime: dict[str, Any
         "--no-cache-prompt": "true",
         "--verbosity": "4",
     }
+    if chat:
+        fixed.update({"--jinja": "true", "--reasoning": "off"})
     if any(values.get(key) != value for key, value in fixed.items()) or (
         set(values) - set(fixed) - {"--n-gpu-layers", "--device"}
     ):

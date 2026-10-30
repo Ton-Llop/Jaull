@@ -158,6 +158,7 @@ def server_command(
     threads: int = 4,
     context: int = CONTEXT,
     chat: bool = False,
+    port: int = 18083,
 ) -> list[str]:
     # The defaults are the pilot's own launch, so its recorded flags do not move.
     # Only the placement replay passes anything else, and only these three.
@@ -168,7 +169,7 @@ def server_command(
         "--host",
         "127.0.0.1",
         "--port",
-        "18083",
+        str(port),
         "--ctx-size",
         str(context),
         "--parallel",
@@ -268,6 +269,11 @@ CPU_TIMEOUTS = {"smoke": 1800, "hellaswag100": 6 * 3600}
 
 
 def run(args: argparse.Namespace) -> None:
+    if getattr(args, "external_server", None) is not None:
+        from pilot.quality_eval.external_server import run_external
+
+        run_external(args)
+        return
     profile = PROFILES[args.profile]
     suite = _suite(args.profile)
     context = IFEVAL_CONTEXT if suite == "ifeval" else CONTEXT
@@ -498,6 +504,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
     parser.add_argument("--backend", choices=("auto", "cpu", "cuda", "vulkan"))
+    parser.add_argument("--external-server", type=Path)
+    parser.add_argument("--server-endpoint")
     run(parser.parse_args())
 
 

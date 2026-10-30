@@ -250,7 +250,7 @@ def _validate_shared_identity(
 
 
 def validate_record(record: dict[str, Any]) -> None:
-    if record.get("schema_version") == GENERATION_SCHEMA_VERSION:
+    if record.get("schema_version") in {GENERATION_SCHEMA_VERSION, 4}:
         _validate_generation_record(record)
         return
     if (
@@ -332,7 +332,15 @@ def _validate_generation_record(record: dict[str, Any]) -> None:
     if record["status"] != "completed":
         raise ValueError("Unsupported/unfinished result record")
     identity = record["identity"]
-    if "execution" in identity["runtime"]:
+    if record["schema_version"] == 4:
+        from jaull.evaluation.quality_external import (
+            validate_external_execution,
+            validate_external_observation,
+        )
+
+        validate_external_execution(identity["runtime"]["execution"], identity["runtime"])
+        validate_external_observation(identity["runtime"], record["provenance"]["evidence"])
+    elif "execution" in identity["runtime"]:
         raise ValueError("Generation retains its audited runtime protocol")
     if identity_mode(identity) != GENERATION_PROTOCOL["mode"]:
         raise ValueError("A schema 2 record must describe chat generation")
@@ -603,7 +611,7 @@ def describe_record(record: dict[str, Any]) -> QualityEvidence:
     dataset, result = identity["dataset"], record["result"]
     task = identity["suite"]["name"]
     samples = result["samples"][task]
-    generation = record["schema_version"] == GENERATION_SCHEMA_VERSION
+    generation = identity_mode(identity) == GENERATION_PROTOCOL["mode"]
     if generation:
         metrics = tuple(
             QualityMetric(
@@ -629,6 +637,8 @@ def describe_record(record: dict[str, Any]) -> QualityEvidence:
             for name in ("acc", "acc_norm")
         )
     limitations: list[str] = []
+    if record["schema_version"] == 4:
+        limitations.append("Externally supplied Windows Vulkan server; Jaull did not launch it.")
     if generation:
         limitations.append(
             "Scored under this artifact's own chat template with reasoning off; whatever "

@@ -21,4 +21,5 @@ RUN python -c "from pilot.quality_eval import ifeval; ifeval.verify_installed_so
 LABEL io.jaull.quality.artifact-contract="exact-local-gguf-v1"
 LABEL io.jaull.quality.suites="hellaswag-v1,ifeval-chat-v1"
 LABEL io.jaull.quality.runtime-contract="observable-runtime-v2"
+LABEL io.jaull.quality.ifeval-runtime-contract="ifeval-external-vulkan-v1"
 ENTRYPOINT ["python", "-m", "pilot.quality_eval.evaluate"]

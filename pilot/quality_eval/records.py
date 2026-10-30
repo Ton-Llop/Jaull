@@ -64,7 +64,7 @@ def validate_record(record: dict[str, Any]) -> None:
     _validate_record_contract(record)
     identity = record["identity"]
     task = identity["suite"]["name"]
-    if record["schema_version"] == GENERATION_SCHEMA_VERSION:
+    if record["schema_version"] in {GENERATION_SCHEMA_VERSION, 4}:
         profile = profile_for_task(task)
         if (
             profile.get("suite") != "ifeval"
@@ -76,6 +76,8 @@ def validate_record(record: dict[str, Any]) -> None:
             evidence = record["provenance"]["evidence"]
             fingerprint, outcome = validate_generation_http(
                 evidence["http.jsonl"], record["result"]["samples"][task],
+                expected_fingerprint=identity["runtime"]["fingerprint"]
+                if record["schema_version"] == 4 else ifeval.RUNTIME_FINGERPRINT,
             )
             if fingerprint != identity["runtime"]["fingerprint"] or outcome != record["outcome"]:
                 raise ValueError("HTTP evidence differs from record identity or outcome")
@@ -162,6 +164,7 @@ def validate_http_coverage(
 
 def validate_generation_http(
     text: str, samples: list[dict[str, Any]],
+    *, expected_fingerprint: str = ifeval.RUNTIME_FINGERPRINT,
 ) -> tuple[str, dict[str, int]]:
     """Every scored reply must be the exact text one audited exchange returned."""
     replies: dict[str, tuple[str, str]] = {}
@@ -174,7 +177,7 @@ def validate_generation_http(
             raise ValueError("Unknown HTTP protocol")
         request, response = exchange["request"], exchange["response"]
         ifeval.validate_chat_request(request)
-        finish = ifeval.validate_chat_response(response)
+        finish = ifeval.validate_chat_response(response, expected_fingerprint=expected_fingerprint)
         rendered = exchange.get("rendered_prompt")
         if not isinstance(rendered, str) or not rendered.strip():
             raise ValueError("Missing rendered chat prompt")
@@ -213,7 +216,19 @@ def _snapshot_generation(
                                    "server-props.json", "chat-template.json")
     )
     samples = result["samples"][task]
-    fingerprint, outcome = validate_generation_http(raw["http.jsonl"], samples)
+    execution = commands.get("execution")
+    if execution is not None:
+        for name in ("external-server.json", "runtime-capability.json", "runtime-after.json",
+                     "runtime-after-sha256.json"):
+            raw[name] = (bundle / name).read_text(encoding="utf-8")
+        raw["server-before.log"] = (bundle / "server-before.log").read_bytes().decode(
+            "utf-8", "backslashreplace",
+        )
+    model_path = execution["external_server"]["model_path"] if execution else artifact["local_path"]
+    fingerprint, outcome = validate_generation_http(
+        raw["http.jsonl"], samples,
+        expected_fingerprint=execution["fingerprint"] if execution else ifeval.RUNTIME_FINGERPRINT,
+    )
     served = props.get("chat_template")
     served_sha256 = hashlib.sha256(served.encode()).hexdigest() if isinstance(served, str) else ""
     server = commands["server"]
@@ -222,8 +237,8 @@ def _snapshot_generation(
         or dataset["sha256"] != hashlib.sha256(dataset_bytes).hexdigest()
         or props["total_slots"] != 1
         or props["default_generation_settings"]["n_ctx"] != evaluator["context"]
-        or props["model_path"] != artifact["local_path"]
-        or server[1:3] != ["--model", artifact["local_path"]]
+        or props["model_path"] != model_path
+        or server[1:3] != ["--model", model_path]
         or "--jinja" not in server
         or server[server.index("--reasoning") + 1:server.index("--reasoning") + 2] != ["off"]
         or template.get("source") != "gguf"
@@ -247,11 +262,12 @@ def _snapshot_generation(
             "server_sha256": commands["server_sha256"], "image_id": evidence["image.json"]["id"],
             "fingerprint": fingerprint, "backend_flags": server[3:],
             "server_defaults_sha256": digest(props["default_generation_settings"]),
+            **({"execution": execution} if execution else {}),
         },
         "protocol": dict(GENERATION_PROTOCOL),
     }
     record = {
-        "schema_version": GENERATION_SCHEMA_VERSION, "status": "completed",
+        "schema_version": 4 if execution else GENERATION_SCHEMA_VERSION, "status": "completed",
         "classification": profile["classification"],
         "identity": identity, "identity_sha256": digest(identity), "result": result,
         "outcome": outcome,
@@ -297,9 +313,13 @@ def snapshot_bundle(bundle: Path) -> dict[str, Any]:
     profile = profile_for_task(task)
     if (
         evidence["smoke-status.json"] != {"status": profile["status"], "quality_evidence": False}
-        or evidence["runner-status.json"] != {
+        or evidence["runner-status.json"] != ({
+            "status": profile["status"], "quality_evidence": False,
+            "server_ownership": "externally_supplied",
+        } if evidence["commands.json"].get("execution", {}).get("protocol")
+        == "ifeval-external-vulkan-v1" else {
             "status": profile["status"], "quality_evidence": False, "server_exit_code": 0,
-        }
+        })
         or evidence["artifact-after.json"] != artifact
         or evidence["container-artifact.json"] != {
             "sha256": artifact["sha256"], "mount": "read-only",

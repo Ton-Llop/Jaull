@@ -67,8 +67,134 @@ device free-memory observations can fluctuate; effective backend/device/build fl
 Different builds, backends, placements, images or effective protocols are not automatically
 comparable. Schemas 1/2 remain readable without rewriting historical records. Schema 3
 HellaSwag is diagnostic only: neither smoke nor the 100-sample subset enters ranking.
-IFEval and its ranking applicability retain the audited CUDA/schema-2 contract in this
-milestone; selecting CPU/Vulkan for IFEval produces an explicit blocker.
+IFEval's default CUDA/schema-2 contract is unchanged. An explicit external Windows Vulkan
+route is separate (schema 4), described below; CPU and locally launched Vulkan IFEval
+remain blocked. The new route does not change ranking.
+
+### External Windows Vulkan IFEval (schema 4)
+
+**IMPLEMENTED (offline tests), physical B60 execution UNVERIFIED.** This is Jaull's full
+541-prompt IFEval with its seeded language detector, not an external/public IFEval score.
+The protocol is `ifeval-external-vulkan-v1`, independent of `observable-runtime-v2`
+HellaSwag/schema 3 and audited CUDA IFEval/schema 2. See decision D122 and
+[the measured B60 comparison](b60-comparativa-wsl2-windows.md); the Windows server avoids
+the measured Dozen slowdown/crashes, without changing those observations.
+
+Scope: Jaull stays on WSL2; only `llama-server.exe` runs natively on Windows, launched by
+the operator through WSL interoperability. This external route is CLI-only; the TUI and
+its settings are unchanged. Windows Jaull is not implemented. The evaluator
+uses a **local Linux Docker Engine in the same WSL network namespace**, `--network host`.
+It uses the exact operator-supplied loopback endpoint, not a guessed Windows gateway.
+Docker Desktop, remote/rootless daemons and non-loopback endpoints are deliberately
+blocked in this first contract. No container GPU passthrough is required: only HTTP goes
+to the Windows server. No firewall rules are changed.
+
+If Docker is absent on Biosfer, physical evaluation is **BLOCKED_BY_ENVIRONMENT**.
+Stop and decide whether to install a local Engine in WSL2 or request a separately designed
+Desktop/remote-container topology. Do not replace this with native-Windows Jaull.
+
+Preparation observes the native executable's version and devices, checks the selected
+name through the D098 matcher and records the pre-load free/total memory budget. Zero,
+unknown and ambiguous budgets/devices, software devices and unparseable builds fail closed.
+The `.exe` must be a Windows PE executable. The memory estimate uses the native probe's
+budget, not the WSL Dozen device or its potentially inverted index. Stop other model servers
+before preparing; make a fresh manifest for each model/run and do not reuse old budgets.
+
+The manifest contains the Windows model path corresponding to the fully hashed WSL-visible
+GGUF, exact launch arguments, binary SHA256, native capability and log path. Jaull verifies
+that path mapping again, probes/rechecks the binary around execution and retains full
+offload and model/compute device allocation evidence from the supplied log. Before sending
+scored requests it checks one slot, context 4096, four threads, seed 0, full offload and the
+matched device. Every reply is still checked for build fingerprint, reasoning off, zero
+cached tokens and the full generation budget. Afterwards it rehashes the model and binary,
+reprobes the version/devices, and checks that the startup log is an unchanged prefix.
+
+This is **operator-supplied evidence**, not remote process attestation. The operator must
+use the printed command, a fresh log and a dedicated server; do not point a manifest at a
+different process, share its slot with another client, change the model or edit its files.
+Hashes detect drift, not a malicious operator. Jaull never stops that server or its tunnel,
+including on failure/cancellation. It cleans up only its own UUID-named evaluator container.
+The record labels ownership `externally_supplied`, host OS `windows`, the explicit endpoint
+and the manifest digest. A nonzero attempt or missing/contradictory evidence cannot be imported.
+Comparison remains conservative: the external manifest digest is part of runtime identity,
+so separately prepared campaigns can be `NOT_COMPARABLE`; this route does not silently
+normalise away those differences or promote a result into ranking.
+
+#### Physical Biosfer procedure (not yet run)
+
+In WSL2, from this updated source checkout, set the three actual local paths. The artifact
+manifest must already describe the exact, single GGUF (immutable revision, SHA256, size and
+existing local path). Do not download/substitute a model for this procedure.
+
+```bash
+uv sync --locked
+docker info
+docker context inspect --format '{{json .Endpoints.docker.Host}}'
+# Require a local Linux Engine, not Docker Desktop/remote/rootless; stop otherwise.
+IMAGE=jaull-quality-eval:ifeval-external-vulkan-v1
+docker build --platform linux/amd64 --tag "$IMAGE" pilot/quality_eval
+WIN_SERVER='/mnt/c/llama-win/llama-server.exe'
+ARTIFACT='/absolute/path/to/artifact.json'
+DATASET='/absolute/path/to/ifeval_input_data.jsonl'
+RUN="$HOME/jaull-ifeval-b60-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$RUN"
+"$WIN_SERVER" --version
+"$WIN_SERVER" --list-devices
+# Confirm the exact B60 name; never infer its index from the WSL scan.
+uv run python -m pilot.quality_eval.external_server \
+  --artifact-json "$ARTIFACT" --llama-server "$WIN_SERVER" \
+  --device-name 'Intel(R) Arc(TM) Pro B60 Graphics' \
+  --port 8080 --server-log "$RUN/server.log" --output "$RUN/external-server.json"
+```
+
+In a second WSL terminal, execute the server command printed by preparation, verbatim.
+It invokes the **Windows `.exe` natively**, with the verified Windows model path, mapped
+device, `--host 127.0.0.1 --port 8080 --ctx-size 4096 --parallel 1 --n-gpu-layers -1
+--threads 4 --seed 0 --no-context-shift --no-cache-prompt --jinja --reasoning off --verbosity 4`.
+Its stdout/stderr redirection captures the fresh log. Do not use the Linux Dozen binary.
+On the measured machine the mapped device was Vulkan1, but the helper must establish it anew.
+
+In Windows PowerShell, keep the known reverse tunnel open (replace SSH user/host):
+
+```powershell
+ssh.exe -N -o ExitOnForwardFailure=yes -R 8081:127.0.0.1:8080 -p 2222 USER@HOST
+```
+
+Back in the first WSL terminal, preserving its variables:
+
+```bash
+curl --fail http://127.0.0.1:8081/health
+docker run --rm --pull=never --network host --entrypoint python "$IMAGE" \
+  -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=10).read())"
+# Optional explicit consent to fetch only the pinned IFEval dataset if missing:
+uv run python -m pilot.quality_eval.setup --suite ifeval \
+  --observable-runtime --external-runtime --llama-server "$WIN_SERVER" \
+  --dataset-file "$DATASET" --image "$IMAGE" --allow-dataset-download \
+  --output "$RUN/setup.json"
+uv run jaull quality run --profile ifeval --backend vulkan \
+  --artifact "$ARTIFACT" --dataset-file "$DATASET" --llama-server "$WIN_SERVER" \
+  --pilot-root "$PWD" --image "$IMAGE" \
+  --external-server "$RUN/external-server.json" --server-endpoint http://127.0.0.1:8081 \
+  --output "$RUN/eval" --json
+```
+
+Both health checks must return `status: ok`. Successful evaluation prints `completed` with
+`purpose: diagnostic_only` and a stored record path. `$RUN/eval/run-01/record.json` must
+have schema 4, `identity.runtime.execution.protocol=ifeval-external-vulkan-v1`, backend
+`vulkan`, the observed device, and ownership `externally_supplied`. The bundle retains
+all 541 prompt/reply exchanges, runtime-before/after capability/hash evidence, template,
+memory preflight, startup and complete server log. The existing Jaull language-detector
+warning must remain visible. Record construction rechecks every HTTP reply and aggregate.
+
+**Stop and send the logs** on either failed health check, missing native budget/device,
+ambiguous match, non-PE/unparseable binary, Docker topology blocker, missing full-offload
+line, CPU/other-device buffers, model/context/thread mismatch, reasoning/cache appearing,
+HTTP fingerprint drift, timeout or import failure. Preserve `$RUN/server.log`,
+`$RUN/external-server.json`, `$RUN/setup.json` when present, and all of `$RUN/eval` including
+setup/run/snapshot logs and `*-error.json`. Do not rerun into the same output directory or
+relax the guards. A failed run is not a zero quality score. Stop server and tunnel manually
+only after preserving evidence. Only a completed physical run can change UNVERIFIED to
+VALIDATED for this route; the earlier Windows speed measurements do not validate IFEval.
 
 #### Reproducible CPU invocation
 
@@ -313,7 +439,8 @@ catalog entries are not evidence of poor quality.
   models are indistinguishable.
 - HellaSwag smoke/100 supports CPU-only evaluation and a uniquely identified GPU with
   confirmed full-device fit. Partial-offload and split/multi-GPU evaluation remain
-  unsupported. IFEval still requires its audited single-CUDA-GPU protocol.
+  unsupported. IFEval uses either its audited single-CUDA-GPU protocol or the separate
+  external Windows Vulkan schema-4 route above; no native-Windows Jaull is implied.
 - Schema 3 requires retained runtime capability, command, server properties and positive
   model/compute device allocation evidence, including the effective thread count. Backend
   initialization alone is not execution proof. Missing/contradictory observations block

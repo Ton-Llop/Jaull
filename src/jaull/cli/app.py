@@ -468,6 +468,13 @@ def quality_run_command(
         "--backend",
         help="Evaluation placement: cpu, cuda or vulkan; default auto. No explicit-GPU fallback.",
     ),
+    external_server: Path | None = typer.Option(
+        None, "--external-server", help="Prepared external Windows Vulkan IFEval manifest.",
+    ),
+    server_endpoint: str | None = typer.Option(
+        None, "--server-endpoint",
+        help="WSL loopback HTTP origin, also used by the host-network container.",
+    ),
     as_json: bool = typer.Option(
         False,
         "--json",
@@ -486,6 +493,8 @@ def quality_run_command(
                     pilot_root=pilot_root,
                     profile=profile,
                     backend=backend,
+                    external_server=external_server,
+                    server_endpoint=server_endpoint,
                 )
                 for index, path in enumerate(artifact, start=1)
             ],
