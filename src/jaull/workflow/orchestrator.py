@@ -15,6 +15,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from huggingface_hub.hf_api import ModelInfo
 
@@ -269,6 +270,7 @@ def run_workflow(
                     check_cancelled=lambda: _check(cancelled),
                 )
             candidates = kept[: policies.MAX_UNIQUE_CANDIDATES]
+            inspection_audit: dict[str, Any] = {}
             shortlist = candidate_filter.shortlist(
                 candidates,
                 requirements,
@@ -276,6 +278,7 @@ def run_workflow(
                 budget_bytes=_memory_budget(hardware),
                 hardware=hardware,
                 targets_other_task=lambda item: scoring.targets_another_task(item, requirements),
+                audit=inspection_audit,
             )
         reporter.done(
             "filter",
@@ -284,6 +287,8 @@ def run_workflow(
         current = current.model_copy(
             update={
                 "candidates": candidates,
+                "inspection_shortlist": [item.repo_id for item in shortlist],
+                "inspection_audit": inspection_audit,
                 "search_queries": [q.label for q in queries],
                 "current_step": WorkflowStep.CANDIDATE_EVALUATION,
             }

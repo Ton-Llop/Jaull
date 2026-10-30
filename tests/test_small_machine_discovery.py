@@ -109,14 +109,14 @@ def test_laptop_size_queries_cover_small_ranges_without_unbounding_search(
     assert len({q.cache_key() for q in queries}) == len(queries)
 
 
-def test_the_saved_24_gib_chat_shortlist_keeps_its_exact_order() -> None:
+def test_the_saved_24_gib_chat_shortlist_explores_large_groups_before_filling() -> None:
     expected = [
         "ornith-ai/Ornith-1.5-9B-GGUF",
         "unsloth/Qwen3.8-27B-GGUF",
-        "Qwen/Qwen2.5-7B-Instruct-GGUF",
-        "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
         "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF",
         "bartowski/Qwen2.5-32B-Instruct-GGUF",
+        "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
         "tencent/Hy-MT2-7B-GGUF",
         "bartowski/Qwen2.5-14B-Instruct-GGUF",
         "TheBloke/Llama-2-7B-Chat-GGUF",

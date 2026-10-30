@@ -64,9 +64,132 @@
           "q1"
         ],
         "downloads": 10000,
-        "evaluation_status": "evaluated"
+        "evaluation_status": "evaluated",
+        "inspection_selection": {
+          "selected": true,
+          "position": 1,
+          "reason": "coverage",
+          "coarse_placement": "gpu_offload",
+          "placement_reason": "Coarse byte placement fits GPU weights plus host spillover."
+        }
       }
-    ]
+    ],
+    "inspection_audit": {
+      "version": 1,
+      "limit": 12,
+      "candidates": {
+        "org/Coder-7B": {
+          "input": {
+            "repo_id": "org/Coder-7B",
+            "pipeline_tag": "text-generation",
+            "library_name": "transformers",
+            "license": "apache-2.0",
+            "languages": [
+              "es",
+              "en"
+            ],
+            "tags": [
+              "text-generation",
+              "code"
+            ],
+            "downloads": 10000,
+            "likes": 100,
+            "gated": false,
+            "private": false,
+            "repository_type": null,
+            "base_model_repo_id": null,
+            "revision_hint": null,
+            "last_modified": null,
+            "source_queries": [
+              "q1"
+            ],
+            "metadata_confidence": "medium",
+            "penalties": []
+          },
+          "other_task": false,
+          "text_execution_signal": true,
+          "parameter_billions_hint": 7.0,
+          "family_key": "coder",
+          "placement": {
+            "mode": "gpu_offload",
+            "reason": "Coarse byte placement fits GPU weights plus host spillover.",
+            "quantization_hint": "float16"
+          },
+          "score_components": {
+            "downloads": 9.210440366976517,
+            "likes": 2.30756025842063,
+            "preferred_format": 0.0,
+            "query_coverage": 0.0,
+            "penalties": -0.0
+          },
+          "fit_bonus": 3.0,
+          "score": 14.518000625397146
+        }
+      },
+      "steps": [
+        {
+          "position": 1,
+          "repo_id": "org/Coder-7B",
+          "stage": "coverage"
+        }
+      ],
+      "hardware": {
+        "os": "Linux 6.8",
+        "os_version": "#1 SMP",
+        "arch": "x86_64",
+        "cpu": {
+          "model": "AMD Ryzen 5 3600",
+          "physical_cores": 6,
+          "logical_cores": 12
+        },
+        "memory": {
+          "total_bytes": 34359738368,
+          "available_bytes": 34359738368
+        },
+        "storage": [],
+        "gpus": [
+          {
+            "name": "NVIDIA RTX 4070",
+            "vram_total_bytes": 12884901888,
+            "vram_available_bytes": 12884901888,
+            "driver_version": "550.0",
+            "cuda_version": "12.4"
+          }
+        ],
+        "accelerators": [],
+        "warnings": []
+      },
+      "requirements": {
+        "use_case": "coding",
+        "workload_mode": "interactive",
+        "priority": "balanced",
+        "languages": [
+          "es",
+          "en"
+        ],
+        "concurrent_users": 1,
+        "concurrency_range": "One user",
+        "desired_context": 4096,
+        "expected_input_tokens": null,
+        "expected_output_tokens": null,
+        "min_generation_tps": null,
+        "max_ttft_ms": null,
+        "commercial_use_required": true,
+        "pipeline_tag": "text-generation",
+        "preferred_formats": [
+          "safetensors",
+          "gguf"
+        ],
+        "assumptions": [
+          "12 GiB of VRAM detected; safetensors builds are a realistic target alongside GGUF."
+        ]
+      },
+      "cover_small": false,
+      "best_placement_class": 1,
+      "quality_scale_coverage": false,
+      "exploration_budget": 3,
+      "max_exploration_score_gap": 4.605170185988092
+    }
   },
   "evaluated_candidates": [
     {

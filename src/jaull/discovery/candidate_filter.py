@@ -16,6 +16,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
+from typing import Any
 
 from jaull.domain import licenses
 from jaull.domain.candidates import ModelCandidate
@@ -33,7 +34,7 @@ from jaull.domain.hardware import (
     planning_accelerator_memory_bytes,
 )
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
-from jaull.domain.requirements import UserRequirements
+from jaull.domain.requirements import RecommendationPriority, UserRequirements
 from jaull.domain.runtime_support import (
     QUANTIZED_TRANSFORMERS_BACKENDS,
     available_compute_backends,
@@ -93,6 +94,9 @@ _CUDA_ONLY_QUANTIZATIONS = frozenset({"awq", "gptq"})
 # equal scores; the epsilon only absorbs floating-point noise. Only inside such a tie may
 # the family-diversity preference decide, never to overrule a better score.
 _SCORE_TIE_EPSILON = 1e-9
+# Exploration may look beyond popularity, but not across an arbitrary evidence gap.
+# Quality gates on downloads alone; other priorities retain the full relevance score.
+_MAX_EXPLORATION_SCORE_GAP = math.log(100)
 
 _QUANT_RE = re.compile(r"(?<![a-z0-9])q([2-8])(?:_k(?:_[ms])?|_0)?(?![a-z0-9])")
 
@@ -293,6 +297,11 @@ def _rejection_reason(
 
     tags = {tag.lower() for tag in candidate.tags}
 
+    if (candidate.library_name or "").casefold() in {"diffusers", "diffusion-single-file"} or (
+        tags & {"diffusers", "diffusion-single-file"}
+    ):
+        return "Repository declares a diffusion library; this version only recommends text models."
+
     if tags & _MULTIMODAL_TAGS:
         return "Model is multimodal; this version only recommends text models."
 
@@ -376,6 +385,7 @@ def shortlist(
     *,
     hardware: HardwareProfile | None = None,
     targets_other_task: Callable[[ModelCandidate], bool] | None = None,
+    audit: dict[str, Any] | None = None,
 ) -> list[ModelCandidate]:
     """Choose which candidates are worth the cost of deep inspection.
 
@@ -396,7 +406,7 @@ def shortlist(
     """
     if hardware is not None:
         return _hardware_aware_shortlist(
-            candidates, requirements, limit, hardware, targets_other_task,
+            candidates, requirements, limit, hardware, targets_other_task, audit,
         )
 
     preferred = requirements.preferred_formats[:1]
@@ -534,7 +544,15 @@ def _hardware_aware_shortlist(
     limit: int,
     hardware: HardwareProfile,
     targets_other_task: Callable[[ModelCandidate], bool] | None = None,
+    audit: dict[str, Any] | None = None,
 ) -> list[ModelCandidate]:
+    if audit is not None:
+        audit.clear()
+        audit.update(
+            version=1, limit=limit, candidates={}, steps=[],
+            hardware=hardware.model_dump(mode="json"),
+            requirements=requirements.model_dump(mode="json"),
+        )
     if limit <= 0:
         return []
 
@@ -551,6 +569,32 @@ def _hardware_aware_shortlist(
             )
         )
     entries.sort(key=lambda entry: (entry.other_task, -entry.score, entry.candidate.repo_id))
+    if audit is not None:
+        audit["candidates"] = {
+            entry.candidate.repo_id: {
+                "input": entry.candidate.model_dump(mode="json"),
+                "other_task": entry.other_task,
+                "text_execution_signal": _has_text_execution_signal(entry.candidate),
+                "parameter_billions_hint": parameter_count_hint(entry.candidate.repo_id),
+                "family_key": _family_key(entry.candidate),
+                "placement": {
+                    "mode": entry.hint.mode.value if entry.hint.mode else "unknown",
+                    "reason": entry.hint.reason,
+                    "quantization_hint": entry.hint.quantization_hint,
+                },
+                "score_components": _cheap_desirability_components(entry.candidate, preferred),
+                "fit_bonus": _FIT_BONUS[entry.hint.mode],
+                "score": entry.score,
+            }
+            for entry in entries
+        }
+
+    def record_pick(entry: _ShortlistEntry, stage: str, **details: Any) -> None:
+        if audit is not None:
+            audit["steps"].append({
+                "position": len(selected), "repo_id": entry.candidate.repo_id,
+                "stage": stage, **details,
+            })
     too_large_entries = [
         entry for entry in entries if entry.hint.mode is HardwareFitMode.TOO_LARGE
     ]
@@ -598,6 +642,14 @@ def _hardware_aware_shortlist(
         if not bucket:
             continue
         mode = bucket[0].hint.mode
+        if mode is None:
+            # Explore unknown sizes only with a usable-format or declared text-task signal.
+            bucket.sort(key=lambda entry: (
+                not _has_text_execution_signal(entry.candidate),
+                entry.other_task, -entry.score, entry.candidate.repo_id,
+            ))
+            if not _has_text_execution_signal(bucket[0].candidate):
+                continue
         if mode is not None and _mode_order(mode, hardware) != best_class:
             continue
         if larger_in_best_class and not cover_small and _is_small(bucket[0]):
@@ -606,15 +658,29 @@ def _hardware_aware_shortlist(
         if picked is not None:
             selected_versions.add(_version_key(picked))
             _remember_selection(picked, selected, selected_redundancy, selected_families)
+            record_pick(picked, "coverage")
 
     # Relevance: placement class first, with larger-than-small priority only on
     # larger machines; constrained machines keep both sizes competing for the
     # remaining slots. Then repositories that do not advertise another task
-    # before those that do, and score within it. Family diversity only breaks exact ties.
+    # before those that do, and score within it, apart from the bounded exploration below.
     # A second version of a model already chosen (same family and size) waits behind the
     # other candidates of its group; it is reserve, not merged, and fills a slot only if the
     # budget is not used up.
     remaining = [entry for bucket in buckets for entry in bucket]
+    # Quality needs comparisons across actual sizes, not just one winner from
+    # the broad 14-32B class. Keep this bounded and retain the relevance/fit gates.
+    quality_scale_coverage = (
+        requirements.priority is RecommendationPriority.QUALITY and not cover_small
+    )
+    exploration_left = limit // (2 if quality_scale_coverage else 4)
+    if audit is not None:
+        audit.update(
+            cover_small=cover_small, best_placement_class=best_class,
+            quality_scale_coverage=quality_scale_coverage,
+            exploration_budget=exploration_left,
+            max_exploration_score_gap=_MAX_EXPLORATION_SCORE_GAP,
+        )
     while remaining and len(selected) < limit:
         remaining.sort(
             key=lambda entry: (
@@ -634,6 +700,57 @@ def _hardware_aware_shortlist(
             and (cover_small or _is_small(entry) == _is_small(top))
             and entry.other_task == top.other_task
         ]
+        decision: dict[str, Any] = {}
+        if audit is not None:
+            decision = {
+                "relevance_leader": top.candidate.repo_id,
+                "relevance_group": [entry.candidate.repo_id for entry in group],
+                "exploration_left": exploration_left,
+                "selected_versions": sorted(selected_versions, key=str),
+            }
+        explored = False
+        if exploration_left:
+            exploration_group = group
+            if quality_scale_coverage and top.hint.mode is HardwareFitMode.GPU_RESIDENT:
+                # Coarse offload is not a measured rejection. Inspect plausible
+                # accelerator alternatives before concluding small models are best.
+                exploration_group = [entry for entry in remaining
+                                     if entry.hint.mode in {
+                                         HardwareFitMode.GPU_RESIDENT, HardwareFitMode.GPU_OFFLOAD,
+                                     }
+                                     and not _is_small(entry)
+                                     and entry.other_task == top.other_task]
+            def exploration_score(entry: _ShortlistEntry) -> float:
+                if quality_scale_coverage:
+                    # Likes and repeated query hits still order candidates, but must not
+                    # turn the 100x download guard into a much stricter compound gate.
+                    return math.log1p(max(0, entry.candidate.downloads))
+                return entry.score - _FIT_BONUS[entry.hint.mode]
+
+            exploration_floor = exploration_score(group[0]) - _MAX_EXPLORATION_SCORE_GAP
+            novel = [entry for entry in exploration_group
+                     if ((_version_key(entry) not in selected_versions)
+                         if quality_scale_coverage
+                         else (_redundancy_key(entry) not in selected_redundancy))
+                     and exploration_score(entry) >= exploration_floor]
+            if audit is not None:
+                decision.update(
+                    exploration_group=[entry.candidate.repo_id for entry in exploration_group],
+                    exploration_score_axis="log_downloads" if quality_scale_coverage
+                    else "desirability_without_fit_bonus",
+                    exploration_reference=group[0].candidate.repo_id,
+                    exploration_score_floor=exploration_floor,
+                    eligible_novel_candidates=[entry.candidate.repo_id for entry in novel],
+                )
+            if novel:
+                group = sorted(novel, key=lambda entry: (
+                    -(parameter_count_hint(entry.candidate.repo_id) or 0)
+                    if quality_scale_coverage
+                    else -_scale_order(parameter_count_hint(entry.candidate.repo_id)),
+                    -entry.score, entry.candidate.repo_id,
+                ))
+                exploration_left -= 1
+                explored = True
         first = next(
             (entry for entry in group if _version_key(entry) not in selected_versions), group[0],
         )
@@ -641,6 +758,8 @@ def _hardware_aware_shortlist(
             entry
             for entry in group
             if entry is not first and abs(entry.score - first.score) <= _SCORE_TIE_EPSILON
+            and (_version_key(first) in selected_versions
+                 or _version_key(entry) not in selected_versions)
         ]
         chosen = _pop_bucket_candidate(tied, selected_redundancy, selected_families)
         if chosen is None:
@@ -648,6 +767,7 @@ def _hardware_aware_shortlist(
         remaining.remove(chosen)
         selected_versions.add(_version_key(chosen))
         _remember_selection(chosen, selected, selected_redundancy, selected_families)
+        record_pick(chosen, "exploration" if explored else "relevance", **decision)
 
     too_large_entries.sort(key=lambda entry: (-entry.score, entry.candidate.repo_id))
     too_large_budget = min(_MAX_TOO_LARGE_FALLBACKS, limit - len(selected))
@@ -659,6 +779,7 @@ def _hardware_aware_shortlist(
         if len(selected) >= limit:
             break
         _remember_selection(entry, selected, selected_redundancy, selected_families)
+        record_pick(entry, "too_large_fallback")
 
     return [entry.candidate for entry in selected[:limit]]
 
@@ -677,17 +798,27 @@ def _version_key(entry: _ShortlistEntry) -> tuple[str, float | None]:
     return (_family_key(entry.candidate), parameter_count_hint(entry.candidate.repo_id))
 
 
+def _has_text_execution_signal(candidate: ModelCandidate) -> bool:
+    return _is_gguf_candidate(candidate) or candidate.pipeline_tag == TEXT_GENERATION_PIPELINE
+
+
 def _cheap_desirability(
     candidate: ModelCandidate, preferred_formats: list[str]
 ) -> float:
-    score = math.log1p(max(0, candidate.downloads))
-    score += 0.5 * math.log1p(max(0, candidate.likes))
+    return sum(_cheap_desirability_components(candidate, preferred_formats).values())
+
+
+def _cheap_desirability_components(
+    candidate: ModelCandidate, preferred_formats: list[str],
+) -> dict[str, float]:
     tags = {tag.lower() for tag in candidate.tags}
-    if preferred_formats and preferred_formats[0] in tags:
-        score += 2.0
-    score += 0.75 * (len(candidate.source_queries) - 1)
-    score -= 0.5 * len(candidate.penalties)
-    return score
+    return {
+        "downloads": math.log1p(max(0, candidate.downloads)),
+        "likes": 0.5 * math.log1p(max(0, candidate.likes)),
+        "preferred_format": 2.0 if preferred_formats and preferred_formats[0] in tags else 0.0,
+        "query_coverage": 0.75 * (len(candidate.source_queries) - 1),
+        "penalties": -0.5 * len(candidate.penalties),
+    }
 
 
 def _coarse_offload_hint(
@@ -879,7 +1010,10 @@ def _scale_bucket(billions: float | None) -> str:
 
 
 def _quantization_hint(candidate: ModelCandidate) -> str:
-    haystack = " ".join([candidate.repo_id, *candidate.tags]).lower()
+    # A GGUF repository can tag every precision it offers. Only its own name
+    # identifies a single-precision build; generic repositories use the planning default.
+    haystack = (candidate.repo_id if _is_gguf_candidate(candidate)
+                else " ".join([candidate.repo_id, *candidate.tags])).lower()
     if "awq" in haystack:
         return "awq"
     if "gptq" in haystack:

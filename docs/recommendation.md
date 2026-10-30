@@ -443,6 +443,38 @@ less capable. This list covers the retained candidate pool only, not rejected se
 hits, collapsed copies or hits removed by the candidate budget. Additional repositories
 found during variant discovery can appear in `evaluated_candidates` outside this pool.
 
+New workflows also record `inspection_selection` per retained candidate: selection,
+shortlist position, the bounded-selection policy and the coarse placement reason.
+An unselected candidate has not failed a memory estimate. Older workflow states without
+this audit information do not invent a selection reason when exported.
+
+After initial size coverage, at most one quarter of inspection slots explore previously
+unrepresented family/size groups within the same placement and task-relevance class.
+Larger size classes are explored first; popularity still chooses within a class, and a
+log-score gap greater than `log(100)` prevents exploration from displacing much stronger
+candidates. This is search coverage, not demonstrated quality or final recommendation
+order. Size-unknown hits require a GGUF or declared text-generation signal for the initial
+exploration slot; unconfirmed hits remain available if the budget is not filled.
+
+For Quality on machines whose planning envelope extends beyond the medium class,
+exploration instead uses up to half the inspection budget and distinguishes actual
+family/size pairs within a broad size class. A 16B inspection no longer represents every
+model between 14B and 32B. Plausible larger sizes are explored first, subject to the same
+placement, task-relevance and score-gap gates. Balanced, Speed, Memory and constrained
+machines keep their existing exploration policy. This changes the comparison pool, not
+the final ranking or the requirement that an inspected model must actually fit.
+
+Quality exploration may also inspect plausible coarse GPU-offload alternatives while
+GPU-resident candidates remain. Coarse placement is not a measured rejection; detailed
+inspection decides whether a suitable variant fits. The exploration score-gap comparison
+excludes the placement bonus, so the same preliminary classification is not penalized
+twice. CPU-only and impossible candidates do not enter this cross-placement exploration.
+
+For generic GGUF repositories, precision tags may describe several published variants.
+The shortlist therefore uses its default GGUF quantization unless the repository name
+identifies a specific precision. The chosen precision remains an assumption until artifact
+inspection confirms it; a single-precision Q8/FP16 repository is not assumed to offer Q4.
+
 The shortlist remains bounded and popularity influences which repositories reach
 inspection. A gap between displayed parameter counts does not establish that no useful
 model exists between them. Offline discovery tests validate coverage and policy, not

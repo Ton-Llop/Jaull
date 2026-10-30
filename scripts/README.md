@@ -4,6 +4,7 @@ Small development and validation tools. Production entry points remain the `jaul
 
 | Script | Purpose | Notes |
 |---|---|---|
+| [`replay_inspection_shortlist.py`](replay_inspection_shortlist.py) | Reproduce preselection and its decision trace from a new JSON report. | Offline: `uv run python scripts/replay_inspection_shortlist.py report.json`. Checks both selected repositories and the full trace; older reports lack the required inputs. |
 | [`audit_recommendation_pool.py`](audit_recommendation_pool.py) | Capture/replay query results, filters and candidate/inspection budgets. | Public HF metadata only, or offline `--replay`; requires answers/hardware JSON and a new output file. Does not inspect, download or rank models. |
 | [`audit_quality_recompare.py`](audit_quality_recompare.py) | Compare a pinned measured pair and audit a captured search's GGUF coverage. | Metadata/header requests only; reads existing user evidence, forbids weight downloads/evaluation, and leaves searches unchanged. Optional paths have not passed a fit check. |
 | [`shadow_review_matrix.py`](shadow_review_matrix.py) | Review Quality/Speed/Balanced across captured hardware/task scenarios. | Uses saved discovery/metadata and real stored records; synthetic hardware is not physical validation. Does not activate a policy. |

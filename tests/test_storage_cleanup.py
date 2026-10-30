@@ -206,6 +206,42 @@ def test_bulk_selection_refresh_and_confirmation_reset(size: tuple[int, int]) ->
     asyncio.run(scenario())
 
 
+def test_bulk_selection_does_not_queue_changes_that_can_cancel_confirmation(monkeypatch) -> None:
+    async def scenario() -> None:
+        advisor = StorageAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = StorageScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: not screen._busy)
+            await pilot.pause()
+            posted = []
+            original = Checkbox.post_message
+
+            def track_message(checkbox, message):
+                accepted = original(checkbox, message)
+                if accepted and isinstance(message, Checkbox.Changed):
+                    posted.append(message)
+                return accepted
+
+            monkeypatch.setattr(Checkbox, "post_message", track_message)
+            for action, selected in (("storage-all", True), ("storage-clear", False)):
+                screen._pressed(Button.Pressed(screen.query_one(f"#{action}", Button)))
+                assert all(c.value == selected for c in screen.query(Checkbox))
+                assert posted == []
+                if selected:
+                    delete = screen.query_one("#storage-delete", Button)
+                    screen._pressed(Button.Pressed(delete))
+                    await pilot.pause()
+                    assert str(delete.label) == "Confirm deletion"
+                    assert screen._armed is not None
+            assert screen._armed is None
+            assert screen.query_one("#storage-delete", Button).disabled
+            assert advisor.deleted == []
+
+    asyncio.run(scenario())
+
+
 def test_inventory_errors_are_recoverable() -> None:
     class Advisor(StorageAdvisor):
         fail = True

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -138,15 +139,57 @@ def test_report_distinguishes_uninspected_candidates_from_failed_inspections() -
     })
     payload = report_to_dict(state)
     rows = {row["repo_id"]: row for row in payload["search_strategy"]["retained_candidates"]}
-    assert rows[unseen.repo_id] == {
+    assert {key: rows[unseen.repo_id][key] for key in (
+        "repo_id", "source_queries", "downloads", "evaluation_status",
+    )} == {
         "repo_id": unseen.repo_id,
         "source_queries": ["coding:instruct"],
         "downloads": unseen.downloads,
         "evaluation_status": "not_evaluated",
     }
+    assert rows[unseen.repo_id]["inspection_selection"]["selected"] is False
+    assert rows[unseen.repo_id]["inspection_selection"]["position"] is None
+    assert rows[state.candidates[0].repo_id]["inspection_selection"]["selected"] is True
     assert rows[broken.repo_id]["evaluation_status"] == "inspection_failed"
     assert rows[state.candidates[0].repo_id]["evaluation_status"] == "evaluated"
     assert payload["search_strategy"]["candidate_count"] == len(rows)
     assert [item["repo_id"] for item in payload["recommendations"]] == [
         item.repo_id for item in state.recommendations
     ]
+
+
+def test_exported_audit_can_be_replayed_offline(tmp_path) -> None:
+    from jaull.reporting.recommendation import report_to_dict
+
+    state = _canonical_state()
+    payload = report_to_dict(state)
+    audit = payload["search_strategy"]["inspection_audit"]
+    assert audit == state.inspection_audit
+    assert audit["steps"][0]["stage"] == "coverage"
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "scripts/replay_inspection_shortlist.py"
+    result = subprocess.run(
+        [sys.executable, str(script), str(report)], capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["trace_matches"] is True
+    audit["steps"][0]["stage"] = "changed_policy"
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(script), str(report)], capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["selection_matches"] is True
+    assert json.loads(result.stdout)["trace_matches"] is False
+
+
+def test_old_state_does_not_invent_a_historical_audit() -> None:
+    from jaull.reporting.recommendation import report_to_dict
+
+    state = _canonical_state().model_copy(update={"inspection_audit": None})
+    strategy = report_to_dict(state)["search_strategy"]
+    assert "inspection_audit" not in strategy
+    assert strategy["retained_candidates"][0]["inspection_selection"]["reason"] == (
+        "bounded_coverage_and_relevance"
+    )

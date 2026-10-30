@@ -6,6 +6,8 @@ orchestrator produces it, and tests assert on it directly.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from jaull.domain.candidates import EvaluatedCandidate, ModelCandidate
@@ -53,6 +55,8 @@ class RecommendationWorkflowState(BaseModel):
     errors: list[str] = Field(default_factory=list)
     # Query labels actually issued, so the report can show the search strategy.
     search_queries: list[str] = Field(default_factory=list)
+    inspection_shortlist: list[str] | None = None
+    inspection_audit: dict[str, Any] | None = None
     # Set when the run ended with nothing to recommend but no hard failure.
     no_results_reason: list[str] = Field(default_factory=list)
     telemetry: dict[str, float | int] = Field(default_factory=dict)

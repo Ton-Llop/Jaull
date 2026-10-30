@@ -52,8 +52,8 @@ _FORMAT_TOKENS = {
 }
 
 _PARAM_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"(\d+(?:\.\d+)?)\s*([bBmM])(?![a-zA-Z])"),
-    re.compile(r"(\d+(?:\.\d+)?)[-_]?([bBmM])(?![a-zA-Z])"),
+    re.compile(r"(?<![a-zA-Z0-9.])(\d+(?:\.\d+)?)\s*([bBmM])(?![a-zA-Z])"),
+    re.compile(r"(?<![a-zA-Z0-9.])(\d+(?:\.\d+)?)[-_]?([bBmM])(?![a-zA-Z])"),
 )
 
 _SIZE_MARKER_RE = re.compile(r"[-_]\d+(?:\.\d+)?[bBmM](?![a-zA-Z])")
@@ -212,14 +212,16 @@ def _from_size_label(label: str | None) -> int | None:
 
 
 def _from_repo_id(repo_id: str) -> int | None:
+    counts: list[int] = []
     for pattern in _PARAM_PATTERNS:
-        match = pattern.search(repo_id)
-        if match:
+        for match in pattern.finditer(repo_id.rsplit("/", maxsplit=1)[-1]):
             value = float(match.group(1))
             unit = match.group(2).lower()
             multiplier = 1_000_000_000 if unit == "b" else 1_000_000
-            return int(value * multiplier)
-    return None
+            counts.append(int(value * multiplier))
+    # Expert dimensions (8x3B) and active counts (A3B) are not total counts.
+    # Prefer the largest standalone declaration, still reported as low-confidence.
+    return max(counts, default=None)
 
 
 def _family_from_repo_id(repo_id: str) -> str | None:

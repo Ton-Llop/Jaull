@@ -237,8 +237,11 @@ class StorageScreen(Screen[None]):
             self._load("Local files updated.")
         elif event.button.id in {"storage-all", "storage-clear"}:
             self._armed = None
-            for checkbox in self.query(Checkbox):
-                checkbox.value = event.button.id == "storage-all"
+            # Bulk selection is one update. Delayed per-checkbox notifications
+            # could otherwise cancel a confirmation armed by the next button press.
+            with self.prevent(Checkbox.Changed):
+                for checkbox in self.query(Checkbox):
+                    checkbox.value = event.button.id == "storage-all"
             self._refresh()
         elif event.button.id == "storage-delete" and not self._busy:
             models, runs = self._selected()

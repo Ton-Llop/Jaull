@@ -72,6 +72,8 @@ def report_to_dict(state: RecommendationWorkflowState) -> dict[str, Any]:
             "candidate_count": len(state.candidates),
             "evaluated_count": len(state.evaluated_candidates),
             "retained_candidates": _retained_candidates(state),
+            **({"inspection_audit": state.inspection_audit}
+               if state.inspection_audit is not None else {}),
         },
         "workflow_telemetry": _telemetry_to_dict(state),
         "evaluated_candidates": [
@@ -103,18 +105,46 @@ def _retained_candidates(state: RecommendationWorkflowState) -> list[dict[str, A
     budget-truncated search results are not preserved in workflow state.
     """
     evaluated = {item.repo_id: item for item in state.evaluated_candidates}
+    audit = state.inspection_audit or {}
+    picks = {step["repo_id"]: step for step in audit.get("steps", [])}
     rows: list[dict[str, Any]] = []
     for candidate in state.candidates:
         item = evaluated.get(candidate.repo_id)
         status = "not_evaluated" if item is None else (
             "inspection_failed" if item.failed else "evaluated"
         )
-        rows.append({
+        row: dict[str, Any] = {
             "repo_id": candidate.repo_id,
             "source_queries": list(candidate.source_queries),
             "downloads": candidate.downloads,
             "evaluation_status": status,
-        })
+        }
+        if state.inspection_shortlist is not None:
+            chosen = candidate.repo_id in state.inspection_shortlist
+            row["inspection_selection"] = {
+                "selected": chosen,
+                "position": state.inspection_shortlist.index(candidate.repo_id) + 1
+                if chosen else None,
+                "reason": "bounded_coverage_and_relevance" if chosen
+                else "outside_bounded_inspection_shortlist",
+            }
+            recorded = audit.get("candidates", {}).get(candidate.repo_id)
+            if recorded is not None:
+                row["inspection_selection"].update(
+                    reason=picks[candidate.repo_id]["stage"] if chosen
+                    else "outside_bounded_inspection_shortlist",
+                    coarse_placement=recorded["placement"]["mode"],
+                    placement_reason=recorded["placement"]["reason"],
+                )
+            elif state.hardware is not None and state.requirements is not None:
+                from jaull.discovery.candidate_filter import coarse_placement_hint
+
+                hint = coarse_placement_hint(candidate, state.requirements, state.hardware)
+                row["inspection_selection"]["coarse_placement"] = (
+                    hint.mode.value if hint.mode is not None else "unknown"
+                )
+                row["inspection_selection"]["placement_reason"] = hint.reason
+        rows.append(row)
     return rows
 
 
