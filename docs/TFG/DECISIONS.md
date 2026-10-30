@@ -2915,6 +2915,62 @@ aquesta incertesa. Falta una captura nova amb el pool complet per auditar el cas
 [evidència](../evidence.md), D114-D118. Substitueix la implicació de D117 que una mesura
 guardada eleva per si sola la confiança global; no canvia el tier ni l'estimador.
 
+### D120. L'overhead d'un GGUF no creix amb els pesos (pas 1 de 2)
+
+**Data i necessitat:** 2026-10-30. La pantalla de resultats donava a la B60 xifres de memòria
+molt per damunt del que cal: el Qwen3.8-27B Q4_K_M sortia amb 20,77 GiB i etiqueta `Tight`
+quan, de fet, s'hi executava amb 23,6 GiB lliures. Es va comparar l'estimació amb el que llama.cpp
+calcula ell mateix en carregar (`common_memory_breakdown_print` i `projected to use`, amb
+`llama-server.exe -lv 4`, build b11889, Vulkan natiu a Windows, context 4096).
+
+**Mesures** (un únic dispositiu, B60):
+
+| Model | Pesos a la GPU (MiB) | Context (MiB) | Còmput (MiB) | **Total real** | **Jaull abans** | De més |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3-Coder 30B-A3B Q4_K_M | 17524 | ~384 (derivat) | ~88 (derivat) | **17,57 GiB** (17996 MiB) | 22,42 GiB | +4,85 GiB (+28 %) |
+| Qwen3.8-27B Q4_K_M | 14674 | 854 | 156 | **15,32 GiB** (15684 MiB) | 20,77 GiB | +5,45 GiB (+36 %) |
+| Ornith 1.5 9B Q8_0 | 8045 | 329 | 116 | **8,29 GiB** (8490 MiB) | 12,70 GiB | +4,41 GiB (+53 %) |
+
+Per al Coder, el total ve de `projected to use`; context i còmput són derivats (fórmula de KV i
+resta), no mesures directes. Els altres dos surten de la taula de llama.cpp.
+
+**Què fa l'estimador** (constants de `estimator/policies.py`; per al Coder: pesos 17,28 + KV 0,375 +
+overhead 2,23 + reserva 0,50, i marge del 10 % → 22,42 GiB): `overhead = 512 MiB + 10 % dels pesos`,
+i després el marge del 10 % s'aplica a tot, overhead inclòs. El buffer de còmput real és de
+90-160 MiB en els tres models, entre 13 i 20 vegades menys que l'overhead estimat. Els dos
+percentatges s'apilen i expliquen uns 4,3 GiB dels ~5 GiB de més.
+
+**Decisió (pas 1):** per a repositoris GGUF, que a Jaull s'executen amb llama.cpp, l'overhead
+passa a ser els 512 MiB base **sense** el 10 % dels pesos (`GGUF_OVERHEAD_WEIGHT_FRACTION = 0.0`).
+Les 512 MiB són unes quatre vegades el mesurat. Per a la resta de tipus de repositori es manté
+el 10 %, perquè no s'hi ha mesurat res. La reserva de 512 MiB i el marge del 10 % **no es toquen**.
+
+**Efecte previst** (càlcul sobre les constants, **no una mesura**): Coder ≈ 20,5 GiB, 27B ≈ 19,0 GiB,
+Ornith ≈ 11,7 GiB. Conseqüència de política: el 27B passaria de `Tight` a `Compatible`. A
+Balanced, `comfortable` i `compatible` pesen igual i `tight` penalitza, de manera que **el 27B
+deixa de penalitzar-se en memòria**. Pot canviar el rànquing, i per això va com a decisió pròpia.
+També fa que, en una descàrrega parcial, hi càpiguen més blocs a la GPU (vegeu l'evidència).
+
+**Pas 2 (pendent, no implementat):** substituir la reserva fixa i el marge percentual per
+**1 GiB fix**, que és el llindar que llama.cpp usa en el seu propi ajust
+(`will leave 5617 >= 1024 MiB of free device memory`). Donaria aproximadament Coder 19,2, 27B 17,8
+i Ornith 11,1 GiB. És una heurística, i abans cal comprovar si Jaull compara contra la memòria
+**lliure** mesurada o contra la total: la B60 ja tenia 770 MiB ocupats per Windows (23613 lliures
+de 24382), i si compara contra la lliure la reserva de 512 MiB es comptaria dues vegades. No
+s'ha mesurat cap cas que fallés per memòria, i el cost d'un OOM al PC de Biosfer és molt superior
+al de marcar un model com `Tight`; per això el pas 2 és separat.
+
+**Límits:** tres models, un sol context (4096), llama.cpp amb Vulkan. Els `llama-server` usaven
+4 slots, i amb un únic `llama-cli` el context seria una mica menor (si hi ha biaix, va cap al costat
+conservador). No es valida CUDA ni CPU. La preselecció aproximada de `candidate_filter` (que també
+tracta repositoris que no són GGUF) no canvia. Els pesos que llama.cpp deixa a la CPU (embeddings,
+de 167 a 1030 MiB) i el KV de les capes recurrents dels models híbrids `qwen35` tampoc no es
+corregeixen aquí; en són millores a part, cadascuna amb la seva evidència.
+
+**Fonts:** [comparativa de rendiment](../b60-comparativa-wsl2-windows.md),
+[estimació](../estimation.md), [política](../../src/jaull/estimator/policies.py). Relacionada amb
+D102 (KV de MoE) i D098 (B60 sobre WSL2).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3023,7 +3079,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D119 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D120 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

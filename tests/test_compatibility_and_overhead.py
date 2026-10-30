@@ -119,3 +119,20 @@ def test_overhead_unknown_weights() -> None:
     est = overhead.estimate_overhead(weights_bytes=None)
     assert est.component.bytes == 512 * 1024 * 1024
     assert "unknown" in est.component.explanation.lower()
+
+
+def test_gguf_overhead_has_no_weight_fraction() -> None:
+    """Measured on a B60 with llama.cpp: the compute buffer is ~90-160 MiB whatever the weights.
+
+    The 10 % of weights stays for runtimes we have not measured.
+    """
+    est = overhead.estimate_overhead(
+        weights_bytes=10 * GIB, weight_fraction=overhead.GGUF_OVERHEAD_WEIGHT_FRACTION
+    )
+    assert est.component.bytes == 512 * 1024 * 1024
+    assert est.weight_fraction == 0.0
+
+
+def test_default_overhead_keeps_the_weight_fraction() -> None:
+    est = overhead.estimate_overhead(weights_bytes=10 * GIB)
+    assert est.weight_fraction == 0.10

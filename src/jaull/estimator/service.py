@@ -87,7 +87,14 @@ def estimate_memory(
         f"KV cache dtype assumed to be {inference_cfg.kv_cache_dtype.value}."
     )
 
-    overhead_estimate = overhead.estimate_overhead(weight_estimate.component.bytes)
+    overhead_estimate = overhead.estimate_overhead(
+        weight_estimate.component.bytes,
+        weight_fraction=(
+            overhead.GGUF_OVERHEAD_WEIGHT_FRACTION
+            if analysis.classification.primary_type is RepositoryType.GGUF
+            else overhead.OVERHEAD_WEIGHT_FRACTION
+        ),
+    )
 
     device_reserve = _device_reserve_component(inference_cfg.device_reserve_bytes)
 
