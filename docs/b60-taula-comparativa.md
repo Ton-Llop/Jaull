@@ -14,7 +14,7 @@ Tokens per segon, mesurats amb `llama-bench` i `-ngl 99`. Més alt és millor.
 |---|---|---:|---:|---|
 | **Ornith 9B** Q8_0 | WSL2 | 141,7 | 4,1 | █ |
 | | Windows | 975,8 | **36,2** | ███████ |
-| **Qwen3-Coder 30B-A3B** Q4_K_M | WSL2 | 34 ¹ | 2,5 | ▏ |
+| **Qwen3-Coder 30B-A3B** Q4_K_M | WSL2 ³ ¹ | 164,5 | 5,6 | █ |
 | | Windows | 788,8 | **99,2** | ████████████████████ |
 | **Qwen3.8-27B** Q4_K_M | WSL2 | 49,9 | ✗ cau | ✗ |
 | | Windows | 339,4 | **15,6** | ███ |
@@ -23,7 +23,7 @@ Tokens per segon, mesurats amb `llama-bench` i `-ngl 99`. Més alt és millor.
 
 Escala de les barres: cada `█` són 5 t/s.
 
-¹ Mesura amb molta variància (± 27); no s'hi pot confiar gaire.
+
 
 ² Windows, el 2026-11-03, amb la mateixa comanda (`-ngl 99 -p 128 -n 64 -r 2`) i el mateix build
 (b11889). Fitxer de 18,48 GiB, 32,76 B de paràmetres. Les desviacions d'`llama-bench` són de ± 1,56 t/s
@@ -41,18 +41,21 @@ sola execució. El 32B **no cau** a WSL2.
 | Model | Prompt | Generació |
 |---|---:|---:|
 | Ornith 9B | 6,9 × | **8,8 ×** |
-| Qwen3-Coder 30B-A3B | 23 × ¹ | **39,5 ×** |
+| Qwen3-Coder 30B-A3B | 4,8 × ³ ¹ | **17,7 ×** ³ ¹ (39,5 × amb la primera mesura) |
 | Qwen3.8-27B | 6,8 × | no es pot comparar (a WSL2 cau) |
 | Qwen2.5-32B | 3,0 × ³ | **4,6 ×** ³ |
 
 ## Què vol dir
 
-- A WSL2 + Dozen la targeta va entre **4,6 i 40 vegades més lenta** que a Windows amb el mateix
-  binari i el mateix model. La targeta no és el problema. El 32B dens és el que perd menys.
+- A WSL2 + Dozen la targeta va entre **4,6 i 18 vegades més lenta** que a Windows amb les mesures del 2026-11-03
+  (fins a 40 amb la primera mesura del Coder), amb el mateix binari i el mateix model. La targeta no és el
+  problema. El 32B dens és el que perd menys.
 - El Qwen3.8-27B **cau sempre a WSL2** (`Segmentation fault` dins de `libLLVM-14.so`, del driver
   d'Intel) i **funciona a Windows** amb el mateix fitxer.
-- Un MoE com el Coder 30B va més lent que el 9B dens a WSL2, i a Windows va unes 2,7 vegades més
-  ràpid, que és el que s'esperaria d'un entorn sa.
+- A Windows, un MoE com el Coder 30B va unes 2,7 vegades més ràpid que el 9B dens, que és el que
+  s'esperaria d'un entorn sa. A WSL2 no hi ha un ordre clar: amb la primera mesura el Coder anava més lent que
+  el 9B (2,5 contra 4,1 t/s) i amb la nova va una mica més de pressa (5,6 contra 4,1). Les dues no coincideixen
+  (vegeu la nota ¹).
 
 ## Límits
 

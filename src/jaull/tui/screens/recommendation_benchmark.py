@@ -33,7 +33,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRequest,
     BenchmarkRunResult,
 )
-from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.estimation import HardwareFitMode, HardwareFitResult, MemoryEstimate
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
 from jaull.domain.runtime import (
@@ -972,9 +972,11 @@ def _memory_block(
     )
     for label, value in rows:
         emphasis = None
-        if label == "Estimated":
+        if label in _ESTIMATED_LABELS:
             emphasis = "estimated"
-        elif label in {"Measured"} or label.endswith("peak RAM"):
+        elif (label in {"Measured", "VRAM measured"} and value != _VRAM_NOT_READ) or label.endswith(
+            "peak RAM"
+        ):
             emphasis = "measured"
         children.append(MetricRow(label, value, emphasis=emphasis))
     return Vertical(*children, classes="section")
@@ -1184,6 +1186,9 @@ def _memory_rows(
     estimate: MemoryEstimate | None,
 ) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
+    fit = estimate.hardware_fit if estimate is not None else None
+    if fit is not None and fit.places_weights_on_gpu:
+        return _gpu_memory_rows(results, fit)
     measured_values = [
         result.record.observation.peak_ram_bytes
         for result in results
@@ -1210,6 +1215,45 @@ def _memory_rows(
             rows.append((f"{label} peak RAM", _bytes(observation.peak_ram_bytes)))
         if observation.peak_vram_bytes is not None:
             rows.append((f"{label} peak VRAM", _bytes(observation.peak_vram_bytes)))
+    return rows
+
+
+_VRAM_NOT_READ = "not read on this setup"
+_ESTIMATED_LABELS = {"Estimated", "VRAM estimated", "RAM estimated (host share)"}
+
+
+def _gpu_memory_rows(
+    results: list[BenchmarkRunResult],
+    fit: HardwareFitResult,
+) -> list[tuple[str, str]]:
+    """Host RAM and VRAM as two pools, never one against the other.
+
+    The weights live on the GPU, so the RAM the process peaked at says nothing about the device
+    estimate (llama.cpp also maps the whole model file). The VRAM estimate is the placement's own
+    physical figure, without the policy reserve and margin. A measured VRAM only appears when a
+    reading exists; under offload the host share of the estimate is shown as well.
+    """
+    rows: list[tuple[str, str]] = []
+    vram_peaks: list[int] = []
+    for result in results:
+        observation = result.record.observation
+        if observation.peak_ram_bytes is not None:
+            label = _config_label(result.record)
+            rows.append((f"{label} peak RAM", _bytes(observation.peak_ram_bytes)))
+        if observation.peak_vram_bytes is not None:
+            vram_peaks.append(observation.peak_vram_bytes)
+    if fit.mode is HardwareFitMode.GPU_OFFLOAD and fit.ram_physical_bytes is not None:
+        rows.append(("RAM estimated (host share)", _bytes(fit.ram_physical_bytes)))
+    predicted = fit.gpu_physical_bytes
+    if predicted is None:
+        return rows
+    rows.append(("VRAM estimated", _bytes(predicted)))
+    if vram_peaks:
+        measured = max(vram_peaks)
+        rows.append(("VRAM measured", _bytes(measured)))
+        rows.append(("Difference", _memory_delta(predicted, measured)))
+    else:
+        rows.append(("VRAM measured", _VRAM_NOT_READ))
     return rows
 
 

@@ -641,3 +641,115 @@ def _observation(backend: ComputeBackend) -> BenchmarkObservation:
             ),
         ],
     )
+
+
+# -- the Memory tab keeps host RAM and VRAM apart (D123) -----------------------
+
+
+def _memory_run(peak_ram: int | None = None, peak_vram: int | None = None) -> Any:
+    """What `_memory_rows` reads from a result: a record with an observation and a backend."""
+    from types import SimpleNamespace
+
+    observation = SimpleNamespace(peak_ram_bytes=peak_ram, peak_vram_bytes=peak_vram)
+    record = SimpleNamespace(
+        observation=observation,
+        requested_backend=SimpleNamespace(value="vulkan"),
+        requested_device="Vulkan0",
+    )
+    return SimpleNamespace(record=record)
+
+
+def _gpu_estimate() -> Any:
+    from jaull.domain.inference import TargetDevice
+    from tests.test_memory_estimator import MIB, _coder_like_gguf
+
+    return _coder_like_gguf(TargetDevice.AUTO, device_reserve_bytes=512 * MIB)
+
+
+def _labels(rows: list[tuple[str, str]]) -> list[str]:
+    return [label for label, _ in rows]
+
+
+def test_a_gpu_run_never_compares_host_ram_with_the_vram_estimate() -> None:
+    """Measured on the B60 under WSL2: 5.76 GiB of process RAM against a 20.74 GiB VRAM estimate
+    printed "-72 %". The weights live on the GPU, so that was never a difference."""
+    from jaull.tui.screens.recommendation_benchmark import _bytes, _memory_rows
+
+    estimate = _gpu_estimate()
+    fit = estimate.hardware_fit
+    assert fit is not None and fit.places_weights_on_gpu
+
+    rows = dict(_memory_rows([_memory_run(peak_ram=int(5.76 * 1024**3))], estimate))
+
+    assert rows["Vulkan Vulkan0 peak RAM"] == "5.76 GiB"
+    assert rows["VRAM estimated"] == _bytes(fit.gpu_physical_bytes)
+    assert "Difference" not in rows
+    assert "Estimated" not in rows and "Measured" not in rows
+    assert "not read" in rows["VRAM measured"]
+
+
+def test_a_vram_reading_is_compared_with_the_vram_estimate() -> None:
+    from jaull.tui.screens.recommendation_benchmark import _bytes, _memory_delta, _memory_rows
+
+    estimate = _gpu_estimate()
+    fit = estimate.hardware_fit
+    assert fit is not None and fit.gpu_physical_bytes is not None
+    measured = int(19.28 * 1024**3)
+
+    rows = dict(_memory_rows([_memory_run(peak_ram=1024**3, peak_vram=measured)], estimate))
+
+    assert rows["VRAM measured"] == _bytes(measured)
+    assert rows["Difference"] == _memory_delta(fit.gpu_physical_bytes, measured)
+
+
+def test_ram_comes_before_vram_in_the_memory_tab() -> None:
+    from jaull.tui.screens.recommendation_benchmark import _memory_rows
+
+    labels = _labels(_memory_rows([_memory_run(peak_ram=1024**3)], _gpu_estimate()))
+
+    assert labels.index("Vulkan Vulkan0 peak RAM") < labels.index("VRAM estimated")
+    assert labels.index("VRAM estimated") < labels.index("VRAM measured")
+
+
+def test_an_offloaded_run_shows_the_host_share_of_the_estimate() -> None:
+    from jaull.domain.estimation import HardwareFitMode
+    from jaull.tui.screens.recommendation_benchmark import _bytes, _memory_rows
+
+    estimate = _gpu_estimate()
+    fit = estimate.hardware_fit.model_copy(  # type: ignore[union-attr]
+        update={
+            "mode": HardwareFitMode.GPU_OFFLOAD,
+            "ram_required_bytes": 3 * 1024**3,
+            "ram_safety_margin_bytes": 0,
+        }
+    )
+    estimate = estimate.model_copy(update={"hardware_fit": fit})
+
+    rows = dict(_memory_rows([_memory_run(peak_ram=1024**3)], estimate))
+
+    assert rows["RAM estimated (host share)"] == _bytes(fit.ram_physical_bytes)
+
+
+def test_a_resident_run_has_no_host_share_row() -> None:
+    from jaull.tui.screens.recommendation_benchmark import _memory_rows
+
+    labels = _labels(_memory_rows([_memory_run(peak_ram=1024**3)], _gpu_estimate()))
+
+    assert "RAM estimated (host share)" not in labels
+
+
+def test_a_cpu_run_still_compares_ram_with_ram() -> None:
+    from jaull.domain.estimation import HardwareFitMode
+    from jaull.tui.screens.recommendation_benchmark import _bytes, _memory_delta, _memory_rows
+
+    estimate = _gpu_estimate()
+    fit = estimate.hardware_fit.model_copy(update={"mode": HardwareFitMode.CPU_RAM})  # type: ignore[union-attr]
+    estimate = estimate.model_copy(update={"hardware_fit": fit})
+    peak = 22 * 1024**3
+
+    rows = dict(_memory_rows([_memory_run(peak_ram=peak)], estimate))
+
+    assert rows["Estimated"] == _bytes(estimate.total_bytes)
+    assert rows["Measured"] == _bytes(peak)
+    assert rows["Difference"] == _memory_delta(estimate.total_bytes, peak)
+    assert "VRAM estimated" not in rows

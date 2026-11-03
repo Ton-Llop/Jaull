@@ -151,8 +151,11 @@ def test_gguf_q4_km_fits_in_gpu_with_headroom() -> None:
 MIB = 1024**2
 
 
-def _coder_like_gguf(**knobs):
-    """A 17.28 GiB GGUF shaped like Qwen3-Coder 30B-A3B, at 32768 tokens (D120, D123)."""
+def _coder_like_gguf(target: TargetDevice = TargetDevice.GPU, **knobs):
+    """A 17.28 GiB GGUF shaped like Qwen3-Coder 30B-A3B, at 32768 tokens (D120, D123).
+
+    The structured hardware fit is only computed for ``TargetDevice.AUTO``.
+    """
     size = round(17.28 * GIB)
     variant = GgufVariant(
         quantization="Q4_K_M",
@@ -172,7 +175,7 @@ def _coder_like_gguf(**knobs):
     )
     cfg = InferenceConfiguration(
         context_length=32768,
-        target_device=TargetDevice.GPU,
+        target_device=target,
         quantization="Q4_K_M",
         **knobs,
     )

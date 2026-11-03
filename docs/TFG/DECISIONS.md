@@ -3040,7 +3040,11 @@ família no cau.
 **Afegit el 2026-11-03:** el Qwen2.5 32B Q4_K_M (dens) **no cau** a WSL2 i dona 3,9 t/s de generació amb el
 Benchmark de Jaull (`tg128`), contra 18,13 t/s a Windows amb `llama-bench` (`tg64`): 4,6 vegades més lent, el
 menys afectat dels que s'han mesurat. La comparació és aproximada perquè els protocols són diferents (vegeu la
-[taula](../b60-taula-comparativa.md)). El rang de 8 a 40 vegades passa, doncs, a ser de 4,6 a 40.
+[taula](../b60-taula-comparativa.md)). El mateix dia, el Coder a WSL2 amb el Benchmark de Jaull va donar 5,6 t/s de
+generació (164,5 de prompt), unes 2,2 vegades més que els 2,5 t/s de la mesura amb `llama-bench` de la taula
+anterior; no es sap per què (**UNVERIFIED**) i la xifra de 2,5 es conserva com a primera mesura. Amb la nova, el
+Coder va 17,7 vegades més lent a WSL2 que a Windows, no 39,5. El rang de 8 a 40 vegades passa, doncs, a ser de 4,6 a
+18 amb les mesures del 2026-11-03, i fins a 40 amb la primera del Coder.
 
 **Decisió (de l'autor):** les mesures de rendiment de la B60 que van a la memòria es fan amb el
 **binari de Vulkan de Windows** (`llama-b11889-bin-win-vulkan-x64`). La mesura en WSL2 + Dozen es
@@ -3172,8 +3176,17 @@ mostra a la pestanya Memory `Estimated 20,74 GiB`, que coincideix amb els 20,73 
 diferència és la mida exacta en bytes). **VALIDATED** que l'app aplica D123 en aquest cas. La mateixa pestanya
 mostra `Measured 5,76 GiB` i `Difference −72 %`, però aquesta xifra és el pic de RAM del procés (`Vulkan Vulkan0
 peak RAM`), no la memòria de la GPU, on són els pesos. Comparar una estimació de VRAM amb una mesura de RAM no és
-vàlid: contra la xifra de llama.cpp (19,28 GiB) la diferència real és de +7,6 %. **UNVERIFIED** per què l'app
-no fa servir en aquest entorn els buffers que reporta llama.cpp; no s'ha investigat.
+vàlid: contra la xifra de llama.cpp (19,28 GiB) la diferència real és de +7,6 %.
+
+**Causa i correcció (2026-11-03):** la pantalla de Benchmark (`_memory_rows`) restava el pic de RAM del procés del
+total estimat, que és de dispositiu, sense mirar el backend i sense passar per `compare_prediction`, que ja diu que
+la RSS no mesura la demanda del host amb offload. Ara la pestanya Memory separa els dos pools: el pic de RAM de
+cada configuració, la `VRAM estimated` (la xifra física de la col·locació, sense reserva ni marge) i la `VRAM
+measured`, amb la `Difference` només quan hi ha una lectura; si hi ha offload mostra també la part de host de
+l'estimació. Una execució de CPU continua comparant RAM amb RAM. **VALIDATED** amb proves. **PENDENT:** la VRAM
+mesurada en aquest entorn. El runner de `llama-bench` no llegeix els buffers que declara llama.cpp
+(`parse_llama_cpp_allocation` només s'usa al camí de `llama-cli`), i a Intel amb Vulkan no hi ha lectura del
+driver, de manera que la fila diu `not read on this setup`. Cal comprovar si `llama-bench -v` els imprimeix.
 
 **Efecte previst en el rànquing:** el Qwen2.5 32B Q4_K_M passa de 22,54 a 20,73 GiB i de `Tight` a
 `Compatible`, just per sota del 90 %. Per al Qwen3.8 27B Q5_K_M (de 22,47 a uns 20,7 GiB, 89,7 %) i el Mistral
