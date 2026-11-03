@@ -3037,6 +3037,11 @@ A WSL2 la B60 va entre 8 i 40 vegades més lenta, i el Qwen3.8-27B cau sempre di
 i la caiguda. **UNVERIFIED:** quin shader provoca la caiguda i per què el 9B de la mateixa
 família no cau.
 
+**Afegit el 2026-11-03:** el Qwen2.5 32B Q4_K_M (dens) **no cau** a WSL2 i dona 3,9 t/s de generació amb el
+Benchmark de Jaull (`tg128`), contra 18,13 t/s a Windows amb `llama-bench` (`tg64`): 4,6 vegades més lent, el
+menys afectat dels que s'han mesurat. La comparació és aproximada perquè els protocols són diferents (vegeu la
+[taula](../b60-taula-comparativa.md)). El rang de 8 a 40 vegades passa, doncs, a ser de 4,6 a 40.
+
 **Decisió (de l'autor):** les mesures de rendiment de la B60 que van a la memòria es fan amb el
 **binari de Vulkan de Windows** (`llama-b11889-bin-win-vulkan-x64`). La mesura en WSL2 + Dozen es
 conserva només com a comparació i com a limitació de l'entorn, no com a xifra representativa de la
@@ -3124,31 +3129,58 @@ queden com a mínim 1024 MiB lliures (`will leave N >= 1024 MiB of free device m
 la segueix amb una mica d'estona.
 
 **Decisió (de l'autor), només per a repositoris GGUF:**
-- L'overhead és de 256 MiB, sense fracció dels pesos (abans 512 MiB). És 1,6 vegades el major buffer de
-  còmput mesurat (156 MiB) i cobreix el que d'aquests pesos llama.cpp deixa a la CPU.
+- L'overhead és de 256 MiB, sense fracció dels pesos (abans 512 MiB). És 1,17 vegades el major buffer de
+  còmput mesurat (218 MiB, el del Qwen2.5 32B a 16384).
 - La reserva de dispositiu és `max(valor de l'usuari, 1 GiB)`: l'1 GiB és un mínim que es deixa sempre. Una
   reserva més gran continua manant.
 - El marge percentual per defecte (10 %) desapareix, perquè l'1 GiB ja és tot el marge. Un `--safety-margin-percent`
   explícit i diferent del per defecte continua aplicant-se.
 - Total: pesos + KV + 256 MiB + 1 GiB. La resta de tipus de repositori no canvia, perquè no s'hi ha mesurat res.
 
-**Evidència** (Coder Q4_K_M a la B60, llama.cpp b11889 de Windows; càlcul amb les peces reals de l'estimador,
-vegeu D120):
+**Evidència** (Q4_K_M a la B60, llama.cpp b11889 de Windows; el Coder, amb les peces reals de l'estimador,
+vegeu D120; el Qwen2.5 32B, amb les mateixes constants a mà):
 
-| Context | Jaull abans | Pas 2 de D120 | **D123** | Regla de llama.cpp (mesurat + 1 GiB) | Mesurat |
+| Model i context | Jaull abans | Pas 2 de D120 | **D123** | Regla de llama.cpp (mesurat + 1 GiB) | Mesurat |
 |---|---|---|---|---|---|
-| 4096 | 20,52 GiB, `compatible` | 19,16 GiB | **18,91 GiB, `compatible`** | 18,57 GiB | 17,57 GiB |
-| 32768 | 23,41 GiB, `insufficient` | 21,78 GiB | **21,53 GiB, `tight`** | 21,23 GiB | 20,23 GiB |
+| Coder, 4096 | 20,52 GiB, `compatible` | 19,16 GiB | **18,91 GiB, `compatible`** | 18,57 GiB | 17,57 GiB |
+| Coder, 32768 | 23,41 GiB, `insufficient` | 21,78 GiB | **21,53 GiB, `tight`** | 21,23 GiB | 20,23 GiB |
+| Qwen2.5 32B, 4096 | 22,54 GiB, `tight` | 20,98 GiB | **20,73 GiB, `compatible`** | 20,28 GiB | 19,28 GiB |
+| Qwen2.5 32B, 16384 | 25,83 GiB, `offload` | 23,98 GiB | **23,73 GiB, `offload`** (102,9 %) | 23,29 GiB | 22,29 GiB |
 
-La fórmula nova queda uns 0,3 GiB per sobre de la regla de llama.cpp i 1,3 GiB per sobre del mesurat, a tots
-dos contextos. No es baixa més: 256 MiB ja és 1,6 vegades el còmput màxim mesurat.
+La fórmula nova queda entre 0,3 i 0,5 GiB per sobre de la regla de llama.cpp i entre 1,0 i 1,5 GiB per
+sobre del mesurat. No es baixa més: 256 MiB és només 1,17 vegades el còmput màxim mesurat (218 MiB), de
+manera que en aquesta partida queda una holgura d'uns 38 MiB i la resta del marge la dona l'1 GiB.
 
-**Efecte previst en el rànquing** (**UNVERIFIED**: càlcul meu sobre els totals que mostra la pantalla de la
-B60, nou ≈ avui / 1,1 + 0,25 GiB, sense passar per l'estimador): el Qwen2.5 32B Q4_K_M passaria de 22,54 a
-uns 20,7 GiB (89,9 %), el Qwen3.8 27B Q5_K_M de 22,47 a uns 20,7 (89,7 %) i el Mistral Small 24B Q6_K de 21,61 a
-uns 19,9 (86,3 %). Tots tres passarien de `Tight` a `Compatible`, dos d'ells arran del 90 %. A Balanced,
-`tight` penalitza i `compatible` no, de manera que **pot canviar el rànquing** i el recomanador pot triar
-quantificacions més grans. Per això és una decisió pròpia.
+**El Qwen2.5 32B** (2026-11-03, `-c 4096`, el primer model dens mesurat): pesos 18508 MiB, context 1024,
+còmput 206, projectat 19738 MiB (19,28 GiB), i en queden 3875 lliures. **VALIDATED** com a mesura. El KV
+de Jaull (1,0 GiB, 0,25 GiB per cada 1000 tokens) coincideix exactament amb el de llama.cpp, i el fitxer de
+18,48 GiB és el real. Jaull dona 20,73 GiB (89,9 % de la memòria lliure), +1,45 GiB (+7,5 %) sobre el real:
+uns 417 MiB de pesos que llama.cpp deixa a la CPU, més la holgura de l'overhead i de l'1 GiB. El total de
+Jaull és un càlcul amb les constants, no passat per l'estimador.
+
+**El Qwen2.5 32B a 16384** (`-c 16384`, també 2026-11-03): pesos 18508 MiB, context 4096 (256 MiB per cada
+1000 tokens, com a l'estimació), còmput 218, projectat 22822 MiB (22,29 GiB) de 23613 lliures. llama.cpp diu
+`cannot meet free memory target of 1024 MiB, need to reduce device memory by 232 MiB` i, com que
+`-ngl 99` el va fixar l'usuari, no ajusta res i carrega les 65 capes: en queden **791 MiB lliures**, per sota
+del seu propi llindar. **VALIDATED** com a mesura de càrrega; no s'ha provat que la inferència acabi sense
+quedar-se sense memòria amb aquest marge (**UNVERIFIED**). Jaull dona 23,73 GiB (102,9 %, `offload`): coincideix
+amb el veredicte de llama.cpp, que sense `-ngl` fix treuria una capa o dues de la GPU. Amb el còmput i
+l'1 GiB, el 32B arriba a uns 15.000 tokens de context a la B60 (estimació amb aquestes mesures).
+
+**Validació a l'app (2026-11-03):** el Benchmark de Jaull a WSL2 (`Vulkan0`, Qwen2.5 32B Instruct Q4_K_M)
+mostra a la pestanya Memory `Estimated 20,74 GiB`, que coincideix amb els 20,73 GiB del càlcul de dalt (la
+diferència és la mida exacta en bytes). **VALIDATED** que l'app aplica D123 en aquest cas. La mateixa pestanya
+mostra `Measured 5,76 GiB` i `Difference −72 %`, però aquesta xifra és el pic de RAM del procés (`Vulkan Vulkan0
+peak RAM`), no la memòria de la GPU, on són els pesos. Comparar una estimació de VRAM amb una mesura de RAM no és
+vàlid: contra la xifra de llama.cpp (19,28 GiB) la diferència real és de +7,6 %. **UNVERIFIED** per què l'app
+no fa servir en aquest entorn els buffers que reporta llama.cpp; no s'ha investigat.
+
+**Efecte previst en el rànquing:** el Qwen2.5 32B Q4_K_M passa de 22,54 a 20,73 GiB i de `Tight` a
+`Compatible`, just per sota del 90 %. Per al Qwen3.8 27B Q5_K_M (de 22,47 a uns 20,7 GiB, 89,7 %) i el Mistral
+Small 24B Q6_K (de 21,61 a uns 19,9, 86,3 %) és **UNVERIFIED**: càlcul meu sobre els totals de la pantalla de
+la B60, nou ≈ avui / 1,1 + 0,25 GiB, sense passar per l'estimador. Tots tres passarien de `Tight` a
+`Compatible`. A Balanced, `tight` penalitza i `compatible` no, de manera que **pot canviar el rànquing** i el
+recomanador pot triar quantificacions més grans. Per això és una decisió pròpia.
 
 **Efecte en l'ajust de hardware** (**VALIDATED** a les proves): el marge entra a la comprovació de càrrega
 completa i a la col·locació. Sense marge i amb la reserva d'1 GiB, a la prova de descàrrega parcial hi cap
@@ -3158,7 +3190,7 @@ un bloc més a la GPU (de 19 a 20). A l'estimació apareix també una nova hipò
 `mypy` nets). **PENDENT:** mirar la pantalla de Results de la B60 amb aquest canvi i comprovar el rànquing real.
 
 **Límits:**
-- Mesura de base en tres models i una sola GPU; només el Coder té mesura a 32768. No s'ha mesurat cap cas que
+- Mesura de base en quatre models i una sola GPU; només el Coder té mesura a 32768. No s'ha mesurat cap cas que
   fallés per memòria, i el cost d'un OOM al PC de Biosfer és molt superior al de marcar un model com `Tight`.
 - Els pesos de Jaull són la mida del fitxer, que inclou pesos que llama.cpp deixa a la CPU (de 167 a 1030
   MiB). Als models híbrids com el Qwen3.8 27B l'error és més gran: el pas 2 donava 17,8 GiB contra 15,3

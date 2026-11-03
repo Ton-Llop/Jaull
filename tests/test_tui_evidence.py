@@ -29,6 +29,7 @@ from jaull.domain.execution_plans import (
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+from jaull.presentation.speed import SpeedReadout
 from jaull.tui.app import JaullApp
 from jaull.tui.evidence import EvidenceIndex, EvidenceState
 from jaull.tui.screens import estimate as estimate_module
@@ -488,6 +489,35 @@ def test_paths_clears_historical_evaluation_when_recheck_removes_all_plans() -> 
             assert not str(screen.query_one("#paths-quality-details", Static).content)
             for name in ("run", "validate", "benchmark"):
                 assert screen.query_one(f"#paths-{name}", Button).disabled
+
+    asyncio.run(scenario())
+
+
+def test_recommendation_speed_received_before_mount_is_preserved() -> None:
+    row = _RecommendationRow(0, _gguf_recommendation(), selected=True)
+    speed = SpeedReadout(label="36.2 t/s", details="Saved measurement", measured=True)
+    row.show_speed(speed)
+
+    class View(App[None]):
+        def compose(self) -> ComposeResult:
+            yield row
+            yield row.detail
+
+    async def scenario() -> None:
+        async with View().run_test() as pilot:
+            await pilot.pause()
+            for selector, parent in (
+                ("#rec-speed-0", row),
+                ("#rec-speed-detail-0", row.detail),
+            ):
+                widget = parent.query_one(selector, Static)
+                assert str(widget.content) == speed.label
+                assert widget.tooltip == speed.details
+                assert widget.has_class("status-ok")
+            row.show_speed(SpeedReadout())
+            widget = row.query_one("#rec-speed-0", Static)
+            assert not str(widget.content)
+            assert not widget.has_class("status-ok")
 
     asyncio.run(scenario())
 

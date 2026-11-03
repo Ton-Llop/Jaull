@@ -122,7 +122,7 @@ def test_overhead_unknown_weights() -> None:
 
 
 def test_gguf_overhead_has_no_weight_fraction() -> None:
-    """Measured on a B60 with llama.cpp: the compute buffer is ~90-160 MiB whatever the weights.
+    """Measured on a B60 with llama.cpp: the compute buffer is ~90-220 MiB whatever the weights.
 
     The 10 % of weights stays for runtimes we have not measured.
     """
@@ -134,7 +134,7 @@ def test_gguf_overhead_has_no_weight_fraction() -> None:
 
 
 def test_gguf_overhead_base_covers_the_measured_compute_buffer_with_slack() -> None:
-    """The compute buffer is 88-156 MiB; 256 MiB is 1.6x the largest one (D123)."""
+    """The compute buffer is 88-218 MiB; 256 MiB is 1.17x the largest one (D123)."""
     est = overhead.estimate_overhead(
         weights_bytes=17 * GIB,
         base_bytes=overhead.GGUF_OVERHEAD_BASE_BYTES,

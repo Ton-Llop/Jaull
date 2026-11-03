@@ -102,6 +102,10 @@ class _RecommendationRow(Vertical):
         self._index = index
         self._rec = recommendation
         self._selected = selected
+        # Evidence may arrive before this row's children finish mounting.
+        self._speed_value = Static(
+            "", id=f"rec-speed-{index}", classes="rec-speed-value",
+        )
         self.detail = _RecommendationInspector(index, recommendation)
         self.set_class(selected, "-selected")
 
@@ -120,7 +124,7 @@ class _RecommendationRow(Vertical):
             classes=f"rec-list-fit {_fit_class(rec)}",
         )
         yield Static(_plan_line(rec), classes="rec-plan")
-        yield from _speed_widgets(rec, self._index)
+        yield from _speed_widgets(rec, self._index, value=self._speed_value)
         if rec.unknown_reason:
             yield Static(rec.unknown_reason, classes="rec-unknown-reason")
 
@@ -136,7 +140,7 @@ class _RecommendationRow(Vertical):
         self.detail.show_evidence(evidence)
 
     def show_speed(self, speed: SpeedReadout) -> None:
-        widget = self.query_one(f"#rec-speed-{self._index}", Static)
+        widget = self._speed_value
         widget.update(speed.label)
         widget.tooltip = speed.details
         widget.set_class(speed.measured, "status-ok")

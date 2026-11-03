@@ -49,10 +49,10 @@ OVERHEAD_BASE_BYTES = 512 * MiB
 OVERHEAD_WEIGHT_FRACTION = 0.10
 OVERHEAD_MIN_BYTES = 256 * MiB
 # GGUF artifacts run on llama.cpp. Measured on a B60 (Vulkan, context 4096): the compute
-# buffer is 90-160 MiB for 9B-30B models, so it does not grow with the weights (D120).
+# buffer is 90-220 MiB for 9B-32B models, so it does not grow with the weights (D120, D123).
 # The 10 % fraction stays for the runtimes that have not been measured.
 GGUF_OVERHEAD_WEIGHT_FRACTION = 0.0
-# ... and its base is 256 MiB, 1.6x the largest compute buffer measured (156 MiB), D123.
+# ... and its base is 256 MiB, 1.17x the largest compute buffer measured (218 MiB, 32B), D123.
 GGUF_OVERHEAD_BASE_BYTES = 256 * MiB
 
 # --------------------------------------------------------------------------

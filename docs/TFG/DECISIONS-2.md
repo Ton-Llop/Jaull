@@ -77,8 +77,14 @@ Qwen3.8 27B. Calia triar quin s'usa per al benchmark llarg sobre Lipopótamo.
 - **IFEval no discrimina:** les diferències entre els tres són de l'ordre de l'error estàndard de la
   diferència (uns 0,024). A més, IFEval mesura el seguiment d'instruccions de format, no la capacitat de
   programar com a agent.
-- **Contextos dels densos, UNVERIFIED:** els 16384 tokens que figuren a la configuració dels altres dos
-  vénen d'una estimació de KV per dimensions (uns 0,25 GiB per 1000 tokens), no d'una mesura.
+- **Context del Qwen2.5 32B, VALIDATED:** a `-c 16384` carrega les 65 capes però en queden només 791 MiB
+  lliures, per sota de l'1 GiB que demana llama.cpp (KV 4096 MiB, 256 MiB per cada 1000 tokens). El límit pràctic és
+  d'uns 15.000 tokens. A `-c 4096` en queden 3875 lliures. Vegeu D123.
+- **Context del Qwen3.8 27B, UNVERIFIED:** els 16384 de la configuració vénen d'una estimació de KV per
+  dimensions, no d'una mesura.
+- **Compactació d'OpenCode, UNVERIFIED:** amb `reserved` 10000 per defecte, un context d'uns 15.000 tokens faria
+  compactar cap als 5.000, que és gairebé la mida de tota una sessió de la prova de fum (5.843 tokens). Per això,
+  amb aquests valors, OpenCode no és viable amb un model dens a la B60. No s'ha provat.
 
 **Què no es pot afirmar:** que el Coder programi millor, o igual, que els models densos com a agent.
 No s'ha mesurat. La decisió és pràctica (rapidesa i context), i els resultats del benchmark valdran per
