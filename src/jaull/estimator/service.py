@@ -19,7 +19,7 @@ from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import GgufVariant, ModelAnalysis, ModelConfig
 from jaull.domain.runtime import RuntimeRecommendation  # noqa: F401 (rebuild)
-from jaull.estimator import compatibility, kv_cache, overhead, weights
+from jaull.estimator import compatibility, kv_cache, overhead, policies, weights
 from jaull.estimator.gguf_selection import VariantChoice, select_variant
 from jaull.exceptions import HuggingFaceUnavailableError
 from jaull.huggingface.client import HfClientProtocol
@@ -87,16 +87,32 @@ def estimate_memory(
         f"KV cache dtype assumed to be {inference_cfg.kv_cache_dtype.value}."
     )
 
+    is_gguf = analysis.classification.primary_type is RepositoryType.GGUF
     overhead_estimate = overhead.estimate_overhead(
         weight_estimate.component.bytes,
+        base_bytes=(
+            policies.GGUF_OVERHEAD_BASE_BYTES if is_gguf else policies.OVERHEAD_BASE_BYTES
+        ),
         weight_fraction=(
             overhead.GGUF_OVERHEAD_WEIGHT_FRACTION
-            if analysis.classification.primary_type is RepositoryType.GGUF
+            if is_gguf
             else overhead.OVERHEAD_WEIGHT_FRACTION
         ),
     )
 
-    device_reserve = _device_reserve_component(inference_cfg.device_reserve_bytes)
+    reserve_bytes = inference_cfg.device_reserve_bytes
+    margin_percent = inference_cfg.safety_margin_percent
+    if is_gguf:
+        # llama.cpp accepts a layout that leaves >= 1 GiB free, and that is the whole headroom:
+        # it is the floor of the reserve and replaces the default percentage margin (D123).
+        # A reserve above 1 GiB or an explicit, non-default margin still apply.
+        reserve_bytes = max(reserve_bytes, policies.GGUF_DEVICE_HEADROOM_BYTES)
+        if margin_percent == policies.SAFETY_MARGIN_DEFAULT_PERCENT:
+            margin_percent = 0.0
+        assumptions.append(
+            "GGUF headroom: llama.cpp's own threshold of 1 GiB free replaces the percentage margin."
+        )
+    device_reserve = _device_reserve_component(reserve_bytes)
 
     subtotal = _sum_components(
         [
@@ -109,7 +125,7 @@ def estimate_memory(
 
     safety_margin = _safety_margin_component(
         subtotal=subtotal,
-        percent=inference_cfg.safety_margin_percent,
+        percent=margin_percent,
     )
 
     total_bytes = _sum_components([subtotal, safety_margin.bytes if safety_margin else 0])

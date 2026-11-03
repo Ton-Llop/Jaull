@@ -217,7 +217,9 @@ def test_production_estimator_transports_decomposition_and_bounds_to_reporting()
     assert fit is not None and fit.non_block_placement_bounds is not None
     assert fit.non_block_placement_bounds.non_block_weight_bytes == 670_300_265
     # GGUF overhead no longer scales with the weights (D120): 17 blocks with the old 10 %.
-    assert fit.gpu_transformer_blocks == 19
+    # D123: the percentage margin is gone (llama.cpp's 1 GiB headroom replaces it), which frees
+    # more VRAM than the larger 1 GiB reserve takes: 20 blocks, one more than after D120.
+    assert fit.gpu_transformer_blocks == 20
     assert estimate.assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED
     payload = estimate_to_json_dict(estimate)
     assert payload["hardware_fit"]["non_block_placement_bounds"]["non_block_weight_bytes"] == (

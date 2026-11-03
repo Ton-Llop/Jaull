@@ -9,6 +9,7 @@ from jaull.domain.estimation import (
     RuntimeOverheadEstimate,
 )
 from jaull.estimator.policies import (
+    GGUF_OVERHEAD_BASE_BYTES,
     GGUF_OVERHEAD_WEIGHT_FRACTION,
     OVERHEAD_BASE_BYTES,
     OVERHEAD_MIN_BYTES,
@@ -19,26 +20,26 @@ from jaull.estimator.policies import (
 def estimate_overhead(
     weights_bytes: int | None,
     *,
+    base_bytes: int = OVERHEAD_BASE_BYTES,
     weight_fraction: float = OVERHEAD_WEIGHT_FRACTION,
 ) -> RuntimeOverheadEstimate:
     if weights_bytes is None:
-        bytes_estimate = OVERHEAD_BASE_BYTES
+        bytes_estimate = max(OVERHEAD_MIN_BYTES, base_bytes)
         explanation = (
-            f"Weight size unknown; using base overhead only "
-            f"({_gib(OVERHEAD_BASE_BYTES)} GiB)."
+            f"Weight size unknown; using base overhead only ({_gib(base_bytes)} GiB)."
         )
     else:
-        raw = OVERHEAD_BASE_BYTES + int(weight_fraction * weights_bytes)
+        raw = base_bytes + int(weight_fraction * weights_bytes)
         bytes_estimate = max(OVERHEAD_MIN_BYTES, raw)
         if weight_fraction > 0:
             explanation = (
-                f"Base {_gib(OVERHEAD_BASE_BYTES)} GiB + "
+                f"Base {_gib(base_bytes)} GiB + "
                 f"{weight_fraction * 100:.0f}% of weights "
                 f"({_gib(int(weight_fraction * weights_bytes))} GiB)."
             )
         else:
             explanation = (
-                f"Base {_gib(OVERHEAD_BASE_BYTES)} GiB, not scaled with the weights "
+                f"Base {_gib(base_bytes)} GiB, not scaled with the weights "
                 "(llama.cpp compute buffers measured at 0.1-0.2 GiB)."
             )
 
@@ -50,7 +51,7 @@ def estimate_overhead(
             confidence=EstimationConfidence.LOW,
             explanation=explanation,
         ),
-        base_bytes=OVERHEAD_BASE_BYTES,
+        base_bytes=base_bytes,
         weight_fraction=weight_fraction,
         minimum_bytes=OVERHEAD_MIN_BYTES,
     )
@@ -61,6 +62,7 @@ def _gib(value: int) -> str:
 
 
 __all__ = [
+    "GGUF_OVERHEAD_BASE_BYTES",
     "GGUF_OVERHEAD_WEIGHT_FRACTION",
     "OVERHEAD_WEIGHT_FRACTION",
     "estimate_overhead",

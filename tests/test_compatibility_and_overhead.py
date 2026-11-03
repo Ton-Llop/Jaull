@@ -133,6 +133,23 @@ def test_gguf_overhead_has_no_weight_fraction() -> None:
     assert est.weight_fraction == 0.0
 
 
+def test_gguf_overhead_base_covers_the_measured_compute_buffer_with_slack() -> None:
+    """The compute buffer is 88-156 MiB; 256 MiB is 1.6x the largest one (D123)."""
+    est = overhead.estimate_overhead(
+        weights_bytes=17 * GIB,
+        base_bytes=overhead.GGUF_OVERHEAD_BASE_BYTES,
+        weight_fraction=overhead.GGUF_OVERHEAD_WEIGHT_FRACTION,
+    )
+    assert est.component.bytes == 256 * 1024 * 1024
+    assert est.base_bytes == 256 * 1024 * 1024
+
+
+def test_llama_cpp_headroom_is_its_own_one_gib_threshold() -> None:
+    from jaull.estimator import policies
+
+    assert policies.GGUF_DEVICE_HEADROOM_BYTES == 1024 * 1024 * 1024
+
+
 def test_default_overhead_keeps_the_weight_fraction() -> None:
     est = overhead.estimate_overhead(weights_bytes=10 * GIB)
     assert est.weight_fraction == 0.10

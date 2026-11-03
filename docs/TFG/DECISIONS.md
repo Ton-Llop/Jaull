@@ -2937,7 +2937,7 @@ resta), no mesures directes. Els altres dos surten de la taula de llama.cpp.
 **Què fa l'estimador** (constants de `estimator/policies.py`; per al Coder: pesos 17,28 + KV 0,375 +
 overhead 2,23 + reserva 0,50, i marge del 10 % → 22,42 GiB): `overhead = 512 MiB + 10 % dels pesos`,
 i després el marge del 10 % s'aplica a tot, overhead inclòs. El buffer de còmput real és de
-90-160 MiB en els tres models, entre 13 i 20 vegades menys que l'overhead estimat. Els dos
+90-160 MiB en els tres models, entre 12 i 26 vegades menys que l'overhead estimat. Els dos
 percentatges s'apilen i expliquen uns 4,3 GiB dels ~5 GiB de més.
 
 **Decisió (pas 1):** per a repositoris GGUF, que a Jaull s'executen amb llama.cpp, l'overhead
@@ -2951,7 +2951,16 @@ Balanced, `comfortable` i `compatible` pesen igual i `tight` penalitza, de maner
 deixa de penalitzar-se en memòria**. Pot canviar el rànquing, i per això va com a decisió pròpia.
 També fa que, en una descàrrega parcial, hi càpiguen més blocs a la GPU (vegeu l'evidència).
 
-**Pas 2 (pendent, no implementat):** substituir la reserva fixa i el marge percentual per
+**Validació a la pantalla de la B60 (2026-11-02):** amb el commit de D120 aplicat, Results
+(Coding · Quality · context 4096) mostra el Qwen3 Coder 30B A3B Q4_K_M amb 20,52 GiB i
+`Compatible`, el mateix valor que el càlcul previst. **VALIDATED** per a aquest cas.
+La resta d'entrades no es poden comparar amb la captura anterior, perquè amb menys overhead el
+recomanador tria quantificacions més grans que encara caben: el Qwen2.5 32B passa de Q3_K_M a
+Q4_K_M (22,54 GiB), el Qwen3.8 27B de Q4_K_M a Q5_K_M (22,47 GiB) i el Mistral Small 24B de
+Q5_K_M a Q6_K (21,61 GiB), tots tres amb `Tight`. És un efecte del canvi i no una mesura nova de
+memòria: aquests totals continuen sent el resultat de la fórmula, no un pic observat.
+
+**Pas 2 (substituït per D123, que n'és una variant una mica menys conservadora):** substituir la reserva fixa i el marge percentual per
 **1 GiB fix**, que és el llindar que llama.cpp usa en el seu propi ajust
 (`will leave 5617 >= 1024 MiB of free device memory`). Donaria aproximadament Coder 19,2, 27B 17,8
 i Ornith 11,1 GiB. És una heurística, i abans cal comprovar si Jaull compara contra la memòria
@@ -2960,7 +2969,44 @@ de 24382), i si compara contra la lliure la reserva de 512 MiB es comptaria dues
 s'ha mesurat cap cas que fallés per memòria, i el cost d'un OOM al PC de Biosfer és molt superior
 al de marcar un model com `Tight`; per això el pas 2 és separat.
 
-**Límits:** tres models, un sol context (4096), llama.cpp amb Vulkan. Els `llama-server` usaven
+**Mesura a 32K (2026-11-03):** Qwen3 Coder 30B A3B Q4_K_M a la B60 (Vulkan1), llama.cpp b11889 de
+Windows, `-c 32768 -np 1 --jinja -lv 4`. Sortida de `common_memory_breakdown_print`:
+
+| Component | MiB |
+|---|---:|
+| Pesos | 17524 |
+| Context (KV) | 3072 |
+| Còmput | 116 |
+| **Projectat** | **20712** |
+| Lliure abans de carregar | 23613 |
+| Queden lliures | 2901 |
+
+llama.cpp diu `will leave 2901 >= 1024 MiB of free device memory, no changes needed` i carrega les 49
+capes a la GPU. **VALIDATED** com a mesura. El KV són 3072 MiB a 32768 tokens, és a dir 96 MiB per cada
+1000, igual que l'estimació per dimensions (0,094 GiB per 1K). El còmput, 116 MiB, és dins del rang
+de 88 a 156 MiB que ja havíem vist.
+
+Comparació amb Jaull, calculada amb les funcions reals de l'estimador (`kv_cache`, `overhead` i les
+constants de `policies.py`) i la configuració d'arquitectura del Coder (48 capes, 4 caps KV, `head_dim`
+128). Els pesos (17,28 GiB) són els de D120, perquè el GGUF és al PC de Biosfer. No és l'estimador
+complet, que necessita Hugging Face: s'han cridat les peces, i la classe de comprovació usa la memòria
+lliure de la mesura (23613 MiB). **VALIDATED** com a càlcul, amb una comprovació: a 4096 dona 20,52 GiB,
+el mateix valor que mostra la pantalla de la B60.
+
+| Context | Jaull avui | Jaull amb el pas 2 | llama.cpp (mesura) |
+|---|---|---|---|
+| 4096 | 20,52 GiB, 89,0 %, `compatible` | 19,16 GiB, 83,1 %, `compatible` | 17,57 GiB, 76,2 % |
+| 32768 | **23,41 GiB, 101,5 %, `insufficient`** | 21,78 GiB, 94,5 %, `tight` | 20,23 GiB, 87,7 % |
+
+El KV de Jaull a 32768 és de 3072 MiB, igual que el que va mesurar llama.cpp. A 32768 Jaull diria que
+el Coder no hi cap, quan en carregar-lo n'hi sobren 2,8 GiB. La sobreestimació és de +2,95 GiB (+17 %) a
+4096 i de +3,18 GiB (+16 %) a 32768: l'error és gairebé constant i no creix amb el context. Amb el pas 2
+queda en +1,58 i +1,55 GiB (+9 % i +8 %), i el model passa de `insufficient` a `tight`. Això dona suport
+al pas 2, que s'ha implementat com a D123 amb 256 MiB d'overhead en lloc de 512. El script és d'un sol ús i no
+està versionat.
+
+**Límits:** tres models, un sol context (4096) a la validació i una única mesura a 32768 (només el
+Coder), llama.cpp amb Vulkan. Els `llama-server` usaven
 4 slots, i amb un únic `llama-cli` el context seria una mica menor (si hi ha biaix, va cap al costat
 conservador). No es valida CUDA ni CPU. La preselecció aproximada de `candidate_filter` (que també
 tracta repositoris que no són GGUF) no canvia. Els pesos que llama.cpp deixa a la CPU (embeddings,
@@ -3065,6 +3111,64 @@ una altra topologia, sense ampliar silenciosament l'abast a Jaull natiu de Windo
 [protocol i comandes de validació](../quality-evaluation-pilot.md),
 [servidor extern](../../pilot/quality_eval/external_server.py),
 [contracte](../../src/jaull/evaluation/quality_external.py).
+
+### D123. GGUF: l'1 GiB lliure de llama.cpp substitueix la reserva i el marge percentual (pas 2 de D120, una mica menys conservador)
+
+**Data i necessitat:** 2026-11-03. La mesura a 32768 tokens (D120) va mostrar que el Coder carrega a la
+B60 deixant 2901 MiB lliures, mentre que Jaull el donava com a `insufficient` (23,41 GiB, 101,5 % de la
+memòria lliure). El pas 2 de D120 corregia part de l'error. L'autor ha demanat una variant una mica menys
+conservadora i que l'1 GiB de marge es mantingui sempre.
+
+**Regla de llama.cpp:** accepta una càrrega si, després de col·locar pesos, KV i buffer de còmput, encara
+queden com a mínim 1024 MiB lliures (`will leave N >= 1024 MiB of free device memory`). La fórmula nova
+la segueix amb una mica d'estona.
+
+**Decisió (de l'autor), només per a repositoris GGUF:**
+- L'overhead és de 256 MiB, sense fracció dels pesos (abans 512 MiB). És 1,6 vegades el major buffer de
+  còmput mesurat (156 MiB) i cobreix el que d'aquests pesos llama.cpp deixa a la CPU.
+- La reserva de dispositiu és `max(valor de l'usuari, 1 GiB)`: l'1 GiB és un mínim que es deixa sempre. Una
+  reserva més gran continua manant.
+- El marge percentual per defecte (10 %) desapareix, perquè l'1 GiB ja és tot el marge. Un `--safety-margin-percent`
+  explícit i diferent del per defecte continua aplicant-se.
+- Total: pesos + KV + 256 MiB + 1 GiB. La resta de tipus de repositori no canvia, perquè no s'hi ha mesurat res.
+
+**Evidència** (Coder Q4_K_M a la B60, llama.cpp b11889 de Windows; càlcul amb les peces reals de l'estimador,
+vegeu D120):
+
+| Context | Jaull abans | Pas 2 de D120 | **D123** | Regla de llama.cpp (mesurat + 1 GiB) | Mesurat |
+|---|---|---|---|---|---|
+| 4096 | 20,52 GiB, `compatible` | 19,16 GiB | **18,91 GiB, `compatible`** | 18,57 GiB | 17,57 GiB |
+| 32768 | 23,41 GiB, `insufficient` | 21,78 GiB | **21,53 GiB, `tight`** | 21,23 GiB | 20,23 GiB |
+
+La fórmula nova queda uns 0,3 GiB per sobre de la regla de llama.cpp i 1,3 GiB per sobre del mesurat, a tots
+dos contextos. No es baixa més: 256 MiB ja és 1,6 vegades el còmput màxim mesurat.
+
+**Efecte previst en el rànquing** (**UNVERIFIED**: càlcul meu sobre els totals que mostra la pantalla de la
+B60, nou ≈ avui / 1,1 + 0,25 GiB, sense passar per l'estimador): el Qwen2.5 32B Q4_K_M passaria de 22,54 a
+uns 20,7 GiB (89,9 %), el Qwen3.8 27B Q5_K_M de 22,47 a uns 20,7 (89,7 %) i el Mistral Small 24B Q6_K de 21,61 a
+uns 19,9 (86,3 %). Tots tres passarien de `Tight` a `Compatible`, dos d'ells arran del 90 %. A Balanced,
+`tight` penalitza i `compatible` no, de manera que **pot canviar el rànquing** i el recomanador pot triar
+quantificacions més grans. Per això és una decisió pròpia.
+
+**Efecte en l'ajust de hardware** (**VALIDATED** a les proves): el marge entra a la comprovació de càrrega
+completa i a la col·locació. Sense marge i amb la reserva d'1 GiB, a la prova de descàrrega parcial hi cap
+un bloc més a la GPU (de 19 a 20). A l'estimació apareix també una nova hipòtesi que explica la regla.
+
+**Estat:** IMPLEMENTED (proves offline: cinc proves noves, dues d'actualitzades, suite completa, `ruff` i
+`mypy` nets). **PENDENT:** mirar la pantalla de Results de la B60 amb aquest canvi i comprovar el rànquing real.
+
+**Límits:**
+- Mesura de base en tres models i una sola GPU; només el Coder té mesura a 32768. No s'ha mesurat cap cas que
+  fallés per memòria, i el cost d'un OOM al PC de Biosfer és molt superior al de marcar un model com `Tight`.
+- Els pesos de Jaull són la mida del fitxer, que inclou pesos que llama.cpp deixa a la CPU (de 167 a 1030
+  MiB). Als models híbrids com el Qwen3.8 27B l'error és més gran: el pas 2 donava 17,8 GiB contra 15,3
+  mesurats, perquè no es corregeixen aquests pesos ni el KV de les capes recurrents (D120).
+- Un `--safety-margin-percent 10` explícit no es pot distingir del valor per defecte i, per a GGUF, es tracta
+  com si no s'hagués posat.
+- La preselecció aproximada de `candidate_filter` no canvia i continua sent més conservadora.
+
+**Fonts:** D120, D102, [política](../../src/jaull/estimator/policies.py),
+[servei](../../src/jaull/estimator/service.py), `tests/test_memory_estimator.py`.
 
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
@@ -3174,7 +3278,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D122 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D123 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

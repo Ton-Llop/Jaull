@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -145,6 +146,112 @@ def test_gguf_q4_km_fits_in_gpu_with_headroom() -> None:
         CompatibilityStatus.COMPATIBLE,
     }
     assert est.weights.gguf_variant == "Q4_K_M"
+
+
+MIB = 1024**2
+
+
+def _coder_like_gguf(**knobs):
+    """A 17.28 GiB GGUF shaped like Qwen3-Coder 30B-A3B, at 32768 tokens (D120, D123)."""
+    size = round(17.28 * GIB)
+    variant = GgufVariant(
+        quantization="Q4_K_M",
+        files=[ModelFile(path="model.Q4_K_M.gguf", size_bytes=size)],
+        total_bytes=size,
+    )
+    analysis = _gguf_analysis([variant]).model_copy(
+        update={
+            "config": ModelConfig(
+                num_hidden_layers=48,
+                num_attention_heads=32,
+                num_key_value_heads=4,
+                head_dim=128,
+                hidden_size=2048,
+            )
+        }
+    )
+    cfg = InferenceConfiguration(
+        context_length=32768,
+        target_device=TargetDevice.GPU,
+        quantization="Q4_K_M",
+        **knobs,
+    )
+    return service.estimate_memory(
+        analysis=analysis,
+        hardware=_hardware(ram=32 * GIB, vram=23613 * MIB),
+        inference_cfg=cfg,
+        client=_FakeClient(),
+        resolve_base_model=False,
+        recommend_runtime=False,
+    )
+
+
+def test_gguf_total_is_weights_plus_kv_plus_compute_slack_plus_one_gib() -> None:
+    """D123: llama.cpp accepts a load that leaves >= 1 GiB free, so that is the whole headroom."""
+    est = _coder_like_gguf(device_reserve_bytes=512 * MIB, safety_margin_percent=10.0)
+
+    assert est.runtime_overhead.component.bytes == 256 * MIB
+    assert est.device_reserve.bytes == 1 * GIB
+    assert est.safety_margin is None
+    weights = est.weights.component.bytes
+    kv = est.kv_cache.component.bytes
+    assert kv == 3072 * MIB  # what llama.cpp measured at 32768 tokens
+    assert est.total_bytes == weights + kv + 256 * MIB + 1 * GIB
+
+
+def test_gguf_reserve_is_never_below_one_gib() -> None:
+    assert _coder_like_gguf(device_reserve_bytes=0).device_reserve.bytes == 1 * GIB
+    assert _coder_like_gguf(device_reserve_bytes=256 * MIB).device_reserve.bytes == 1 * GIB
+
+
+def test_gguf_reserve_above_one_gib_is_kept() -> None:
+    assert _coder_like_gguf(device_reserve_bytes=2 * GIB).device_reserve.bytes == 2 * GIB
+
+
+def test_gguf_explicit_safety_margin_is_still_applied() -> None:
+    est = _coder_like_gguf(device_reserve_bytes=512 * MIB, safety_margin_percent=5.0)
+
+    assert est.safety_margin is not None
+    subtotal = (
+        est.weights.component.bytes
+        + est.kv_cache.component.bytes
+        + est.runtime_overhead.component.bytes
+        + est.device_reserve.bytes
+    )
+    assert est.safety_margin.bytes == math.ceil(subtotal * 0.05)
+
+
+def test_the_coder_at_32768_tokens_is_tight_and_not_insufficient_on_the_b60() -> None:
+    """Measured: it loads with 2.9 GiB free. Before D123 Jaull said it did not fit (23.41 GiB)."""
+    est = _coder_like_gguf(device_reserve_bytes=512 * MIB)
+
+    assert est.total_bytes is not None
+    assert est.total_bytes / (23613 * MIB) < 1.0
+    assert est.assessment.status is CompatibilityStatus.TIGHT
+
+
+def test_non_gguf_keeps_the_reserve_and_the_percentage_margin() -> None:
+    config = ModelConfig(
+        num_hidden_layers=28, num_attention_heads=28, num_key_value_heads=4, hidden_size=3584
+    )
+    est = service.estimate_memory(
+        analysis=_transformers_analysis(config),
+        hardware=_hardware(ram=32 * GIB, vram=24 * GIB),
+        inference_cfg=InferenceConfiguration(
+            context_length=4096,
+            target_device=TargetDevice.GPU,
+            precision=WeightPrecision.FLOAT16,
+            safety_margin_percent=10.0,
+            device_reserve_bytes=512 * MIB,
+        ),
+        client=_FakeClient(),
+        resolve_base_model=False,
+        recommend_runtime=False,
+    )
+
+    assert est.device_reserve.bytes == 512 * MIB
+    assert est.safety_margin is not None and est.safety_margin.bytes > 0
+    assert est.runtime_overhead.component.bytes > 512 * MIB  # base plus 10 % of the weights
 
 
 def test_transformers_int8_offloading_required() -> None:

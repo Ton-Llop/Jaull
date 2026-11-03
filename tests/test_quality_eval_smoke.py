@@ -209,7 +209,8 @@ def test_historical_artifacts_and_local_fit_fail_closed(tmp_path: Path) -> None:
     assert estimate.kv_cache.component.bytes == 56 * 1024**2
     assert estimate.hardware_fit.mode is HardwareFitMode.GPU_RESIDENT
     assert estimate.inference_configuration.context_length == CONTEXT
-    assert estimate.device_reserve.bytes == 512 * 1024**2
+    # A GGUF always keeps llama.cpp's own 1 GiB of headroom (D123), whatever the default reserve.
+    assert estimate.device_reserve.bytes == 1024**3
     assert estimate.configuration_sources["num_hidden_layers"].value == "gguf_header"
     low_gpu = hardware.gpus[0].model_copy(update={"vram_available_bytes": 1024**2})
     low = artifact_memory_estimate(artifact, hardware.model_copy(update={"gpus": [low_gpu]}))
