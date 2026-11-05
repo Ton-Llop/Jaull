@@ -60,6 +60,17 @@ _MULTIMODAL_TAGS: frozenset[str] = frozenset(
     }
 )
 
+# Of those, the tags of a vision-language model: it reads images but its output is text. In GGUF
+# the language model and the vision projector (`mmproj`) are separate files, and llama.cpp loads
+# only the former for text use, so such a repository is a plain text model for this version.
+# `text-to-image`, speech and classification tags are never text models.
+_VISION_LANGUAGE_TAGS: frozenset[str] = frozenset({"image-text-to-text", "video-text-to-text"})
+
+_VISION_LANGUAGE_GGUF_NOTE = (
+    "Vision-language model in GGUF: only its text part is sized and run; "
+    "the vision projector is a separate file."
+)
+
 # An adapter needs a base model to mean anything; without one there is nothing
 # to estimate.
 _ADAPTER_TAGS: frozenset[str] = frozenset({"peft", "lora", "adapter", "adapter-transformers"})
@@ -302,11 +313,13 @@ def _rejection_reason(
     ):
         return "Repository declares a diffusion library; this version only recommends text models."
 
-    if tags & _MULTIMODAL_TAGS:
+    text_use_of_vision_model = _is_vision_language_gguf(candidate)
+
+    if tags & _MULTIMODAL_TAGS and not text_use_of_vision_model:
         return "Model is multimodal; this version only recommends text models."
 
     pipeline = candidate.pipeline_tag
-    if pipeline and pipeline != TEXT_GENERATION_PIPELINE:
+    if pipeline and pipeline != TEXT_GENERATION_PIPELINE and not text_use_of_vision_model:
         return f"Pipeline {pipeline!r} is not text generation."
 
     if tags & _ADAPTER_TAGS and not candidate.base_model_repo_id:
@@ -345,6 +358,9 @@ def _apply_penalties(candidate: ModelCandidate) -> ModelCandidate:
         # suitability already weighs (the task match loses its pipeline bonus). It does not say
         # anything about the format or the runtime, which the inspection confirms.
         penalties.append("No pipeline tag declared; task match is inferred from tags.")
+    if _is_vision_language_gguf(candidate):
+        # A reservation to show, not a loss of confidence: the sizing is of the text part.
+        penalties.append(_VISION_LANGUAGE_GGUF_NOTE)
 
     if not penalties:
         return candidate
@@ -1035,6 +1051,27 @@ def _quantization_hint(candidate: ModelCandidate) -> str:
 
 def _is_gguf_candidate(candidate: ModelCandidate) -> bool:
     return "gguf" in " ".join([candidate.repo_id, *candidate.tags]).lower()
+
+
+def _is_vision_language_gguf(candidate: ModelCandidate) -> bool:
+    """A GGUF repository whose only multimodal signal is a vision-language one.
+
+    Every multimodal tag it carries must be a vision-language tag, and its pipeline, when it
+    declares one, must be text generation or a vision-language pipeline. Anything else
+    (image generation, speech, classification) keeps being rejected, and so does a
+    vision-language model in a format that needs its vision components to load.
+    """
+    if not _is_gguf_candidate(candidate):
+        return False
+    multimodal = {tag.lower() for tag in candidate.tags} & _MULTIMODAL_TAGS
+    if not multimodal or not multimodal <= _VISION_LANGUAGE_TAGS:
+        return False
+    pipeline = candidate.pipeline_tag
+    return (
+        pipeline is None
+        or pipeline == TEXT_GENERATION_PIPELINE
+        or pipeline in _VISION_LANGUAGE_TAGS
+    )
 
 
 def _candidate_vram_bytes(candidate: ModelCandidate, hardware: HardwareProfile) -> int | None:

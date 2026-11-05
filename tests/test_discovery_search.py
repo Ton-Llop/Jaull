@@ -364,6 +364,74 @@ def test_multimodal_models_are_rejected() -> None:
     assert "multimodal" in outcome.rejected[0][1]
 
 
+def test_vision_language_gguf_is_kept_as_a_text_model() -> None:
+    # A GGUF loads only the language model (the vision projector is a separate file), so a
+    # vision-language repository in GGUF is usable as plain text. Hugging Face tags the whole
+    # repository `image-text-to-text`, which used to reject it.
+    vision_gguf = candidate(
+        repo_id="org/Vlm-35B-A3B-GGUF",
+        pipeline_tag="image-text-to-text",
+        tags=["gguf", "image-text-to-text", "conversational"],
+    )
+
+    outcome = filter_candidates([vision_gguf], _requirements())
+
+    assert outcome.rejected == []
+    assert [c.repo_id for c in outcome.kept] == ["org/Vlm-35B-A3B-GGUF"]
+    assert any("vision-language" in note.lower() for note in outcome.kept[0].penalties)
+
+
+def test_vision_language_gguf_without_a_pipeline_tag_is_kept() -> None:
+    vision_gguf = candidate(
+        repo_id="org/Vlm-27B-GGUF",
+        pipeline_tag=None,
+        tags=["gguf", "image-text-to-text"],
+    )
+
+    outcome = filter_candidates([vision_gguf], _requirements())
+
+    assert [c.repo_id for c in outcome.kept] == ["org/Vlm-27B-GGUF"]
+
+
+@pytest.mark.parametrize(
+    "task_tag",
+    ["text-to-image", "text-to-speech", "automatic-speech-recognition", "image-classification"],
+)
+def test_gguf_of_a_non_text_task_is_still_rejected(task_tag: str) -> None:
+    outcome = filter_candidates(
+        [candidate(repo_id="org/Other-GGUF", pipeline_tag=None, tags=["gguf", task_tag])],
+        _requirements(),
+    )
+
+    assert outcome.kept == []
+    assert "multimodal" in outcome.rejected[0][1]
+
+
+def test_vision_language_model_that_is_not_a_gguf_is_still_rejected() -> None:
+    outcome = filter_candidates(
+        [
+            candidate(
+                repo_id="org/Vlm-35B",
+                pipeline_tag="image-text-to-text",
+                tags=["safetensors", "image-text-to-text"],
+            )
+        ],
+        _requirements(),
+    )
+
+    assert outcome.kept == []
+    assert "multimodal" in outcome.rejected[0][1]
+
+
+def test_text_gguf_has_no_vision_language_note() -> None:
+    outcome = filter_candidates(
+        [candidate(repo_id="org/Plain-7B-Instruct-GGUF", tags=["gguf", "instruct"])],
+        _requirements(),
+    )
+
+    assert not any("vision-language" in note.lower() for note in outcome.kept[0].penalties)
+
+
 def test_adapter_without_base_model_is_rejected() -> None:
     outcome = filter_candidates(
         [candidate(repo_id="org/lora", tags=["peft", "lora"])], _requirements()

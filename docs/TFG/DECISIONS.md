@@ -3215,6 +3215,77 @@ un bloc més a la GPU (de 19 a 20). A l'estimació apareix també una nova hipò
 **Fonts:** D120, D102, [política](../../src/jaull/estimator/policies.py),
 [servei](../../src/jaull/estimator/service.py), `tests/test_memory_estimator.py`.
 
+### D124. Un GGUF de visió i llenguatge entra com a model de text (i el sostre de la cerca, que continua)
+
+**Data i necessitat:** 2026-11-05. Un usuari de Reddit va proposar el Qwen3.6-35B-A3B (`unsloth/Qwen3.6-35B-A3B-GGUF`,
+`UD-IQ3_S`) per a la B60, i Jaull no el mostrava. Es va mirar per què abans de canviar res.
+
+**Causes (tres, no una).** Metadades del repositori llegides a l'API de Hugging Face: `pipeline_tag`
+`image-text-to-text`, etiquetes `gguf`, `qwen3_5_moe` i `image-text-to-text`, arquitectura GGUF `qwen35moe`, context
+natiu de 262.144 tokens, ~1,5 milions de descàrregues. **VALIDATED** amb aquestes lectures i amb el codi:
+1. **El filtre.** `candidate_filter._rejection_reason` el rebutjava dues vegades: l'etiqueta `image-text-to-text`
+   és a `_MULTIMODAL_TAGS` («Model is multimodal; this version only recommends text models») i el seu pipeline no és
+   `text-generation`. **Corregit en aquesta decisió.**
+2. **El sostre de mida de la cerca (la que queda per a la B60).** `largest_fitting_billions` dona 32,04 B per a
+   24 GiB, perquè assumeix `Q4` per defecte (0,60 bytes per paràmetre). L'última franja és (32; 32,04) i el model té
+   uns 35 B, de manera que cap consulta per mida el pot tornar. A `IQ3_S` (uns 12,8 GiB) hi cabria de sobra. Amb un
+   perfil com el del PC de la B60 (sense GPU NVIDIA, la targeta Intel com a accelerador, 24 GiB, 28 GiB de RAM), cap de
+   les 14 consultes de programació ni de les 13 de xat general el torna. **No corregit.**
+3. **Només per a màquines amb una GPU NVIDIA de 12 GiB o més, no per a la B60.** `preferred_formats` és
+   `["safetensors", "gguf"]` i les consultes per franja de mida només usen l'etiqueta del primer format, de manera que
+   no hi ha cap consulta oberta amb `gguf`. Una primera simulació va tractar la B60 com si fos una NVIDIA i ho va donar
+   per causa seva: era un error del perfil de prova, corregit després. **No corregit** i no afecta aquesta màquina.
+
+**Prova que el filtre ja no és el problema** (consulta de prova, no versionada, amb xarxa): amb una consulta
+`filter=gguf`, `num_parameters` de 32 a 40 B, ordenada per descàrregues, Hugging Face torna el repositori en el lloc 4 de
+20, i el filtre nou el deixa passar amb la nota de sota. Amb 14-32 B no hi surt, i amb només el filtre `gguf` surt
+al lloc 35 de 50.
+
+**Decisió (de l'autor), només el filtre:** un candidat passa com a model de text quan (a) és un GGUF, detectat amb
+l'helper que ja hi havia (`gguf` a l'identificador o a les etiquetes); (b) totes les seves etiquetes multimodals són de
+visió i llenguatge (`image-text-to-text`, `video-text-to-text`), i (c) el seu `pipeline_tag`, si en declara un, és
+`text-generation` o d'aquest tipus. Un GGUF de generació d'imatge, veu o classificació es continua rebutjant, i també un
+model de visió que no és GGUF, perquè necessita els seus components de visió per carregar-se. La raó és la que ja deia
+`lineage.py` (D116): un GGUF carrega només el model de llenguatge, i el projector de visió (`mmproj`) és un fitxer a
+part. El classificador de repositoris ja descarta els fitxers auxiliars (`mmproj`, `imatrix`, `draft`) i no entren
+als pesos. El candidat queda amb una nota visible, **sense baixar-ne la confiança**: «Vision-language model in GGUF:
+only its text part is sized and run; the vision projector is a separate file.»
+
+**Efecte mesurat d'un sostre amb una quantificació més baixa** (perfil de la B60, consultes reals, sense canviar res al
+codi; es va canviar la quantificació de referència només dins la simulació): el sostre passa de 32,04 a 41,97 B si
+s'assumeix `q3` (0,45 bytes per paràmetre) en lloc de `q4`. El nombre de consultes es manté (14): només canvia el límit
+superior de l'última franja, de (32; 32,0) a (32; 42). Els candidats que superen el filtre passen de 176 a 173: n'entren
+28, entre ells `unsloth/Qwen3.6-35B-A3B-GGUF`, `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` i
+`huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF` (i també `ornith-ai/Ornith-1.5-35B-A3B-GGUF` i
+`empero-ai/Qwen3.8-35B-A3B-Distill-GGUF`), i en surten 31, els que ocupaven la franja estreta (32; 32,04) amb poques
+descàrregues (variants de l'EXAONE 3.5 32B, de 116 a 1.802). **VALIDATED** com a simulació amb Hugging Face; no és un
+flux complet.
+
+**Estat:** IMPLEMENTED el filtre (8 casos de prova nous, `tests/test_discovery_search.py`; vist fallar abans i passar
+després; suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets). **PENDENT:** el sostre, que és
+política de cerca i afecta totes les màquines; no es toca sense decisió de l'autor. La causa 3 només afecta NVIDIA.
+
+**KV d'un model híbrid.** La capçalera del fitxer `UD-IQ3_S` (llegida per rang, 256 KiB, sense baixar-lo) diu:
+`block_count` 40, `full_attention_interval` 4, 2 caps KV, `key_length` i `value_length` de 256. Són 10 capes d'atenció
+completa; les altres 30 són de Gated DeltaNet i no guarden KV per token. El KV és 2 × 10 × 2 × 256 × 2 bytes = 20.480
+bytes per token, és a dir 20 MiB per cada mil tokens en f16: 1,25 GiB a 65536, 2,5 GiB a 131072 i 5,0 GiB a 262144
+(**càlcul amb la capçalera, no una mesura de llama.cpp**). Per al Coder són 96 MiB per cada mil tokens. L'estat recurrent
+és constant per seqüència: uns 63 MiB amb un sol slot si es guarda en f32 (**UNVERIFIED**, deduït dels paràmetres
+`ssm`). Jaull compta les 40 capes, de manera que donaria 80 KiB per token i uns 20 GiB a 262144, quatre vegades el
+valor derivat (a partir del codi i de la capçalera; no s'ha executat Jaull amb aquest fitxer). Segons D102, un model híbrid sobreestima la KV, que és el sentit segur, i D120
+deixa dit que el KV de les capes recurrents dels models `qwen35` no es corregeix. A D120 el Qwen3.8-27B (híbrid)
+va donar 854 MiB de context a 4096 tokens, mesurats amb quatre slots, de manera que no es pot treure el KV per mil
+tokens d'aquesta xifra. **PENDENT:** mesurar el KV real del Qwen3.6-35B-A3B a la B60 (a 65536, 131072 i 262144
+tokens, amb un sol slot) abans de modelar res.
+
+**Límits:** un sol repositori. Que un candidat surti a la llista no vol dir que s'hagi de recomanar abans que el Coder:
+això és política de rànquing i no s'ha tocat. L'avantatge de context de 256K que s'espera d'aquest model és una
+estimació i no una mesura.
+
+**Fonts:** D102, D107, D116, D120, [filtre](../../src/jaull/discovery/candidate_filter.py),
+[cerca](../../src/jaull/discovery/query_builder.py), `tests/test_discovery_search.py`,
+[pàgina del model](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3323,7 +3394,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D123 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D124 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
