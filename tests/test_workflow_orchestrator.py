@@ -794,6 +794,7 @@ def test_rejected_search_results_do_not_spend_the_unique_candidate_budget() -> N
         req,
         limit=policies.SEARCH_RESULTS_PER_QUERY,
         max_billions=orchestrator.candidate_filter.largest_fitting_billions(hardware(), req),
+        reach_billions=orchestrator.candidate_filter.reach_billions(hardware(), req),
     )
     rejected_per_query = policies.MAX_UNIQUE_CANDIDATES // len(queries) + 1
     valid = candidate(repo_id="synthetic/Relevant-7B-Instruct", tags=["code"])

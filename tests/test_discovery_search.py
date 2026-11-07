@@ -33,7 +33,7 @@ from jaull.domain.candidates import SearchQuery
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import EstimationConfidence, HardwareFitMode
 from jaull.domain.policies import TEXT_GENERATION_PIPELINE
-from jaull.domain.requirements import CommercialUse, UseCase
+from jaull.domain.requirements import CommercialUse, RecommendationPriority, UseCase
 from jaull.exceptions import HuggingFaceUnavailableError
 from jaull.recommendation.scoring import targets_another_task
 from tests._workflow_fixtures import answers, candidate, hardware
@@ -1118,3 +1118,145 @@ def test_a_translation_or_summarization_model_is_another_task_unless_that_is_the
     assert not targets_another_task(translator, translating)
     assert targets_another_task(translator, summarizing)
     assert not targets_another_task(summarizer, summarizing)
+
+
+# ---------------------------------------------------------------------------
+# Reach: models that fit only at the lowest quantization of the priority's ladder
+# ---------------------------------------------------------------------------
+def _balanced() -> Any:
+    return build_requirements(answers(use_case=UseCase.CODING), hardware(vram_gib=24, ram_gib=32))
+
+
+def test_reach_billions_is_the_ceiling_at_the_floor_of_the_priority_ladder() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    balanced = _balanced()
+    memory = build_requirements(
+        answers(use_case=UseCase.CODING, priority=RecommendationPriority.MEMORY), gpu
+    )
+
+    today = candidate_filter.largest_fitting_billions(gpu, balanced)
+    reach = candidate_filter.reach_billions(gpu, balanced)
+
+    assert today is not None and reach is not None
+    assert 31 < today < 33  # the Q4 reference, unchanged
+    assert 40 < reach < 44  # Q3_K_M, the last rung of the Balanced ladder
+    assert candidate_filter.reach_billions(gpu, memory) > reach  # Q2_K for Memory
+
+
+def test_the_default_ceiling_is_the_q4_ceiling() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    req = _balanced()
+
+    assert candidate_filter.largest_fitting_billions(gpu, req) == (
+        candidate_filter.largest_fitting_billions(gpu, req, quantization="q4_k_m")
+    )
+
+
+def test_a_reach_query_covers_the_gap_between_the_two_ceilings() -> None:
+    req = build_requirements(answers(use_case=UseCase.CODING), hardware(vram_gib=None, ram_gib=32))
+    without = query_builder.build_queries(req, limit=20, max_billions=32.0)
+    with_reach = query_builder.build_queries(req, limit=20, max_billions=32.0, reach_billions=42.0)
+
+    extra = [q for q in with_reach if q not in without]
+    assert len(with_reach) == len(without) + 1
+    assert len(extra) == 1
+    reach = extra[0]
+    assert "scale-reach" in reach.label
+    assert (reach.min_billions, reach.max_billions) == (32.0, 42.0)
+    assert reach.pipeline_tag is None  # a vision-language repository declares another pipeline
+    assert reach.search is None
+    assert reach.filter_tags == ("gguf",)
+
+
+@pytest.mark.parametrize("reach", [None, 32.0, 20.0])
+def test_no_reach_query_without_a_higher_ceiling(reach: float | None) -> None:
+    req = build_requirements(answers(use_case=UseCase.CODING), hardware(vram_gib=None, ram_gib=32))
+
+    queries = query_builder.build_queries(req, limit=20, max_billions=32.0, reach_billions=reach)
+
+    assert queries == query_builder.build_queries(req, limit=20, max_billions=32.0)
+
+
+def _reach_pool() -> list[Any]:
+    fits = [
+        candidate(repo_id=f"org{index}/{name}-{size}B-Instruct-GGUF", tags=["gguf", "instruct"])
+        for index, (name, size) in enumerate(
+            [("Alpha", 7), ("Bravo", 8), ("Charlie", 9), ("Delta", 10), ("Echo", 12),
+             ("Foxtrot", 13), ("Golf", 14), ("Hotel", 20), ("India", 24), ("Juliet", 26),
+             ("Kilo", 27), ("Lima", 30), ("Mike", 32), ("November", 22)]
+        )
+    ]
+    reach = [
+        candidate(repo_id="big/Oscar-35B-A3B-GGUF", tags=["gguf"], downloads=900_000),
+        candidate(repo_id="big/Papa-36B-GGUF", tags=["gguf"], downloads=500_000),
+        candidate(repo_id="big/Romeo-35B-Q4_K_M-GGUF", tags=["gguf", "Q4_K_M"], downloads=800_000),
+        candidate(repo_id="huge/Sierra-70B-GGUF", tags=["gguf"], downloads=700_000),
+    ]
+    return fits + reach
+
+
+def test_a_balanced_run_reserves_exploration_slots_for_models_that_fit_only_at_the_floor() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    req = _balanced()
+    audit: dict[str, Any] = {}
+
+    picked = shortlist(_reach_pool(), req, limit=12, hardware=gpu, reach_slots=2, audit=audit)
+
+    ids = [c.repo_id for c in picked]
+    assert len(ids) == 12
+    assert "big/Oscar-35B-A3B-GGUF" in ids
+    assert "big/Papa-36B-GGUF" in ids
+    stages = {step["repo_id"]: step["stage"] for step in audit["steps"]}
+    assert stages["big/Oscar-35B-A3B-GGUF"] == "reach"
+    assert stages["big/Papa-36B-GGUF"] == "reach"
+
+
+def test_the_reach_stage_skips_declared_quantizations_and_what_misses_the_floor() -> None:
+    picked = shortlist(
+        _reach_pool(), _balanced(), limit=12, hardware=hardware(vram_gib=24, ram_gib=32),
+        reach_slots=2,
+    )
+
+    ids = {c.repo_id for c in picked}
+    assert "big/Romeo-35B-Q4_K_M-GGUF" not in ids  # a Q4_K_M build is a Q4_K_M build
+    assert "huge/Sierra-70B-GGUF" not in ids  # 70B does not fit even at Q3
+
+
+def test_without_reach_slots_the_shortlist_is_what_it_was() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    req = _balanced()
+
+    default = shortlist(_reach_pool(), req, limit=12, hardware=gpu)
+    explicit = shortlist(_reach_pool(), req, limit=12, hardware=gpu, reach_slots=0)
+
+    assert [c.repo_id for c in default] == [c.repo_id for c in explicit]
+    assert not {"big/Oscar-35B-A3B-GGUF", "big/Papa-36B-GGUF"} & {c.repo_id for c in default}
+
+
+def test_reach_slots_come_out_of_the_exploration_budget_not_out_of_relevance() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    req = _balanced()
+    base_audit: dict[str, Any] = {}
+    reach_audit: dict[str, Any] = {}
+
+    shortlist(_reach_pool(), req, limit=12, hardware=gpu, audit=base_audit)
+    shortlist(_reach_pool(), req, limit=12, hardware=gpu, reach_slots=2, audit=reach_audit)
+
+    def stage_count(audit: dict[str, Any], stage: str) -> int:
+        return sum(1 for step in audit["steps"] if step["stage"] == stage)
+
+    assert stage_count(reach_audit, "reach") == 2
+    assert stage_count(reach_audit, "relevance") == stage_count(base_audit, "relevance")
+    assert stage_count(reach_audit, "exploration") <= stage_count(base_audit, "exploration")
+
+
+def test_a_quality_run_already_explores_large_models_so_it_has_no_reach_stage() -> None:
+    gpu = hardware(vram_gib=24, ram_gib=32)
+    quality = build_requirements(
+        answers(use_case=UseCase.CODING, priority=RecommendationPriority.QUALITY), gpu
+    )
+    audit: dict[str, Any] = {}
+
+    shortlist(_reach_pool(), quality, limit=12, hardware=gpu, reach_slots=2, audit=audit)
+
+    assert not any(step["stage"] == "reach" for step in audit["steps"])

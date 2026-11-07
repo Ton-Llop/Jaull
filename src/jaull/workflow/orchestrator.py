@@ -242,6 +242,7 @@ def run_workflow(
                 requirements,
                 limit=policies.SEARCH_RESULTS_PER_QUERY,
                 max_billions=candidate_filter.largest_fitting_billions(hardware, requirements),
+                reach_billions=candidate_filter.reach_billions(hardware, requirements),
             )
         reporter.done("queries", f"{len(queries)} queries")
 
@@ -279,6 +280,7 @@ def run_workflow(
                 hardware=hardware,
                 targets_other_task=lambda item: scoring.targets_another_task(item, requirements),
                 audit=inspection_audit,
+                reach_slots=policies.REACH_EXPLORATION_SLOTS.get(requirements.priority, 0),
             )
         reporter.done(
             "filter",

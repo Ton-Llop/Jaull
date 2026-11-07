@@ -3258,12 +3258,40 @@ superior de l'última franja, de (32; 32,0) a (32; 42). Els candidats que supere
 28, entre ells `unsloth/Qwen3.6-35B-A3B-GGUF`, `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` i
 `huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF` (i també `ornith-ai/Ornith-1.5-35B-A3B-GGUF` i
 `empero-ai/Qwen3.8-35B-A3B-Distill-GGUF`), i en surten 31, els que ocupaven la franja estreta (32; 32,04) amb poques
-descàrregues (variants de l'EXAONE 3.5 32B, de 116 a 1.802). **VALIDATED** com a simulació amb Hugging Face; no és un
-flux complet.
+descàrregues (variants de l'EXAONE 3.5 32B, de 116 a 1.802). **VALIDATED** com a simulació de la cerca amb Hugging Face.
+
+**Flux complet** (2026-11-06; inspecció real, mateix perfil de la B60, programació, Balanced; uns 15 minuts cada
+execució): amb el sostre d'avui i amb 41,97 B el **top 5 és el mateix**: Qwen2.5-32B-Instruct (bartowski),
+Qwen3-Coder-30B-A3B-Instruct (unsloth), Qwen3.8-27B (unsloth), Qwen2.5-Coder-14B-Instruct i Ornith-1.5-9B. El
+Qwen3.6-35B no s'avalua en cap cas. Amb el sostre pujat només un repositori seu entra als 100 candidats
+(`huihui-ai/...abliterated-MTP-GGUF`, al lloc 18), i cap a la llista de 12 que s'inspecciona. Els repositoris de
+unsloth ni arriben als 100. **VALIDATED** com a simulació, amb un perfil inventat. **Pujar el sostre no n'hi ha prou**:
+cal entendre el tall de 100 candidats i el criteri de la llista de 12 (`inspection_audit`), que no s'ha mirat.
+
+**Investigació del tall de 100 i de la llista de 12** (2026-11-06; mateix perfil de la B60, sostre de 41,97 B,
+programació, Balanced; cerques reals i sense la inspecció, que és el que triga). **VALIDATED** com a simulació:
+- **El tall de 100 no és la causa.** Els tres repositoris del Qwen3.6-35B surten de la consulta `scale-open-32-42B`
+  (llocs 2, 3 i 4) i arriben al tall.
+- **L'agrupador de re-quantitzacions els redueix a un.** `collapse_quantized_reuploads` els uneix perquè comparteixen
+  base i deixa de representant el més descarregat, `huihui-ai/...abliterated-MTP-GGUF` (uns 4,0 milions de
+  descàrregues), amb els dos de unsloth com a alternatives de reserva. El representant queda al lloc 18 de 100.
+- **La llista de 12 el descarta per la col·locació aproximada.** `coarse_placement_hint` suposa `q4_k_m` (0,60 bytes
+  per paràmetre) quan el nom no diu la quantització, així que 35 B donen `gpu_offload`. La llista ordena primer per
+  classe de col·locació i hi ha més de 12 candidats `gpu_resident`, de manera que cap `gpu_offload` hi entra.
+- **Si la col·locació aproximada suposés `q3` (0,45),** els 35 B passen a `gpu_resident` i el `huihui` entra a la
+  llista, amb tres més de 35 B (`ornith-ai/Ornith-1.5-35B-A3B-GGUF`, `empero-ai/Qwen3.8-35B-A3B-Distill-GGUF` i
+  `FINAL-Bench/POCKET-35B-GGUF`). Surten de la llista `bartowski/Qwen2.5-32B-Instruct-GGUF`,
+  `Qwen/Qwen2.5-Coder-14B-Instruct-GGUF`, Llama-3.1-8B i `ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF`. Això afectaria
+  el top 5 d'avui (el 32B era el primer i el Coder-14B el quart); no s'ha tornat a calcular amb la inspecció.
+- **Incoherència amb la política.** Les escales de quantització de `policies.py` arriben a `Q3_K_M` per a Balanced i
+  Quality, però el sostre de la cerca i la col·locació aproximada de la llista suposen Q4. Un model que només hi cap
+  a Q3 mai no arriba a la inspecció, tot i que l'escala el podria recomanar. Passa amb qualsevol model de 33 a 42 B
+  en una màquina de 24 GiB, no només amb aquest.
 
 **Estat:** IMPLEMENTED el filtre (8 casos de prova nous, `tests/test_discovery_search.py`; vist fallar abans i passar
-després; suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets). **PENDENT:** el sostre, que és
-política de cerca i afecta totes les màquines; no es toca sense decisió de l'autor. La causa 3 només afecta NVIDIA.
+després; suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets). **PENDENT:** el sostre de la cerca i la
+col·locació aproximada de la llista de 12 (la referència de quantització, que avui és Q4), que són política de
+cerca i afecten totes les màquines; no es toquen sense decisió de l'autor. La causa 3 només afecta NVIDIA.
 
 **KV d'un model híbrid.** La capçalera del fitxer `UD-IQ3_S` (llegida per rang, 256 KiB, sense baixar-lo) diu:
 `block_count` 40, `full_attention_interval` 4, 2 caps KV, `key_length` i `value_length` de 256. Són 10 capes d'atenció
@@ -3285,6 +3313,129 @@ estimació i no una mesura.
 **Fonts:** D102, D107, D116, D120, [filtre](../../src/jaull/discovery/candidate_filter.py),
 [cerca](../../src/jaull/discovery/query_builder.py), `tests/test_discovery_search.py`,
 [pàgina del model](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF).
+
+### D125. KV d'un model híbrid: només les capes d'atenció, més l'estat recurrent constant
+
+**Data i necessitat:** 2026-11-06. `jaull estimate` del Qwen3.6-35B-A3B donava un KV unes quatre vegades massa gran
+(2,5 GiB a 32768 tokens en lloc de 0,6, i 20 GiB a 262144 en lloc de 5,0), de manera que a 128K deia «no cap» a la
+B60 quan, segons la capçalera, hi cap. D102 i D120 ja ho deixaven dit com una limitació del costat segur.
+
+**Evidència** (capçaleres dels fitxers, llegides per rang sense baixar-los):
+- **Qwen3.6-35B-A3B** (`qwen35moe`): 40 capes, `full_attention_interval` 4, 2 caps KV, dimensió 256,
+  `ssm.conv_kernel` 4, `ssm.inner_size` 4096, `ssm.state_size` 128, `ssm.group_count` 16.
+- **Qwen3.8-27B** (`qwen35`): 65 capes, interval 4, 4 caps KV, dimensió 256, conv 4, inner 6144, state 128,
+  grups 16. Les 16 capes d'atenció (65 // 4) donen 256 MiB de KV a 4096 cel·les en f16, i l'estat recurrent de
+  les altres 49 és de 153 MiB per seqüència. Amb els quatre slots de D120: **867 MiB calculats contra 854 mesurats**,
+  1,5 % de diferència. **VALIDATED** amb un sol model mesurat.
+
+**Decisió (de l'autor):**
+- `config_merger` llegeix de la capçalera el `full_attention_interval` i quatre paràmetres `ssm` i els desa a
+  `raw_flags["hybrid_attention"]`. Si en falta algun, no són enters positius o l'interval és menor que 2, no es
+  desa res i es manté la fórmula estàndard, que sobreestima (el sentit segur).
+- `kv_cache`: capes d'atenció = capes // interval. KV = 2 × capes d'atenció × caps KV × dimensió × context × lots ×
+  sessions × bytes. A això se suma l'estat recurrent de les altres capes: (`conv_kernel` − 1) × (`inner_size` +
+  2 × `group_count` × `state_size`) + `state_size` × `inner_size`, per 4 bytes (f32, sense dependre de la
+  precisió del KV, constant `RECURRENT_STATE_BYTES_PER_ELEMENT` a `policies.py`), per capa i per seqüència.
+- `KvCacheEstimate.layers` **continua sent el nombre de blocs del model**: `hardware_fit` reparteix els pesos
+  sobre aquests blocs i comprova que coincideixin. El recompte d'atenció va a les notes. La confiança del KV
+  passa a `MEDIUM` i la fórmula mostrada és `HYBRID_FORMULA`.
+
+**Error durant el treball:** la primera versió posava a `layers` el nombre de capes d'atenció, i el camí complet
+amb `TargetDevice.AUTO` fallava a `hardware_fit` amb «Weight decomposition must match the transformer block
+count». La suite no ho cobria i es va veure en executar `jaull estimate`; ara hi ha una prova de regressió a
+`tests/test_memory_estimator.py`.
+
+**Efecte** (executat amb `jaull estimate`; el total inclou els 256 MiB d'overhead i l'1 GiB de D123):
+
+| Fitxer i context | KV abans | KV ara | Total abans | **Total ara** |
+|---|---|---|---|---|
+| IQ4_XS, 32768 | 2,5 GiB | 0,69 GiB | 20,3 GiB | **18,45 GiB** |
+| IQ4_XS, 131072 | 10 GiB | 2,56 GiB | 27,8 GiB | **20,32 GiB** |
+| IQ4_XS, 262144 | 20 GiB | 5,06 GiB | 37,8 GiB | **22,82 GiB** (de ~23,06 lliures a la B60) |
+| IQ3_S, 262144 | n/d | 5,06 GiB | n/d | **19,05 GiB** |
+
+**Estat:** IMPLEMENTED (`tests/test_kv_cache_hybrid.py`, 8 casos, i una prova de camí complet; vistos fallar abans;
+suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets). **PENDENT:** mesurar el KV real del
+Qwen3.6-35B-A3B a la B60 (el que s'ha validat és el 27B).
+
+**Límits:** només GGUF, perquè les xifres vénen de la capçalera; un `config.json` de transformers amb `layer_types`
+no es modela. Una sola mesura. `hardware_fit` reparteix el KV uniformement per blocs, tot i que només n'hi ha un de
+cada quatre amb KV, i el total no canvia. No s'ha tocat el rànquing.
+
+**Fonts:** D102, D120, D123, D124, [estimador](../../src/jaull/estimator/kv_cache.py),
+[fusionador](../../src/jaull/metadata/config_merger.py), `tests/test_kv_cache_hybrid.py`.
+
+### D126. Cobertura d'abast: models que només caben a l'últim graó de l'escala de quantització
+
+**Data i necessitat:** 2026-11-06. El Qwen3.6-35B-A3B no entrava a la preselecció de la B60 (24 GiB) perquè el sostre
+de cerca (`largest_fitting_billions`) suposa Q4 i dona 32,0 B, i els 35 B només caben a Q3 o IQ4_XS. D124 en deixava
+la cadena de causes; aquesta decisió en tanca l'última (el sostre) sense canviar la política per a la resta.
+
+**Alternativa descartada:** substituir el sostre global pel de l'últim graó. A 8-10 GiB feia girar
+`needs_small_model_coverage` i en canviava la cobertura de models petits. Es va triar afegir una banda, no moure el sostre.
+
+**Decisió (de l'autor, opció 3, i després una sola plaça):**
+- `largest_fitting_billions` accepta `quantization` (per defecte Q4, el comportament d'abans). `reach_billions` el crida
+  amb l'últim graó de l'escala de la prioritat (Balanced: Q3_K_M, a 24 GiB uns 42 B).
+- `build_queries(..., reach_billions=)` afegeix **una** banda `scale-reach-X-YB` entre els dos sostres, només si
+  el segon és més alt i hi ha etiqueta de format. No porta frase ni pipeline, com les bandes obertes.
+- `shortlist(..., reach_slots=)` reserva places d'abast, **només per a Balanced** (`REACH_EXPLORATION_SLOTS`, **1**). Surten
+  del pressupost d'exploració. Entra un model si no declara quantització, no és d'una altra tasca, no és petit, a Q4
+  només cabria amb offload i a l'últim graó cap a la GPU. Quality ja explora models grans i no en té.
+- L'auditoria desa `reach_slots` i `replay_inspection_shortlist.py` el reutilitza (sense el camp, 0). L'script
+  `audit_recommendation_pool.py` passa ara també `targets_other_task`, que li faltava.
+
+**Per què una plaça i no dues:** amb dues, en el pool desat (100 candidats) la preselecció perdia el Qwen2.5-32B
+(exploració) i el Qwen2.5-Coder-14B (l'últim de relevància, desplaçat perquè Swift-1.5-27B passava d'exploració a
+relevància), i guanyava POCKET-35B, que no s'ha avaluat. Amb una, el flux real treu el Qwen2.5-32B (vegeu més avall) i es
+manté el 14B; hi entra la variant huihui del Qwen3.6, la millor per puntuació. No és una regla: depèn del pool d'avui.
+
+**Efecte de dues places** (flux complet contra Hugging Face, perfil B60 **inventat**: Vulkan, 24 GiB, 28 GiB de RAM; coding, Balanced, una execució):
+
+| # | Abans | Amb 2 places |
+|---|---|---|
+| 1 | Qwen2.5-32B-Instruct (bartowski) | FINAL-Bench/POCKET-35B-GGUF |
+| 2 | Qwen3-Coder-30B-A3B (unsloth) | Huihui-Qwen3.6-35B-A3B-abliterated-MTP |
+| 3 | Qwen3.8-27B (unsloth) | Qwen3-Coder-30B-A3B (unsloth) |
+| 4 | Qwen2.5-Coder-14B-Instruct | Qwen3.8-27B (unsloth) |
+| 5 | Ornith-1.5-9B | Ornith-1.5-9B |
+
+**Efecte amb una plaça** (mateixa configuració, segona execució en viu):
+
+| # | Abans | Amb 1 plaça |
+|---|---|---|
+| 1 | Qwen2.5-32B-Instruct (bartowski) | Huihui-Qwen3.6-35B-A3B-abliterated-MTP |
+| 2 | Qwen3-Coder-30B-A3B (unsloth) | Qwen3-Coder-30B-A3B (unsloth) |
+| 3 | Qwen3.8-27B (unsloth) | Qwen3.8-27B (unsloth) |
+| 4 | Qwen2.5-Coder-14B-Instruct | Qwen2.5-Coder-14B-Instruct |
+| 5 | Ornith-1.5-9B | Ornith-1.5-9B |
+
+El Qwen3.6 entra a la preselecció i queda primer (estimació «comfortable», que és una predicció). El 14B es manté,
+però **el Qwen2.5-32B queda fora de la preselecció**.
+
+**Per què surt el 32B** (pool real d'aquesta configuració, 100 candidats, desat i reprès sense xarxa; el 32B hi és a la
+posició 15): amb 0 places era el tercer i últim candidat d'exploració (el pressupost d'exploració és 3). La plaça d'abast
+surt d'aquest pressupost, i el 32B era el de menys prioritat. Res no canvia a relevància. Les dues execucions en viu
+concorden amb aquesta simulació. La simulació anterior sobre un pool desat més antic (capturat amb un sostre forçat)
+deia que sortia el 14B; aquell pool no era el de la configuració actual i la predicció era equivocada.
+
+**Cost, dit clar:** una plaça d'abast val un candidat d'exploració. Aquí el candidat és un model dens de 32 B que a
+Q4 hi cap just a la B60. Si es vol que la plaça d'abast no el desplaci, caldria que no consumís pressupost d'exploració
+(preselecció de 13 en lloc de 12, una inspecció més). No s'ha fet.
+
+**Estat:** IMPLEMENTED (proves noves a `tests/test_discovery_search.py`, vistes fallar abans; snapshot `report.json`
+regenerat, només hi canvien la nova consulta i `reach_slots: 1`). **PENDENT:** decidir si el canvi del 32B pel Qwen3.6 és acceptable.
+
+**Límits:**
+- El perfil és inventat; la cerca és en viu i pot variar.
+- El representant del Qwen3.6 és la variant abliterated de huihui, perquè el collapse tria el repo més descarregat
+  (decisió a part, no tocada). Entrar a la preselecció no vol dir que sigui bo: només que s'inspecciona i s'estima.
+  El rànquing no s'ha tocat.
+- No s'ha mesurat res a la B60; el KV i la velocitat del Qwen3.6-35B esperen dimarts.
+- Una plaça fixa és un nombre triat, no calculat; l'heurística no té evidència pròpia.
+
+**Fonts:** D116, D124, D125, [filtre](../../src/jaull/discovery/candidate_filter.py),
+[consultes](../../src/jaull/discovery/query_builder.py), [polítiques](../../src/jaull/application/recommendation/policies.py).
 
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
@@ -3394,7 +3545,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D124 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D126 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

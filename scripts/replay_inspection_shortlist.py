@@ -30,6 +30,7 @@ def main() -> int:
         hardware=HardwareProfile.model_validate(audit["hardware"]),
         targets_other_task=lambda candidate: rows[candidate.repo_id]["other_task"],
         audit=replay,
+        reach_slots=audit.get("reach_slots", 0),
     )
     expected = [step["repo_id"] for step in audit["steps"]]
     actual = [candidate.repo_id for candidate in selected]

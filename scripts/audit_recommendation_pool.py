@@ -16,6 +16,7 @@ from jaull.domain.candidates import ModelCandidate, SearchQuery
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserAnswers
 from jaull.exceptions import HuggingFaceUnavailableError
+from jaull.recommendation import scoring
 from jaull.workflow.orchestrator import _interleave, _memory_budget
 
 
@@ -61,6 +62,8 @@ def audit_pool(
     shortlist = candidate_filter.shortlist(
         budgeted, requirements, policies.MAX_DEEP_INSPECTION,
         budget_bytes=_memory_budget(hardware), hardware=hardware,
+        targets_other_task=lambda item: scoring.targets_another_task(item, requirements),
+        reach_slots=policies.REACH_EXPLORATION_SLOTS.get(requirements.priority, 0),
     )
     rejected = dict(filtered.rejected)
     in_budget = {item.repo_id for item in budgeted}

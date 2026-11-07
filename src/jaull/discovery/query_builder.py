@@ -62,12 +62,16 @@ def build_queries(
     limit: int = DEFAULT_RESULTS_PER_QUERY,
     *,
     max_billions: float | None = None,
+    reach_billions: float | None = None,
 ) -> list[SearchQuery]:
     """Return the ordered, deduplicated set of queries for these requirements.
 
     ``limit`` is the ``list_models`` page size per query. The guided orchestrator
     supplies its own value from ``jaull.application.recommendation.policies``;
     callers that only want to build the queries can omit it.
+
+    ``reach_billions`` is the same ceiling at the priority's lowest quantization;
+    when higher it adds one band between the two.
 
     ``max_billions`` is a coarse planning ceiling. Size bands keep popular
     repositories from monopolising every page; constrained machines also get
@@ -166,6 +170,22 @@ def build_queries(
                         max_billions=high,
                     )
                 )
+        if reach_billions is not None and reach_billions > max_billions and fmt_tag is not None:
+            # Models too large for the ceiling at the default quantization but that still fit
+            # at the lowest rung of the priority's ladder. One open band, like the ones above.
+            add(
+                SearchQuery(
+                    label=(
+                        f"{requirements.use_case.value}:scale-reach-"
+                        f"{max_billions:.0f}-{reach_billions:.0f}B"
+                    ),
+                    filter_tags=(fmt_tag,),
+                    sort="downloads",
+                    limit=limit,
+                    min_billions=max_billions,
+                    max_billions=reach_billions,
+                )
+            )
 
     # A trending query gives recent releases a chance against the all-time
     # download leaders, which otherwise dominate every `sort="downloads"` page.

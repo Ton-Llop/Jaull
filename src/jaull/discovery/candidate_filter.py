@@ -402,6 +402,7 @@ def shortlist(
     hardware: HardwareProfile | None = None,
     targets_other_task: Callable[[ModelCandidate], bool] | None = None,
     audit: dict[str, Any] | None = None,
+    reach_slots: int = 0,
 ) -> list[ModelCandidate]:
     """Choose which candidates are worth the cost of deep inspection.
 
@@ -419,10 +420,14 @@ def shortlist(
     possibly fit are pushed down. Without this the whole inspection budget goes
     to the most-downloaded 30B repositories on a machine that can only run a
     3B one, and the run returns almost nothing.
+
+    ``reach_slots`` bounds how many of the exploration slots may go to a larger model that fits
+    only at the lowest quantization of the priority's ladder (see ``reach_billions``). It does
+    nothing without ``hardware``.
     """
     if hardware is not None:
         return _hardware_aware_shortlist(
-            candidates, requirements, limit, hardware, targets_other_task, audit,
+            candidates, requirements, limit, hardware, targets_other_task, audit, reach_slots,
         )
 
     preferred = requirements.preferred_formats[:1]
@@ -440,6 +445,8 @@ def coarse_placement_hint(
     candidate: ModelCandidate,
     requirements: UserRequirements,
     hardware: HardwareProfile,
+    *,
+    quantization: str | None = None,
 ) -> CoarsePlacementHint:
     """Estimate a candidate's coarse execution envelope without inspecting it.
 
@@ -447,6 +454,9 @@ def coarse_placement_hint(
     search metadata already present on ``ModelCandidate`` plus physical memory
     capacity from the hardware scan, so it cannot increase Hub calls or turn the
     shortlist into deep inspection of every candidate.
+
+    ``quantization`` replaces the one the repository name implies, to ask what the same model
+    would need at another precision (the reach stage asks it for the ladder's last rung).
     """
     billions = parameter_count_hint(candidate.repo_id)
     if billions is None:
@@ -457,7 +467,7 @@ def coarse_placement_hint(
             reason="No parameter-count hint is available before inspection.",
         )
 
-    quantization = _quantization_hint(candidate)
+    quantization = quantization or _quantization_hint(candidate)
     bytes_per_param = _bytes_per_parameter_hint(quantization)
     weights = max(1, int(billions * 1_000_000_000 * bytes_per_param))
     kv_cache = _coarse_kv_cache_bytes(billions, requirements)
@@ -561,6 +571,7 @@ def _hardware_aware_shortlist(
     hardware: HardwareProfile,
     targets_other_task: Callable[[ModelCandidate], bool] | None = None,
     audit: dict[str, Any] | None = None,
+    reach_slots: int = 0,
 ) -> list[ModelCandidate]:
     if audit is not None:
         audit.clear()
@@ -696,8 +707,28 @@ def _hardware_aware_shortlist(
             quality_scale_coverage=quality_scale_coverage,
             exploration_budget=exploration_left,
             max_exploration_score_gap=_MAX_EXPLORATION_SCORE_GAP,
+            reach_slots=0 if quality_scale_coverage else max(0, reach_slots),
         )
+    # Reach: a larger model that the coarse hint puts out of the accelerator at the default
+    # precision, but that fits it whole at the lowest quantization the priority's ladder would
+    # recommend. It takes an exploration slot, never a relevance one, and Quality needs none
+    # because its exploration above already covers larger sizes.
+    reach_left = 0 if quality_scale_coverage else max(0, reach_slots)
+    floor = _ladder_floor(requirements)
     while remaining and len(selected) < limit:
+        if reach_left and exploration_left:
+            reached = _next_reach_entry(
+                remaining, requirements, hardware, floor, selected_redundancy, selected_families,
+            )
+            if reached is not None:
+                remaining.remove(reached)
+                selected_versions.add(_version_key(reached))
+                _remember_selection(reached, selected, selected_redundancy, selected_families)
+                record_pick(reached, "reach", floor_quantization=floor, floor_mode="gpu_resident")
+                reach_left -= 1
+                exploration_left -= 1
+                continue
+            reach_left = 0
         remaining.sort(
             key=lambda entry: (
                 _mode_order(entry.hint.mode, hardware),
@@ -1026,6 +1057,15 @@ def _scale_bucket(billions: float | None) -> str:
 
 
 def _quantization_hint(candidate: ModelCandidate) -> str:
+    # A repository with no hint is only a 4-bit file if it is GGUF; a Transformers
+    # checkpoint is stored in half precision, three times the size.
+    return _declared_quantization(candidate) or (
+        _COARSE_DEFAULT_QUANTIZATION if _is_gguf_candidate(candidate) else "float16"
+    )
+
+
+def _declared_quantization(candidate: ModelCandidate) -> str | None:
+    """The precision the repository says it holds, or ``None`` when it does not say."""
     # A GGUF repository can tag every precision it offers. Only its own name
     # identifies a single-precision build; generic repositories use the planning default.
     haystack = (candidate.repo_id if _is_gguf_candidate(candidate)
@@ -1044,13 +1084,64 @@ def _quantization_hint(candidate: ModelCandidate) -> str:
         return "float16"
     if match := _QUANT_RE.search(haystack):
         return f"q{match.group(1)}"
-    # A repository with no hint is only a 4-bit file if it is GGUF; a Transformers
-    # checkpoint is stored in half precision, three times the size.
-    return _COARSE_DEFAULT_QUANTIZATION if _is_gguf_candidate(candidate) else "float16"
+    return None
 
 
 def _is_gguf_candidate(candidate: ModelCandidate) -> bool:
     return "gguf" in " ".join([candidate.repo_id, *candidate.tags]).lower()
+
+
+def _ladder_floor(requirements: UserRequirements) -> str:
+    """The lowest quantization the priority's ladder would recommend, as a coarse-table key."""
+    return estimator_policies.QUANTIZATION_LADDERS[requirements.priority][-1].lower()
+
+
+def reach_billions(
+    hardware: HardwareProfile, requirements: UserRequirements,
+) -> float | None:
+    """``largest_fitting_billions`` at the last rung of the priority's quantization ladder.
+
+    The default ceiling assumes Q4, but the ladder goes down to Q3_K_M (Q2_K for Memory), so a
+    model that fits only there would never be searched. This is the bound of one extra search
+    band, not a replacement: the bands below keep the default ceiling, because the small-model
+    coverage rules read it and would change on other machines.
+    """
+    return largest_fitting_billions(
+        hardware, requirements, quantization=_ladder_floor(requirements),
+    )
+
+
+def _next_reach_entry(
+    remaining: list[_ShortlistEntry],
+    requirements: UserRequirements,
+    hardware: HardwareProfile,
+    floor: str,
+    selected_redundancy: set[tuple[str, str, HardwareFitMode | None]],
+    selected_families: set[str],
+) -> _ShortlistEntry | None:
+    """The best candidate that fits the accelerator whole at ``floor`` but not at its default.
+
+    A repository that names its own quantization is that build (a Q4_K_M repository is not a
+    Q3 one), and only GGUF files come in the precisions the ladder walks. Small models never
+    need it.
+    """
+    eligible = [
+        entry
+        for entry in remaining
+        if entry.hint.mode is HardwareFitMode.GPU_OFFLOAD
+        and not entry.other_task
+        and not _is_small(entry)
+        and _is_gguf_candidate(entry.candidate)
+        and _declared_quantization(entry.candidate) is None
+        and _family_key(entry.candidate) not in selected_families
+        and _redundancy_key(entry) not in selected_redundancy
+        and coarse_placement_hint(
+            entry.candidate, requirements, hardware, quantization=floor,
+        ).mode is HardwareFitMode.GPU_RESIDENT
+    ]
+    if not eligible:
+        return None
+    return min(eligible, key=lambda entry: (-entry.score, entry.candidate.repo_id))
 
 
 def _is_vision_language_gguf(candidate: ModelCandidate) -> bool:
@@ -1108,18 +1199,18 @@ def _candidate_vram_bytes(candidate: ModelCandidate, hardware: HardwareProfile) 
 
 
 def largest_fitting_billions(
-    hardware: HardwareProfile, requirements: UserRequirements,
+    hardware: HardwareProfile, requirements: UserRequirements, *, quantization: str | None = None,
 ) -> float | None:
     """The largest parameter count that would sit entirely in this machine's memory.
 
     Uses the shortlist's own coarse assumptions (default quantization, KV cache,
     overhead, safety margin), so it is as approximate as they are. ``None`` when no
-    memory pool is known.
+    memory pool is known. ``quantization`` asks the same question at another precision.
     """
     pool = _planning_vram_bytes(hardware) or hardware.memory.total_bytes
     if not pool:
         return None
-    per_parameter = _bytes_per_parameter_hint(_COARSE_DEFAULT_QUANTIZATION)
+    per_parameter = _bytes_per_parameter_hint(quantization or _COARSE_DEFAULT_QUANTIZATION)
     reserve = estimator_policies.DEVICE_RESERVE_DEFAULT_BYTES
 
     def needed(billions: float) -> int:
@@ -1250,5 +1341,6 @@ __all__ = [
     "deduplicate",
     "filter_candidates",
     "parameter_count_hint",
+    "reach_billions",
     "shortlist",
 ]

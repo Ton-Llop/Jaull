@@ -53,6 +53,7 @@
       "coding:scale-open-4-14B",
       "coding:scale-14-15B",
       "coding:scale-open-14-15B",
+      "coding:scale-reach-15-20B",
       "coding:trending"
     ],
     "candidate_count": 1,
@@ -188,7 +189,8 @@
       "best_placement_class": 1,
       "quality_scale_coverage": false,
       "exploration_budget": 3,
-      "max_exploration_score_gap": 4.605170185988092
+      "max_exploration_score_gap": 4.605170185988092,
+      "reach_slots": 1
     }
   },
   "evaluated_candidates": [
