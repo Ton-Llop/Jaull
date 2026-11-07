@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from jaull.domain.estimation import (
     EstimateSource,
     EstimationConfidence,
@@ -9,12 +11,17 @@ from jaull.domain.estimation import (
     MemoryComponent,
 )
 from jaull.domain.inference import WeightPrecision
-from jaull.domain.model import ModelConfig
-from jaull.estimator.policies import bytes_per_parameter
+from jaull.domain.model import HYBRID_ATTENTION_FIELDS, HYBRID_ATTENTION_FLAG, ModelConfig
+from jaull.estimator.policies import RECURRENT_STATE_BYTES_PER_ELEMENT, bytes_per_parameter
 
 FORMULA = (
     "kv_bytes = 2 * num_layers * num_kv_heads * head_dim "
     "* context * batch * concurrent_users * bytes_per_kv_element"
+)
+HYBRID_FORMULA = (
+    "kv_bytes = 2 * attention_layers * num_kv_heads * head_dim "
+    "* context * batch * concurrent_users * bytes_per_kv_element "
+    "+ recurrent_layers * state_bytes_per_layer * batch * concurrent_users"
 )
 
 # Architectures that document ``sliding_window`` on its own and never expose
@@ -82,9 +89,13 @@ def estimate_kv_cache(
     if window_note is not None:
         notes.append(window_note)
 
+    hybrid = _hybrid_layout(config, layers)
+    attention_layers = hybrid.attention_layers if hybrid else layers
+    sequences = batch_size * concurrent_users
+
     kv_bytes = (
         2
-        * layers
+        * attention_layers
         * kv_heads
         * head_dim
         * effective_context
@@ -92,6 +103,16 @@ def estimate_kv_cache(
         * concurrent_users
         * dtype_bytes
     )
+    if hybrid:
+        recurrent_bytes = hybrid.recurrent_layers * hybrid.state_bytes_per_layer * sequences
+        kv_bytes += recurrent_bytes
+        notes.append(
+            f"Hybrid attention: {attention_layers} of {layers} layers keep a KV cache (full "
+            f"attention every {hybrid.interval} layers); the other {hybrid.recurrent_layers} keep "
+            f"a constant recurrent state of {recurrent_bytes // 1024**2} MiB for {sequences} "
+            "sequence(s), in float32 whatever the KV precision. Checked against one llama.cpp "
+            "measurement (Qwen3.8-27B, D120)."
+        )
 
     mixture_of_experts = _is_mixture_of_experts(config)
     if mixture_of_experts:
@@ -112,10 +133,12 @@ def estimate_kv_cache(
         )
 
     explanation = (
-        f"{layers} layers x {kv_heads} KV heads x {head_dim} head_dim x "
+        f"{attention_layers} layers x {kv_heads} KV heads x {head_dim} head_dim x "
         f"{effective_context} tokens x batch {batch_size} x {dtype_bytes} bytes "
         f"x {concurrent_users} sessions x 2."
     )
+    if hybrid:
+        explanation += " Plus the recurrent state of the linear-attention layers."
 
     return KvCacheEstimate(
         component=MemoryComponent(
@@ -124,19 +147,62 @@ def estimate_kv_cache(
             source=EstimateSource.DERIVED,
             confidence=(
                 EstimationConfidence.MEDIUM
-                if window_assumed or mixture_of_experts
+                if window_assumed or mixture_of_experts or hybrid
                 else EstimationConfidence.HIGH
             ),
             explanation=explanation,
         ),
+        # The block count of the model, not the attention layer count: the hardware fit splits
+        # the weights over these blocks and checks that both agree.
         layers=layers,
         kv_heads=kv_heads,
         head_dim=head_dim,
         context_length=effective_context,
         batch_size=batch_size,
         dtype_bytes=dtype_bytes,
-        formula=FORMULA,
+        formula=HYBRID_FORMULA if hybrid else FORMULA,
         notes=notes,
+    )
+
+
+@dataclass(frozen=True)
+class _HybridLayout:
+    interval: int
+    attention_layers: int
+    recurrent_layers: int
+    state_bytes_per_layer: int
+
+
+def _hybrid_layout(config: ModelConfig, layers: int) -> _HybridLayout | None:
+    """The hybrid layout the GGUF header declared, or ``None`` to keep the standard formula.
+
+    A layer is full attention when its 1-based index is a multiple of the interval, so a model of
+    ``layers`` layers has ``layers // interval`` of them. The others hold a recurrent state: a
+    convolution window plus the state matrix, in float32. Anything incomplete or inconsistent
+    is ignored, which sizes the KV for every layer: the safe direction.
+    """
+    flag = config.raw_flags.get(HYBRID_ATTENTION_FLAG)
+    if not isinstance(flag, dict):
+        return None
+    values: dict[str, int] = {}
+    for field in HYBRID_ATTENTION_FIELDS:
+        value = flag.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            return None
+        values[field] = value
+    interval = values["full_attention_interval"]
+    attention_layers = layers // interval
+    if interval < 2 or attention_layers < 1 or attention_layers >= layers:
+        return None
+    convolution = (values["ssm_conv_kernel"] - 1) * (
+        values["ssm_inner_size"] + 2 * values["ssm_group_count"] * values["ssm_state_size"]
+    )
+    state = values["ssm_state_size"] * values["ssm_inner_size"]
+    return _HybridLayout(
+        interval=interval,
+        attention_layers=attention_layers,
+        recurrent_layers=layers - attention_layers,
+        state_bytes_per_layer=(convolution + state) * RECURRENT_STATE_BYTES_PER_ELEMENT,
     )
 
 

@@ -476,3 +476,52 @@ def test_confidence_reflects_unknown_kv_cache(target: TargetDevice) -> None:
     assert est.assessment.status is CompatibilityStatus.UNKNOWN
     assert est.hardware_fit is None
     assert est.total_bytes is not None  # Preserve the known lower bound.
+
+
+def test_a_hybrid_gguf_goes_through_the_whole_estimate_and_the_hardware_fit() -> None:
+    """Regression: the hardware fit needs the KV cache layer count to equal the weights block count.
+
+    A hybrid model counts only its attention layers for the KV bytes, but `layers` stays the
+    model block count. Qwen3.6-35B-A3B IQ3_S at 256K must fit a 24 GiB card, not need 20 GiB of KV.
+    """
+    size = round(12.74 * GIB)
+    variant = GgufVariant(
+        quantization="IQ3_S",
+        files=[ModelFile(path="model.IQ3_S.gguf", size_bytes=size)],
+        total_bytes=size,
+    )
+    hybrid = {
+        "full_attention_interval": 4,
+        "ssm_conv_kernel": 4,
+        "ssm_inner_size": 4096,
+        "ssm_state_size": 128,
+        "ssm_group_count": 16,
+    }
+    analysis = _gguf_analysis([variant]).model_copy(
+        update={
+            "config": ModelConfig(
+                num_hidden_layers=40,
+                num_attention_heads=16,
+                num_key_value_heads=2,
+                head_dim=256,
+                hidden_size=2048,
+                raw_flags={"hybrid_attention": hybrid},
+            )
+        }
+    )
+
+    est = service.estimate_memory(
+        analysis=analysis,
+        hardware=_hardware(ram=28 * GIB, vram=23613 * MIB),
+        inference_cfg=InferenceConfiguration(
+            context_length=262_144, target_device=TargetDevice.AUTO, quantization="IQ3_S"
+        ),
+        client=_FakeClient(),
+        resolve_base_model=False,
+        recommend_runtime=False,
+    )
+
+    assert est.kv_cache.component.bytes < 5.2 * GIB  # not the 20 GiB of counting 40 layers
+    assert est.kv_cache.layers == 40
+    assert est.hardware_fit is not None
+    assert est.total_bytes is not None and est.total_bytes < 23613 * MIB

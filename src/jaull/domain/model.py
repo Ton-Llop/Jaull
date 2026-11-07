@@ -32,6 +32,20 @@ class ModelRepositoryInfo(BaseModel):
     library_name: str | None = None
 
 
+# A hybrid model alternates linear-attention layers (a constant recurrent state per sequence) with
+# a full-attention layer every `full_attention_interval` layers. The GGUF header states the layout
+# and the recurrent layer's dimensions; they travel in `ModelConfig.raw_flags` under this key as a
+# dict with the fields below, all positive integers.
+HYBRID_ATTENTION_FLAG = "hybrid_attention"
+HYBRID_ATTENTION_FIELDS = (
+    "full_attention_interval",
+    "ssm_conv_kernel",
+    "ssm_inner_size",
+    "ssm_state_size",
+    "ssm_group_count",
+)
+
+
 class ModelConfig(BaseModel):
     """Subset of ``config.json`` fields we care about. All optional to survive exotic configs."""
 

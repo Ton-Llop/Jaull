@@ -40,6 +40,10 @@ def bytes_per_parameter(precision: WeightPrecision) -> float:
 # --------------------------------------------------------------------------
 KV_DTYPE_DEFAULT = WeightPrecision.FLOAT16
 
+# The recurrent state of a hybrid model's linear-attention layers is kept in float32 whatever the
+# KV cache precision is. With this size, the 27B's context buffer (D120) is reproduced within 2 %.
+RECURRENT_STATE_BYTES_PER_ELEMENT = 4
+
 # --------------------------------------------------------------------------
 # Runtime overhead heuristic. Meant to cover: allocator arenas, kernel
 # workspaces, activation buffers, tokenizer/state tensors, small caches.

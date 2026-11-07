@@ -12,9 +12,18 @@ from jaull.domain.enrichment import (
     GgufHeaderMetadata,
 )
 from jaull.domain.estimation import ConfigurationSource
-from jaull.domain.model import ModelConfig
+from jaull.domain.model import HYBRID_ATTENTION_FIELDS, HYBRID_ATTENTION_FLAG, ModelConfig
 
 _COMPOSITE_FLAGS = ("text_config", "vision_config", "audio_config")
+
+# GGUF keys (after the architecture prefix) behind each hybrid field.
+_HYBRID_GGUF_KEYS = {
+    "full_attention_interval": "full_attention_interval",
+    "ssm_conv_kernel": "ssm.conv_kernel",
+    "ssm_inner_size": "ssm.inner_size",
+    "ssm_state_size": "ssm.state_size",
+    "ssm_group_count": "ssm.group_count",
+}
 
 
 def merge(
@@ -152,6 +161,11 @@ def merge(
             key_dim = hidden // heads
         if value_dim is not None and value_dim != key_dim:
             raw_flags["unsupported_kv_head_dimensions"] = True
+    if header is not None:
+        hybrid = _hybrid_attention(header)
+        if hybrid is not None:
+            raw_flags[HYBRID_ATTENTION_FLAG] = hybrid
+            sources[HYBRID_ATTENTION_FLAG] = ConfigurationSource.GGUF_HEADER
     if header is not None and layers is not None and heads is not None and hidden is not None:
         # A GGUF holds only the text decoder and its header states the attention dimensions, so
         # the nested text/vision/audio configs of a multimodal base repository do not apply to it.
@@ -179,6 +193,25 @@ def merge(
     )
 
     return EnrichedConfig(config=config, sources=sources, conflicts=conflicts)
+
+
+def _hybrid_attention(header: GgufHeaderMetadata) -> dict[str, int] | None:
+    """The hybrid layout a header declares, or ``None`` for a dense model or a partial header.
+
+    Every field must be present and positive, and the interval at least 2: a model that does not
+    state its whole layout keeps the standard KV formula rather than a guess.
+    """
+    if not header.architecture:
+        return None
+    layout: dict[str, int] = {}
+    for field in HYBRID_ATTENTION_FIELDS:
+        value = _as_int(header.raw_kv.get(f"{header.architecture}.{_HYBRID_GGUF_KEYS[field]}"))
+        if value is None or value < 1:
+            return None
+        layout[field] = value
+    if layout["full_attention_interval"] < 2:
+        return None
+    return layout
 
 
 def _as_int(value: object) -> int | None:
