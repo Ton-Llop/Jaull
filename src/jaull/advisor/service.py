@@ -92,6 +92,7 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
+from jaull.estimator.context_fit import ContextSweep, sweep_context
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
@@ -238,6 +239,39 @@ class AdvisorService:
             resolve_base_model=resolve_base_model,
             range_client=effective_range,
             recommend_runtime=recommend_runtime,
+        )
+
+    def sweep_context_for_model(
+        self,
+        analysis: ModelAnalysis,
+        hardware: HardwareProfile,
+        inference_cfg: InferenceConfiguration,
+        *,
+        native_limit: int | None = None,
+        resolve_base_model: bool = True,
+    ) -> ContextSweep:
+        """The memory a model needs at each context, and the largest one that still fits.
+
+        One range client serves the whole sweep, so the GGUF header connection is not rebuilt for
+        every context. Each rung is estimated by :meth:`estimate_model`, which stays the only
+        authority on what fits.
+        """
+        range_client = self._make_range_client() if resolve_base_model else None
+
+        def estimate_at(
+            model: ModelAnalysis, config: InferenceConfiguration
+        ) -> MemoryEstimate:
+            return self.estimate_model(
+                model,
+                hardware,
+                config,
+                resolve_base_model=resolve_base_model,
+                recommend_runtime=False,
+                range_client=range_client,
+            )
+
+        return sweep_context(
+            analysis, inference_cfg, estimate_at, native_limit=native_limit
         )
 
     def recommend(

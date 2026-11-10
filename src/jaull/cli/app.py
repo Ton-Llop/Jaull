@@ -200,6 +200,14 @@ def estimate_command(
         "--no-runtime-recommendation",
         help="Skip the runtime recommendation section (llama.cpp / Transformers / vLLM).",
     ),
+    context_sweep: bool = typer.Option(
+        False,
+        "--context-sweep",
+        help=(
+            "Estimate the model at several contexts and report the largest one that fits "
+            "(replaces the single estimate; not combinable with --context)."
+        ),
+    ),
 ) -> None:
     options = EstimateOptions(
         quantization=quantization,
@@ -213,6 +221,7 @@ def estimate_command(
         as_json=as_json,
         resolve_base_model=not no_resolve_base_model,
         recommend_runtime=not no_runtime_recommendation,
+        context_sweep=context_sweep,
     )
     raise typer.Exit(code=run_estimate(reference, options))
 

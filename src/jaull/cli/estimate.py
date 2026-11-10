@@ -10,6 +10,7 @@ from rich.console import Console
 
 from jaull.advisor.service import AdvisorService
 from jaull.application.model_reference import normalize_repo_id
+from jaull.domain.hardware import HardwareProfile
 from jaull.domain.inference import (
     InferenceConfiguration,
     TargetDevice,
@@ -29,7 +30,8 @@ from jaull.exceptions import (
     QuantizationNotFoundError,
 )
 from jaull.presentation.console import make_console
-from jaull.presentation.estimation_report import render_estimate
+from jaull.presentation.estimation_report import render_context_sweep, render_estimate
+from jaull.reporting.context_sweep import context_sweep_to_json_dict
 from jaull.reporting.estimation import estimate_to_json_dict
 
 _DEFAULT_CONTEXT_FALLBACK = 4096
@@ -49,6 +51,7 @@ class EstimateOptions:
     as_json: bool = False
     resolve_base_model: bool = True
     recommend_runtime: bool = True
+    context_sweep: bool = False
 
 
 def run_estimate(
@@ -57,6 +60,15 @@ def run_estimate(
     advisor: AdvisorService | None = None,
 ) -> int:
     console = make_console()
+    if options.context_sweep and options.context is not None:
+        _print_error(
+            console,
+            ValueError(
+                "--context-sweep tries several contexts: do not combine it with --context."
+            ),
+            options.as_json,
+        )
+        return 2
     resolved = advisor or AdvisorService.default()
 
     try:
@@ -88,6 +100,11 @@ def run_estimate(
 
     hardware = resolved.scan_hardware()
 
+    if options.context_sweep:
+        return _run_context_sweep(
+            resolved, repo_id, analysis, hardware, inference_cfg, options, console
+        )
+
     try:
         estimate = resolved.estimate_model(
             analysis=analysis,
@@ -110,6 +127,39 @@ def run_estimate(
         return 0
 
     render_estimate(estimate, console)
+    return 0
+
+
+def _run_context_sweep(
+    advisor: AdvisorService,
+    repo_id: str,
+    analysis: ModelAnalysis,
+    hardware: HardwareProfile,
+    inference_cfg: InferenceConfiguration,
+    options: EstimateOptions,
+    console: Console,
+) -> int:
+    try:
+        sweep = advisor.sweep_context_for_model(
+            analysis,
+            hardware,
+            inference_cfg,
+            native_limit=_config_context(analysis),
+            resolve_base_model=options.resolve_base_model,
+        )
+    except QuantizationNotFoundError as exc:
+        _print_error(console, exc, options.as_json)
+        return 7
+    except EstimationError as exc:
+        _print_error(console, exc, options.as_json)
+        return 8
+
+    if options.as_json:
+        sys.stdout.write(json.dumps(context_sweep_to_json_dict(repo_id, sweep), indent=2))
+        sys.stdout.write("\n")
+        return 0
+
+    render_context_sweep(repo_id, sweep, console)
     return 0
 
 
