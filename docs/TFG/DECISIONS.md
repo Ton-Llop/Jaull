@@ -3534,19 +3534,38 @@ Qwen3.6-35B-A3B va arribar a 131072 (D125). Jaull només sabia estimar **un** co
 5. Comandament `jaull estimate MODEL --context-sweep [--json]`. El JSON és un document a part (`schema_version` 1) i no toca
    el de `estimate`. No es pot combinar amb `--context`. `AdvisorService.sweep_context_for_model` fa servir un sol client de
    rang per a tot l'escombratge.
+6. **La confiança es diu una sola vegada, al peu, i no a cada fila.** És la del component més feble de l'estimació
+   (`ContextSweep.weakest_confidence`, mai una mitjana) i és la mateixa a tots els contextos, de manera que una columna només
+   la repetiria. Al JSON es manté per punt. La regla del component més feble **no es relaxa**: fer-la menys conservadora per
+   quedar millor amagaria la incertesa.
+7. **Pestanya «Context» a la TUI.** És la quarta pestanya de cada model a Results (després de Plan, Memory i Evaluation, perquè
+   els ids `tab-1` a `tab-3` no es moguin). El càlcul **no es fa fins que s'obre la pestanya**: un escombratge reestima el model
+   diverses vegades. La pantalla el llança en un `ThreadPoolExecutor` propi, amb `rec.evaluated.analysis` i
+   `selected_configuration`, i el resultat torna amb `post_message`, com ja fa la càrrega d'evidència. Es veu amb peces que ja
+   existien: `MetricRow` amb `ratio_bar`, `AssessmentBadge` i la confiança al tooltip de cada fila. Té estats de «calculant»,
+   «no disponible» (si falta l'anàlisi o el maquinari) i d'error. El límit natural el deriva la façana
+   (`native_context`), de manera que el CLI i la TUI no el calculen per separat.
 
 **Evidència:** 14 proves del mòdul i 7 del comandament, totes vistes fallar abans d'escriure el codi. Prova real contra el Hub
 (`Qwen/Qwen2.5-0.5B-Instruct`): el KV va de 24 MiB a 2048 tokens a 384 MiB a 32768, és a dir 12 KiB per token, que és el que surt
 a mà amb 24 capes, 2 caps KV, dimensió 64 i 2 bytes. **Aquesta comparació és un càlcul a mà, no una mesura de llama.cpp.**
 
-**Estat:** IMPLEMENTED al comandament; **PENDENT**: la TUI, i la validació contra mesures.
+**Estat:** IMPLEMENTED al comandament i a la TUI. **PENDENT**: la validació contra mesures de llama.cpp, i que la pestanya
+de la TUI només s'ha provat amb proves de Textual (14 de noves), **no s'ha revisat visualment**.
 
 **Límits:**
 - **L'overhead de GGUF (256 MiB) es va mesurar només a context 4096** (D120, D123). L'escombratge l'extrapola a contextos llargs
   suposant que no creix amb el context. No està comprovat; cal mesurar amb `-lv 4` a tres o quatre contextos en dos models.
   Això necessita la GPU.
-- **TUI no feta.** La pantalla de resultats no té cap treballador en segon pla; mostrar l'escombratge a la pestanya Memory obliga a
-  introduir-lo i, a més, la recomanació no sembla exposar el `ModelAnalysis` que cal per recalcular.
+- **Una trampa de Textual.** `_context` és un **mètode** de `MessagePump` (un gestor de context que fa servir
+  `_process_messages`). Un primer intent amb `self._context = ContextSweepView(...)` el va trepitjar i el muntatge de la pantalla
+  es va quedar esperant sense cap error. Es veia amb `asyncio.all_tasks()` i `faulthandler_timeout`. Cal no posar aquest nom a
+  cap atribut d'un widget.
+- **El primer cop que s'obre la pestanya, el càlcul de GGUF necessita xarxa** (lectura de la capçalera), de manera que pot
+  trigar. No s'ha mesurat.
+- **La confiança sol sortir «low»** perquè l'overhead del runtime és una heurística. Per a GGUF es va mesurar (90 a 220 MiB en
+  models de 9B a 32B, D120/D123), de manera que pujar-ne la confiança té base, però només fins al context mesurat (4096): és
+  una decisió sobre `policies.py` a part, **no presa**.
 - Cada graó torna a llegir la capçalera GGUF (hi ha un sol client de rang, però no memòria de capçalera entre graons). No s'ha mesurat el cost.
 - Les capes de finestra lliscant segueixen sense modelar (D127): l'escombratge hereta la cota.
 
