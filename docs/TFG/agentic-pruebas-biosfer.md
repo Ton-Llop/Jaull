@@ -575,3 +575,60 @@ aplicaria la fórmula estàndard a les 40 capes i sobreestimaria el KV unes 4 ve
 lectura del codi, no s'ha executat Jaull amb aquest model). Abans de tocar res cal mesurar el KV real amb llama.cpp,
 perquè la regla de Jaull és que un benchmark valida una hipòtesi i no canvia una fórmula per si sol. Que Jaull el
 mostri abans que el Coder és un tema de política de rànquing: només es toca amb evidència.
+
+**Actualització, 2026-11-10.** El model s'ha provat amb el fitxer `UD-IQ4_XS` (16,50 GiB) i no amb l'`IQ3_S`: el KV i la
+velocitat estan a [D125](DECISIONS.md) i [X005](DECISIONS-2.md), i Jaull ja el tracta com a híbrid (D125, D126).
+
+## Prova 3: Prompt 1 amb el Qwen3.6-35B-A3B a 128K (2026-11-10)
+
+**Configuració.** Servidor `llama-server.exe` b11889 amb Vulkan natiu a Windows, `-c 131072 -np 1 -lm dio
+--sleep-idle-seconds 45 --cache-ram 0 --jinja`, amb el raonament que el model porta per defecte i sense
+`--no-reasoning-preserve`. Mateix túnel i mateix `opencode.json` global, amb `limit.context` a 131072. Mateix clon de
+Lipopótamo, en una branca nova (`qwen36-p1`). Dues diferències amb la prova 2 del Coder, que no es poden separar:
+**el model** i **el context** (32K contra 128K). **Prompt 1 original**, el mateix que es va enviar al Coder, no la versió 2
+per rangs. Sense `AGENTS.md`. Als permisos de `bash` s'hi han afegit `git status*` i `npm --prefix frontend run build*`
+abans de la prova (el Coder no els tenia). **Límit de sortida:** `limit.output` era de **4.096 tokens**, heretat sense
+voler de l'entrada del Coder en crear la del 35B (un error de l'autor del muntatge, no del model), i es va pujar a 32.768
+quan, a la segona tanda, una escriptura va quedar tallada («Response still truncated after two output token limit
+continuations»). El pas 1 i els seus seguiments de build es van fer, doncs, amb 4.096.
+
+**Fitxers.** Segons `git`, **VALIDATED**: `OutputsDashboard.tsx` modificat (39 insercions, cap esborrat) i
+`OutputsComparePanel.tsx` nou.
+
+| | Prompt 1, Qwen3.6-35B-A3B |
+|---|---|
+| Durada del pas 1 | 3 min 38 s |
+| Context al final del pas 1 | 26.265 tokens (20 %) |
+| Compactacions | 0 |
+| Seguiments per al build | tres: 1 min 16 s, 2 min 24 s i 1 min 54 s |
+| Context al final | 33.966 tokens (26 %) |
+| Fitxers modificats | 1 existent (+39) i 1 de nou |
+| `npm run build` | passa, segons l'agent («built in 1.31s», sense errors de TypeScript); **UNVERIFIED** fins que es comprovi a mà |
+| Verificació externa de l'autor | **PENDENT** (build a mà i revisió del diff) |
+
+**Què va passar amb el build.** Va ser un problema d'entorn, no del model. El primer informe deia que les «instruccions
+del sistema» bloquejaven el shell; amb els permisos nous va poder executar l'ordre, i va fallar amb `sh: 1: tsc: not
+found` perquè al clon no hi havia `node_modules`. Va intentar `npm install`, denegat pels permisos, i va repetir
+l'ordre 16 vegades (12 amb `tsc: not found` i 4 amb `Permission denied`) abans de parar i explicar-ho. L'autor va fer
+`npm ci` (476 paquets, 52 s; Node v26.13.0; `git status` no va canviar) i, al missatge següent, el build va passar.
+Una de les hipòtesis que es van provar pel camí, que el permís fallés per la canonada `| tail -40`, **es va descartar**:
+l'ordre amb la canonada sí que va passar el filtre.
+
+**Què es pot dir, i què no.**
+- **VALIDATED:** el 35B va editar un fitxer existent al primer intent, cosa que el Coder no va fer al pas 1 (el seu
+  `git diff --stat` va quedar buit); el pas 1 no va compactar i va gastar una cinquena part del context; va detectar sense
+  que el prompt el hi expliqués que `selectedRows` es deriva de les files de la pàgina visible (el prompt demanava
+  indicar-ho) i ho va deixar per al pas 2; i mai no va dir que el codi compilés sense haver vist el resultat.
+- **UNVERIFIED:** que el codi sigui correcte més enllà de compilar. Cal comprovar a mà que el render és prop de
+  `ReportPreview` i `OutputsDetailPanel` (el Coder el va posar «just abans del `return`»), que l'estat és un `useState`
+  (el Coder va proposar `usePersistentState`) i que el panell es tanca en desactivar Multi Select o quedar menys de dues
+  files. Les afirmacions de l'agent sobre què ha fet no s'han contrastat amb el diff, més enllà del recompte de fitxers.
+- **No es pot concloure** que el context sigui el que ha fet la diferència amb el Coder: ha canviat també el model, el
+  mode de raonament i els permisos de `bash`.
+
+**Límits.** Una sola execució, d'un sol pas, sobre un projecte. Les durades i els tok/s que mostra OpenCode són mitjanes
+del missatge i no la velocitat del servidor (68-70 t/s amb el context buit).
+
+**Següent.** Passar a una branca nova i enviar la tasca sencera de la prova 1, en un sol missatge, amb dues salvaguardes
+afegides: llegir per rangs els fitxers de més de 1.500 línies i no repetir una ordre que falla dues vegades amb el mateix
+error. Apuntar els tokens de context, les compactacions i les ordres repetides.

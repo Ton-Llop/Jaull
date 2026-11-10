@@ -4,7 +4,7 @@
 
 ## 1. Per a què serveix aquest document
 
-[`DECISIONS.md`](DECISIONS.md) explica per què Jaull té la forma que té (D001-D122). Aquest
+[`DECISIONS.md`](DECISIONS.md) explica per què Jaull té la forma que té (D001-D127). Aquest
 document recull les decisions que no són del codi de Jaull: quines eines i quins models
 s'usen per fer les proves de la memòria, i com es fan. Són material de treball per redactar el TFG,
 no una especificació.
@@ -329,3 +329,93 @@ queda a decisió de l'autor.
 [llama.cpp #25646](https://github.com/ggml-org/llama.cpp/issues/25646),
 [llama.cpp #25214](https://github.com/ggml-org/llama.cpp/pull/25214),
 [llama.cpp #27097](https://github.com/ggml-org/llama.cpp/issues/27097) (consultades el 2026-11-04).
+
+### X005. El Qwen3.6-35B-A3B arriba als 128K a la B60 i el Coder només als 32K: el KV per token
+
+**Data i necessitat:** 2026-11-10. Per provar el Qwen3.6-35B-A3B com a agent calia saber quin context s'hi podia fer
+servir. A X002 el Coder s'havia mesurat a `-c 32768` i els densos queden molt per sota, així que no era clar que el
+35B pogués anar molt més enllà.
+
+**Evidència, VALIDATED** (`llama-server.exe` b11889, Vulkan natiu a Windows, B60 amb 23.613 MiB lliures):
+
+| Model | Capes amb KV | Caps KV × dimensió | KV per cada 1.024 tokens | KV a 32768 | KV a 131072 |
+|---|---|---|---:|---:|---:|
+| Qwen2.5-32B (dens) | 64 | | 256 MiB (D123) | 8.192 MiB ¹ | 32.768 MiB ¹ |
+| Qwen3-Coder 30B-A3B | 48 | 4 × 128 | 96 MiB (X002) | 3.072 MiB | 12.288 MiB ¹ |
+| **Qwen3.6-35B-A3B** | **10 de 40** | **2 × 256** | **20 MiB** | **640 MiB** | **2.560 MiB** |
+
+¹ Extrapolat linealment des de la mesura a un altre context, no mesurat.
+
+La diferència ve de dues coses. El Qwen3.6 és híbrid: només una capa de cada quatre és d'atenció completa i
+guarda KV (2 × 10 × 2 × 256 × 2 bytes = 20 KiB per token); les altres 30 són d'atenció lineal i guarden un estat de
+mida constant, de 62,81 MiB, que no creix amb el context. El Coder guarda KV a les 48 capes (96 KiB per token). Les
+xifres del 35B surten de D125 i coincideixen amb les de llama.cpp al byte.
+
+**Mesura de la càrrega del 35B** (`UD-IQ4_XS`, 16,50 GiB, `-lv 4`; el «projected to use» és de llama.cpp):
+
+| `-c` | Pesos a la B60 | Context (KV + estat) | Còmput | Memòria a la B60 | Lliure després |
+|---:|---:|---:|---:|---:|---:|
+| 32768 | 16.383 MiB | 702 | 108 | 17.194 | 6.419 |
+| 131072 | 16.383 MiB | 2.622 | 204 | 19.210 | 4.403 |
+| 262144 | 16.383 MiB | 5.182 | 332 | 21.898 | 1.715 |
+
+A 262144, llama.cpp ho accepta sense canvis (el seu mínim és d'1.024 MiB lliures). Per al Coder, amb els 23.613 MiB lliures,
+els 17.524 MiB de pesos i els 116 de còmput que va mesurar X002, quedarien uns 5.000 MiB per al KV: uns 50.000 tokens com a
+màxim (**UNVERIFIED**, és un càlcul i no una càrrega).
+
+**Decisió (de l'autor):** per a la prova agentic amb el 35B, servidor a `-c 131072` i, la primera vegada, amb el
+raonament que el model porta per defecte. El tope de 262144 també cap, però no s'usa per no canviar dues variables a la
+vegada. Per a l'IFEval, `-c 8192` i `--reasoning off`, que és el que equival al «sense raonament» del 27B.
+
+**Què implica per a la comparació amb el Coder.** La prova passa de 32K a 128K i de model a model, així que si el 35B ho
+resol, no es pot dir quin dels dos canvis ho ha fet. Per separar-ho caldria repetir el Coder al seu context màxim, uns 50K.
+
+**Límits:** una sola màquina i una sola GPU. La velocitat només s'ha mesurat amb el context buit (`tg128` de
+69,89 ± 0,29 t/s); amb el context ple, **PENDENT**. L'estat recurrent obliga el servidor a guardar punts de control de
+62,8 MiB cada un, fins a 32, a la RAM del host, i el PC en té uns 6 GiB lliures: **PENDENT** mesurar-ho en una sessió
+d'agent llarga. Que més context faci un millor agent no s'ha provat: només que hi cap.
+
+**Fonts:** X002, D120, D123, D125, [taula B60](../b60-taula-comparativa.md).
+
+### X006. Per què es prova el Qwen3.6-35B-A3B com a candidat a agent, i què falta per decidir-ho
+
+**Data i necessitat:** 2026-11-10. X002 va triar el Coder 30B-A3B per velocitat i per context, no perquè fos el millor
+com a agent: «no s'ha mesurat» (X002). A la prova 2, amb 32K, el Coder no acabava el pas 1. Calia un candidat que
+permetés un context molt més gran sense baixar a la velocitat dels densos.
+
+**Per què aquest model.** Separat en el que està mesurat i el que no:
+
+| Motiu | Estat |
+|---|---|
+| Cap a la B60 amb 128K i fins i tot amb 256K (KV de 20 MiB per cada 1.024 tokens contra els 96 del Coder) | **VALIDATED** (X005) |
+| Velocitat de generació usable: 69,9 t/s amb el context buit, contra 99,2 del Coder i 15-18 dels densos | **VALIDATED** (taula B60; context ple, **PENDENT**) |
+| Cap amb 17.194 MiB a 32K i 21.898 MiB a 262144, de 23.613 lliures | **VALIDATED** (D125) |
+| Un usuari de Reddit el va proposar el 2026-11-05 i va dir que l'`IQ3_S` és «molt robust» | **UNVERIFIED**, sense dades |
+| És més nou que el Coder (la pàgina del model el situa a l'abril de 2026) i és general, no especialitzat en codi | **UNVERIFIED**: dada llegida amb una eina que resumeix la pàgina |
+| **És més capaç que el Coder com a agent o en seguir instruccions** | **PENDENT, no hi ha cap mesura**. És una hipòtesi |
+
+**El que hi ha fins ara de qualitat.** Una sola execució del pas 1 de la prova 2 (2026-11-10): el 35B va editar un fitxer
+existent i en va crear un de nou al primer intent, va compilar després d'instal·lar les dependències, no va compactar i no
+va dir mai que compilava sense veure-ho. El Coder, a 32K, no va modificar cap fitxer existent. Però han canviat el model,
+el context, el mode de raonament i els permisos de `bash` a la vegada, així que no es pot atribuir res a una sola causa
+(vegeu «Prova 3» a `agentic-pruebas-biosfer.md`).
+
+**Decisió (de l'autor):** provar-lo com a candidat per substituir el Coder en la prova agentic. **X002 no es
+substitueix encara:** el Coder continua sent el model de referència fins que hi hagi evidència.
+
+**Què hauria de passar perquè el 35B guanyi:**
+1. **IFEval**, `prompt_level_strict_acc` complet i amb les mateixes condicions (`-c 8192`, temperatura 0, `--reasoning off`),
+   contra el 0,789 ± 0,018 del Coder. Les diferències d'uns 0,024 no discriminen (X002).
+2. **Tasca agentic:** que acabi la tasca (compila, el diff encaixa amb el que diu l'informe) més vegades o més de pressa
+   que el Coder, amb el mateix prompt, amb el mateix punt de partida, i repetida, no una sola vegada.
+3. **Velocitat i RAM amb el context ple** en una sessió llarga: els punts de control del servidor poden ocupar fins a
+   2 GiB de RAM del host (X005).
+
+**Què seria un resultat en contra:** que l'IFEval quedi per sota del Coder, o que la tasca amb 128K continuï fallant amb el
+mateix patró (bucle de comandes, informe que no coincideix amb el diff). Llavors el context no era el límit.
+
+**Límits:** una sola màquina, una sola tasca de Lipopótamo i un sol model nou. Per separar el model del context caldria
+repetir el Coder a uns 50K, el seu màxim estimat (X005).
+
+**Fonts:** X002, X005, D125, [taula B60](../b60-taula-comparativa.md),
+[proves agentic](agentic-pruebas-biosfer.md).
