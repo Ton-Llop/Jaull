@@ -92,6 +92,13 @@ TIGHT_MAX = 1.00
 # --------------------------------------------------------------------------
 DEFAULT_GGUF_QUANTIZATION = "Q4_K_M"
 
+# --------------------------------------------------------------------------
+# Context sweep: the contexts at which a model's memory is estimated. These are the sizes people
+# actually pick for ``-c``/``--ctx-size``, not a measurement. The largest one that fits is only
+# as good as this list: when the whole list fits, the real limit may be higher.
+# --------------------------------------------------------------------------
+CONTEXT_LADDER: tuple[int, ...] = (2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144)
+
 
 # --------------------------------------------------------------------------
 # Automatic configuration selection ladders — priority → ordered rungs.

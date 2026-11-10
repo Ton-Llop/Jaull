@@ -22,6 +22,14 @@ from jaull.estimator.policies import (
     TIGHT_MAX,
 )
 
+# The statuses that mean "runs resident on one device". Offloading and unknown are not among them:
+# neither is a fit the estimator can stand behind.
+RESIDENT_FIT_STATUSES = (
+    CompatibilityStatus.COMFORTABLE,
+    CompatibilityStatus.COMPATIBLE,
+    CompatibilityStatus.TIGHT,
+)
+
 
 def assess(
     total_bytes: int | None,

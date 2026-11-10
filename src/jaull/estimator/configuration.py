@@ -34,6 +34,7 @@ from jaull.domain.runtime_support import (
     quantized_transformers_supported,
 )
 from jaull.estimator import policies
+from jaull.estimator.compatibility import RESIDENT_FIT_STATUSES
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     SAFETY_MARGIN_DEFAULT_PERCENT,
@@ -41,11 +42,7 @@ from jaull.estimator.policies import (
 
 # Statuses we are willing to stop the ladder on. Anything worse means "keep
 # looking for a smaller rung".
-_ACCEPTABLE = (
-    CompatibilityStatus.COMFORTABLE,
-    CompatibilityStatus.COMPATIBLE,
-    CompatibilityStatus.TIGHT,
-)
+_ACCEPTABLE = RESIDENT_FIT_STATUSES
 
 EstimateFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
 
