@@ -93,8 +93,8 @@ behind those numbers.
 | `--context` / `-c` | `max_position_embeddings` or 4096 | Context length in tokens |
 | `--batch-size` / `-b` | 1 | Sequences in parallel |
 | `--device` | `auto` | `auto` / `gpu` / `cpu` |
-| `--kv-dtype` | `float16` | KV cache element precision |
-| `--safety-margin-percent` | 10 | Extra on top of the subtotal |
+| `--kv-dtype` | `float16` | Assumed cache precision; quantized KV is unmodelled, executable GGUF requires FP16 |
+| `--safety-margin-percent` | automatic | Explicit extra percentage; omitted means GGUF headroom policy or 10% for other repositories |
 | `--device-reserve-gib` | 0.5 | Memory to leave free on the target device |
 | `--json` | off | Emit stable JSON to stdout (`schema_version` identifies the current estimation contract) |
 | `--no-resolve-base-model` | off | Skip base-model resolution and GGUF-header enrichment |

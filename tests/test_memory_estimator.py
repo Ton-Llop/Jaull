@@ -191,7 +191,7 @@ def _coder_like_gguf(target: TargetDevice = TargetDevice.GPU, **knobs):
 
 def test_gguf_total_is_weights_plus_kv_plus_compute_slack_plus_one_gib() -> None:
     """D123: llama.cpp accepts a load that leaves >= 1 GiB free, so that is the whole headroom."""
-    est = _coder_like_gguf(device_reserve_bytes=512 * MIB, safety_margin_percent=10.0)
+    est = _coder_like_gguf(device_reserve_bytes=512 * MIB)
 
     assert est.runtime_overhead.component.bytes == 256 * MIB
     assert est.device_reserve.bytes == 1 * GIB

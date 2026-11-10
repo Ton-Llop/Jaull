@@ -37,7 +37,6 @@ from jaull.estimator import policies
 from jaull.estimator.compatibility import RESIDENT_FIT_STATUSES
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
-    SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 
 # Statuses we are willing to stop the ladder on. Anything worse means "keep
@@ -397,7 +396,6 @@ def _build_config(
         target_device=TargetDevice.AUTO,
         precision=precision,
         quantization=quantization,
-        safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
         device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
         concurrent_users=requirements.concurrent_users,
     )

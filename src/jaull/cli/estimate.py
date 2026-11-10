@@ -19,7 +19,6 @@ from jaull.domain.inference import (
 from jaull.domain.model import ModelAnalysis
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
-    SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 from jaull.exceptions import (
     EstimationError,
@@ -46,7 +45,7 @@ class EstimateOptions:
     batch_size: int = 1
     device: TargetDevice = TargetDevice.AUTO
     kv_dtype: WeightPrecision = WeightPrecision.FLOAT16
-    safety_margin_percent: float = SAFETY_MARGIN_DEFAULT_PERCENT
+    safety_margin_percent: float | None = None
     device_reserve_gib: float = DEVICE_RESERVE_DEFAULT_BYTES / _GIB
     as_json: bool = False
     resolve_base_model: bool = True
@@ -173,16 +172,18 @@ def _build_configuration(
 ) -> InferenceConfiguration:
     context = options.context or analysis_config_context or _DEFAULT_CONTEXT_FALLBACK
     reserve_bytes = int(options.device_reserve_gib * _GIB)
-    return InferenceConfiguration(
+    config = InferenceConfiguration(
         context_length=context,
         batch_size=options.batch_size,
         target_device=options.device,
         precision=options.dtype,
         quantization=options.quantization,
         kv_cache_dtype=options.kv_dtype,
-        safety_margin_percent=options.safety_margin_percent,
         device_reserve_bytes=reserve_bytes,
     )
+    if options.safety_margin_percent is not None:
+        config = config.model_copy(update={"safety_margin_percent": options.safety_margin_percent})
+    return config
 
 
 def _print_error(console: Console, exc: Exception, as_json: bool) -> None:

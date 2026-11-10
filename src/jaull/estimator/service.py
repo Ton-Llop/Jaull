@@ -104,15 +104,19 @@ def estimate_memory(
 
     reserve_bytes = inference_cfg.device_reserve_bytes
     margin_percent = inference_cfg.safety_margin_percent
+    if margin_percent is None:
+        margin_percent = policies.SAFETY_MARGIN_DEFAULT_PERCENT
     if is_gguf:
         # llama.cpp accepts a layout that leaves >= 1 GiB free, and that is the whole headroom:
         # it is the floor of the reserve and replaces the default percentage margin (D123).
-        # A reserve above 1 GiB or an explicit, non-default margin still apply.
+        # A reserve above 1 GiB or any explicitly requested margin still apply.
         reserve_bytes = max(reserve_bytes, policies.GGUF_DEVICE_HEADROOM_BYTES)
-        if margin_percent == policies.SAFETY_MARGIN_DEFAULT_PERCENT:
+        if inference_cfg.safety_margin_percent is None:
             margin_percent = 0.0
         assumptions.append(
             "GGUF headroom: llama.cpp's own threshold of 1 GiB free replaces the percentage margin."
+            if inference_cfg.safety_margin_percent is None else
+            "GGUF headroom: at least 1 GiB free, plus the explicitly requested percentage margin."
         )
     device_reserve = _device_reserve_component(reserve_bytes)
 
@@ -143,6 +147,7 @@ def estimate_memory(
         total_bytes=total_bytes,
         total_transformer_blocks=kv_estimate.layers,
         weight_decomposition=weight_estimate.transformer_block_decomposition,
+        kv_layer_bytes=kv_estimate.layer_bytes,
         hardware=hardware,
         device_target=inference_cfg.target_device,
     )

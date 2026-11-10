@@ -34,7 +34,8 @@ class InferenceConfiguration(BaseModel):
     precision: WeightPrecision | None = None
     quantization: str | None = None
     kv_cache_dtype: WeightPrecision = WeightPrecision.FLOAT16
-    safety_margin_percent: float = Field(default=10.0, ge=0.0, le=100.0)
+    # None selects the runtime's policy; a numeric value is always explicit.
+    safety_margin_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     device_reserve_bytes: int = Field(default=0, ge=0)
     # Number of independent inference sessions the estimate should size for. Each
     # session keeps its own KV cache, so N users multiply the KV footprint by N —

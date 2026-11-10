@@ -209,6 +209,7 @@ class KvCacheEstimate(BaseModel):
     context_length: int
     batch_size: int
     dtype_bytes: int
+    layer_bytes: tuple[int, ...] | None = None
     formula: str
     notes: list[str] = Field(default_factory=list)
 

@@ -65,6 +65,7 @@ def analyze_estimate(
         hardware=hardware,
         total_transformer_blocks=estimate.kv_cache.layers,
         weight_decomposition=estimate.weights.transformer_block_decomposition,
+        kv_layer_bytes=estimate.kv_cache.layer_bytes,
     )
 
 
@@ -79,6 +80,7 @@ def analyze_components(
     total_transformer_blocks: int | None = None,
     total_layers: int | None = None,
     weight_decomposition: TransformerBlockWeightDecomposition | None = None,
+    kv_layer_bytes: tuple[int, ...] | None = None,
 ) -> HardwareFitResult:
     """Classify model placement without collapsing RAM and VRAM into one pool."""
 
@@ -100,6 +102,11 @@ def analyze_components(
             total_transformer_blocks = weight_decomposition.total_transformer_blocks
         elif total_transformer_blocks != weight_decomposition.total_transformer_blocks:
             raise ValueError("Weight decomposition must match the transformer block count.")
+    if kv_layer_bytes is not None and (
+        len(kv_layer_bytes) != total_transformer_blocks
+        or sum(kv_layer_bytes) != kv_cache_bytes or any(v < 0 for v in kv_layer_bytes)
+    ):
+        raise ValueError("Per-layer KV costs must match the cache and block count.")
     topology = _memory_topology(hardware)
     available_vram = _available_vram(hardware)
     available_ram = hardware.memory.available_bytes
@@ -160,6 +167,7 @@ def analyze_components(
             total_transformer_blocks=total_transformer_blocks,
             topology=topology,
             weight_decomposition=weight_decomposition,
+            kv_layer_bytes=kv_layer_bytes,
         )
         if offload is not None:
             return offload
@@ -251,6 +259,7 @@ def _try_gpu_offload(
     total_transformer_blocks: int | None,
     topology: HardwareMemoryTopology,
     weight_decomposition: TransformerBlockWeightDecomposition | None = None,
+    kv_layer_bytes: tuple[int, ...] | None = None,
 ) -> HardwareFitResult | None:
     method: HardwareFitPlacementMethod
     if _valid_transformer_block_count(total_transformer_blocks):
@@ -301,6 +310,8 @@ def _try_gpu_offload(
                 total_transformer_blocks - 1,
                 total_transformer_blocks * (blocks_budget - non_block_bytes) // denominator,
             )
+        if kv_layer_bytes is not None:
+            search_ceiling_transformer_blocks = total_transformer_blocks - 1
         last_rejected: HardwareFitOffloadCandidate | None = None
         for gpu_transformer_blocks in range(
             search_ceiling_transformer_blocks, 0, -1
@@ -323,6 +334,7 @@ def _try_gpu_offload(
                 total_transformer_blocks=total_transformer_blocks,
                 gpu_transformer_blocks=gpu_transformer_blocks,
                 gpu_weight_bytes=gpu_weight_bytes,
+                kv_layer_bytes=kv_layer_bytes,
             )
             if placement is None:
                 continue
@@ -336,6 +348,7 @@ def _try_gpu_offload(
                     total_transformer_blocks=total_transformer_blocks,
                     gpu_transformer_blocks=gpu_transformer_blocks,
                     gpu_weight_bytes=gpu_block_bytes,
+                    kv_layer_bytes=kv_layer_bytes,
                 )
                 if host_endpoint is None:
                     continue
@@ -454,6 +467,7 @@ def _calculate_offload_placement(
     total_transformer_blocks: int | None,
     gpu_transformer_blocks: int | None,
     gpu_weight_bytes: int,
+    kv_layer_bytes: tuple[int, ...] | None = None,
 ) -> _OffloadPlacement | None:
     if gpu_weight_bytes <= 0 or gpu_weight_bytes >= weights_bytes:
         return None
@@ -462,7 +476,10 @@ def _calculate_offload_placement(
     # The KV cache follows the blocks. Without a block count there is no split
     # to follow, so the whole cache stays charged to VRAM: the byte-estimated
     # fallback must not invent a per-block precision it does not have.
-    if gpu_transformer_blocks is not None and _valid_transformer_block_count(
+    if kv_layer_bytes is not None and gpu_transformer_blocks is not None:
+        gpu_kv_cache_bytes = sum(kv_layer_bytes[-gpu_transformer_blocks:])
+        ram_kv_cache_bytes = kv_cache_bytes - gpu_kv_cache_bytes
+    elif gpu_transformer_blocks is not None and _valid_transformer_block_count(
         total_transformer_blocks
     ):
         assert total_transformer_blocks is not None

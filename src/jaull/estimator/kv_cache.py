@@ -46,6 +46,12 @@ def estimate_kv_cache(
     dtype_bytes = int(bytes_per_parameter(kv_dtype))
     notes: list[str] = []
 
+    if kv_dtype in {WeightPrecision.INT4, WeightPrecision.INT8}:
+        return _unknown(
+            context_length, batch_size, dtype_bytes,
+            "Quantized KV formats are not modelled; integer weight precision is not a KV format.",
+        )
+
     if config is None:
         return _unknown(
             context_length=context_length,
@@ -170,6 +176,12 @@ def estimate_kv_cache(
         batch_size=batch_size,
         dtype_bytes=dtype_bytes,
         formula=HYBRID_FORMULA if hybrid else FORMULA,
+        layer_bytes=(tuple(
+            (2 * kv_heads * head_dim * effective_context * sequences * dtype_bytes)
+            if (index + 1) % hybrid.interval == 0
+            else hybrid.state_bytes_per_layer * sequences
+            for index in range(layers)
+        ) if hybrid else None),
         notes=notes,
     )
 

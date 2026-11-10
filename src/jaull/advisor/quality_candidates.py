@@ -24,7 +24,6 @@ from jaull.domain.recommendation import SpeedAssessment
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     QUANTIZATION_LADDERS,
-    SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 from jaull.evaluation.quality_runtime import validate_quality_memory
 from jaull.exceptions import JaullError
@@ -142,7 +141,6 @@ def _prepare_candidate(
         quantization=artifact.quantization,
         target_device=TargetDevice.CPU if backend is ComputeBackend.CPU else TargetDevice.AUTO,
         device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
-        safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
     )
     evaluation_hardware = (
         hardware

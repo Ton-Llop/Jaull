@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "timestamp": "<redacted>",
   "hardware": {
     "os": "Linux 6.8",
@@ -365,7 +365,7 @@
       ],
       "warnings": [],
       "memory": {
-        "schema_version": 2,
+        "schema_version": 3,
         "model": {
           "repo_id": "org/Coder-7B",
           "repository_type": "transformers",
@@ -382,7 +382,7 @@
           "precision": "float16",
           "quantization": null,
           "kv_cache_dtype": "float16",
-          "safety_margin_percent": 10.0,
+          "safety_margin_percent": null,
           "device_reserve_bytes": 536870912
         },
         "memory": {

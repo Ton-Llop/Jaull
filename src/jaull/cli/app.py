@@ -28,7 +28,6 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
-    SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 from jaull.runtime.quality_eval_runner import QualityProfile, QualityRunRequest
 
@@ -171,8 +170,8 @@ def estimate_command(
         case_sensitive=False,
         help="Precision assumed for the KV cache.",
     ),
-    safety_margin_percent: float = typer.Option(
-        SAFETY_MARGIN_DEFAULT_PERCENT,
+    safety_margin_percent: float | None = typer.Option(
+        None,
         "--safety-margin-percent",
         min=0.0,
         max=100.0,

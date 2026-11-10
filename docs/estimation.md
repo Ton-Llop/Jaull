@@ -161,6 +161,16 @@ that tensor interpretation or give HFA authority over runtime launch policy.
 
 ### 2. KV cache
 
+Quantized weight precisions (`int4` and `int8`) are not KV-cache formats. Jaull currently
+returns an unknown KV estimate for these choices, rather than zero bytes or an assumed
+packed layout. GGUF executable plans currently support FP16 KV only; other requested KV
+precisions do not produce a runnable plan. This is a deliberate guard, not quantized-KV support.
+
+Hybrid GGUF models retain a per-layer cost vector: full-attention layers grow with context,
+while recurrent layers keep fixed state. Partial offload budgets charge the selected suffix
+of that vector rather than a uniform fraction of total KV. Dense models keep the existing
+uniform policy. These are estimates, not measured allocations.
+
 ```text
 kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users
            * bytes_per_kv_element
@@ -198,6 +208,19 @@ Constants live in `estimator/policies.py` (`base = 512 MiB`, `fraction = 10%`,
 `min = 256 MiB`). Always tagged `ASSUMED` / `LOW` confidence.
 
 ### 4. Device reserve and safety margin
+
+An omitted margin is represented as `null` in configuration JSON and selects the automatic
+policy: GGUF uses its 1 GiB headroom floor without a percentage margin; other repositories
+use 10 percent. An explicit number, including exactly `10`, is always applied. This distinction
+survives saving and loading the configuration.
+
+### Context sweeps
+
+GGUF sweeps resolve metadata once, reuse the merged configuration at every context, and stop
+at its declared context limit when known. Sweep JSON schema 2 records hardware budgets,
+requested/effective configuration, the selected artifact metadata, enrichment and an estimate
+snapshot. Missing immutable revisions or hashes remain explicitly unknown; this is an inspection
+snapshot, not artifact verification. It does not demonstrate performance at a filled context.
 
 User-controllable via `--device-reserve-gib` and `--safety-margin-percent`, kept as
 distinct components so each one can be inspected — and so a policy figure is never mistaken

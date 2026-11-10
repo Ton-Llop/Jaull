@@ -24,7 +24,7 @@ from jaull.reporting.serialization import (
     runtime_to_dict,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:

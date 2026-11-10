@@ -27,7 +27,6 @@ from jaull.domain.model import ModelAnalysis
 from jaull.estimator.gguf_selection import select_variant
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
-    SAFETY_MARGIN_DEFAULT_PERCENT,
 )
 from jaull.exceptions import (
     HuggingFaceUnavailableError,
@@ -266,7 +265,6 @@ class EstimateScreen(Screen[None]):
             target_device=self.state.device,
             precision=self.state.dtype,
             quantization=self.state.quantization,
-            safety_margin_percent=SAFETY_MARGIN_DEFAULT_PERCENT,
             device_reserve_bytes=DEVICE_RESERVE_DEFAULT_BYTES,
         )
         advisor = _advisor(self)

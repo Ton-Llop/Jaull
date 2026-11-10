@@ -207,6 +207,7 @@ def assess_components_with_fit(
     hardware: HardwareProfile,
     device_target: TargetDevice,
     weight_decomposition: TransformerBlockWeightDecomposition | None = None,
+    kv_layer_bytes: tuple[int, ...] | None = None,
 ) -> ComponentAssessment:
     """Assess placement, keeping the structured fit alongside the summary.
 
@@ -247,6 +248,7 @@ def assess_components_with_fit(
         safety_margin_bytes=safety_margin_bytes,
         total_transformer_blocks=total_transformer_blocks,
         weight_decomposition=weight_decomposition,
+        kv_layer_bytes=kv_layer_bytes,
         hardware=hardware,
     )
     return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
