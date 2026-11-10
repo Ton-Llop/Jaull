@@ -178,3 +178,74 @@ def test_cancelling_does_not_wait_for_a_request_that_is_still_in_flight() -> Non
 
     assert elapsed < 2.0
     assert polls > 2  # it asked again while the requests were pending, not only on completion
+
+
+# A header that no cut can be accepted from: the keys the estimate reads are missing, so the reader
+# keeps asking for more until the 8 MiB budget is gone.
+_OUTGROWS_THE_BUDGET = build_header(
+    {
+        "general.architecture": "gemma4",
+        "gemma4.context_length": 262144,
+        "gemma4.embedding_length": 3840,
+        "gemma4.block_count": 6,
+        "gemma4.attention.head_count": 16,
+        "tokenizer.ggml.tokens": ["x" * 5000] * 2000,
+    }
+)
+
+
+class _BudgetClient:
+    """Serves a header that outgrows the budget for the repositories named, else a valid one."""
+
+    def __init__(self, outgrowing: tuple[str, ...] = ()) -> None:
+        self.urls: list[str] = []
+        self._outgrowing = outgrowing
+        self._lock = threading.Lock()
+
+    def fetch_range(self, url: str, start: int, end: int, timeout: float) -> RangeResponse:
+        with self._lock:
+            self.urls.append(url)
+        body = _OUTGROWS_THE_BUDGET if any(r in url for r in self._outgrowing) else _HEADER
+        return RangeResponse(body=body[start : end + 1], honored_range=True, status_code=206)
+
+
+def test_a_repository_whose_header_outgrows_the_budget_is_not_read_again_for_each_variant() -> None:
+    """Found on a B60 box: gemma-4-12b has 21 quantizations; each repeated the whole 256 KiB to
+    8 MiB read of an identical header, and the search spent most of its time on a model that stayed
+    unestimated. The architecture and the tokenizer are the same in every file of a repository."""
+    cache = _Cache()
+    client = _BudgetClient(outgrowing=("org/Big-GGUF",))
+
+    read = _run([_evaluated("Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", repo_id="org/Big-GGUF")],
+                client, cache, workers=1)
+
+    assert read == 0
+    assert len(client.urls) == 6  # 256 KiB doubling up to 8 MiB, once
+
+
+def test_variants_of_other_repositories_are_still_read_after_a_budget_failure() -> None:
+    cache = _Cache()
+    client = _BudgetClient(outgrowing=("org/Big-GGUF",))
+    items = [
+        _evaluated("Q4_K_M", "Q5_K_M", repo_id="org/Big-GGUF"),
+        _evaluated("Q4_K_M", "Q5_K_M", repo_id="org/Small-GGUF"),
+    ]
+
+    read = _run(items, client, cache, workers=1)
+
+    assert read == 2
+    assert {repo for repo, _quantization in cache.entries} == {"org/Small-GGUF"}
+
+
+def test_the_first_variant_of_every_repository_is_read_before_the_second_of_any() -> None:
+    """So that a repository that cannot be read is found out before its other variants are asked."""
+    client = _BudgetClient()
+    items = [
+        _evaluated("Q4_K_M", "Q5_K_M", repo_id="org/A-GGUF"),
+        _evaluated("Q4_K_M", "Q5_K_M", repo_id="org/B-GGUF"),
+    ]
+
+    _run(items, client, _Cache(), workers=1)
+
+    order = [("A" if "A-GGUF" in url else "B", "Q4_K_M" in url) for url in client.urls]
+    assert order == [("A", True), ("B", True), ("A", False), ("B", False)]

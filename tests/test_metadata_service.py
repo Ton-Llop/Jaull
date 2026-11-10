@@ -227,3 +227,86 @@ def test_unresolved_result_helper() -> None:
     assert result.base_model_resolution.source is MetadataSource.UNRESOLVED
     assert result.base_model_resolution.confidence is EstimationConfidence.UNKNOWN
     assert "disabled" in result.warnings
+
+
+def _two_variant_analysis() -> ModelAnalysis:
+    variants = [
+        GgufVariant(
+            quantization=quantization,
+            files=[ModelFile(path=f"model.{quantization}.gguf", size_bytes=4_500_000_000)],
+            total_bytes=4_500_000_000,
+        )
+        for quantization in ("Q4_K_M", "Q5_K_M")
+    ]
+    return ModelAnalysis(
+        repo=ModelRepositoryInfo(repo_id="org/Big-GGUF"),
+        files=[file for variant in variants for file in variant.files],
+        classification=RepositoryClassification(
+            primary_type=RepositoryType.GGUF,
+            detected_types={RepositoryType.GGUF},
+            formats={Format.GGUF},
+            gguf_variants=variants,
+        ),
+        config=None,
+        relevant_files=[],
+        total_size_bytes=9_000_000_000,
+        warnings=[],
+    )
+
+
+def test_a_header_that_outgrew_the_budget_is_not_read_again_for_a_sibling_variant() -> None:
+    """The second quantization of a repository shares the first one's architecture and tokenizer."""
+    from jaull.metadata.range_reader import HeaderBudgetMemo
+
+    analysis = _two_variant_analysis()
+    first, second = analysis.classification.gguf_variants
+    body = build_header(
+        {
+            "general.architecture": "gemma4",
+            "gemma4.context_length": 262144,
+            "gemma4.embedding_length": 3840,
+            "gemma4.block_count": 6,
+            "gemma4.attention.head_count": 16,
+            "tokenizer.ggml.tokens": ["x" * 5000] * 2000,  # no cut can be accepted
+        }
+    )
+    client = _CountingRangeClient(body=body)
+    memo = HeaderBudgetMemo()
+
+    one = service.enrich(analysis=analysis, variant=first, client=_StubClient(),
+                         range_client=client, header_budget=memo)
+    after_first = client.calls
+    two = service.enrich(analysis=analysis, variant=second, client=_StubClient(),
+                         range_client=client, header_budget=memo)
+
+    assert one.gguf_header is None and two.gguf_header is None
+    assert after_first == 6  # 256 KiB doubling up to 8 MiB
+    assert client.calls == after_first  # nothing more asked for the sibling
+    assert any("outgrew the download budget" in warning for warning in two.warnings)
+
+
+def test_a_network_error_does_not_stop_a_sibling_variant_from_being_read() -> None:
+    """Only the budget is shared: a timeout says nothing about the other files."""
+    from jaull.metadata.range_reader import HeaderBudgetMemo
+
+    class _Flaky:
+        calls = 0
+
+        def fetch_range(self, url: str, start: int, end: int, timeout: float) -> RangeResponse:
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("connection reset")
+            body = build_header({"general.architecture": "llama", "llama.block_count": 32})
+            return RangeResponse(body=body[start : end + 1], honored_range=True, status_code=206)
+
+    analysis = _two_variant_analysis()
+    first, second = analysis.classification.gguf_variants
+    client = _Flaky()
+    memo = HeaderBudgetMemo()
+
+    service.enrich(analysis=analysis, variant=first, client=_StubClient(),
+                   range_client=client, header_budget=memo)
+    result = service.enrich(analysis=analysis, variant=second, client=_StubClient(),
+                            range_client=client, header_budget=memo)
+
+    assert result.gguf_header is not None

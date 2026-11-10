@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -45,6 +46,31 @@ class HeaderFetchResult:
     header: GgufHeaderMetadata | None
     bytes_downloaded: int
     warnings: list[str]
+    # True only when the header kept growing until the whole download budget was spent: a fact
+    # about the file, unlike a timeout or a network error.
+    budget_exhausted: bool = False
+
+
+class HeaderBudgetMemo:
+    """Repositories whose GGUF header outgrew the download budget during one search.
+
+    Every quantization of a repository is a file of its own but they share the architecture and
+    the tokenizer, so the header of one that does not fit does not fit in the others either.
+    Remembering it spares each of them the whole growing read (256 KiB up to the budget). It
+    lives as long as one search and is shared by the threads that read headers.
+    """
+
+    def __init__(self) -> None:
+        self._repositories: set[str] = set()
+        self._lock = threading.Lock()
+
+    def exhausted(self, repo_id: str) -> bool:
+        with self._lock:
+            return repo_id in self._repositories
+
+    def record(self, repo_id: str) -> None:
+        with self._lock:
+            self._repositories.add(repo_id)
 
 
 def fetch_gguf_header(url: str, http_client: HttpRangeClient) -> HeaderFetchResult:
@@ -140,7 +166,9 @@ def fetch_gguf_header(url: str, http_client: HttpRangeClient) -> HeaderFetchResu
         f"GGUF header did not fit within the maximum download budget "
         f"({MAX_HEADER_DOWNLOAD_BYTES // (1024 * 1024)} MiB); giving up."
     )
-    return HeaderFetchResult(header=None, bytes_downloaded=last_downloaded, warnings=warnings)
+    return HeaderFetchResult(
+        header=None, bytes_downloaded=last_downloaded, warnings=warnings, budget_exhausted=True,
+    )
 
 
 _CONTENT_RANGE_RE = re.compile(r"^\s*bytes\s+(\d+)-(\d+)/(?:\d+|\*)\s*$")
@@ -254,6 +282,7 @@ class HttpxRangeClient:
 
 
 __all__ = [
+    "HeaderBudgetMemo",
     "HeaderFetchResult",
     "HttpRangeClient",
     "HttpxRangeClient",

@@ -24,7 +24,7 @@ from jaull.estimator.gguf_selection import VariantChoice, select_variant
 from jaull.exceptions import HuggingFaceUnavailableError
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata import service as metadata_service
-from jaull.metadata.range_reader import HttpRangeClient
+from jaull.metadata.range_reader import HeaderBudgetMemo, HttpRangeClient
 from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.runtime import service as runtime_service
 
@@ -40,6 +40,7 @@ def estimate_memory(
     resolve_base_model: bool = True,
     range_client: HttpRangeClient | None = None,
     gguf_header_cache: GgufHeaderCacheProtocol | None = None,
+    header_budget: HeaderBudgetMemo | None = None,
     recommend_runtime: bool = True,
 ) -> MemoryEstimate:
     assumptions: list[str] = []
@@ -61,6 +62,7 @@ def estimate_memory(
         resolve_base_model=resolve_base_model,
         range_client=range_client,
         gguf_header_cache=gguf_header_cache,
+        header_budget=header_budget,
     )
     warnings.extend(enrichment.warnings)
     if enrichment.base_model_resolution.repo_id:
@@ -208,6 +210,7 @@ def _run_enrichment(
     resolve_base_model: bool,
     range_client: HttpRangeClient | None,
     gguf_header_cache: GgufHeaderCacheProtocol | None,
+    header_budget: HeaderBudgetMemo | None = None,
 ) -> EnrichmentResult:
     if analysis.classification.primary_type is not RepositoryType.GGUF:
         return metadata_service.unresolved_result()
@@ -222,6 +225,7 @@ def _run_enrichment(
         client=client,
         range_client=range_client,
         header_cache=gguf_header_cache,
+        header_budget=header_budget,
     )
 
 

@@ -47,6 +47,7 @@ from jaull.exceptions import (
     ModelNotFoundError,
 )
 from jaull.huggingface.client import HfClientProtocol
+from jaull.metadata.range_reader import HeaderBudgetMemo
 from jaull.observability.telemetry import PerformanceTelemetry
 from jaull.ports.cache import GgufHeaderCacheProtocol
 from jaull.recommendation import explanations, scoring
@@ -302,6 +303,7 @@ def run_workflow(
 
         analysis_cache: RunCache[str, _InspectionOutcome] = RunCache()
         estimate_cache: RunCache[tuple[str, str], MemoryEstimate] = RunCache()
+        header_budget = HeaderBudgetMemo()
         metadata_client = _RunMetadataClient(services.hf_client, telemetry)
         evaluated, candidate_latency = _evaluate(
             shortlist,
@@ -314,6 +316,7 @@ def run_workflow(
             analysis_cache=analysis_cache,
             estimate_cache=estimate_cache,
             metadata_client=metadata_client,
+            header_budget=header_budget,
         )
         range_client = _build_range_client(services)
 
@@ -327,6 +330,7 @@ def run_workflow(
                     analysis=analysis, hardware=hardware, config=config, services=services,
                     range_client=range_client, client=metadata_client,
                     gguf_header_cache=services.gguf_header_cache, telemetry=telemetry,
+                    header_budget=header_budget,
                 ),
             )
 
@@ -365,6 +369,7 @@ def run_workflow(
                 header_cache=services.gguf_header_cache,
                 max_workers=policies.MAX_CONCURRENT_HEADER_READS,
                 check_cancelled=lambda: _check(cancelled),
+                budget=header_budget,
             )
             telemetry.increment("gguf_headers_prefetched", prefetched)
             evaluated = declare_sizes(evaluated, services.gguf_header_cache)
@@ -551,6 +556,7 @@ def _evaluate(
     analysis_cache: RunCache[str, _InspectionOutcome],
     estimate_cache: RunCache[tuple[str, str], MemoryEstimate],
     metadata_client: _RunMetadataClient,
+    header_budget: HeaderBudgetMemo | None = None,
 ) -> tuple[list[EvaluatedCandidate], list[CandidateLatency]]:
     """Inspect and estimate the shortlist, caching within this run."""
     def inspect(candidate: ModelCandidate) -> _InspectionOutcome:
@@ -583,6 +589,7 @@ def _evaluate(
                     client=metadata_client,
                     gguf_header_cache=services.gguf_header_cache,
                     telemetry=telemetry,
+                    header_budget=header_budget,
                 ),
             )
 
@@ -701,6 +708,7 @@ def _estimate_with_timing(
     client: HfClientProtocol,
     gguf_header_cache: GgufHeaderCacheProtocol | None,
     telemetry: PerformanceTelemetry,
+    header_budget: HeaderBudgetMemo | None = None,
 ) -> MemoryEstimate:
     with telemetry.timed("estimation"):
         return services.estimate_memory(
@@ -710,6 +718,7 @@ def _estimate_with_timing(
             client=client,
             range_client=range_client,
             gguf_header_cache=gguf_header_cache,
+            header_budget=header_budget,
         )
 
 

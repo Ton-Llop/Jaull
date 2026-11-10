@@ -17,7 +17,7 @@ from jaull.domain.candidates import EvaluatedCandidate
 from jaull.domain.enums import RepositoryType
 from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.model import GgufVariant, ModelAnalysis
-from jaull.metadata.range_reader import HttpRangeClient
+from jaull.metadata.range_reader import HeaderBudgetMemo, HttpRangeClient
 from jaull.metadata.service import read_variant_header
 from jaull.ports.cache import GgufHeaderCacheProtocol
 
@@ -36,10 +36,14 @@ def prefetch_gguf_headers(
     header_cache: GgufHeaderCacheProtocol | None,
     max_workers: int,
     check_cancelled: Callable[[], None],
+    budget: HeaderBudgetMemo | None = None,
 ) -> int:
     """Fill ``header_cache`` for every GGUF variant not in it yet; return how many were read.
 
-    Best effort: a failed read is left for the estimator, which then reads it as before.
+    Best effort: a failed read is left for the estimator, which then reads it as before. One
+    variant per repository goes first (see ``_missing``), and once a repository's header has
+    outgrown the download budget its other variants are not read: ``budget`` is shared with the
+    estimator so that it does not read them either.
     ``check_cancelled`` runs between completions and may raise to stop the run.
     """
     if range_client is None or header_cache is None or max_workers < 1:
@@ -47,11 +51,14 @@ def prefetch_gguf_headers(
     jobs = _missing(evaluated, header_cache)
     if not jobs:
         return 0
+    budget = budget if budget is not None else HeaderBudgetMemo()
 
     def read(job: _Job) -> bool:
         analysis, variant = job
         try:
-            header = read_variant_header(variant, analysis.repo.repo_id, range_client, [])
+            header = read_variant_header(
+                variant, analysis.repo.repo_id, range_client, [], budget,
+            )
         except Exception:  # best effort: the estimator repeats the read and reports it
             logger.debug("GGUF header prefetch failed for %s", analysis.repo.repo_id, exc_info=True)
             return False
@@ -129,14 +136,23 @@ def _declared_size(
 def _missing(
     evaluated: Sequence[EvaluatedCandidate], header_cache: GgufHeaderCacheProtocol,
 ) -> list[_Job]:
-    jobs: list[_Job] = []
+    per_repository: list[list[_Job]] = []
     for item in evaluated:
         analysis = item.analysis
         if item.failed or analysis is None:
             continue
         if analysis.classification.primary_type is not RepositoryType.GGUF:
             continue
-        for variant in preferred_gguf_variants(analysis.classification.gguf_variants):
-            if header_cache.get(analysis, variant) is None:
-                jobs.append((analysis, variant))
+        repository = [
+            (analysis, variant)
+            for variant in preferred_gguf_variants(analysis.classification.gguf_variants)
+            if header_cache.get(analysis, variant) is None
+        ]
+        if repository:
+            per_repository.append(repository)
+    # The first variant of every repository, then the second of every one, and so on: a header that
+    # cannot be read is found out before the other variants of its repository are asked for.
+    jobs: list[_Job] = []
+    for rank in range(max(map(len, per_repository), default=0)):
+        jobs.extend(repository[rank] for repository in per_repository if rank < len(repository))
     return jobs

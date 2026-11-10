@@ -28,7 +28,7 @@ from jaull.exceptions import (
 )
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata import base_model_resolver, config_merger, range_reader
-from jaull.metadata.range_reader import HttpRangeClient
+from jaull.metadata.range_reader import HeaderBudgetMemo, HttpRangeClient
 from jaull.ports.cache import GgufHeaderCacheProtocol
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ def enrich(
     *,
     range_client: HttpRangeClient | None = None,
     header_cache: GgufHeaderCacheProtocol | None = None,
+    header_budget: HeaderBudgetMemo | None = None,
     hf_token: str | None = None,
 ) -> EnrichmentResult:
     """Resolve the base model and combine its config with the GGUF header.
@@ -81,6 +82,7 @@ def enrich(
                 repo_id=analysis.repo.repo_id,
                 range_client=range_client,
                 warnings=warnings,
+                budget=header_budget,
             )
             if gguf_header is not None and header_cache is not None:
                 header_cache.put(analysis, variant, gguf_header)
@@ -121,9 +123,20 @@ def read_variant_header(
     repo_id: str,
     range_client: HttpRangeClient,
     warnings: list[str],
+    budget: HeaderBudgetMemo | None = None,
 ) -> GgufHeaderMetadata | None:
-    """Read the GGUF header of one variant (its first shard) with ranged requests."""
+    """Read the GGUF header of one variant (its first shard) with ranged requests.
+
+    ``budget`` remembers the repositories whose header outgrew the download budget, so that the
+    other variants of one are not read just to find out the same.
+    """
     if not variant.files:
+        return None
+    if budget is not None and budget.exhausted(repo_id):
+        warnings.append(
+            f"Skipped the GGUF header of {variant.quantization}: another variant of this "
+            "repository outgrew the download budget."
+        )
         return None
     # Multipart GGUFs put the metadata KV in the first shard.
     target_file = sorted(variant.files, key=lambda f: f.path)[0]
@@ -137,6 +150,8 @@ def read_variant_header(
     url = hf_hub_url(repo_id=repo_id, filename=filename)
     result = range_reader.fetch_gguf_header(url=url, http_client=range_client)
     warnings.extend(result.warnings)
+    if result.budget_exhausted and budget is not None:
+        budget.record(repo_id)
     return result.header
 
 
