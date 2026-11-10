@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
+from rich.text import Text
 
 from jaull.domain.estimation import (
     CompatibilityStatus,
@@ -199,13 +200,17 @@ def _pretty_status(status: CompatibilityStatus) -> str:
     return styles[status]
 
 
-def render_context_sweep(repo_id: str, sweep: ContextSweep, console: Console) -> None:
+def context_sweep_renderable(repo_id: str, sweep: ContextSweep) -> Group:
+    """The sweep as one renderable, shared by the CLI and the TUI.
+
+    Confidence is said once at the foot, not per row: it is the weakest component of the estimate
+    and it is the same at every context, so a column of it would only repeat itself.
+    """
     table = Table(title=f"Context sweep: {repo_id}", show_lines=False)
     table.add_column("Context (tokens)", justify="right")
     table.add_column("Total", justify="right")
     table.add_column("KV cache", justify="right")
     table.add_column("Verdict")
-    table.add_column("Confidence")
     for point in sweep.points:
         marker = " <" if point.context_length == sweep.largest_fitting else ""
         table.add_row(
@@ -213,21 +218,29 @@ def render_context_sweep(repo_id: str, sweep: ContextSweep, console: Console) ->
             format_bytes(point.total_bytes),
             format_bytes(point.kv_cache_bytes),
             _pretty_status(point.status),
-            point.confidence.value,
         )
-    console.print(table)
-    console.print()
+    lines: list[Text] = [Text("")]
     if sweep.largest_fitting is None:
-        console.print("[red]Largest context that fits: none in this sweep.[/red]")
+        lines.append(Text.from_markup("[red]Largest context that fits: none in this sweep.[/red]"))
     else:
-        console.print(
-            f"[bold]Largest context that fits:[/bold] {sweep.largest_fitting} tokens"
+        lines.append(
+            Text.from_markup(
+                f"[bold]Largest context that fits:[/bold] {sweep.largest_fitting} tokens"
+            )
         )
-    for note in sweep.notes:
-        console.print(f"[dim]  - {note}[/dim]")
+    lines.extend(Text(f"  - {note}", style="dim") for note in sweep.notes)
+    lines.append(
+        Text(f"Confidence of the estimate: {sweep.weakest_confidence.value}", style="dim")
+    )
+    return Group(table, *lines)
+
+
+def render_context_sweep(repo_id: str, sweep: ContextSweep, console: Console) -> None:
+    console.print(context_sweep_renderable(repo_id, sweep))
 
 
 __all__ = [
+    "context_sweep_renderable",
     "render_context_sweep",
     "render_estimate",
 ]

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from jaull.domain.estimation import CompatibilityStatus, EstimationConfidence, MemoryEstimate
 from jaull.domain.inference import InferenceConfiguration
-from jaull.domain.model import ModelAnalysis
+from jaull.domain.model import ModelAnalysis, ModelConfig
 from jaull.estimator import policies
-from jaull.estimator.context_fit import sweep_context
+from jaull.estimator.context_fit import native_context, sweep_context
 from tests._workflow_fixtures import GIB, gguf_analysis, memory_estimate
 
 KIB = 1024
@@ -183,6 +183,45 @@ def test_points_carry_the_estimate_they_came_from() -> None:
     assert point.total_bytes == 10 * GIB + 20 * KIB * 4096
     assert point.kv_cache_bytes == GIB // 2  # what the fixture estimate reports
     assert point.confidence is EstimationConfidence.HIGH
+
+
+def test_the_sweep_confidence_is_the_weakest_of_its_points() -> None:
+    def mixed(analysis: ModelAnalysis, config: InferenceConfiguration) -> MemoryEstimate:
+        confidence = (
+            EstimationConfidence.LOW
+            if config.context_length >= 8192
+            else EstimationConfidence.HIGH
+        )
+        return memory_estimate(
+            analysis,
+            config,
+            total_bytes=8 * GIB,
+            status=CompatibilityStatus.COMFORTABLE,
+            confidence=confidence,
+        )
+
+    sweep = sweep_context(gguf_analysis(), _config(), mixed, ladder=(4096, 8192))
+    assert sweep.weakest_confidence is EstimationConfidence.LOW
+
+
+def test_a_sweep_with_no_points_is_unknown_not_high() -> None:
+    sweep = sweep_context(
+        gguf_analysis(), _config(), _linear_estimator(4 * GIB, KIB), ladder=()  # type: ignore[arg-type]
+    )
+    assert sweep.weakest_confidence is EstimationConfidence.UNKNOWN
+
+
+def test_the_native_context_comes_from_the_declared_max_position_embeddings() -> None:
+    analysis = gguf_analysis().model_copy(
+        update={"config": ModelConfig(max_position_embeddings=32768)}
+    )
+    assert native_context(analysis) == 32768
+
+
+def test_there_is_no_native_context_without_a_config_or_without_the_field() -> None:
+    assert native_context(gguf_analysis()) is None
+    analysis = gguf_analysis().model_copy(update={"config": ModelConfig()})
+    assert native_context(analysis) is None
 
 
 def test_the_default_ladder_is_ascending_and_lives_in_policies() -> None:

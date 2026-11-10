@@ -110,6 +110,21 @@ def test_the_report_names_the_largest_context_that_fits(monkeypatch: Any) -> Non
     assert str(_NATIVE_CONTEXT) in result.stdout
 
 
+def test_confidence_is_said_once_not_repeated_on_every_row(monkeypatch: Any) -> None:
+    _install_advisor(monkeypatch)
+    result = CliRunner().invoke(
+        app, ["estimate", "user/model", "--context-sweep"], catch_exceptions=False
+    )
+    assert result.exit_code == 0, result.output
+    assert result.stdout.count("onfidence") == 1
+    assert "Confidence of the estimate" in result.stdout
+
+
+def test_the_json_keeps_the_confidence_of_each_point(monkeypatch: Any) -> None:
+    points = _sweep_json(monkeypatch)["context_sweep"]["points"]
+    assert all("confidence" in point for point in points)
+
+
 def test_a_fixed_context_makes_no_sense_with_a_sweep(monkeypatch: Any) -> None:
     _install_advisor(monkeypatch)
     result = CliRunner().invoke(

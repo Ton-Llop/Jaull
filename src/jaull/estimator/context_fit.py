@@ -23,6 +23,14 @@ from jaull.estimator.compatibility import RESIDENT_FIT_STATUSES
 
 EstimateFn = Callable[[ModelAnalysis, InferenceConfiguration], MemoryEstimate]
 
+# Weakest first: the position in this tuple is the rank.
+_CONFIDENCE_RANK = (
+    EstimationConfidence.UNKNOWN,
+    EstimationConfidence.LOW,
+    EstimationConfidence.MEDIUM,
+    EstimationConfidence.HIGH,
+)
+
 
 @dataclass(frozen=True)
 class ContextPoint:
@@ -42,6 +50,16 @@ class ContextSweep:
     largest_fitting: int | None
     native_limit: int | None = None
     notes: list[str] = field(default_factory=list)
+
+    @property
+    def weakest_confidence(self) -> EstimationConfidence:
+        """What the whole sweep can be trusted to: its weakest point, never an average.
+
+        A sweep with no points says nothing, so it is unknown rather than high.
+        """
+        if not self.points:
+            return EstimationConfidence.UNKNOWN
+        return min((point.confidence for point in self.points), key=_CONFIDENCE_RANK.index)
 
 
 def sweep_context(
@@ -64,7 +82,9 @@ def sweep_context(
     notes: list[str] = []
     if native_limit is not None:
         notes.append(f"Capped at the model's native context of {native_limit} tokens.")
-    if largest is None:
+    if not contexts:
+        notes.append("There was no context to try.")
+    elif largest is None:
         notes.append(
             f"Not even the smallest context in the sweep ({contexts[0]} tokens) fits resident."
         )
@@ -75,6 +95,18 @@ def sweep_context(
     return ContextSweep(
         points=points, largest_fitting=largest, native_limit=native_limit, notes=notes
     )
+
+
+def native_context(analysis: ModelAnalysis) -> int | None:
+    """The context the model declares, when its repository says so.
+
+    Only a repository with a ``config.json`` does; a GGUF analysis has none, so there is nothing
+    to cap the sweep with and the caller is told the ladder's top may not be the real limit.
+    """
+    config = analysis.config
+    if config is None or not config.max_position_embeddings:
+        return None
+    return int(config.max_position_embeddings)
 
 
 def _rungs(ladder: Sequence[int], native_limit: int | None) -> list[int]:
@@ -113,4 +145,4 @@ def _largest_contiguous_fit(points: Sequence[ContextPoint]) -> int | None:
     return largest
 
 
-__all__ = ["ContextPoint", "ContextSweep", "EstimateFn", "sweep_context"]
+__all__ = ["ContextPoint", "ContextSweep", "EstimateFn", "native_context", "sweep_context"]

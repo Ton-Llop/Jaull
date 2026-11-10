@@ -92,7 +92,7 @@ from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
 )
-from jaull.estimator.context_fit import ContextSweep, sweep_context
+from jaull.estimator.context_fit import ContextSweep, native_context, sweep_context
 from jaull.huggingface.artifact_resolver import HuggingFaceArtifactResolver
 from jaull.huggingface.client import HfClientProtocol
 from jaull.metadata.range_reader import HttpRangeClient
@@ -270,9 +270,8 @@ class AdvisorService:
                 range_client=range_client,
             )
 
-        return sweep_context(
-            analysis, inference_cfg, estimate_at, native_limit=native_limit
-        )
+        limit = native_limit if native_limit is not None else native_context(analysis)
+        return sweep_context(analysis, inference_cfg, estimate_at, native_limit=limit)
 
     def recommend(
         self,

@@ -144,7 +144,6 @@ def _run_context_sweep(
             analysis,
             hardware,
             inference_cfg,
-            native_limit=_config_context(analysis),
             resolve_base_model=options.resolve_base_model,
         )
     except QuantizationNotFoundError as exc:
