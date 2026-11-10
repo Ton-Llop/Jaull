@@ -11,7 +11,12 @@ from jaull.domain.estimation import (
     MemoryComponent,
 )
 from jaull.domain.inference import WeightPrecision
-from jaull.domain.model import HYBRID_ATTENTION_FIELDS, HYBRID_ATTENTION_FLAG, ModelConfig
+from jaull.domain.model import (
+    HYBRID_ATTENTION_FIELDS,
+    HYBRID_ATTENTION_FLAG,
+    PER_LAYER_KV_HEADS_FLAG,
+    ModelConfig,
+)
 from jaull.estimator.policies import RECURRENT_STATE_BYTES_PER_ELEMENT, bytes_per_parameter
 
 FORMULA = (
@@ -114,6 +119,10 @@ def estimate_kv_cache(
             "measurement (Qwen3.8-27B, D120)."
         )
 
+    per_layer_note = _per_layer_note(config, kv_heads)
+    if per_layer_note is not None:
+        notes.append(per_layer_note)
+
     mixture_of_experts = _is_mixture_of_experts(config)
     if mixture_of_experts:
         notes.append(
@@ -147,7 +156,7 @@ def estimate_kv_cache(
             source=EstimateSource.DERIVED,
             confidence=(
                 EstimationConfidence.MEDIUM
-                if window_assumed or mixture_of_experts or hybrid
+                if window_assumed or mixture_of_experts or hybrid or per_layer_note
                 else EstimationConfidence.HIGH
             ),
             explanation=explanation,
@@ -203,6 +212,23 @@ def _hybrid_layout(config: ModelConfig, layers: int) -> _HybridLayout | None:
         attention_layers=attention_layers,
         recurrent_layers=layers - attention_layers,
         state_bytes_per_layer=(convolution + state) * RECURRENT_STATE_BYTES_PER_ELEMENT,
+    )
+
+
+def _per_layer_note(config: ModelConfig, kv_heads: int) -> str | None:
+    """Say that a per-layer KV head list was sized with its largest value."""
+    flag = config.raw_flags.get(PER_LAYER_KV_HEADS_FLAG)
+    if not isinstance(flag, dict):
+        return None
+    low, high, layers = flag.get("min"), flag.get("max"), flag.get("layers")
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in (low, high, layers)):
+        return None
+    if high != kv_heads:
+        return None
+    return (
+        f"Per-layer KV heads ({low} to {high} over {layers} layers): every layer is sized with the "
+        "largest and the full context, so this is an upper bound; layers with a sliding window or "
+        "fewer heads are not modelled."
     )
 
 

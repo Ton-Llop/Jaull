@@ -18,7 +18,7 @@ from os import fstat
 from typing import Any, BinaryIO
 
 from jaull.domain.artifacts import ModelArtifact
-from jaull.domain.enrichment import GgufHeaderMetadata
+from jaull.domain.enrichment import GgufHeaderMetadata, per_layer_kv_heads
 from jaull.domain.gguf import GgufTensor, GgufTensorIndex
 from jaull.exceptions import (
     GgufHeaderIncompleteError,
@@ -158,7 +158,18 @@ def _has_estimate_keys(raw_kv: dict[str, object]) -> bool:
     architecture = raw_kv.get("general.architecture")
     if not isinstance(architecture, str) or not architecture:
         return False
-    return all(type(raw_kv.get(f"{architecture}.{name}")) is int for name in _ESTIMATE_KEYS)
+    layers = raw_kv.get(f"{architecture}.block_count")
+    for name in _ESTIMATE_KEYS:
+        value = raw_kv.get(f"{architecture}.{name}")
+        if type(value) is int:
+            continue
+        # A model that lists the KV heads of every layer states them in full before the tokenizer.
+        if name == "attention.head_count_kv" and per_layer_kv_heads(
+            value, layers if type(layers) is int else None
+        ):
+            continue
+        return False
+    return True
 
 
 def _read_metadata(
@@ -316,6 +327,7 @@ def _build_header(raw_kv: dict[str, object], *, complete: bool = True) -> GgufHe
     def arch_key(name: str) -> object:
         return raw_kv.get(f"{prefix}{name}") if prefix else None
 
+    block_count = _int_or_none(arch_key("block_count"))
     return GgufHeaderMetadata(
         architecture=architecture,
         name=_str_or_none(raw_kv.get("general.name")),
@@ -323,9 +335,9 @@ def _build_header(raw_kv: dict[str, object], *, complete: bool = True) -> GgufHe
         file_type=_int_or_none(raw_kv.get("general.file_type")),
         context_length=_int_or_none(arch_key("context_length")),
         embedding_length=_int_or_none(arch_key("embedding_length")),
-        block_count=_int_or_none(arch_key("block_count")),
+        block_count=block_count,
         head_count=_int_or_none(arch_key("attention.head_count")),
-        head_count_kv=_int_or_none(arch_key("attention.head_count_kv")),
+        head_count_kv=_kv_heads(arch_key("attention.head_count_kv"), block_count),
         rope_dim=_int_or_none(arch_key("rope.dimension_count")),
         size_label=_str_or_none(raw_kv.get("general.size_label")),
         is_complete=complete,
@@ -334,6 +346,12 @@ def _build_header(raw_kv: dict[str, object], *, complete: bool = True) -> GgufHe
         ),
         raw_kv=raw_kv,
     )
+
+
+def _kv_heads(value: object, layers: int | None) -> int | None:
+    """The KV head count: the integer a header states, or the largest of a per-layer list."""
+    per_layer = per_layer_kv_heads(value, layers)
+    return max(per_layer) if per_layer else _int_or_none(value)
 
 
 def _str_or_none(value: object) -> str | None:

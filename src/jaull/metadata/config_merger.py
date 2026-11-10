@@ -10,9 +10,15 @@ from __future__ import annotations
 from jaull.domain.enrichment import (
     EnrichedConfig,
     GgufHeaderMetadata,
+    per_layer_kv_heads,
 )
 from jaull.domain.estimation import ConfigurationSource
-from jaull.domain.model import HYBRID_ATTENTION_FIELDS, HYBRID_ATTENTION_FLAG, ModelConfig
+from jaull.domain.model import (
+    HYBRID_ATTENTION_FIELDS,
+    HYBRID_ATTENTION_FLAG,
+    PER_LAYER_KV_HEADS_FLAG,
+    ModelConfig,
+)
 
 _COMPOSITE_FLAGS = ("text_config", "vision_config", "audio_config")
 
@@ -166,6 +172,16 @@ def merge(
         if hybrid is not None:
             raw_flags[HYBRID_ATTENTION_FLAG] = hybrid
             sources[HYBRID_ATTENTION_FLAG] = ConfigurationSource.GGUF_HEADER
+    if header is not None:
+        per_layer = per_layer_kv_heads(
+            header.raw_kv.get(f"{header.architecture}.attention.head_count_kv"),
+            header.block_count,
+        )
+        if per_layer is not None and min(per_layer) != max(per_layer):
+            raw_flags[PER_LAYER_KV_HEADS_FLAG] = {
+                "min": min(per_layer), "max": max(per_layer), "layers": len(per_layer),
+            }
+            sources[PER_LAYER_KV_HEADS_FLAG] = ConfigurationSource.GGUF_HEADER
     if header is not None and layers is not None and heads is not None and hidden is not None:
         # A GGUF holds only the text decoder and its header states the attention dimensions, so
         # the nested text/vision/audio configs of a multimodal base repository do not apply to it.

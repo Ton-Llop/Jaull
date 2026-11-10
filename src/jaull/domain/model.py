@@ -45,6 +45,11 @@ HYBRID_ATTENTION_FIELDS = (
     "ssm_group_count",
 )
 
+# Some GGUF headers (gemma-4) list the KV heads of every layer. ModelConfig has one count, so the
+# largest is used for all layers and the range travels in `raw_flags` under this key, as a dict
+# with the integers `min`, `max` and `layers`, to say that the KV cache is an upper bound.
+PER_LAYER_KV_HEADS_FLAG = "per_layer_kv_heads"
+
 
 class ModelConfig(BaseModel):
     """Subset of ``config.json`` fields we care about. All optional to survive exotic configs."""

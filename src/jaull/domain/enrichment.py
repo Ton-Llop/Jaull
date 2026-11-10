@@ -18,6 +18,23 @@ from jaull.domain.estimation import (
 from jaull.domain.model import ModelConfig
 
 
+def per_layer_kv_heads(value: object, layers: int | None) -> tuple[int, ...] | None:
+    """The KV heads of every layer, when a header lists them and the list can be trusted.
+
+    Trusted means: one non-negative integer per layer (a layer without attention may say 0) and
+    at least one layer with attention. Anything else, such as a list that does not cover every
+    layer, is not interpreted: the header is then read to the end instead of being guessed.
+    """
+    if layers is None or layers < 1 or not isinstance(value, list) or len(value) != layers:
+        return None
+    heads: list[int] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            return None
+        heads.append(item)
+    return tuple(heads) if max(heads) >= 1 else None
+
+
 class GgufHeaderMetadata(BaseModel):
     """Structured subset of the GGUF KV metadata table we care about."""
 

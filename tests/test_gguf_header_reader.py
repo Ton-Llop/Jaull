@@ -220,3 +220,54 @@ def test_the_size_label_is_exposed_and_can_be_missing() -> None:
 
     assert labelled is not None and labelled.size_label == "12B-A2.5B"
     assert plain is not None and plain.size_label is None
+
+
+def _per_layer_header(kv_heads: list[int], *, layers: int = 6) -> bytes:
+    return build_header(
+        {
+            "general.architecture": "gemma4",
+            "gemma4.context_length": 262144,
+            "gemma4.embedding_length": 3840,
+            "gemma4.block_count": layers,
+            "gemma4.attention.head_count": 16,
+            "gemma4.attention.head_count_kv": kv_heads,
+            "tokenizer.ggml.tokens": [f"token-{index}" for index in range(2000)],
+        }
+    )
+
+
+def test_a_per_layer_kv_head_list_is_enough_for_a_cut_inside_the_tokenizer() -> None:
+    """Found on a B60 box: gemma-4 declares `head_count_kv` once per layer. The reader wanted an
+    integer, never accepted the cut, and the tokenizer outgrew the 8 MiB budget, so the model was
+    left unestimated."""
+    full = _per_layer_header([8, 8, 8, 8, 8, 1])
+
+    header = parse_header(full[: full.index(b"token-1000")])
+
+    assert header is not None
+    assert header.block_count == 6
+    assert header.head_count_kv == 8  # the largest: the safe direction for a KV cache
+    assert header.raw_kv["gemma4.attention.head_count_kv"] == [8, 8, 8, 8, 8, 1]
+    assert header.is_complete is False
+
+
+def test_a_per_layer_list_that_does_not_cover_every_layer_is_not_trusted() -> None:
+    full = _per_layer_header([8, 8, 8, 1])  # four entries for six layers
+
+    with pytest.raises(GgufHeaderIncompleteError):
+        parse_header(full[: full.index(b"token-1000")])
+
+
+def test_a_per_layer_list_without_a_single_attention_layer_is_not_trusted() -> None:
+    full = _per_layer_header([0, 0, 0, 0, 0, 0])
+
+    with pytest.raises(GgufHeaderIncompleteError):
+        parse_header(full[: full.index(b"token-1000")])
+
+
+def test_layers_without_attention_may_be_listed_as_zero() -> None:
+    full = _per_layer_header([0, 0, 8, 0, 0, 8])
+
+    header = parse_header(full[: full.index(b"token-1000")])
+
+    assert header is not None and header.head_count_kv == 8
