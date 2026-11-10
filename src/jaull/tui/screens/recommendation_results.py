@@ -25,6 +25,11 @@ from jaull.evaluation.benchmark_comparison import (
     BenchmarkPlanMetricComparison,
     BenchmarkPlanSummary,
 )
+from jaull.exceptions import (
+    EstimationError,
+    HuggingFaceUnavailableError,
+    QuantizationNotFoundError,
+)
 from jaull.presentation.plan_labels import (
     format_gib,
     is_gguf_plan,
@@ -51,6 +56,7 @@ from jaull.tui.screens.quality_evaluation import QualityEvaluationScreen
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.bars import ratio_bar
 from jaull.tui.widgets.cli_equivalent import CliEquivalent
+from jaull.tui.widgets.context_sweep_view import ContextSweepView
 from jaull.tui.widgets.memory_usage_bar import MemoryUsageBar
 from jaull.tui.widgets.metric_list import MetricRow
 from jaull.tui.widgets.selection_workspace import SelectionWorkspace
@@ -63,6 +69,10 @@ from jaull.workflow.state import RecommendationWorkflowState
 
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
+    from jaull.domain.hardware import HardwareProfile
+    from jaull.domain.inference import InferenceConfiguration
+    from jaull.domain.model import ModelAnalysis
+    from jaull.estimator.context_fit import ContextSweep
     from jaull.tui.app import JaullApp
 
 _log = logging.getLogger(__name__)
@@ -164,10 +174,22 @@ class _RecommendationRow(Vertical):
 class _RecommendationInspector(Vertical):
     DEFAULT_CLASSES = "recommendation-inspector"
 
+    class ContextRequested(Message):
+        """The Context tab was opened for the first time: the screen computes the sweep."""
+
+        def __init__(self, index: int) -> None:
+            super().__init__()
+            self.index = index
+
     def __init__(self, index: int, rec: ModelRecommendation) -> None:
         super().__init__(id=f"rec-detail-{index}")
         self._index = index
         self._rec = rec
+        # Computed when the tab opens, not before: a sweep re-estimates the model several times.
+        # Not named `_context`: that is a method of Textual's MessagePump, and shadowing it
+        # leaves the widget unable to process a single message.
+        self._sweep_view = ContextSweepView(id=f"rec-context-{index}")
+        self._sweep_asked = False
         # TabbedContent reparents panes during mounting. Keep references so an
         # evidence message can update them before they enter this widget's DOM.
         self._published = Static(
@@ -304,6 +326,29 @@ class _RecommendationInspector(Vertical):
                 yield self._quality
                 yield self._quality_alternatives
                 yield self._quality_provenance
+            # Last, so the ids of the three tabs above do not shift (`tab-1` to `tab-3`).
+            with TabPane("Context", id=self._context_tab_id), VerticalScroll():
+                yield self._sweep_view
+
+    @property
+    def _context_tab_id(self) -> str:
+        return f"rec-context-tab-{self._index}"
+
+    @on(TabbedContent.TabActivated)
+    def _tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.pane.id != self._context_tab_id or self._sweep_asked:
+            return
+        self._sweep_asked = True
+        self.post_message(self.ContextRequested(self._index))
+
+    def show_context_loading(self) -> None:
+        self._sweep_view.show_loading()
+
+    def show_context_unavailable(self, reason: str) -> None:
+        self._sweep_view.show_unavailable(reason)
+
+    def show_context(self, sweep: ContextSweep) -> None:
+        self._sweep_view.show_sweep(sweep)
 
     def _compose_actions(self) -> ComposeResult:
         rec = self._rec
@@ -378,6 +423,14 @@ class _RecommendationEvidenceLoaded(Message):
         self.speeds = speeds
 
 
+class _ContextSweepLoaded(Message):
+    def __init__(self, index: int, sweep: ContextSweep | None, reason: str | None) -> None:
+        super().__init__()
+        self.index = index
+        self.sweep = sweep
+        self.reason = reason
+
+
 class RecommendationResultsScreen(Screen[None]):
     """Step 4: the ranked recommendations, and what can be done with one."""
 
@@ -402,6 +455,11 @@ class RecommendationResultsScreen(Screen[None]):
             thread_name_prefix="jaull-results-evidence",
         )
         self._evidence_future: Future[None] | None = None
+        # Its own thread: a sweep must not queue behind the evidence scan, or the other way round.
+        self._context_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="jaull-results-context",
+        )
         self._known_paths: dict[int, tuple[ExecutionPlan, ...]] = {}
         self._paths_view: tuple[int, ExecutionPathsScreen] | None = None
 
@@ -491,6 +549,70 @@ class RecommendationResultsScreen(Screen[None]):
             self._evidence_future.cancel()
             self._evidence_future = None
         self._evidence_executor.shutdown(wait=False, cancel_futures=True)
+        self._context_executor.shutdown(wait=False, cancel_futures=True)
+
+    @on(_RecommendationInspector.ContextRequested)
+    def _context_requested(self, message: _RecommendationInspector.ContextRequested) -> None:
+        index = message.index
+        row = self._row(index)
+        if row is None:
+            return
+        evaluated = self._state.recommendations[index].evaluated
+        hardware = self._state.hardware
+        analysis = evaluated.analysis
+        config = evaluated.selected_configuration
+        if analysis is None or config is None or hardware is None:
+            row.detail.show_context_unavailable(
+                "Context limits are not available for this recommendation: "
+                "its model analysis or the hardware profile was not kept."
+            )
+            return
+        row.detail.show_context_loading()
+        self._context_executor.submit(
+            self._context_worker,
+            self._app().advisor,
+            index,
+            analysis,
+            config,
+            hardware,
+        )
+
+    def _context_worker(
+        self,
+        advisor: AdvisorService,
+        index: int,
+        analysis: ModelAnalysis,
+        config: InferenceConfiguration,
+        hardware: HardwareProfile,
+    ) -> None:
+        """One sweep for one model; the result travels back as a message, like the evidence."""
+        sweep: ContextSweep | None = None
+        reason: str | None = None
+        try:
+            sweep = advisor.sweep_context_for_model(analysis, hardware, config)
+        except (EstimationError, HuggingFaceUnavailableError, QuantizationNotFoundError) as exc:
+            reason = str(exc)
+        except Exception:
+            _log.exception("Could not compute the context sweep for recommendation %s", index)
+            reason = "Could not compute the context limits; see the logs."
+        if not self._evidence_closing.is_set():
+            self.post_message(_ContextSweepLoaded(index, sweep, reason))
+
+    @on(_ContextSweepLoaded)
+    def _context_loaded(self, message: _ContextSweepLoaded) -> None:
+        if self._evidence_closing.is_set():
+            return
+        row = self._row(message.index)
+        if row is None:
+            return
+        if message.sweep is None:
+            reason = message.reason or "No context limits were computed."
+            row.detail.show_context_unavailable(reason)
+        else:
+            row.detail.show_context(message.sweep)
+
+    def _row(self, index: int) -> _RecommendationRow | None:
+        return next((row for row in self.query(_RecommendationRow) if row._index == index), None)
 
     def on_screen_resume(self) -> None:
         # Returning from evaluation/Paths must see newly persisted evidence.
