@@ -54,6 +54,16 @@ README roadmap says so.
   listing alone identifies an adapter but confirms no backend.
 - Shared-memory accelerators are deliberately excluded from both figures: their capacity
   *is* system RAM, not a second pool.
+- **A machine whose only accelerator shares memory with the CPU (a Ryzen iGPU, say) is
+  checked as one pool against available system RAM, and Jaull does not model a limit on
+  how much of it the GPU may use.** The fit is reported as `CPU_RAM` on `UNIFIED_MEMORY`
+  (`estimator/hardware_fit.py`), so a model can be marked as fitting when the GPU could
+  not map that much. A user reported that on Linux the AMD driver lets the GPU use only
+  about half of RAM by default, with a tool (`amd-ttm`) to change it; that figure is
+  **unverified**, and nothing here has been run on a Ryzen machine. A later fix would read
+  the real limit from the system (the amdgpu GTT size, probably through sysfs, whose exact
+  file names are also unchecked) and take the smaller of that and RAM, rather than assume a
+  fraction of RAM.
 - A software renderer (llvmpipe and similar, common under WSL) proves the Vulkan API is
   present, not that a usable accelerator exists. It is recorded as a software renderer and
   not selected as a backend.
