@@ -20,6 +20,8 @@ Tokens per segon, mesurats amb `llama-bench` i `-ngl 99`. Més alt és millor.
 | | Windows | 339,4 | **15,6** | ███ |
 | **Qwen2.5-32B** Q4_K_M ² | WSL2 ³ | 86,6 | 3,9 | █ |
 | | Windows | 261,1 | **18,1** | ████ |
+| **Qwen3.6-35B-A3B** IQ4_XS ⁴ | WSL2 | no mesurat | no mesurat | |
+| | Windows | 1399,7 | **69,9** | ██████████████ |
 
 Escala de les barres: cada `█` són 5 t/s.
 
@@ -36,6 +38,13 @@ directe, de manera que les mides de prompt i de generació no són les de Window
 Jaull va donar 4,8 t/s i `llama-bench` 4,10 al mateix entorn, així que la comparació és aproximada. Una
 sola execució. El 32B **no cau** a WSL2.
 
+⁴ Windows, el 2026-11-10, amb `llama-bench` i el mateix build (b11889), però amb una comanda diferent:
+`-ngl 99 -p 512 -n 128 -r 3`, i no `-p 128 -n 64 -r 2`. El prompt (`pp512`) no és, doncs, comparable amb el
+de les altres files; la generació (`tg128`) s'hi acosta més, però tampoc és idèntica. Fitxer de 16,50 GiB,
+34,66 B de paràmetres, arquitectura híbrida MoE (`qwen35moe`, unes 3 B actives). Desviacions: ± 86,45 t/s
+al prompt i ± 0,29 t/s a la generació. A `llama-server`, amb el model escalfat, dues peticions reals de 200
+tokens van donar 68,2 i 67,7 t/s. No s'ha mesurat a WSL2. Una sola màquina i una sola mesura.
+
 ## Quantes vegades més ràpid va Windows
 
 | Model | Prompt | Generació |
@@ -44,6 +53,7 @@ sola execució. El 32B **no cau** a WSL2.
 | Qwen3-Coder 30B-A3B | 4,8 × ³ ¹ | **17,7 ×** ³ ¹ (39,5 × amb la primera mesura) |
 | Qwen3.8-27B | 6,8 × | no es pot comparar (a WSL2 cau) |
 | Qwen2.5-32B | 3,0 × ³ | **4,6 ×** ³ |
+| Qwen3.6-35B-A3B | no es pot comparar (no mesurat a WSL2) | no es pot comparar (no mesurat a WSL2) |
 
 ## Què vol dir
 
@@ -56,6 +66,10 @@ sola execució. El 32B **no cau** a WSL2.
   s'esperaria d'un entorn sa. A WSL2 no hi ha un ordre clar: amb la primera mesura el Coder anava més lent que
   el 9B (2,5 contra 4,1 t/s) i amb la nova va una mica més de pressa (5,6 contra 4,1). Les dues no coincideixen
   (vegeu la nota ¹).
+
+- El Qwen3.6-35B-A3B, un MoE híbrid, va a Windows a uns 70 t/s: un 30 % més lent que el Coder (99,2) i
+  unes quatre vegades més de pressa que els densos de 27 i 32 B (15,6 i 18,1). Amb el protocol de la nota ⁴,
+  que no és el de les altres files.
 
 ## Límits
 
