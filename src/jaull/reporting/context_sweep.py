@@ -11,13 +11,14 @@ from typing import Any
 from jaull.estimator.context_fit import ContextSweep
 from jaull.reporting.serialization import confidence_to_string
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def context_sweep_to_json_dict(repo_id: str, sweep: ContextSweep) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "model": {"repo_id": repo_id},
+        "provenance": sweep.provenance,
         "context_sweep": {
             "largest_fitting": sweep.largest_fitting,
             "native_limit": sweep.native_limit,

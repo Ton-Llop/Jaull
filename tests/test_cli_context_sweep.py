@@ -60,7 +60,10 @@ def _sweep_json(monkeypatch: Any, *, vram_gib: int = 12) -> dict[str, Any]:
 
 def test_json_has_its_own_schema_and_names_the_model(monkeypatch: Any) -> None:
     payload = _sweep_json(monkeypatch)
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
+    assert payload["provenance"]["hardware"]
+    assert payload["provenance"]["configuration"]["kv_cache_dtype"] == "float16"
+    assert payload["provenance"]["estimate_snapshot"]
     assert payload["model"]["repo_id"] == "user/model"
     assert "context_sweep" in payload
     # It is a separate document: the estimate JSON is not touched.

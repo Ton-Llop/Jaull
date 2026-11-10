@@ -258,20 +258,66 @@ class AdvisorService:
         """
         range_client = self._make_range_client() if resolve_base_model else None
 
+        from jaull.domain.enums import RepositoryType
+        from jaull.estimator.gguf_selection import select_variant
+        from jaull.metadata import service as metadata_service
+        from jaull.reporting.estimation import estimate_to_json_dict
+
+        original = analysis
+        provenance: dict[str, Any] = {
+            "hardware": hardware.model_dump(mode="json"),
+            "configuration": inference_cfg.model_dump(mode="json"),
+            "margin_explicit": inference_cfg.safety_margin_percent is not None,
+            "estimator_policy": "gguf-headroom-v1-layer-kv-v1",
+        }
+        if analysis.classification.primary_type is RepositoryType.GGUF:
+            choice = select_variant(
+                analysis.classification.gguf_variants, inference_cfg.quantization,
+            )
+            provenance["artifact"] = choice.variant.model_dump(mode="json")
+            provenance["artifact"]["sha256"] = choice.variant.sha256
+            provenance["artifact"]["revision"] = None
+            provenance["artifact"]["identity_note"] = (
+                "Inspection snapshot; immutable revision was not resolved. "
+                "File digests, when available, identify the inspected weights."
+            )
+            inference_cfg = inference_cfg.model_copy(update={
+                "quantization": choice.variant.quantization,
+            })
+            if resolve_base_model:
+                enriched = metadata_service.enrich(
+                    analysis, choice.variant, self.services.hf_client, range_client=range_client,
+                )
+                provenance["enrichment"] = enriched.model_dump(mode="json")
+                if enriched.enriched_config is not None:
+                    analysis = analysis.model_copy(update={
+                        "config": enriched.enriched_config.config,
+                        "warnings": [*analysis.warnings, *enriched.warnings],
+                    })
+
         def estimate_at(
             model: ModelAnalysis, config: InferenceConfiguration
         ) -> MemoryEstimate:
-            return self.estimate_model(
+            estimate = self.estimate_model(
                 model,
                 hardware,
                 config,
-                resolve_base_model=resolve_base_model,
+                resolve_base_model=False,
                 recommend_runtime=False,
                 range_client=range_client,
             )
+            if "estimate_snapshot" not in provenance:
+                provenance["estimate_snapshot"] = estimate_to_json_dict(estimate)
+            return estimate
 
-        limit = native_limit if native_limit is not None else native_context(analysis)
-        return sweep_context(analysis, inference_cfg, estimate_at, native_limit=limit)
+        declared = native_context(analysis)
+        limit = (
+            min(native_limit, declared) if native_limit and declared else native_limit or declared
+        )
+        result = sweep_context(analysis, inference_cfg, estimate_at, native_limit=limit)
+        provenance["effective_configuration"] = inference_cfg.model_dump(mode="json")
+        provenance["repository"] = original.repo.model_dump(mode="json")
+        return replace(result, provenance=provenance)
 
     def recommend(
         self,

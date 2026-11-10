@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from jaull.domain.estimation import (
     CompatibilityStatus,
@@ -50,6 +51,7 @@ class ContextSweep:
     largest_fitting: int | None
     native_limit: int | None = None
     notes: list[str] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     @property
     def weakest_confidence(self) -> EstimationConfidence:
@@ -100,8 +102,8 @@ def sweep_context(
 def native_context(analysis: ModelAnalysis) -> int | None:
     """The context the model declares, when its repository says so.
 
-    Only a repository with a ``config.json`` does; a GGUF analysis has none, so there is nothing
-    to cap the sweep with and the caller is told the ladder's top may not be the real limit.
+    The advisor supplies the resolved config, including a GGUF header's declared limit.
+    If neither inspection nor enrichment provides it, the limit remains unknown.
     """
     config = analysis.config
     if config is None or not config.max_position_embeddings:
