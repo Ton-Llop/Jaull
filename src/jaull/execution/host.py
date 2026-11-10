@@ -15,6 +15,7 @@ from jaull.domain.execution import (
     ExecutionRequest,
     ExecutionResult,
 )
+from jaull.execution.cancellation import check_cancelled
 from jaull.execution.errors import (
     ExecutableNotFoundError,
     ExecutionError,
@@ -42,6 +43,7 @@ class HostExecutionBackend:
         self._nvml_provider = nvml_provider
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        check_cancelled()
         start = time.perf_counter()
         metadata = ExecutionMeasurementMetadata(
             sample_interval_seconds=self._sample_interval_seconds
@@ -137,6 +139,8 @@ class HostExecutionBackend:
                 )
             return result
         finally:
+            if process.poll() is None:
+                self._terminate_and_drain(process)
             sampler.close()
 
     def _communicate_with_sampling(
@@ -148,6 +152,7 @@ class HostExecutionBackend:
         sampler: _ProcessExecutionSampler,
     ) -> tuple[str, str, bool]:
         while True:
+            check_cancelled()
             elapsed = time.perf_counter() - start
             remaining = request.timeout_seconds - elapsed
             if remaining <= 0:

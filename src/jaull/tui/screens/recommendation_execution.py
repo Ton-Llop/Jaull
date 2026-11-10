@@ -24,6 +24,7 @@ from jaull.domain.execution_plans import (
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
 from jaull.exceptions import InvalidModelReferenceError, QuantizationNotFoundError
+from jaull.execution.cancellation import cancellation_scope
 from jaull.execution.errors import ExecutionError, ExecutionFailedError
 from jaull.presentation.execution_report import inline_observation_summary
 from jaull.presentation.plan_labels import (
@@ -239,11 +240,12 @@ class RecommendationExecutionScreen(Screen[None]):
                     artifact = self._prepare_artifact_from_worker(advisor)
                 prepared_artifact = artifact
             self._post_step("Generating")
-            result = advisor.run_artifact(
-                artifact=artifact,
-                prompt=prompt,
-                runtime=runtime,
-            )
+            with cancellation_scope(self._run_closing.is_set):
+                result = advisor.run_artifact(
+                    artifact=artifact,
+                    prompt=prompt,
+                    runtime=runtime,
+                )
         except (
             InvalidModelReferenceError,
             QuantizationNotFoundError,

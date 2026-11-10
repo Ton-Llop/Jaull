@@ -141,10 +141,10 @@ class HardwareAnalysisScreen(Screen[None]):
             # machines are a supported target.
             content.mount(WarningsPanel(profile.warnings))
 
-        actions = Horizontal(classes="actions-right")
+        button = Button("Continue", id="hw-continue", classes="-primary")
+        actions = Horizontal(button, classes="actions-right")
         content.mount(actions)
-        actions.mount(Button("Continue", id="hw-continue", classes="-primary"))
-        self.query_one("#hw-continue", Button).focus()
+        self.call_after_refresh(button.focus)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "hw-continue":
