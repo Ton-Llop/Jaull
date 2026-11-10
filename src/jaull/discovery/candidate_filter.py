@@ -101,6 +101,7 @@ _COARSE_DEFAULT_BYTES_PER_PARAM = _COARSE_BYTES_PER_PARAM["q4"]
 _MIN_GPU_OFFLOAD_WEIGHT_FRACTION = 0.10
 _MAX_TOO_LARGE_FALLBACKS = 2
 _CUDA_ONLY_QUANTIZATIONS = frozenset({"awq", "gptq"})
+_PACKED_FORMAT_TAGS = frozenset({"awq", "gptq", "compressed-tensors"})
 # Shortlist scores are sums of the same terms, so candidates that are equally good have
 # equal scores; the epsilon only absorbs floating-point noise. Only inside such a tie may
 # the family-diversity preference decide, never to overrule a better score.
@@ -1088,7 +1089,16 @@ def _declared_quantization(candidate: ModelCandidate) -> str | None:
 
 
 def _is_gguf_candidate(candidate: ModelCandidate) -> bool:
-    return "gguf" in " ".join([candidate.repo_id, *candidate.tags]).lower()
+    """Whether the repository is a GGUF build, by its name or by a tag.
+
+    A GGUF tag on a repository not named for it can be a stray: a checkpoint in a packed
+    Transformers format (AWQ, GPTQ, compressed-tensors) that also tags "gguf" is that checkpoint,
+    and Jaull's loader for it needs CUDA. The name settles the question when it says GGUF.
+    """
+    if "gguf" in candidate.repo_id.lower():
+        return True
+    tags = [tag.lower() for tag in candidate.tags]
+    return any("gguf" in tag for tag in tags) and not _PACKED_FORMAT_TAGS.intersection(tags)
 
 
 def _ladder_floor(requirements: UserRequirements) -> str:

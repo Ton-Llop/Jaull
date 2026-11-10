@@ -3437,6 +3437,62 @@ regenerat, només hi canvien la nova consulta i `reach_slots: 1`). **PENDENT:** 
 **Fonts:** D116, D124, D125, [filtre](../../src/jaull/discovery/candidate_filter.py),
 [consultes](../../src/jaull/discovery/query_builder.py), [polítiques](../../src/jaull/application/recommendation/policies.py).
 
+### D127. Tres defectes de la primera cerca a la B60 real: KV per capa, cabeceres repetides i una etiqueta «gguf» solta
+
+**Data i necessitat:** 2026-11-10. La primera cerca de Jaull a la màquina de Biosfer (Balanced, coding, informe exportat)
+va deixar 4 dels 13 candidats inspeccionats sense estimació útil i va trigar 564 s. Les tres causes que s'expliquen aquí
+estan confirmades; per a una quarta, un model de classificació de telecomunicacions que entra a l'exploració, no s'ha
+investigat el motiu.
+
+**Evidència:**
+- **gemma-4 (12B i 26B-A4B), «GGUF header did not fit within the maximum download budget».** S'han llegit les capçaleres
+  reals: `gemma4.attention.head_count_kv` és una llista amb un valor per capa (`[8, 8, 8, 8, 8, 1, ...]`, 48 i 30 entrades),
+  no un enter. `parse_header` només accepta una capçalera tallada dins del tokenitzador si les cinc claus de l'estimador són
+  enters; amb una llista no l'acceptava, seguia llegint i el tokenitzador (`merges`) passava dels 8 MiB.
+- **103 s per a gemma-4-12b.** Té 21 quantitzacions i cada una és un fitxer a part: repetien la lectura creixent (256 KiB
+  fins a 8 MiB, uns 16 MiB) d'una capçalera idèntica, unes 21 vegades i en dues fases (precàrrega i estimador), per acabar
+  igualment desconegut. Els errors de lectura no es desen a la memòria cau (decisió anterior), de manera que res no ho evitava.
+- **OTel-2.0-Decision-26B-A4B-4bit.** És un checkpoint compressed-tensors (AWQ) que, a més, porta l'etiqueta `gguf`.
+  `_is_gguf_candidate` donava `True` per qualsevol etiqueta, així que la quantització declarada es buscava només al nom
+  (`...-4bit`, sense guionet) i quedava Q4_K_M: «cap a la GPU», quan el seu carregador necessita CUDA. Va ocupar una plaça d'exploració.
+
+**Decisió (de l'autor):**
+1. **KV per capa, versió mínima.** Es continua llegint una llista per capa si té una entrada per capa, són enters no negatius
+   i n'hi ha com a mínim una amb atenció (`per_layer_kv_heads`, al domini). El nombre de caps KV és el **màxim**, i el rang
+   (`min`, `max`, `layers`) viatja a `raw_flags["per_layer_kv_heads"]`. `kv_cache` ho dimensiona amb el màxim a totes les capes
+   i amb el context complet, ho diu a les notes («upper bound») i baixa la confiança a MEDIUM. Si tots els valors són iguals, no
+   es marca res. **No** es modelen les capes de finestra lliscant ni els caps diferents.
+2. **Memòria del pressupost de capçalera.** `HeaderBudgetMemo` recorda, durant una cerca, els repositoris la capçalera dels
+   quals ha esgotat el pressupost (només això: un temps d'espera o un error de xarxa no es comparteix). La precàrrega llegeix
+   primer una variant de cada repositori, després la segona de cadascun, i així successivament; l'estimador comparteix la
+   memòria. `HeaderFetchResult.budget_exhausted` ho distingeix.
+3. **Una etiqueta `gguf` sola no fa un GGUF.** Si el nom del repositori diu GGUF, ho és. Si només ho diu una etiqueta i el
+   repositori porta també `awq`, `gptq` o `compressed-tensors`, no ho és, i la quantització es llegeix del nom i de les etiquetes.
+
+**Efecte** (prova real contra el Hub, estimació de `jaull estimate ... -q Q4_K_M -c 4096`; l'ordinador és el portàtil, així que
+l'estat de compatibilitat no val per a la B60):
+
+| Model | Abans | Ara |
+|---|---|---|
+| gemma-4-12b-it | desconegut, 103 s | total 10,88 GiB, KV 3,0 GiB (cota), 2 s |
+| gemma-4-26B-A4B-it | desconegut | total 18,91 GiB, KV 1,9 GiB (cota) |
+
+El KV real de gemma-4-12b a 4096 tokens, calculat a mà de la capçalera (40 capes de finestra 1024 amb 8 caps i dimensió 256 i
+8 capes globals amb 1 cap i dimensió 512), és d'uns 0,38 GiB: la cota és unes 8 vegades massa gran. A 262144 tokens la distància
+és molt més gran. **Aquesta xifra és un càlcul, no una mesura de llama.cpp.**
+
+**Estat:** IMPLEMENTED (proves noves a `test_gguf_header_reader.py`, `test_kv_cache_per_layer.py`, `test_header_prefetch.py`,
+`test_metadata_service.py` i `test_discovery_search.py`, vistes fallar abans; suite completa, `ruff`, `mypy` i `compileall` nets).
+**PENDENT:** mesurar el KV de gemma-4 amb llama.cpp; modelar les capes de finestra lliscant; el cas d'OTel com a «altra tasca»;
+Laguna-XS, sense recompte de paràmetres; i els fitxers `mtp-*.gguf`, que sembla que compten com a variant («unknown: unknown»).
+
+**Límits:** la cota pot fer que un model gran sembli no cabre a contextos llargs. Les lectures que ja estaven en marxa quan un
+repositori esgota el pressupost no es poden aturar. La regla de les etiquetes cobreix tres formats empaquetats; no n'hi ha cap
+més.
+
+**Fonts:** D124, D125, D126, [lector](../../src/jaull/metadata/gguf_reader.py),
+[estimador de KV](../../src/jaull/estimator/kv_cache.py), [precàrrega](../../src/jaull/workflow/header_prefetch.py).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3545,7 +3601,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D126 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D127 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.

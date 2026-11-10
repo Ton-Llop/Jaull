@@ -1260,3 +1260,43 @@ def test_a_quality_run_already_explores_large_models_so_it_has_no_reach_stage() 
     shortlist(_reach_pool(), quality, limit=12, hardware=gpu, reach_slots=2, audit=audit)
 
     assert not any(step["stage"] == "reach" for step in audit["steps"])
+
+
+def test_a_gguf_tag_alone_does_not_make_a_packed_quantization_a_gguf_build() -> None:
+    """Found on a B60 box: a telecom classifier published as compressed-tensors (AWQ) also carried
+    a "gguf" tag, so it was rated as a 4-bit GGUF that fits the card and took an exploration slot,
+    only to be rejected at inspection for needing CUDA."""
+    from tests._intel_fixtures import LINUX_OS, scan
+
+    vulkan_only = scan(LINUX_OS).model_copy(update={"memory": hardware().memory})
+    req = _requirements()
+    packed = candidate(
+        "org/Decision-26B-A4B-4bit",
+        tags=["safetensors", "gguf", "awq", "compressed-tensors", "4-bit"],
+    )
+
+    hint = coarse_placement_hint(packed, req, vulkan_only)
+
+    assert hint.mode is HardwareFitMode.TOO_LARGE
+    assert hint.quantization_hint == "awq"
+    assert "CUDA" in hint.reason
+
+
+def test_a_repository_named_gguf_keeps_its_default_precision_whatever_it_tags() -> None:
+    """A GGUF repository tags every precision it offers, so its tags say nothing about one
+    build; and a GGUF tag without a packed format on a repository not named for it is still GGUF."""
+    from tests._intel_fixtures import LINUX_OS, scan
+
+    vulkan_only = scan(LINUX_OS).model_copy(update={"memory": hardware().memory})
+    req = _requirements()
+    offers_everything = candidate(
+        "org/Model-7B-Instruct-GGUF", tags=["gguf", "2-bit", "4-bit", "8-bit", "awq"],
+    )
+    tagged_only = candidate("org/Model-7B-Instruct", tags=["gguf", "text-generation"])
+
+    assert coarse_placement_hint(offers_everything, req, vulkan_only).mode is (
+        HardwareFitMode.GPU_RESIDENT
+    )
+    assert coarse_placement_hint(tagged_only, req, vulkan_only).mode is (
+        HardwareFitMode.GPU_RESIDENT
+    )
