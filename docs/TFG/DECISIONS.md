@@ -3355,12 +3355,34 @@ count». La suite no ho cobria i es va veure en executar `jaull estimate`; ara h
 | IQ3_S, 262144 | n/d | 5,06 GiB | n/d | **19,05 GiB** |
 
 **Estat:** IMPLEMENTED (`tests/test_kv_cache_hybrid.py`, 8 casos, i una prova de camí complet; vistos fallar abans;
-suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets). **PENDENT:** mesurar el KV real del
-Qwen3.6-35B-A3B a la B60 (el que s'ha validat és el 27B).
+suite completa, `ruff`, `mypy`, `compileall` i `git diff --check` nets).
+
+**Mesura del Qwen3.6-35B-A3B a la B60, 2026-11-10** (VALIDATED per al KV i l'estat recurrent). Fitxer `UD-IQ4_XS` de
+`unsloth/Qwen3.6-35B-A3B-GGUF` (SHA-256 `649d7508…ebbb3`, 16,50 GiB), `llama-server.exe` b11889 amb Vulkan natiu a Windows,
+`-ngl 99 -np 1 -lm dio --cache-ram 0 --jinja -lv 4`. Les prediccions es van desar, amb `jaull estimate`, abans de mesurar.
+La mesura és la de `common_memory_breakdown_print` i dels buffers de la càrrega:
+
+| `-c` | KV predit | KV mesurat | Estat recurrent predit | mesurat | Còmput a la B60 | «projected to use» |
+|---:|---:|---:|---:|---:|---:|---:|
+| 32768 | 640 MiB | **640** | 62,81 | **62,81** | 108 | 17.194 MiB |
+| 131072 | 2.560 MiB | **2.560** | 62,81 | **62,81** | 204 | 19.210 MiB |
+| 262144 | 5.120 MiB | **5.120** | 62,81 | **62,81** | 332 | 21.898 MiB |
+
+Lliures a la B60: 23.613 MiB. A 262144, llama.cpp ho accepta sense canvis i en deixa 1.715 lliures (el seu llindar és
+1.024). El comptador de memòria dedicada de Windows va donar 16,88 GiB a 32768, d'acord amb els 17.194 MiB més uns 90
+de driver. Velocitat, amb `llama-bench` (`-p 512 -n 128 -r 3`): `pp512` 1.399,7 ± 86,5 t/s i `tg128` 69,89 ± 0,29 t/s.
+
+El que la predicció de Jaull no encerta, tot en el sentit segur:
+- **Pesos.** Jaull compta els 17.730.509.792 bytes del fitxer com a VRAM. llama.cpp en deixa 515,31 MiB (la taula
+  d'embeddings) en un buffer del host: 16.383,34 a la B60.
+- **Còmput.** El supòsit és de 256 MiB plans. El mesurat creix amb el context: 108, 204 i 332 MiB a la B60 (més 48, 144 i 272
+  al host), gairebé una recta d'1 KiB per token. A 262144 supera el supòsit en 76 MiB. **UNVERIFIED** que sigui lineal en
+  general: són tres punts d'un sol model. No s'ha tocat cap fórmula.
+- **Veredicte a 262144.** Jaull dóna `tight` (22,82 GiB de ~23,06) i en realitat en sobra 1,67 GiB.
 
 **Límits:** només GGUF, perquè les xifres vénen de la capçalera; un `config.json` de transformers amb `layer_types`
-no es modela. Una sola mesura. `hardware_fit` reparteix el KV uniformement per blocs, tot i que només n'hi ha un de
-cada quatre amb KV, i el total no canvia. No s'ha tocat el rànquing.
+no es modela. Dues mesures (el 27B, a D120, i el 35B-A3B), cap en una altra GPU. `hardware_fit` reparteix el KV
+uniformement per blocs, tot i que només n'hi ha un de cada quatre amb KV, i el total no canvia. No s'ha tocat el rànquing.
 
 **Fonts:** D102, D120, D123, D124, [estimador](../../src/jaull/estimator/kv_cache.py),
 [fusionador](../../src/jaull/metadata/config_merger.py), `tests/test_kv_cache_hybrid.py`.
@@ -3493,6 +3515,44 @@ més.
 **Fonts:** D124, D125, D126, [lector](../../src/jaull/metadata/gguf_reader.py),
 [estimador de KV](../../src/jaull/estimator/kv_cache.py), [precàrrega](../../src/jaull/workflow/header_prefetch.py).
 
+### D128. Quin context cap: un escombratge de contextos sobre l'estimador i `jaull estimate --context-sweep`
+
+**Data i necessitat:** 2026-11-10. A la B60, el Qwen3-Coder 30B-A3B només hi cabia amb un context d'uns 32K i el
+Qwen3.6-35B-A3B va arribar a 131072 (D125). Jaull només sabia estimar **un** context cada vegada; cap funció responia «quin
+és el context més gran que hi cap». Va fer falta triar el `-c` d'un servidor a mà.
+
+**Decisió (de l'autor):**
+1. Mòdul nou `estimator/context_fit.py`, funció `sweep_context(analysis, config, estimate_fn, ladder, native_limit)`. No té
+   aritmètica pròpia: crida l'estimador de sempre (`estimate_fn`) a cada graó de `policies.CONTEXT_LADDER`
+   (2048, 4096, ..., 262144), com ja fa l'escala de quantitzacions de `configuration.py`.
+2. **«Cap» vol dir resident en una sola targeta** (còmode, compatible o just). El mode d'offloading i el desconegut no compten
+   (`RESIDENT_FIT_STATUSES`, compartit amb `configuration.py` perquè no hi hagi dues autoritats). El màxim és el final del
+   tram continu de graons que caben des del més petit: un graó que «cap» per sobre d'un que falla no es creu.
+3. Si tota l'escala cap i no hi ha límit natural, el resultat diu «may fit more»: el màxim seria el sostre de la llista, no el
+   del model.
+4. El límit natural ve de `max_position_embeddings` (repositoris de transformers). **Per a GGUF no arriba**: el seu `config` és `None`.
+5. Comandament `jaull estimate MODEL --context-sweep [--json]`. El JSON és un document a part (`schema_version` 1) i no toca
+   el de `estimate`. No es pot combinar amb `--context`. `AdvisorService.sweep_context_for_model` fa servir un sol client de
+   rang per a tot l'escombratge.
+
+**Evidència:** 14 proves del mòdul i 7 del comandament, totes vistes fallar abans d'escriure el codi. Prova real contra el Hub
+(`Qwen/Qwen2.5-0.5B-Instruct`): el KV va de 24 MiB a 2048 tokens a 384 MiB a 32768, és a dir 12 KiB per token, que és el que surt
+a mà amb 24 capes, 2 caps KV, dimensió 64 i 2 bytes. **Aquesta comparació és un càlcul a mà, no una mesura de llama.cpp.**
+
+**Estat:** IMPLEMENTED al comandament; **PENDENT**: la TUI, i la validació contra mesures.
+
+**Límits:**
+- **L'overhead de GGUF (256 MiB) es va mesurar només a context 4096** (D120, D123). L'escombratge l'extrapola a contextos llargs
+  suposant que no creix amb el context. No està comprovat; cal mesurar amb `-lv 4` a tres o quatre contextos en dos models.
+  Això necessita la GPU.
+- **TUI no feta.** La pantalla de resultats no té cap treballador en segon pla; mostrar l'escombratge a la pestanya Memory obliga a
+  introduir-lo i, a més, la recomanació no sembla exposar el `ModelAnalysis` que cal per recalcular.
+- Cada graó torna a llegir la capçalera GGUF (hi ha un sol client de rang, però no memòria de capçalera entre graons). No s'ha mesurat el cost.
+- Les capes de finestra lliscant segueixen sense modelar (D127): l'escombratge hereta la cota.
+
+**Fonts:** D120, D123, D125, D127, [escombratge](../../src/jaull/estimator/context_fit.py),
+[comandament](../../src/jaull/cli/estimate.py), [proves](../../tests/test_context_fit.py).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3601,7 +3661,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D127 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D128 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
