@@ -144,6 +144,11 @@ def _pick_aggregate_gpu_layers(estimate: MemoryEstimate) -> LlamaCppLayerPlan:
                 (split.block_count * budget)
                 // (split.block_count * split.bytes_per_block + kv_bytes),
             )
+        if estimate.kv_cache.layer_bytes is not None:
+            costs = estimate.kv_cache.layer_bytes
+            n = next((count for count in range(split.block_count, -1, -1)
+                      if count * split.bytes_per_block
+                      + (sum(costs[-count:]) if count else 0) <= max(0, budget)), 0)
 
         reasons = [
             f"Offloading required: requesting {n} llama.cpp GPU units from a "

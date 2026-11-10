@@ -86,6 +86,11 @@ def plan_launch(
     backend_selection: RuntimeBackendSelection | None = None,
     execution_readiness: ExecutionReadiness | None = None,
 ) -> RuntimeRecommendation:
+    if runtime is RuntimeName.LLAMA_CPP and estimate is not None:
+        from jaull.domain.inference import WeightPrecision
+
+        if estimate.inference_configuration.kv_cache_dtype is not WeightPrecision.FLOAT16:
+            raise ExecutionPlanningError("GGUF execution supports only FP16 KV cache.")
     base = _automatic_launch(runtime, estimate, hardware)
     explicit_layers = overrides is not None and overrides.n_gpu_layers is not None
     if (runtime is RuntimeName.LLAMA_CPP and tensor_context is not None

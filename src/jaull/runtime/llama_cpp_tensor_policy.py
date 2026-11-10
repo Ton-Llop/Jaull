@@ -115,6 +115,8 @@ def select_tensor_budget(
     This mapping belongs only to this backend and never consumes HFA placement.
     """
     index = context.index
+    if estimate.kv_cache.layer_bytes is not None:
+        return "Non-uniform KV uses the per-layer aggregate launch budget."
     if index is None:
         return context.unavailable_reason or "Local tensor descriptors unavailable."
     total = index.block_count

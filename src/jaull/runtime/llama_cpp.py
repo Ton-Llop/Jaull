@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.estimation import EstimationConfidence, MemoryEstimate
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.inference import WeightPrecision
 from jaull.domain.runtime import (
     RuntimeFlag,
     RuntimeFlagSource,
@@ -22,6 +23,12 @@ def build(
 ) -> RuntimeRecommendation:
     del hardware  # the launch policy reads everything it needs from the estimate
     cfg = estimate.inference_configuration
+    if cfg.kv_cache_dtype is not WeightPrecision.FLOAT16:
+        return RuntimeRecommendation(
+            runtime=RuntimeName.UNKNOWN,
+            confidence=EstimationConfidence.UNKNOWN,
+            warnings=["GGUF execution currently supports only FP16 KV cache; no launch produced."],
+        )
     variant = estimate.weights.gguf_variant or "model"
     file_hint = _first_gguf_filename(estimate) or f"{variant}.gguf"
 
