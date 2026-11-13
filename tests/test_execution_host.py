@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import os
 import sys
 import textwrap
 import time
@@ -256,8 +257,12 @@ def test_sampler_records_system_headroom_and_swap_deltas(monkeypatch) -> None:
     finally:
         sampler.close()
     assert observation.min_available_ram_bytes == 300
-    assert observation.system_swap_in_bytes == 50
-    assert observation.system_swap_out_bytes == 120
+    if os.name == "nt":
+        assert observation.system_swap_in_bytes is None
+        assert observation.system_swap_out_bytes is None
+    else:
+        assert observation.system_swap_in_bytes == 50
+        assert observation.system_swap_out_bytes == 120
     assert observation.peak_ram_bytes is None  # global RAM is not the child's RSS
 
 

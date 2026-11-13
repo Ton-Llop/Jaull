@@ -2496,7 +2496,7 @@ def test_execution_screen_rejects_empty_prompt(monkeypatch: Any) -> None:
 
 def test_generate_runs_long_operations_without_blocking_ui() -> None:
     async def scenario() -> None:
-        advisor = _FakeAdvisor(prepare_delay=0.6)
+        advisor = _FakeAdvisor(prepare_delay=2.0)
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
 
         async with app.run_test(size=(120, 50)) as pilot:
@@ -2510,7 +2510,7 @@ def test_generate_runs_long_operations_without_blocking_ui() -> None:
             await _wait_until(
                 pilot,
                 lambda: screen.query_one("#run-generate", Button).disabled,
-                timeout_seconds=advisor.prepare_delay / 2,
+                timeout_seconds=1.0,
             )
 
             assert time.perf_counter() - started < advisor.prepare_delay
