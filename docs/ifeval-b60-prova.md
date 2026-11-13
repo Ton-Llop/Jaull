@@ -1,6 +1,6 @@
 # IFEval a la B60: prova externa
 
-Registre d'una prova d'IFEval sobre tres models a la B60 de Biosfer. Es fa amb
+Registre d'una prova d'IFEval sobre quatre models a la B60 de Biosfer. Es fa amb
 `lm-evaluation-harness`, fora de Jaull, contra un `llama-server.exe` de Windows. No és l'IFEval
 del pilot de qualitat de Jaull: aquell fa servir un detector d'idioma amb llavor i no és comparable
 amb les xifres publicades. Aquí es fa servir la tasca `ifeval` de la llibreria tal com ve.
@@ -74,6 +74,7 @@ Les quatre mètriques són les de la tasca: `prompt_level_strict_acc`, `prompt_l
 | Qwen3.8-27B, amb raonament | Q4_K_M | **VALIDATED**, 541 prompts (en dues parts); 176 respostes gairebé buides | 4 h 19 min + 3 h 44 min | 0,634 ± 0,021 | 0,641 ± 0,021 | 0,615 | 0,621 |
 | Qwen3.8-27B, sense raonament (`--reasoning off`) | Q4_K_M | **VALIDATED**, 541 prompts | 3 h 05 min 46 s | 0,821 ± 0,017 | 0,848 ± 0,015 | 0,872 | 0,897 |
 | Qwen2.5 32B Instruct | Q4_K_M | **VALIDATED**, 541 prompts | 2 h 24 min 35 s | 0,797 ± 0,017 | 0,812 ± 0,017 | 0,859 | 0,871 |
+| Qwen3.6-35B-A3B, sense raonament (`--reasoning off`) | UD-IQ4_XS | **VALIDATED**, 541 prompts (en dues parts) | no comparable (vegeu el resultat) | 0,824 ± 0,016 | 0,863 ± 0,015 | 0,881 | 0,909 |
 
 ### Qwen3-Coder 30B-A3B, resultat
 
@@ -212,6 +213,53 @@ Els 424 + 7 = 431 encerts sobre 541 donen 0,7967, igual que el resum de `lm_eval
 problema de respostes buides del 27B amb raonament (7 de 541 contra 176). Les 7 que són buides no s'han mirat (**UNVERIFIED**
 per què); totes compten com a encert, probablement perquè una resposta buida compleix per casualitat algunes restriccions.
 
+### Qwen3.6-35B-A3B sense raonament, resultat
+
+Resultat final a `~/ifeval-results/qwen3.6-35b/qwen3.6-35b-a3b-iq4xs/` (2026-11-13, 09:05:12). `lm_eval`, tasca `ifeval`
+versió 4, temperatura 0, 1.280 tokens màxims, 541 prompts. Valors del resum de `lm_eval`:
+
+| Mètrica | Valor | Error estàndard |
+|---|---:|---:|
+| `prompt_level_strict_acc` | 0,8244 | 0,0164 |
+| `prompt_level_loose_acc` | 0,8632 | 0,0148 |
+| `inst_level_strict_acc` | 0,8813 | no calculat |
+| `inst_level_loose_acc` | 0,9089 | no calculat |
+
+Comanda del servidor (port 8082 de Windows, que el pont `ssh.exe -R` porta al 8081 de WSL):
+
+```
+./llama-server.exe -m 'C:\llama-win\Qwen3.6-35B-A3B-UD-IQ4_XS.gguf' -dev Vulkan1 -ngl 99 -c 8192 -np 1 -lm dio --sleep-idle-seconds 45 --cache-ram 0 --jinja --reasoning off --host 127.0.0.1 --port 8082
+```
+
+Respecte als altres tres hi ha diferències que cal tenir presents: la quantificació és UD-IQ4_XS i no Q4_K_M, el servidor
+porta `--reasoning off` com el Qwen3.8-27B de la segona tirada, i té opcions que els altres no tenien (`-lm dio`,
+`--sleep-idle-seconds 45`, `--cache-ram 0`). Cap d'aquestes tres últimes hauria de canviar les respostes amb temperatura 0,
+però no s'ha comprovat (**UNVERIFIED**). El `sha256` del GGUF no s'ha anotat.
+
+L'execució va anar en dues parts, amb la memòria cau `~/ifeval-cache/qwen36-35b`. La primera va començar el 10 de novembre
+a les 14:44:52 i es va tallar quan es va perdre la sessió de tmux; l'hora de tall no consta. Va deixar 406 respostes a la
+memòria cau. La segona, del 13 de novembre, va fer les 135 restants de les 08:53:04 a les 09:05:12, 5,22 s per prompt
+segons la barra de progrés. Abans de reprendre es va tornar a aixecar el servidor amb la mateixa comanda i el mateix
+fitxer. Per això no hi ha una durada total comparable amb la dels altres models. Extrapolar els 5,22 s als 541 prompts
+donaria uns 47 minuts, prop dels 42 del Coder, però és una estimació feta amb una quarta part de la prova
+(**UNVERIFIED**).
+
+Recompte de respostes gairebé buides, amb el mateix criteri que als altres models (menys de 20 caràcters):
+
+| Respostes | Nombre | Encerts estrictes |
+|---|---:|---:|
+| Amb resposta | 527 | 433 (82,2 %) |
+| Gairebé buides | 14 | 13 |
+
+Els 433 + 13 = 446 encerts sobre 541 donen 0,8244, igual que el resum de `lm_eval`. **VALIDATED**. Les 14 respostes curtes
+no s'han mirat (**UNVERIFIED** per què); 13 compten com a encert, i algunes poden ser respostes curtes correctes i no
+buides.
+
+Comparació dels quatre models, a nivell de prompt estricte: 0,824 (Qwen3.6-35B-A3B), 0,821 (Qwen3.8-27B sense raonament),
+0,797 (Qwen2.5 32B), 0,789 (Coder). Entre el Qwen3.6 i el Qwen3.8-27B hi ha 0,003, molt per sota de l'error estàndard de la
+diferència (uns 0,023): amb aquesta prova estan empatats. El que els separa és el cost. El Qwen3.6 és un MoE amb uns 3.000
+milions de paràmetres actius i a la segona part va respondre a 5,2 s per prompt, contra els 20,6 s del 27B dens.
+
 ## Per anotar en acabar cada model
 
 - Hora de final i durada.
@@ -223,7 +271,8 @@ per què); totes compten com a encert, probablement perquè una resposta buida c
 
 ## Incidències
 
-Cap de moment.
+- Qwen3.6-35B-A3B: la sessió de tmux on corria `lm_eval` es va perdre entre el 10 i el 13 de novembre. Es va reprendre amb
+  la mateixa memòria cau i la mateixa comanda; `lm_eval` va recuperar 406 respostes i només en va demanar 135.
 
 ## Límits
 
@@ -233,5 +282,7 @@ Cap de moment.
 - Els tres models són en Q4_K_M, però el fitxer del Qwen3.8 27B és `Qwen3.8-27B-UD-Q4_K_M.gguf`. El nom porta `UD`, així que
   potser no és la mateixa mescla de bits que una Q4_K_M estàndard com la dels altres dos (**UNVERIFIED**, no s'ha comparat).
   Fins que es comprovi, la quantificació no es pot descartar del tot com a part de les diferències.
+- El Qwen3.6-35B-A3B és en UD-IQ4_XS, una quantificació diferent de la Q4_K_M dels altres tres. La comparació és entre
+  artefactes concrets, no entre models.
 - No es compara amb xifres publicades d'IFEval: el servidor, la plantilla de xat i la quantificació
   no són els de cap publicació.
