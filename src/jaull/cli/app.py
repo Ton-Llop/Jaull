@@ -23,6 +23,7 @@ from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
 from jaull.cli.inspect import run_inspect
 from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setup
 from jaull.cli.run import RunOptions, run_model
+from jaull.cli.runtime import run_runtime_install
 from jaull.cli.scan import run_scan
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
@@ -62,6 +63,11 @@ case_bundle_app = typer.Typer(
     help="Inspect a portable experimental case bundle offline.",
 )
 case_app.add_typer(case_bundle_app, name="bundle")
+runtime_app = typer.Typer(
+    add_completion=False,
+    help="Install local runtimes managed by Jaull.",
+)
+app.add_typer(runtime_app, name="runtime")
 
 
 def _is_interactive_terminal() -> bool:
@@ -427,6 +433,17 @@ def list_cases_command(
     ),
 ) -> None:
     raise typer.Exit(code=run_list_cases(CaseOptions(as_json=as_json)))
+
+
+@runtime_app.command(
+    "install", help="Download, verify and install the pinned official llama.cpp build.",
+)
+def runtime_install_command(
+    backend: ComputeBackend = typer.Option(
+        ..., "--backend", case_sensitive=False, help="vulkan, cuda or cpu.",
+    ),
+) -> None:
+    raise typer.Exit(code=run_runtime_install(backend))
 
 
 @quality_app.command("setup", help="Check local evaluator; optionally prepare its pinned dataset.")

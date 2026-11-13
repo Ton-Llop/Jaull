@@ -1,7 +1,8 @@
 # Command reference
 
-Six subcommands: `scan`, `inspect`, `estimate`, `doctor`, `run` and `ui`. All of them are
-read-only except `run`, which explicitly downloads, verifies and executes a GGUF artifact.
+Main subcommands: `scan`, `inspect`, `estimate`, `doctor`, `run`, `runtime install` and
+`ui`. All of them are read-only except `run`, which explicitly downloads, verifies and
+executes a GGUF artifact, and `runtime install`, which downloads and installs llama.cpp.
 
 ```bash
 uv run jaull                             # opens the TUI when run in a terminal
@@ -11,6 +12,7 @@ uv run jaull doctor                      # environment, runtime and readiness ch
 uv run jaull inspect <repo-id-or-url>    # analyse a model repository
 uv run jaull estimate <repo-id-or-url>   # memory footprint + compatibility
 uv run jaull run --model <repo> --prompt "Hello"   # download, verify and run a GGUF
+uv run jaull runtime install --backend vulkan      # install the pinned llama.cpp build
 ```
 
 Running `jaull` with no subcommand opens the TUI **only when stdin and stdout are both a
@@ -244,6 +246,21 @@ Compares two stored record IDs offline — no Docker, no GPU. Matching suite, da
 samples, evaluator, runtime, protocol and classification give accuracy, counts, the
 paired difference and discordant outcomes. Any mismatch gives `NOT_COMPARABLE` with
 reasons and no paired metrics. It never names a winner.
+
+## `runtime install` — a llama.cpp build managed by Jaull
+
+```bash
+uv run jaull runtime install --backend vulkan   # or cuda, cpu
+```
+
+Downloads the official prebuilt llama.cpp archive for this OS and backend, from the single
+build Jaull pins (`LLAMA_CPP_PINNED_BUILD` in `runtime/policies.py`), checks its SHA-256
+against the pinned value before unpacking anything, and unpacks it into Jaull's data
+directory. CUDA also installs the matching `cudart` runtime libraries. Running it again
+reuses the existing install. The runtime locator then finds the build without PATH or
+registration. Supported: Windows and Linux x64 with Vulkan, CUDA (12.x) or CPU; anything
+else is refused, not guessed. Exit code 2 when the combination is not pinned or the
+download fails verification.
 
 ## `doctor` — environment health
 

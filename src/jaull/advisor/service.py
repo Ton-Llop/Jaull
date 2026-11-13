@@ -532,6 +532,24 @@ class AdvisorService:
 
         return select_runtime_backend(hardware or self.scan_hardware())
 
+    def install_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation:
+        """Install the pinned official llama.cpp build for this machine and ``backend``."""
+        import httpx
+
+        from jaull.runtime import policies as runtime_policies
+        from jaull.runtime.llama_cpp_install import install_llama_cpp, managed_root
+        from jaull.runtime.llama_cpp_release import current_platform, package_for
+
+        os_name, arch = current_platform()
+        timeout = httpx.Timeout(
+            runtime_policies.LLAMA_CPP_DOWNLOAD_CONNECT_TIMEOUT_SECONDS,
+            read=runtime_policies.LLAMA_CPP_DOWNLOAD_READ_TIMEOUT_SECONDS,
+        )
+        with httpx.Client(timeout=timeout) as client:
+            return install_llama_cpp(
+                package_for(os_name, arch, backend), root=managed_root(), client=client,
+            )
+
     def inspect_llama_cpp_runtime(
         self,
         *,
