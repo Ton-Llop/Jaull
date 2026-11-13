@@ -74,6 +74,7 @@ Un cop, per preparar-ho:
 
 ```bash
 git clone https://github.com/Ton-Llop/Jaull.git ~/jaull-bench/jaull-src
+mkdir -p ~/jaull-bench/results
 ```
 
 `prepare.sh` el clona sol si no hi és. Els scripts són a `scripts/agentic-bench/` del mateix repositori.
@@ -107,8 +108,52 @@ memòria cau d'anàlisis, que el test no comprova).
 
 ## Validació del circuit
 
-Execució al portàtil, amb la solució original de cada commit aplicada sobre l'espai preparat. **PENDENT** d'apuntar el
-resultat.
+Execució al portàtil (2026-11-13), amb la solució original de cada commit aplicada sobre l'espai preparat.
+**VALIDATED**:
+
+- Un espai T1 sense cap canvi: tests de la tasca en vermell (4 errors) i la suite amb exactament aquests 4 errors.
+- Amb la solució original, els tests de la tasca passen a les set tasques, i la suite passa a T1–T5.
+- T6 i T7 tenen errors a la suite que **ja hi són abans de la correcció** (comprovat traient la solució). T6, només al
+  portàtil: 4 tests de `test_case_*` que depenen de l'entorn (`stat`) i un test de la TUI intermitent; a monk-e la
+  suite de T6 surt neta. T7: 4 tests de `test_recommendation_engine_v2.py`
+  (`test_speed_does_not_prefer_a_larger_q4_to_a_smaller_transformers_plan`) i 2 de snapshots de l'informe
+  (`test_reporting_regression.py`). En aquestes dues tasques el criteri de la suite és «cap error fora d'aquesta
+  llista».
+
+## Incidències de l'entorn
+
+- OpenCode denega sol, sense preguntar, les ordres que no encaixen amb els permisos permesos: una canonada
+  (`| head`, `| tail`, `| grep`), un `cd ... &&` combinat amb `find`, `git stash` o `echo`. L'agent veu `Permission
+  denied: shell`. Afecta tots els models igual, però a T6 va fer que l'agent abandonés l'execució de tests.
+- La suite completa triga entre 2 i 8 minuts a monk-e. L'agent fixa el seu propi límit a l'eina de `bash` (5 o 10
+  minuts) i alguna vegada l'ha hagut de repetir.
+
+## Resultats: Qwen3.6-35B-A3B a la B60 (2026-11-13)
+
+Una sessió nova d'OpenCode per tasca, el prompt fix, **cap intervenció** de l'autor a cap tasca. La durada és la de la
+sessió segons l'exportació d'OpenCode (creada i última actualització). ruff i mypy s'han passat després, igual per a
+totes les tasques; el `grade.sh` no els executa.
+
+| Tasca | Durada | Tests de la tasca | Suite | ruff | mypy | Fitxers (+/−) | Revisió del patch |
+|---|---|---|---|---|---|---|---|
+| T1 | 9 min 26 s | sí | sí (3.162) | net | net | 1 (+4 −1) | Igual que l'original, sense el docstring |
+| T2 | 18 min 39 s | sí | sí (2.972) | **1 error** (RUF003: guió llarg en un comentari) | net | 1 (+31 −8) | Equivalent a l'original; deixa `_normalized_name` sense ús |
+| T4 | 15 min 22 s | sí | sí (2.977) | net | net | 2 (+34 −5) | Puja l'esquema de la memòria cau (la pista de l'enunciat); descarta més parts que l'original quan comparteixen quantització |
+| T5 | 14 min 33 s | sí | sí (3.272) | net | **1 error** (`arg-type`: `int \| None` a `_memory_delta`) | 1 (+91 −26) | Error latent: `_memory_delta(None, …)` si no hi ha xifra física de VRAM; el mode `TOO_LARGE` es queda sense files; no aplica l'estil estimat/mesurat |
+| T6 | 6 min 07 s | sí | sí (1.922) | net | net | 2 (+13 −7) | Correcte, però **no va executar cap test** i el resum ho dona per fet; un comentari de `concurrent_users` queda contradictori |
+| T7 | 14 min 39 s | sí | 6 errors, els mateixos 6 de la línia base (**VALIDATED** pels noms) | net | net | 1 (+40 −1) | **Amplia la regla a Speed i Memory** sense que l'enunciat ho demanés; un graó TIGHT agressiu ja no es pot escollir (regressió) |
+
+**Lectura.** Pels tests, el model local resol les sis tasques: 6 de 6, en 79 minuts en total, sense intervencions. Amb
+el criteri complet del projecte (tests, ruff, mypy i sense regressions trobades en revisar el patch), en resol bé 3 de 6
+(T1, T4 i T6), i T6 amb un procés deficient. Els defectes que queden no els detecten els tests: un error de tipus, una
+regressió en un cas no cobert i un canvi de política fora de l'abast. Això és coherent amb la prova 3 a Lipopótamo:
+canvis acotats que funcionen, amb revisió humana necessària. Com a punts forts, va comprovar a T7 que els errors de la
+suite ja hi eren abans de tocar res, i a T4 va deduir que calia invalidar la memòria cau, cosa que cap test demanava.
+
+L'error de ruff de T2 és d'estil (un guió llarg en un comentari). El de mypy de T5 és el mateix error latent trobat en
+revisar el patch, i mypy l'hauria detectat abans d'arribar a l'usuari. OpenCode v2.2.5.
+
+**PENDENT:** la mateixa ronda amb un model del núvol.
 
 ## Límits
 
