@@ -141,6 +141,8 @@ class RuntimeLocator:
     registry: RuntimeRegistry | None = field(default_factory=RuntimeRegistry)
     environ: Mapping[str, str] | None = None
     home: Path | None = None
+    # Where Setup installs pinned llama.cpp builds; None means Jaull's data directory.
+    managed_root: Path | None = None
 
     def discover_llama_cpp(self) -> list[LlamaCppInstallation]:
         explicit = self._explicit_llama_cpp()
@@ -256,7 +258,21 @@ class RuntimeLocator:
         ]
 
     def _managed_llama_cpp(self) -> list[LlamaCppInstallation]:
-        return []
+        """Builds installed by ``jaull runtime install``, newest build name first."""
+        # Imported here: the installer pulls in httpx, which plain discovery never needs.
+        from jaull.runtime.llama_cpp_install import installation_in, managed_root
+
+        root = self.managed_root if self.managed_root is not None else managed_root()
+        if not root.is_dir():
+            return []
+        found: list[LlamaCppInstallation] = []
+        for directory in sorted(root.iterdir(), reverse=True):
+            if not directory.is_dir() or directory.name.startswith("."):
+                continue  # staging directories of an install in progress start with "."
+            installation = installation_in(directory, directory.name.split("-", 1)[0])
+            if installation is not None:
+                found.append(installation)
+        return found
 
     def _registered_llama_cpp(self) -> list[LlamaCppInstallation]:
         if self.registry is None:

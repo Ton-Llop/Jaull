@@ -436,3 +436,31 @@ def _services() -> ServiceContainer:
         inspect_model=lambda *args, **kwargs: None,  # type: ignore[arg-type]
         estimate_memory=lambda *args, **kwargs: None,  # type: ignore[arg-type]
     )
+
+
+def test_managed_installations_are_discovered_first(tmp_path: Path) -> None:
+    """A build installed by Jaull (Setup) is found without registering or PATH."""
+    build = tmp_path / "managed" / "b1-linux-x86_64-cpu" / "build" / "bin"
+    cli = _exe(build / "llama-cli")
+    _exe(build / "llama-server")
+    path_cli = _exe(tmp_path / "path" / "llama-cli")
+
+    locator = RuntimeLocator(
+        registry=None, environ={"PATH": str(path_cli.parent)}, home=tmp_path / "home",
+        managed_root=tmp_path / "managed",
+    )
+    found = locator.discover_llama_cpp()
+
+    assert found[0].source is RuntimeSource.MANAGED
+    assert found[0].llama_cli == str(cli.resolve())
+    assert found[0].version_text == "b1"
+    assert locator.resolve_llama_cpp().source is RuntimeSource.MANAGED
+
+
+def test_an_incomplete_managed_build_is_ignored(tmp_path: Path) -> None:
+    _exe(tmp_path / "managed" / "b1-linux-x86_64-cpu" / "llama-cli")  # no llama-server
+    locator = RuntimeLocator(
+        registry=None, environ={"PATH": ""}, home=tmp_path / "home",
+        managed_root=tmp_path / "managed",
+    )
+    assert all(item.source is not RuntimeSource.MANAGED for item in locator.discover_llama_cpp())
