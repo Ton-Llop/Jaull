@@ -107,7 +107,7 @@ def test_start_plans_starts_and_reports(capsys: pytest.CaptureFixture[str]) -> N
     assert "KEY123" in out and "shown once" in out
     assert "http://192.168.1.107:8090/v1" in out
     assert "does not change the firewall" in out and "sudo ufw allow" in out
-    assert "/data/serve/start-server.sh" in out
+    assert str(Path("/data/serve/start-server.sh")) in out
     assert "b13000" in out
 
 

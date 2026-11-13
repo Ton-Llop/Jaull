@@ -35,6 +35,11 @@ def _launch(**changes: object) -> ServerLaunch:
     return ServerLaunch(**values)  # type: ignore[arg-type]
 
 
+def _native(path: str) -> str:
+    """The argv carries OS-native paths (backslashes on Windows), as subprocess expects."""
+    return str(Path(path))
+
+
 def _pairs(argv: list[str]) -> dict[str, str]:
     return {argv[i]: argv[i + 1] for i in range(1, len(argv) - 1) if argv[i].startswith("-")}
 
@@ -42,14 +47,14 @@ def _pairs(argv: list[str]) -> dict[str, str]:
 def test_single_user_server_is_local_and_locked_down() -> None:
     argv = server_argv(_launch())
 
-    assert argv[0] == "/opt/llama/llama-server"
+    assert argv[0] == _native("/opt/llama/llama-server")
     pairs = _pairs(argv)
-    assert pairs["--model"] == "/models/qwen.gguf"
+    assert pairs["--model"] == _native("/models/qwen.gguf")
     assert pairs["--ctx-size"] == "32768"
     assert pairs["--parallel"] == "1"
     assert pairs["--host"] == "127.0.0.1"
     assert pairs["--port"] == "8090"
-    assert pairs["--api-key-file"] == "/data/serve/api-key"
+    assert pairs["--api-key-file"] == _native("/data/serve/api-key")
     assert pairs["--alias"] == "qwen"
     assert "--no-slots" in argv
     assert "--no-webui" in argv
@@ -79,7 +84,7 @@ def test_launch_flags_are_kept_but_cannot_override_server_owned_ones() -> None:
     )))
 
     pairs = _pairs(argv)
-    assert argv.count("--model") == 1 and pairs["--model"] == "/models/qwen.gguf"
+    assert argv.count("--model") == 1 and pairs["--model"] == _native("/models/qwen.gguf")
     assert argv.count("--ctx-size") == 1 and pairs["--ctx-size"] == "32768"
     assert pairs["--n-gpu-layers"] == "-1"
     assert pairs["--device"] == "Vulkan1"
@@ -95,8 +100,8 @@ def test_tls_files_are_passed_when_both_are_given() -> None:
     argv = server_argv(_launch(tls_cert=Path("/tls/cert.pem"), tls_key=Path("/tls/key.pem")))
 
     pairs = _pairs(argv)
-    assert pairs["--ssl-cert-file"] == "/tls/cert.pem"
-    assert pairs["--ssl-key-file"] == "/tls/key.pem"
+    assert pairs["--ssl-cert-file"] == _native("/tls/cert.pem")
+    assert pairs["--ssl-key-file"] == _native("/tls/key.pem")
 
 
 def test_tls_needs_both_files() -> None:
