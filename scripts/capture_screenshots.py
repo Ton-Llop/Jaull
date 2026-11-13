@@ -704,7 +704,7 @@ async def _capture_validation(  # type: ignore[no-untyped-def]
     finally:
         artifact_gate.release()
 
-    await _wait_for(pilot, lambda: "Configuration validated" in _screen_text(app))
+    await _wait_for(pilot, lambda: "Execution succeeded" in _screen_text(app))
     await _settle(pilot)
     _save(app, out_dir, "tui-validation-success.svg")
 

@@ -37,6 +37,9 @@ class InferenceConfiguration(BaseModel):
     # None selects the runtime's policy; a numeric value is always explicit.
     safety_margin_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     device_reserve_bytes: int = Field(default=0, ge=0)
+    # CPU execution uses its own RAM headroom, not the accelerator's VRAM policy.
+    # None selects the estimator default; zero explicitly disables this reserve.
+    ram_reserve_bytes: int | None = Field(default=None, ge=0)
     # Number of independent inference sessions the estimate should size for. Each
     # session keeps its own KV cache, so N users multiply the KV footprint by N —
     # this is an orthogonal axis to ``batch_size`` (sequences per batch).

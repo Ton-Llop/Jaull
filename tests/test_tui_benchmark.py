@@ -745,11 +745,19 @@ def test_a_cpu_run_still_compares_ram_with_ram() -> None:
     estimate = _gpu_estimate()
     fit = estimate.hardware_fit.model_copy(update={"mode": HardwareFitMode.CPU_RAM})  # type: ignore[union-attr]
     estimate = estimate.model_copy(update={"hardware_fit": fit})
+    from jaull.domain.hardware import ComputeBackend
+    from jaull.domain.inference import TargetDevice
+
+    estimate = estimate.model_copy(update={
+        "assessment": estimate.assessment.model_copy(update={"effective_device": TargetDevice.CPU}),
+    })
     peak = 22 * 1024**3
+    run = _memory_run(peak_ram=peak)
+    run.record.requested_backend = ComputeBackend.CPU
+    rows = dict(_memory_rows([run], estimate))
 
-    rows = dict(_memory_rows([_memory_run(peak_ram=peak)], estimate))
-
-    assert rows["Estimated"] == _bytes(estimate.total_bytes)
+    assert rows["Estimated"] == _bytes(estimate.physical_bytes)
+    assert rows["Budget including reserve"] == _bytes(estimate.total_bytes)
     assert rows["Measured"] == _bytes(peak)
-    assert rows["Difference"] == _memory_delta(estimate.total_bytes, peak)
+    assert rows["Difference"] == _memory_delta(estimate.physical_bytes, peak)
     assert "VRAM estimated" not in rows

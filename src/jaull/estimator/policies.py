@@ -58,6 +58,8 @@ OVERHEAD_MIN_BYTES = 256 * MiB
 GGUF_OVERHEAD_WEIGHT_FRACTION = 0.0
 # ... and its base is 256 MiB, 1.17x the largest compute buffer measured (218 MiB, 32B), D123.
 GGUF_OVERHEAD_BASE_BYTES = 256 * MiB
+# Independent CPU breakdown allowance, not a measurement or a GPU-derived calibration.
+CPU_COMPUTE_ALLOWANCE_BYTES = 256 * MiB
 
 # --------------------------------------------------------------------------
 # Device reserve: memory we tell the user to LEAVE unused on the device
@@ -65,10 +67,11 @@ GGUF_OVERHEAD_BASE_BYTES = 256 * MiB
 # GPU/AUTO with a GPU present. The CLI exposes this as --device-reserve-gib.
 # --------------------------------------------------------------------------
 DEVICE_RESERVE_DEFAULT_BYTES = 512 * MiB
+RAM_RESERVE_DEFAULT_BYTES = 512 * MiB
 # llama.cpp's own fit accepts a layout that leaves at least 1024 MiB free
 # ("will leave N >= 1024 MiB of free device memory"). For GGUF that threshold is the
-# whole headroom: it is the floor of the device reserve and replaces the percentage
-# margin below (D123).
+# whole GPU headroom: it is the floor of the VRAM reserve and replaces the percentage
+# margin below (D123). CPU execution uses RAM_RESERVE_DEFAULT_BYTES instead.
 GGUF_DEVICE_HEADROOM_BYTES = 1024 * MiB
 
 # --------------------------------------------------------------------------

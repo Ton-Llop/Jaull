@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import pytest
-from textual.widgets import Button, Digits
+from textual.widgets import Button, Digits, Static
 
 from jaull.bootstrap.container import ServiceContainer
 from jaull.domain.hardware import AcceleratorType, ComputeBackend
 from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.hardware_analysis import HardwareAnalysisScreen
+from jaull.tui.widgets.workflow_header import WorkflowHeader
+from jaull.workflow.models import WorkflowStep
 from jaull.workflow.progress import HARDWARE_STEPS
 from tests._intel_fixtures import (
     B60_NAME,
@@ -148,3 +150,33 @@ def test_hardware_screen_shows_the_budget_warning_for_an_intel_scan() -> None:
     text, _ = _hardware_screen_text(scan(WINDOWS_OS))
 
     assert "not a free-VRAM measurement" in text
+
+
+@pytest.mark.parametrize("width", [60, 80, 120])
+def test_hardware_ram_figures_and_header_fit_narrow_terminals(width: int) -> None:
+    from jaull.domain.hardware import MemoryInfo
+
+    profile = scan(WINDOWS_OS).model_copy(update={
+        "memory": MemoryInfo(total_bytes=8 * GIB, available_bytes=5 * GIB),
+    })
+
+    async def scenario() -> None:
+        app = JaullApp(services=_services(profile))
+        async with app.run_test(size=(width, 50)) as pilot:
+            app.start_guided_workflow()
+            await _wait_for(pilot, lambda: bool(pilot.app.screen.query("#hw-continue")))
+            screen = pilot.app.screen
+            text = _visible_text(screen)
+            assert "GiB total | 5.00 GiB available" in text
+            assert "8.00" in [str(item.value) for item in screen.query(Digits)]
+            for figure in screen.query(".memory-figure"):
+                assert figure.region.right <= width
+            header = WorkflowHeader(WorkflowStep.REQUIREMENTS, "Your needs")
+            await screen.mount(header)
+            await pilot.pause(0.1)
+            machine = header.query_one("#workflow-machine", Static)
+            assert "RAM 8.00 GiB total (5.00 GiB available)" in str(machine.content)
+            assert machine.region.right <= width
+            assert machine.region.bottom <= header.region.bottom
+
+    _run(scenario())

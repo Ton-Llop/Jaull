@@ -23,6 +23,7 @@ from jaull.domain.estimation import (
     TransformerBlockWeightDecompositionMethod,
 )
 from jaull.domain.hardware import HardwareProfile, available_accelerator_memory_bytes
+from jaull.domain.inference import TargetDevice
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,11 @@ def analyze_estimate(
     estimate: MemoryEstimate,
     hardware: HardwareProfile,
 ) -> HardwareFitResult | None:
-    """Analyze placement for an already-built memory estimate."""
+    """Analyze the selected placement of an already-built memory estimate.
+
+    CPU estimates carry CPU-specific overhead/reserve. They cannot be used to
+    invent a GPU plan with those more permissive RAM headroom rules.
+    """
 
     weights_bytes = estimate.weights.component.bytes
     kv_cache_bytes = estimate.kv_cache.component.bytes
@@ -56,6 +61,11 @@ def analyze_estimate(
     safety_margin_bytes = (
         estimate.safety_margin.bytes if estimate.safety_margin is not None else 0
     )
+    if estimate.assessment.effective_device is TargetDevice.CPU:
+        hardware = hardware.model_copy(update={
+            "gpus": [],
+            "accelerators": [a for a in hardware.accelerators if a.shared_memory],
+        })
     return analyze_components(
         weights_bytes=weights_bytes,
         kv_cache_bytes=kv_cache_bytes,
@@ -66,6 +76,10 @@ def analyze_estimate(
         total_transformer_blocks=estimate.kv_cache.layers,
         weight_decomposition=estimate.weights.transformer_block_decomposition,
         kv_layer_bytes=estimate.kv_cache.layer_bytes,
+        cpu_reserve_bytes=(
+            estimate.device_reserve.bytes or 0
+            if estimate.assessment.effective_device is TargetDevice.CPU else None
+        ),
     )
 
 
@@ -81,8 +95,15 @@ def analyze_components(
     total_layers: int | None = None,
     weight_decomposition: TransformerBlockWeightDecomposition | None = None,
     kv_layer_bytes: tuple[int, ...] | None = None,
+    cpu_reserve_bytes: int | None = None,
+    cpu_safety_margin_bytes: int | None = None,
+    cpu_overhead_bytes: int | None = None,
 ) -> HardwareFitResult:
-    """Classify model placement without collapsing RAM and VRAM into one pool."""
+    """Classify placement without collapsing RAM and VRAM into one pool.
+
+    Optional CPU headroom overrides are used only for CPU placement. Omitting
+    them preserves the component-only API's historical GPU-reserve semantics.
+    """
 
     if (
         total_transformer_blocks is not None
@@ -110,16 +131,25 @@ def analyze_components(
     topology = _memory_topology(hardware)
     available_vram = _available_vram(hardware)
     available_ram = hardware.memory.available_bytes
+    cpu_margin = (
+        safety_margin_bytes if cpu_safety_margin_bytes is None else cpu_safety_margin_bytes
+    )
+    cpu_overhead = overhead_bytes if cpu_overhead_bytes is None else cpu_overhead_bytes
 
     if topology is HardwareMemoryTopology.UNIFIED_MEMORY:
         return _analyze_unified_memory(
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
-            overhead_bytes=overhead_bytes,
-            device_reserve_bytes=device_reserve_bytes,
-            safety_margin_bytes=safety_margin_bytes,
+            overhead_bytes=cpu_overhead,
+            device_reserve_bytes=(
+                device_reserve_bytes if cpu_reserve_bytes is None else cpu_reserve_bytes
+            ),
+            safety_margin_bytes=cpu_margin,
             available_ram=available_ram,
             total_transformer_blocks=total_transformer_blocks,
+            cpu_total_ram_bytes=(
+                hardware.memory.total_bytes if cpu_reserve_bytes is not None else None
+            ),
         )
 
     gpu_fixed_bytes = kv_cache_bytes + overhead_bytes + device_reserve_bytes
@@ -181,21 +211,32 @@ def analyze_components(
         and weight_decomposition.estimated_non_block_weight_bytes > 0
         else []
     )
-    cpu_required = weights_bytes + kv_cache_bytes + overhead_bytes + safety_margin_bytes
-    if cpu_required <= available_ram:
+    ram_reserve = cpu_reserve_bytes or 0
+    cpu_physical = weights_bytes + kv_cache_bytes + cpu_overhead
+    cpu_required = cpu_physical + cpu_margin + ram_reserve
+    cpu_limit = cpu_physical if cpu_reserve_bytes is not None else cpu_required
+    if cpu_limit <= available_ram or (
+        cpu_reserve_bytes is not None and cpu_physical <= hardware.memory.total_bytes
+    ):
         prefix = (
             "No viable GPU placement found"
             if available_vram is not None
             else "No GPU detected"
         )
         return HardwareFitResult(
-            mode=HardwareFitMode.CPU_RAM,
+            mode=(
+                HardwareFitMode.CPU_RAM if cpu_limit <= available_ram
+                else HardwareFitMode.CPU_MEMORY_PRESSURE
+            ),
             memory_topology=topology,
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
-            overhead_bytes=overhead_bytes,
-            device_reserve_bytes=device_reserve_bytes,
-            safety_margin_bytes=safety_margin_bytes,
+            overhead_bytes=cpu_overhead,
+            device_reserve_bytes=(
+                device_reserve_bytes if cpu_reserve_bytes is None else ram_reserve
+            ),
+            ram_reserve_bytes=ram_reserve,
+            safety_margin_bytes=cpu_margin,
             available_vram_bytes=available_vram,
             available_ram_bytes=available_ram,
             gpu_required_bytes=(
@@ -204,15 +245,21 @@ def analyze_components(
             gpu_weight_bytes=0,
             ram_required_bytes=cpu_required,
             ram_weight_bytes=weights_bytes,
-            ram_overhead_bytes=overhead_bytes,
-            ram_safety_margin_bytes=safety_margin_bytes,
+            ram_overhead_bytes=cpu_overhead,
+            ram_safety_margin_bytes=cpu_margin,
             # No block runs on the GPU, so no part of the cache lives there.
             gpu_kv_cache_bytes=0,
             ram_kv_cache_bytes=kv_cache_bytes,
             gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
             total_transformer_blocks=total_transformer_blocks,
             placement_method=HardwareFitPlacementMethod.NONE,
-            reason=f"{prefix}; full model fits in system RAM.",
+            reason=(
+                f"{prefix}; full model fits in system RAM."
+                if cpu_reserve_bytes is None else
+                f"{prefix}; estimated CPU consumption fits available RAM."
+                if cpu_limit <= available_ram else
+                f"{prefix}; experimental CPU placement exceeds available RAM."
+            ),
             warnings=planning_warnings,
         )
 
@@ -221,9 +268,12 @@ def analyze_components(
         memory_topology=topology,
         weights_bytes=weights_bytes,
         kv_cache_bytes=kv_cache_bytes,
-        overhead_bytes=overhead_bytes,
-        device_reserve_bytes=device_reserve_bytes,
-        safety_margin_bytes=safety_margin_bytes,
+        overhead_bytes=cpu_overhead,
+        device_reserve_bytes=(
+            device_reserve_bytes if cpu_reserve_bytes is None else ram_reserve
+        ),
+        ram_reserve_bytes=ram_reserve,
+        safety_margin_bytes=cpu_margin,
         available_vram_bytes=available_vram,
         available_ram_bytes=available_ram,
         gpu_required_bytes=(
@@ -232,8 +282,8 @@ def analyze_components(
         gpu_weight_bytes=0,
         ram_required_bytes=cpu_required,
         ram_weight_bytes=weights_bytes,
-        ram_overhead_bytes=overhead_bytes,
-        ram_safety_margin_bytes=safety_margin_bytes,
+        ram_overhead_bytes=cpu_overhead,
+        ram_safety_margin_bytes=cpu_margin,
         gpu_kv_cache_bytes=0,
         ram_kv_cache_bytes=kv_cache_bytes,
         gpu_transformer_blocks=_gpu_transformer_blocks_when_unused(available_vram),
@@ -615,6 +665,7 @@ def _analyze_unified_memory(
     safety_margin_bytes: int,
     available_ram: int,
     total_transformer_blocks: int | None,
+    cpu_total_ram_bytes: int | None = None,
 ) -> HardwareFitResult:
     """Fit against the single shared pool, reserve included.
 
@@ -633,14 +684,22 @@ def _analyze_unified_memory(
         + device_reserve_bytes
         + safety_margin_bytes
     )
-    if required <= available_ram:
+    physical = weights_bytes + kv_cache_bytes + overhead_bytes
+    limit = physical if cpu_total_ram_bytes is not None else required
+    if limit <= available_ram or (
+        cpu_total_ram_bytes is not None and physical <= cpu_total_ram_bytes
+    ):
         return HardwareFitResult(
-            mode=HardwareFitMode.CPU_RAM,
+            mode=(
+                HardwareFitMode.CPU_RAM if limit <= available_ram
+                else HardwareFitMode.CPU_MEMORY_PRESSURE
+            ),
             memory_topology=HardwareMemoryTopology.UNIFIED_MEMORY,
             weights_bytes=weights_bytes,
             kv_cache_bytes=kv_cache_bytes,
             overhead_bytes=overhead_bytes,
             device_reserve_bytes=device_reserve_bytes,
+            ram_reserve_bytes=device_reserve_bytes,
             safety_margin_bytes=safety_margin_bytes,
             available_ram_bytes=available_ram,
             ram_required_bytes=required,
@@ -666,6 +725,7 @@ def _analyze_unified_memory(
         kv_cache_bytes=kv_cache_bytes,
         overhead_bytes=overhead_bytes,
         device_reserve_bytes=device_reserve_bytes,
+        ram_reserve_bytes=device_reserve_bytes,
         safety_margin_bytes=safety_margin_bytes,
         available_ram_bytes=available_ram,
         ram_required_bytes=required,

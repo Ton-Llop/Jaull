@@ -121,6 +121,11 @@ class ExecutionObservation(BaseModel):
     # A second observation source, not a replacement for ``peak_vram_bytes``:
     # that one is the driver's view and stays authoritative where it exists.
     runtime_allocation: RuntimeReportedAllocation | None = None
+    # Host-wide observations during the run, not allocations attributed to the child.
+    # None on older records and on runners that do not sample these counters.
+    min_available_ram_bytes: int | None = Field(default=None, ge=0)
+    system_swap_in_bytes: int | None = Field(default=None, ge=0)
+    system_swap_out_bytes: int | None = Field(default=None, ge=0)
 
 
 class ExecutionRequest(BaseModel):

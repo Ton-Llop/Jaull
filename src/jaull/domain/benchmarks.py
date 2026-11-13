@@ -180,6 +180,9 @@ class BenchmarkObservation(BaseModel):
     generation_latency_stddev_seconds: float | None = Field(default=None, ge=0.0)
     peak_ram_bytes: int | None = Field(default=None, ge=0)
     peak_vram_bytes: int | None = Field(default=None, ge=0)
+    min_available_ram_bytes: int | None = Field(default=None, ge=0)
+    system_swap_in_bytes: int | None = Field(default=None, ge=0)
+    system_swap_out_bytes: int | None = Field(default=None, ge=0)
     command: tuple[str, ...] = Field(default_factory=tuple)
     exit_code: int | None = None
     failure_reason: BenchmarkFailureReason | None = None

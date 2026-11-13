@@ -15,8 +15,8 @@ from jaull.domain.estimation import (
     MemoryEstimate,
     WeightEstimate,
 )
-from jaull.domain.hardware import HardwareProfile
-from jaull.domain.inference import InferenceConfiguration
+from jaull.domain.hardware import HardwareProfile, available_accelerator_memory_bytes
+from jaull.domain.inference import InferenceConfiguration, TargetDevice
 from jaull.domain.model import GgufVariant, ModelAnalysis, ModelConfig
 from jaull.domain.runtime import RuntimeRecommendation  # noqa: F401 (rebuild)
 from jaull.estimator import compatibility, kv_cache, overhead, policies, weights
@@ -101,24 +101,37 @@ def estimate_memory(
             else overhead.OVERHEAD_WEIGHT_FRACTION
         ),
     )
+    cpu_overhead = (
+        overhead.estimate_gguf_cpu_overhead(weight_estimate.component.bytes)
+        if is_gguf else overhead_estimate
+    )
 
-    reserve_bytes = inference_cfg.device_reserve_bytes
+    gpu_reserve_bytes = inference_cfg.device_reserve_bytes
+    ram_reserve_bytes = (
+        policies.RAM_RESERVE_DEFAULT_BYTES
+        if inference_cfg.ram_reserve_bytes is None else inference_cfg.ram_reserve_bytes
+    )
     margin_percent = inference_cfg.safety_margin_percent
     if margin_percent is None:
         margin_percent = policies.SAFETY_MARGIN_DEFAULT_PERCENT
     if is_gguf:
-        # llama.cpp accepts a layout that leaves >= 1 GiB free, and that is the whole headroom:
-        # it is the floor of the reserve and replaces the default percentage margin (D123).
-        # A reserve above 1 GiB or any explicitly requested margin still apply.
-        reserve_bytes = max(reserve_bytes, policies.GGUF_DEVICE_HEADROOM_BYTES)
+        gpu_reserve_bytes = max(gpu_reserve_bytes, policies.GGUF_DEVICE_HEADROOM_BYTES)
         if inference_cfg.safety_margin_percent is None:
             margin_percent = 0.0
-        assumptions.append(
-            "GGUF headroom: llama.cpp's own threshold of 1 GiB free replaces the percentage margin."
-            if inference_cfg.safety_margin_percent is None else
-            "GGUF headroom: at least 1 GiB free, plus the explicitly requested percentage margin."
-        )
-    device_reserve = _device_reserve_component(reserve_bytes)
+    cpu_only = inference_cfg.target_device is TargetDevice.CPU or (
+        inference_cfg.target_device is TargetDevice.AUTO
+        and available_accelerator_memory_bytes(hardware) is None
+    )
+    if cpu_only:
+        overhead_estimate = cpu_overhead
+    device_reserve = _device_reserve_component(
+        ram_reserve_bytes if cpu_only else gpu_reserve_bytes, cpu=cpu_only
+    )
+    cpu_subtotal = _sum_components([
+        weight_estimate.component.bytes, kv_estimate.component.bytes,
+        cpu_overhead.component.bytes, ram_reserve_bytes,
+    ])
+    cpu_safety_margin = _safety_margin_component(cpu_subtotal, margin_percent)
 
     subtotal = _sum_components(
         [
@@ -150,7 +163,40 @@ def estimate_memory(
         kv_layer_bytes=kv_estimate.layer_bytes,
         hardware=hardware,
         device_target=inference_cfg.target_device,
+        cpu_reserve_bytes=ram_reserve_bytes,
+        cpu_safety_margin_bytes=cpu_safety_margin.bytes if cpu_safety_margin else 0,
+        cpu_overhead_bytes=cpu_overhead.component.bytes,
     )
+
+    # AUTO may fall back from a dedicated GPU to CPU. Report the reserve and
+    # margin of that selected placement, not the rejected GPU's headroom.
+    uses_cpu = cpu_only or assessment.effective_device is TargetDevice.CPU
+    if uses_cpu:
+        overhead_estimate = cpu_overhead
+        device_reserve = _device_reserve_component(ram_reserve_bytes, cpu=True)
+        safety_margin = cpu_safety_margin
+        total_bytes = _sum_components([
+            cpu_subtotal, safety_margin.bytes if safety_margin else 0,
+        ])
+        if is_gguf:
+            warnings.append(
+                f"CPU overhead uses a general {cpu_overhead.base_bytes / policies.MiB:g} MiB "
+                f"+ {cpu_overhead.weight_fraction:.0%} of weights heuristic, "
+                "not the GPU compute-buffer calibration. CPU repacking is not separately "
+                "sized and can exceed this allowance."
+            )
+    if is_gguf:
+        assumptions.append(
+            f"GGUF CPU headroom: {ram_reserve_bytes / policies.MiB:g} MiB of RAM; "
+            "the GPU's 1 GiB minimum does not apply."
+            if uses_cpu else
+            "GGUF GPU headroom: at least 1 GiB of VRAM."
+        )
+        assumptions.append(
+            "No automatic percentage margin is added to GGUF headroom."
+            if inference_cfg.safety_margin_percent is None else
+            "The explicitly requested percentage margin is added to the selected reserve."
+        )
 
     global_confidence = _combined_confidence(
         [
@@ -307,21 +353,24 @@ def _estimate_weights(
     )
 
 
-def _device_reserve_component(reserve_bytes: int) -> MemoryComponent:
+def _device_reserve_component(reserve_bytes: int, *, cpu: bool = False) -> MemoryComponent:
+    name = "RAM reserve" if cpu else "Device reserve"
+    pool = "RAM" if cpu else "VRAM"
+    option = "--ram-reserve-gib" if cpu else "--device-reserve-gib"
     if reserve_bytes <= 0:
         return MemoryComponent(
-            name="Device reserve",
+            name=name,
             bytes=0,
             source=EstimateSource.ASSUMED,
             confidence=EstimationConfidence.LOW,
-            explanation="No device reserve configured (--device-reserve-gib 0).",
+            explanation=f"No {pool} reserve configured ({option} 0).",
         )
     return MemoryComponent(
-        name="Device reserve",
+        name=name,
         bytes=reserve_bytes,
         source=EstimateSource.ASSUMED,
         confidence=EstimationConfidence.LOW,
-        explanation=f"Configured device reserve of {reserve_bytes / (1024**3):.2f} GiB.",
+        explanation=f"Configured {pool} reserve of {reserve_bytes / (1024**3):.2f} GiB.",
     )
 
 

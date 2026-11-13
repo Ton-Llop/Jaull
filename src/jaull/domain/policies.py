@@ -64,8 +64,9 @@ STATUS_RANK: dict[CompatibilityStatus, int] = {
     CompatibilityStatus.COMPATIBLE: 1,
     CompatibilityStatus.TIGHT: 2,
     CompatibilityStatus.OFFLOADING_REQUIRED: 3,
-    CompatibilityStatus.UNKNOWN: 4,
-    CompatibilityStatus.INSUFFICIENT: 5,
+    CompatibilityStatus.MEMORY_PRESSURE: 4,
+    CompatibilityStatus.UNKNOWN: 5,
+    CompatibilityStatus.INSUFFICIENT: 6,
 }
 
 # How each status maps onto the hardware-fit sub-score.
@@ -74,6 +75,7 @@ STATUS_FIT_SCORE: dict[CompatibilityStatus, float] = {
     CompatibilityStatus.COMPATIBLE: 0.85,
     CompatibilityStatus.TIGHT: 0.55,
     CompatibilityStatus.OFFLOADING_REQUIRED: 0.30,
+    CompatibilityStatus.MEMORY_PRESSURE: 0.15,
     CompatibilityStatus.UNKNOWN: 0.20,
     CompatibilityStatus.INSUFFICIENT: 0.0,
 }

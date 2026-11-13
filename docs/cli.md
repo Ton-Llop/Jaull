@@ -95,7 +95,8 @@ behind those numbers.
 | `--device` | `auto` | `auto` / `gpu` / `cpu` |
 | `--kv-dtype` | `float16` | Assumed cache precision; quantized KV is unmodelled, executable GGUF requires FP16 |
 | `--safety-margin-percent` | automatic | Explicit extra percentage; omitted means GGUF headroom policy or 10% for other repositories |
-| `--device-reserve-gib` | 0.5 | Memory to leave free on the target device |
+| `--device-reserve-gib` | 0.5 | GPU reserve; GGUF applies a 1 GiB VRAM minimum |
+| `--ram-reserve-gib` | 0.5 | RAM to leave free for CPU execution; `0` disables it, independent of the GPU reserve |
 | `--json` | off | Emit stable JSON to stdout (`schema_version` identifies the current estimation contract) |
 | `--no-resolve-base-model` | off | Skip base-model resolution and GGUF-header enrichment |
 | `--no-runtime-recommendation` | off | Skip the runtime recommendation section |

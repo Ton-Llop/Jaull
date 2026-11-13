@@ -12,6 +12,7 @@ from jaull.domain.estimation import (
     MemoryEstimate,
 )
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import (
     RuntimeName,
     RuntimeRecommendation,
@@ -30,8 +31,20 @@ def recommend(
     if estimate.assessment.status is CompatibilityStatus.UNKNOWN:
         return _unknown_estimate()
 
+    if (
+        estimate.assessment.status is CompatibilityStatus.MEMORY_PRESSURE
+        and estimate.assessment.effective_device is not TargetDevice.CPU
+    ):
+        return _no_runtime_available()
+
     if repository_type is RepositoryType.GGUF:
-        return llama_cpp.build(estimate, hardware)
+        result = llama_cpp.build(estimate, hardware)
+        if estimate.assessment.status is CompatibilityStatus.MEMORY_PRESSURE:
+            result = result.model_copy(update={"warnings": [
+                *result.warnings, "Experimental RAM pressure: execution may page or fail; "
+                "resident fit and throughput are not confirmed.",
+            ]})
+        return result
 
     if repository_type is RepositoryType.TRANSFORMERS:
         primary = transformers.build(estimate, hardware)

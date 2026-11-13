@@ -48,6 +48,7 @@ class CompatibilityStatus(StrEnum):
     COMFORTABLE = "comfortable"
     COMPATIBLE = "compatible"
     TIGHT = "tight"
+    MEMORY_PRESSURE = "memory_pressure"
     OFFLOADING_REQUIRED = "offloading_required"
     INSUFFICIENT = "insufficient"
     UNKNOWN = "unknown"
@@ -57,6 +58,7 @@ class HardwareFitMode(StrEnum):
     GPU_RESIDENT = "gpu_resident"
     GPU_OFFLOAD = "gpu_offload"
     CPU_RAM = "cpu_ram"
+    CPU_MEMORY_PRESSURE = "cpu_memory_pressure"
     TOO_LARGE = "too_large"
 
 
@@ -221,6 +223,8 @@ class RuntimeOverheadEstimate(BaseModel):
     base_bytes: int
     weight_fraction: float
     minimum_bytes: int
+    components: list[MemoryComponent] = Field(default_factory=list)
+    unmodelled_components: list[str] = Field(default_factory=list)
 
 
 class CompatibilityAssessment(BaseModel):
@@ -235,6 +239,12 @@ class CompatibilityAssessment(BaseModel):
     ratio: float | None = None
     reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    # CPU policy dimensions: consumption is not the reserve-inclusive budget.
+    # Missing on older assessments and estimates without a component-level CPU policy.
+    physical_bytes: int | None = None
+    budget_bytes: int | None = None
+    desired_reserve_bytes: int | None = None
+    reserve_shortfall_bytes: int | None = None
 
 
 class NonBlockPlacementBounds(BaseModel):
@@ -318,6 +328,14 @@ class HardwareFitOffloadDiagnostics(BaseModel):
 
 
 class HardwareFitResult(BaseModel):
+    """Selected placement and its budget terms.
+
+    With the explicit CPU reserve policy, CPU_RAM promises that consumption fits,
+    not that the entire desired headroom fits. ram_required_bytes remains the
+    reserve-inclusive budget; ram_physical_bytes excludes policy padding.
+    CPU_MEMORY_PRESSURE is experimental and makes no resident-fit promise.
+    """
+
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     mode: HardwareFitMode
@@ -326,6 +344,8 @@ class HardwareFitResult(BaseModel):
     kv_cache_bytes: int
     overhead_bytes: int
     device_reserve_bytes: int = 0
+    # Portion of the active reserve charged to RAM, not an additional charge.
+    ram_reserve_bytes: int = 0
     safety_margin_bytes: int = 0
     available_vram_bytes: int | None = None
     available_ram_bytes: int | None = None
@@ -404,8 +424,9 @@ class HardwareFitResult(BaseModel):
 
         The RAM counterpart of :attr:`gpu_physical_bytes`, and the same
         subtraction: the safety margin is policy, never an allocation. The
-        device reserve is only charged to RAM on unified-memory hardware, where
-        the accelerator draws from the same pool, so it is removed only there.
+        RAM reserve is also policy padding, including for CPU-only execution.
+        Older unified-memory estimates recorded it only as a device reserve;
+        subtract that legacy value only when no explicit RAM reserve is present.
         """
 
         if (
@@ -416,7 +437,9 @@ class HardwareFitResult(BaseModel):
         if self.ram_required_bytes is None:
             return None
         physical = self.ram_required_bytes - self.ram_safety_margin_bytes
-        if self.memory_topology is HardwareMemoryTopology.UNIFIED_MEMORY:
+        if self.ram_reserve_bytes:
+            physical -= self.ram_reserve_bytes
+        elif self.memory_topology is HardwareMemoryTopology.UNIFIED_MEMORY:
             physical -= self.device_reserve_bytes
         return physical
 
@@ -452,3 +475,14 @@ class MemoryEstimate(BaseModel):
     architecture: str | None = None
     # Additive in Fase 4 (RuntimeSelector). Also None-by-default for compatibility.
     runtime_recommendation: RuntimeRecommendation | None = None
+
+    @property
+    def physical_bytes(self) -> int | None:
+        """Process-consumption estimate, excluding reserve and safety margin."""
+        parts = (
+            self.weights.component.bytes, self.kv_cache.component.bytes,
+            self.runtime_overhead.component.bytes,
+        )
+        return None if any(part is None for part in parts) else sum(
+            part for part in parts if part is not None
+        )

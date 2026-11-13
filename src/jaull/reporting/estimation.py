@@ -51,6 +51,7 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
             "kv_cache_dtype": cfg.kv_cache_dtype.value,
             "safety_margin_percent": cfg.safety_margin_percent,
             "device_reserve_bytes": cfg.device_reserve_bytes,
+            "ram_reserve_bytes": cfg.ram_reserve_bytes,
         },
         "memory": {
             "weights_bytes": estimate.weights.component.bytes,
@@ -62,6 +63,17 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
             ),
             "total_bytes": estimate.total_bytes,
             "components": [component_to_dict(c) for c in _components(estimate)],
+            **({
+                "physical_bytes": estimate.physical_bytes,
+                "reserve_shortfall_bytes": assessment.reserve_shortfall_bytes,
+                "budget_bytes": assessment.budget_bytes,
+            } if assessment.physical_bytes is not None else {}),
+            **({
+                "runtime_overhead_components": [
+                    component_to_dict(c) for c in estimate.runtime_overhead.components
+                ],
+                "unmodelled_overhead_components": estimate.runtime_overhead.unmodelled_components,
+            } if estimate.runtime_overhead.components else {}),
         },
         "weights": {
             "num_parameters": estimate.weights.num_parameters,
@@ -100,6 +112,12 @@ def estimate_to_json_dict(estimate: MemoryEstimate) -> dict[str, Any]:
             "utilisation_ratio": assessment.ratio,
             "reasons": list(assessment.reasons),
             "warnings": list(assessment.warnings),
+            **({
+                "physical_bytes": assessment.physical_bytes,
+                "budget_bytes": assessment.budget_bytes,
+                "desired_reserve_bytes": assessment.desired_reserve_bytes,
+                "reserve_shortfall_bytes": assessment.reserve_shortfall_bytes,
+            } if assessment.physical_bytes is not None else {}),
         },
         "hardware_fit": _hardware_fit_to_dict(estimate.hardware_fit),
         "assumptions": list(estimate.assumptions),
@@ -171,6 +189,7 @@ def _hardware_fit_to_dict(fit: HardwareFitResult | None) -> dict[str, Any] | Non
         "ram_overhead_bytes": fit.ram_overhead_bytes,
         "ram_safety_margin_bytes": fit.ram_safety_margin_bytes,
         "device_reserve_bytes": fit.device_reserve_bytes,
+        **({"ram_reserve_bytes": fit.ram_reserve_bytes} if fit.ram_reserve_bytes else {}),
         "available_vram_bytes": fit.available_vram_bytes,
         "available_ram_bytes": fit.available_ram_bytes,
         "reason": fit.reason,

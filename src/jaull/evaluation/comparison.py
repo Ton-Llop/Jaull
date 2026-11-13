@@ -433,14 +433,7 @@ def _predicted_ram(
             _RAM_GPU_UNAVAILABLE_REASON,
         )
 
-    parts = [
-        estimate.weights.component.bytes,
-        estimate.kv_cache.component.bytes,
-        estimate.runtime_overhead.component.bytes,
-    ]
-    if any(part is None for part in parts):
-        return (None, None, None)
-    return (sum(part for part in parts if part is not None), None, None)
+    return (estimate.physical_bytes, None, None)
 
 
 def _predicted_vram(

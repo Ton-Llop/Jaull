@@ -207,12 +207,48 @@ overhead = max(min_overhead, base_overhead + weight_fraction * weights)
 Constants live in `estimator/policies.py` (`base = 512 MiB`, `fraction = 10%`,
 `min = 256 MiB`). Always tagged `ASSUMED` / `LOW` confidence.
 
+GGUF GPU plans retain their calibrated 256 MiB compute allowance. GGUF CPU plans
+instead use the general 512 MiB + 10% of weight bytes heuristic, including AUTO
+fallback to CPU. The CPU breakdown distinguishes a compute allowance and other
+runtime allowance; repacking remains explicitly **unknown**, not zero. This is
+not an upper bound or a universal correction fitted to one experiment.
+`CPU_REPACK` allocations depend on tensor types, CPU kernels and runtime build;
+mapped weights, repacked allocations and process RSS are not interchangeable or
+necessarily simultaneously resident. Measured allocations are shown as diagnostics,
+not silently used to recalibrate every model.
+
 ### 4. Device reserve and safety margin
 
 An omitted margin is represented as `null` in configuration JSON and selects the automatic
-policy: GGUF uses its 1 GiB headroom floor without a percentage margin; other repositories
+policy: GGUF uses fixed headroom without a percentage margin; other repositories
 use 10 percent. An explicit number, including exactly `10`, is always applied. This distinction
 survives saving and loading the configuration.
+
+CPU execution reserves 512 MiB of **available RAM** by default, independently of GPU
+headroom. `--ram-reserve-gib` overrides this value, including `0` to disable it.
+GPU execution keeps `--device-reserve-gib`, with a 1 GiB VRAM minimum for GGUF.
+AUTO applies the CPU reserve if placement falls back to CPU; it does not carry the
+rejected GPU reserve into RAM. Shared-memory hardware is checked against one RAM
+pool with one CPU reserve, never RAM plus an invented VRAM budget. Partial GPU
+offload keeps its existing GPU reserve and per-pool placement policy.
+These reserves are policy assumptions, not measured memory allocations.
+For CPU, estimated physical consumption (weights + KV + overhead) is checked
+separately from the budget (consumption + reserve + margin). If consumption fits
+but the budget does not, the result is `tight`, with an explicit reserve shortfall.
+If consumption exceeds available RAM but remains within total usable system RAM,
+the result is `memory_pressure`: an experimental, best-effort CPU option, never a
+confirmed resident fit or a confirmed-fit primary recommendation. It may be run
+with warnings, but paging and sustained performance remain unverified. Consumption
+beyond total usable RAM remains insufficient. This does not add swap to RAM capacity
+or relax any GPU residency/offload constraint.
+For compatibility, estimate JSON keeps the active reserve in
+`memory.device_reserve_bytes`; its component is labelled `RAM reserve` for CPU
+execution. Hardware Fit's `ram_reserve_bytes` identifies the same reserve charged
+to RAM, not an additional amount to add to the total.
+
+The hardware screen and persistent workflow header show total and available RAM
+together. Fit calculations use the available figure captured by the hardware scan,
+not total installed capacity; that snapshot can change as other applications run.
 
 ### Context sweeps
 
@@ -222,7 +258,8 @@ requested/effective configuration, the selected artifact metadata, enrichment an
 snapshot. Missing immutable revisions or hashes remain explicitly unknown; this is an inspection
 snapshot, not artifact verification. It does not demonstrate performance at a filled context.
 
-User-controllable via `--device-reserve-gib` and `--safety-margin-percent`, kept as
+User-controllable via `--ram-reserve-gib`, `--device-reserve-gib` and
+`--safety-margin-percent`, kept as
 distinct components so each one can be inspected — and so a policy figure is never mistaken
 for a measured one.
 
@@ -230,19 +267,33 @@ for a measured one.
 
 ## Compatibility
 
-The total is compared against local RAM/VRAM:
+`Validate` reports execution success independently of preserved headroom and
+performance. Local host runs sample minimum system RAM availability and system-wide
+swap-in/out byte deltas, alongside peak process RSS. These are host-wide observations,
+not paging attributed to the model; zero swap I/O does not prove absence of file-backed
+page faults or sustained performance. Missing/unsupported measurements stay unknown
+(including Windows swap I/O counters). Older records do not acquire invented data.
+`Speed` and `Validate` compare RSS against estimated **consumption**, excluding policy
+reserve and margin. The budget remains visible separately. CPU repacking allocations
+from runtime logs are labelled allocations, not RSS. The prediction engine identifier
+is `memory-estimator-v2`; stored v1 experiments remain immutable and loadable.
+
+Normally the budget is compared against available memory; CPU reserve shortfalls
+and pressure follow the separate rules above:
 
 | Status | Meaning |
 |---|---|
 | `comfortable` | ≤ 75 % of available |
 | `compatible` | 75–90 % |
-| `tight` | 90–100 % |
-| `offloading_required` | Fits in RAM + VRAM combined but not in VRAM alone |
-| `insufficient` | Exceeds combined RAM + VRAM |
+| `tight` | 90–100 %, or CPU consumption fits but the desired reserve/margin does not |
+| `memory_pressure` | CPU consumption exceeds available RAM; experimental, not confirmed resident |
+| `offloading_required` | A split placement fits its separate RAM and VRAM budgets |
+| `insufficient` | No supported placement; CPU consumption exceeds total usable RAM |
 | `unknown` | Missing inputs |
 
-With `--device auto` the estimator prefers GPU, falls back to `offloading_required` if the
-model fits combined memory, then CPU, then `insufficient`.
+With `--device auto` the estimator prefers GPU, then a supported offload placement,
+then CPU. CPU can be a resident fit, an experimental pressure option, or insufficient.
+RAM and VRAM are not blindly added together.
 
 VRAM reaches this comparison from two merged views: NVML for NVIDIA, and the
 backend-neutral accelerator view for everything else. The second carries a memory figure
@@ -262,6 +313,7 @@ would this run out of?* `estimator/hardware_fit.py` answers that separately, as 
 | `GPU_RESIDENT` | The whole model lives in VRAM |
 | `GPU_OFFLOAD` | Part in VRAM, part in system RAM |
 | `CPU_RAM` | System RAM only, no GPU |
+| `CPU_MEMORY_PRESSURE` | Experimental CPU option; physical consumption exceeds available RAM |
 | `TOO_LARGE` | Does not fit anywhere |
 
 `analyze_components()` places each component of the estimate rather than the total, and

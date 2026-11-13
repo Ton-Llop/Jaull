@@ -352,6 +352,7 @@ def _sibling_note(label: str, status: CompatibilityStatus) -> str:
         CompatibilityStatus.COMFORTABLE: "comfortable",
         CompatibilityStatus.COMPATIBLE: "fits",
         CompatibilityStatus.TIGHT: "tight fit",
+        CompatibilityStatus.MEMORY_PRESSURE: "experimental RAM pressure",
         CompatibilityStatus.OFFLOADING_REQUIRED: "needs offloading",
         CompatibilityStatus.INSUFFICIENT: "does not fit",
         CompatibilityStatus.UNKNOWN: "unknown",

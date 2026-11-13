@@ -124,7 +124,9 @@ class _RecommendationRow(Vertical):
         with Horizontal(classes="rec-headline"):
             yield Static(
                 "•"
-                if rec.displayed_status is CompatibilityStatus.UNKNOWN
+                if rec.displayed_status in {
+                    CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+                }
                 else f"{self._index + 1}",
                 classes="rec-rank -top" if self._index == 0 else "rec-rank",
             )
@@ -507,12 +509,16 @@ class RecommendationResultsScreen(Screen[None]):
         confirmed = [
             (index, rec)
             for index, rec in enumerate(recommendations)
-            if rec.displayed_status is not CompatibilityStatus.UNKNOWN
+            if rec.displayed_status not in {
+                CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+            }
         ]
         unconfirmed = [
             (index, rec)
             for index, rec in enumerate(recommendations)
-            if rec.displayed_status is CompatibilityStatus.UNKNOWN
+            if rec.displayed_status in {
+                CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+            }
         ]
         with Horizontal(classes="rec-list-head"):
             yield Static(
@@ -975,8 +981,10 @@ class RecommendationDetailsScreen(Screen[None]):
                     estimate.assessment.available_vram_bytes,
                 )
                 yield MemoryUsageBar(
-                    "Available RAM",
-                    estimate.total_bytes,
+                    "CPU consumption / available RAM"
+                    if estimate.assessment.physical_bytes is not None else "Available RAM",
+                    estimate.assessment.physical_bytes
+                    if estimate.assessment.physical_bytes is not None else estimate.total_bytes,
                     estimate.assessment.available_ram_bytes,
                 )
 
@@ -1509,7 +1517,9 @@ def _list_aside(recommendations: list[ModelRecommendation]) -> str:
     the screen used to hard-code the strongest wording regardless.
     """
     confirmed = [
-        rec for rec in recommendations if rec.displayed_status is not CompatibilityStatus.UNKNOWN
+        rec for rec in recommendations if rec.displayed_status not in {
+            CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+        }
     ]
     unconfirmed_count = len(recommendations) - len(confirmed)
     if not confirmed:
@@ -1681,10 +1691,14 @@ def _memory_label(rec: ModelRecommendation) -> str:
     )
     if estimate is None:
         return "unknown"
+    if estimate.assessment.physical_bytes is not None:
+        return f"{format_gib(estimate.physical_bytes)} consumption"
     return format_gib(estimate.total_bytes)
 
 
 def _status_label(rec: ModelRecommendation) -> str:
+    if rec.displayed_status is CompatibilityStatus.MEMORY_PRESSURE:
+        return "Experimental RAM pressure"
     return rec.displayed_status.value.replace("_", " ").capitalize()
 
 
@@ -1723,6 +1737,7 @@ _FIT_CLASSES = {
     "comfortable": "fit-good",
     "compatible": "fit-good",
     "tight": "fit-warn",
+    "memory_pressure": "fit-warn",
     "offloading_required": "fit-warn",
     "insufficient": "fit-bad",
 }
@@ -1740,11 +1755,19 @@ def _breakdown_rows(estimate: object) -> list[tuple[str, str]]:
         ("Weights", format_gib(estimate.weights.component.bytes)),
         ("KV cache", format_gib(estimate.kv_cache.component.bytes)),
         ("Runtime overhead", format_gib(estimate.runtime_overhead.component.bytes)),
-        ("Device reserve", format_gib(estimate.device_reserve.bytes)),
+        (estimate.device_reserve.name, format_gib(estimate.device_reserve.bytes)),
     ]
     if estimate.safety_margin is not None:
         rows.append(("Safety margin", format_gib(estimate.safety_margin.bytes)))
-    rows.append(("Estimated total", format_gib(estimate.total_bytes)))
+    for component in estimate.runtime_overhead.components:
+        rows.append((component.name, format_gib(component.bytes)))
+    if estimate.assessment.physical_bytes is not None:
+        rows.append(("Estimated consumption", format_gib(estimate.physical_bytes)))
+        rows.append(("Reserve shortfall", format_gib(estimate.assessment.reserve_shortfall_bytes)))
+    rows.append((
+        "Budget including reserve" if estimate.assessment.physical_bytes is not None
+        else "Estimated total", format_gib(estimate.total_bytes),
+    ))
     rows.append(("Available VRAM", format_gib(estimate.assessment.available_vram_bytes)))
     rows.append(("Available RAM", format_gib(estimate.assessment.available_ram_bytes)))
     return rows

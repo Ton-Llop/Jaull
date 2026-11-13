@@ -307,11 +307,21 @@ class EstimateScreen(Screen[None]):
             ("Weights", _fmt(estimate.weights.component.bytes)),
             ("KV cache", _fmt(estimate.kv_cache.component.bytes)),
             ("Runtime overhead", _fmt(estimate.runtime_overhead.component.bytes)),
-            ("Device reserve", _fmt(estimate.device_reserve.bytes)),
+            (estimate.device_reserve.name, _fmt(estimate.device_reserve.bytes)),
         ]
         if estimate.safety_margin is not None:
             breakdown_rows.append(("Safety margin", _fmt(estimate.safety_margin.bytes)))
-        breakdown_rows.append(("Total required", _fmt(estimate.total_bytes)))
+        for component in estimate.runtime_overhead.components:
+            breakdown_rows.append((component.name, _fmt(component.bytes)))
+        if estimate.assessment.physical_bytes is not None:
+            breakdown_rows.append(("Estimated consumption", _fmt(estimate.physical_bytes)))
+            breakdown_rows.append((
+                "Reserve shortfall", _fmt(estimate.assessment.reserve_shortfall_bytes),
+            ))
+        breakdown_rows.append((
+            "Budget including reserve" if estimate.assessment.physical_bytes is not None
+            else "Total required", _fmt(estimate.total_bytes),
+        ))
         result.mount(SummaryCard("Memory breakdown", breakdown_rows))
 
         result.mount(
@@ -323,8 +333,10 @@ class EstimateScreen(Screen[None]):
         )
         result.mount(
             MemoryUsageBar(
-                "Available RAM",
-                estimate.total_bytes,
+                "CPU consumption / available RAM" if estimate.assessment.physical_bytes is not None
+                else "Available RAM",
+                estimate.assessment.physical_bytes
+                if estimate.assessment.physical_bytes is not None else estimate.total_bytes,
                 estimate.assessment.available_ram_bytes,
             )
         )

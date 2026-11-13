@@ -935,7 +935,7 @@ def _feasibility(plan: ExecutionPlan) -> AssessmentLevel:
         return AssessmentLevel.STRONG
     if status in {CompatibilityStatus.COMPATIBLE, CompatibilityStatus.TIGHT}:
         return AssessmentLevel.ADEQUATE
-    if status is CompatibilityStatus.OFFLOADING_REQUIRED:
+    if status in {CompatibilityStatus.OFFLOADING_REQUIRED, CompatibilityStatus.MEMORY_PRESSURE}:
         return AssessmentLevel.WEAK
     if status is CompatibilityStatus.INSUFFICIENT:
         return AssessmentLevel.BLOCKED

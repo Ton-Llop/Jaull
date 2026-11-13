@@ -182,6 +182,45 @@ def _available_vram(hardware: HardwareProfile) -> int | None:
     return available_accelerator_memory_bytes(hardware)
 
 
+def assess_cpu_budget(
+    *, physical_bytes: int, reserve_bytes: int, margin_bytes: int,
+    hardware: HardwareProfile, target_device: TargetDevice = TargetDevice.CPU,
+    reasons: list[str] | None = None, warnings: list[str] | None = None,
+) -> CompatibilityAssessment:
+    """RAM reserve is a preference; exceeding physical availability is not a confirmed fit."""
+    capacity = hardware.memory.available_bytes
+    budget = physical_bytes + reserve_bytes + margin_bytes
+    result = assess(budget, hardware, TargetDevice.CPU)
+    messages = list(warnings or [])
+    status = result.status
+    if capacity > 0:
+        if physical_bytes <= capacity < budget:
+            status = CompatibilityStatus.TIGHT
+            messages.append(
+                "Estimated CPU consumption fits available RAM, but the requested reserve "
+                "and margin are not fully preserved."
+            )
+        elif capacity < physical_bytes <= hardware.memory.total_bytes:
+            status = CompatibilityStatus.MEMORY_PRESSURE
+            messages.append(
+                "Experimental CPU placement: estimated consumption exceeds available RAM. "
+                "Paging or closing other applications may be necessary; fit and performance "
+                "are not confirmed. Swap is not counted as extra RAM capacity."
+            )
+    return result.model_copy(update={
+        "status": status, "target_device": target_device,
+        "physical_bytes": physical_bytes, "budget_bytes": budget,
+        "desired_reserve_bytes": reserve_bytes,
+        "reserve_shortfall_bytes": (
+            max(0, reserve_bytes - max(0, capacity - physical_bytes)) if capacity > 0 else None
+        ),
+        "reasons": reasons or [
+            "CPU consumption is checked separately from the desired RAM reserve and margin."
+        ],
+        "warnings": [*result.warnings, *messages],
+    })
+
+
 class ComponentAssessment(NamedTuple):
     """Both outputs of one component-level assessment.
 
@@ -208,6 +247,9 @@ def assess_components_with_fit(
     device_target: TargetDevice,
     weight_decomposition: TransformerBlockWeightDecomposition | None = None,
     kv_layer_bytes: tuple[int, ...] | None = None,
+    cpu_reserve_bytes: int | None = None,
+    cpu_safety_margin_bytes: int | None = None,
+    cpu_overhead_bytes: int | None = None,
 ) -> ComponentAssessment:
     """Assess placement, keeping the structured fit alongside the summary.
 
@@ -237,6 +279,17 @@ def assess_components_with_fit(
         )
         return ComponentAssessment(assessment, None)
 
+    if device_target is TargetDevice.CPU and cpu_reserve_bytes is not None:
+        return ComponentAssessment(assess_cpu_budget(
+            physical_bytes=weights_bytes + kv_cache_bytes + (
+                overhead_bytes if cpu_overhead_bytes is None else cpu_overhead_bytes
+            ),
+            reserve_bytes=cpu_reserve_bytes,
+            margin_bytes=(
+                safety_margin_bytes if cpu_safety_margin_bytes is None else cpu_safety_margin_bytes
+            ),
+            hardware=hardware,
+        ), None)
     if device_target is not TargetDevice.AUTO:
         return ComponentAssessment(assess(total_bytes, hardware, device_target), None)
 
@@ -249,8 +302,25 @@ def assess_components_with_fit(
         total_transformer_blocks=total_transformer_blocks,
         weight_decomposition=weight_decomposition,
         kv_layer_bytes=kv_layer_bytes,
+        cpu_reserve_bytes=cpu_reserve_bytes,
+        cpu_safety_margin_bytes=cpu_safety_margin_bytes,
+        cpu_overhead_bytes=cpu_overhead_bytes,
         hardware=hardware,
     )
+    if cpu_reserve_bytes is not None and fit.mode in {
+        HardwareFitMode.CPU_RAM, HardwareFitMode.CPU_MEMORY_PRESSURE, HardwareFitMode.TOO_LARGE,
+    }:
+        return ComponentAssessment(assess_cpu_budget(
+            physical_bytes=weights_bytes + kv_cache_bytes + (
+                overhead_bytes if cpu_overhead_bytes is None else cpu_overhead_bytes
+            ),
+            reserve_bytes=cpu_reserve_bytes,
+            margin_bytes=(
+                safety_margin_bytes if cpu_safety_margin_bytes is None else cpu_safety_margin_bytes
+            ),
+            hardware=hardware, target_device=device_target,
+            reasons=[fit.reason], warnings=fit.warnings,
+        ), fit)
     return ComponentAssessment(_assessment_from_fit(fit, device_target), fit)
 
 

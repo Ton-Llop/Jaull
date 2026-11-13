@@ -383,7 +383,8 @@
           "quantization": null,
           "kv_cache_dtype": "float16",
           "safety_margin_percent": null,
-          "device_reserve_bytes": 536870912
+          "device_reserve_bytes": 536870912,
+          "ram_reserve_bytes": null
         },
         "memory": {
           "weights_bytes": 15032385536,

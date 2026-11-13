@@ -4,8 +4,10 @@ import contextlib
 import gc
 import sys
 import textwrap
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import psutil
 import pytest
@@ -228,6 +230,59 @@ def test_host_backend_observes_peak_ram_and_duration(
     assert result.observation.duration_seconds < 5
 
     assert result.observation.peak_ram_bytes == 24 * 1024**2
+
+
+def test_sampler_records_system_headroom_and_swap_deltas(monkeypatch) -> None:
+    from jaull.execution.host import _ProcessExecutionSampler
+
+    available = iter([700, 300])
+    swaps = iter([(100, 200), (150, 320)])
+    monkeypatch.setattr("jaull.execution.host._psutil_process", lambda pid: None)
+    monkeypatch.setattr(
+        psutil, "virtual_memory", lambda: SimpleNamespace(available=next(available)),
+    )
+    monkeypatch.setattr(psutil, "swap_memory", lambda: SimpleNamespace(
+        **dict(zip(("sin", "sout"), next(swaps), strict=True)),
+    ))
+    sampler = _ProcessExecutionSampler(
+        pid=123, sample_interval_seconds=0.05, nvml_provider=_FakeNvmlProcessProvider(),
+    )
+    try:
+        sampler.sample()
+        sampler.sample()
+        observation = sampler.observation(
+            success=True, start=time.perf_counter(), exit_code=0, failure_reason=None,
+        )
+    finally:
+        sampler.close()
+    assert observation.min_available_ram_bytes == 300
+    assert observation.system_swap_in_bytes == 50
+    assert observation.system_swap_out_bytes == 120
+    assert observation.peak_ram_bytes is None  # global RAM is not the child's RSS
+
+
+def test_sampler_keeps_unsupported_pressure_measurements_unknown(monkeypatch) -> None:
+    from jaull.execution.host import _ProcessExecutionSampler
+
+    def unavailable():
+        raise OSError("unsupported")
+
+    monkeypatch.setattr("jaull.execution.host._psutil_process", lambda pid: None)
+    monkeypatch.setattr(psutil, "virtual_memory", unavailable)
+    monkeypatch.setattr(psutil, "swap_memory", unavailable)
+    sampler = _ProcessExecutionSampler(
+        pid=123, sample_interval_seconds=0.05, nvml_provider=_FakeNvmlProcessProvider(),
+    )
+    try:
+        sampler.sample()
+        observation = sampler.observation(
+            success=True, start=time.perf_counter(), exit_code=0, failure_reason=None,
+        )
+    finally:
+        sampler.close()
+    assert observation.min_available_ram_bytes is None
+    assert observation.system_swap_in_bytes is None
+    assert observation.system_swap_out_bytes is None
 
 
 def test_host_backend_drains_large_stdout_and_stderr_while_sampling() -> None:

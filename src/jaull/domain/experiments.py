@@ -28,7 +28,7 @@ from jaull.domain.runtime import (
 )
 
 EXPERIMENT_RECORD_SCHEMA_VERSION = 1
-EXPERIMENT_PREDICTION_ENGINE_VERSION = "memory-estimator-v1"
+EXPERIMENT_PREDICTION_ENGINE_VERSION = "memory-estimator-v2"
 EXPERIMENT_COMPARISON_ENGINE_VERSION = "prediction-comparison-v1"
 
 

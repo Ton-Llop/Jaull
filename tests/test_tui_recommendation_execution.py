@@ -322,6 +322,25 @@ def test_only_unknown_still_shows_an_alternative_and_executable_unknown_can_vali
     _run(scenario())
 
 
+def test_cpu_pressure_is_shown_as_an_unconfirmed_experimental_alternative() -> None:
+    async def scenario() -> None:
+        rec = _with_status(
+            _recommendation(runtime=_runtime(n_gpu_layers=0)),
+            CompatibilityStatus.MEMORY_PRESSURE,
+        ).model_copy(update={"tier": "best_effort"})
+        app = JaullApp(advisor=_FakeAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(100, 45)) as pilot:
+            app.show_recommendations(RecommendationWorkflowState(recommendations=[rec]))
+            await pilot.pause(0.1)
+            text = _visible_text(pilot.app.screen)
+            assert "No confirmed recommendations" in text
+            assert "Unconfirmed alternatives" in text
+            assert "Experimental RAM pressure" in text
+            assert "1 unconfirmed alternative" in text
+
+    _run(scenario())
+
+
 def _recommendation_with_plan(
     *,
     repo_id: str,
@@ -1192,7 +1211,7 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             )
             assert len(advisor.experiment_records) == 1
             text = _visible_text(screen)
-            assert "Configuration validated" in text
+            assert "Execution succeeded" in text
             # Result before mechanism: what happened, then estimated against
             # measured, then how it ran. Raw backend trace fields moved into
             # the technical details screen.
@@ -1200,6 +1219,7 @@ def test_validation_screen_runs_successful_experiment(monkeypatch: Any) -> None:
             assert "Prediction" in text
             assert "Estimated RAM" in text
             assert "Measured RAM" in text
+            assert "Execution prediction" in text
             assert "Execution" in text
             assert advisor.experiment_persisted_path is not None
             assert "Technical" in _visible_text(screen)
@@ -1291,7 +1311,7 @@ def test_validation_screen_runs_transformers_experiment_without_gguf_resolution(
             assert len(advisor.experiment_records) == 1
             assert advisor.experiment_records[0].runtime.runtime is RuntimeName.TRANSFORMERS
             text = _visible_text(screen)
-            assert "Configuration validated" in text
+            assert "Execution succeeded" in text
             # The reproducibility fields are on this screen now, behind the
             # Technical tab rather than behind a second screen, so the result
             # and the prediction it is compared against can be read together.
@@ -1410,12 +1430,12 @@ def test_validation_screen_keeps_result_visible_when_persistence_fails(
             screen.query_one("#validation-start", Button).press()
             await _wait_until(
                 pilot,
-                lambda: "Configuration validated (not saved)" in _visible_text(screen),
+                lambda: "Execution succeeded (not saved)" in _visible_text(screen),
             )
 
             text = _visible_text(screen)
             assert "could not be saved" in text
-            assert "Configuration validated (not saved)" in text
+            assert "Execution succeeded (not saved)" in text
             assert "Prediction" in text
 
     _run(scenario())
@@ -1442,7 +1462,7 @@ def test_validation_screen_can_repeat_without_duplicate_ids(monkeypatch: Any) ->
 
             assert first_id != second_id
             assert len(advisor.experiment_records) == 2
-            assert "Configuration validated" in _visible_text(screen)
+            assert "Execution succeeded" in _visible_text(screen)
 
     _run(scenario())
 

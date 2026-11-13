@@ -58,7 +58,7 @@ def assess_actionability(evaluated: EvaluatedCandidate) -> ActionabilityLevel:
         # decides whether to still show it.
         return ActionabilityLevel.SPECULATIVE
 
-    if status is CompatibilityStatus.UNKNOWN:
+    if status in {CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE}:
         return ActionabilityLevel.SPECULATIVE
 
     artifact_confirmed = (

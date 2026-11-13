@@ -19,6 +19,7 @@ from jaull.domain.inference import (
 from jaull.domain.model import ModelAnalysis
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
+    RAM_RESERVE_DEFAULT_BYTES,
 )
 from jaull.exceptions import (
     EstimationError,
@@ -47,6 +48,7 @@ class EstimateOptions:
     kv_dtype: WeightPrecision = WeightPrecision.FLOAT16
     safety_margin_percent: float | None = None
     device_reserve_gib: float = DEVICE_RESERVE_DEFAULT_BYTES / _GIB
+    ram_reserve_gib: float = RAM_RESERVE_DEFAULT_BYTES / _GIB
     as_json: bool = False
     resolve_base_model: bool = True
     recommend_runtime: bool = True
@@ -180,6 +182,7 @@ def _build_configuration(
         quantization=options.quantization,
         kv_cache_dtype=options.kv_dtype,
         device_reserve_bytes=reserve_bytes,
+        ram_reserve_bytes=int(options.ram_reserve_gib * _GIB),
     )
     if options.safety_margin_percent is not None:
         config = config.model_copy(update={"safety_margin_percent": options.safety_margin_percent})

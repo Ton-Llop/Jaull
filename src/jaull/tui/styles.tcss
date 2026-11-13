@@ -1441,16 +1441,19 @@ InspectScreen > .card {
     text-overflow: ellipsis;
 }
 
-/* The machine, right-aligned. Truncates before the title does: on a narrow
-   terminal the step you are on matters more than the CPU model. */
+WorkflowHeader .context-title-row {
+    height: auto;
+}
+
+/* Keep both RAM figures visible even when the hardware summary wraps. */
 .workflow-machine {
     color: $ink-3;
     width: auto;
     max-width: 60%;
     text-align: right;
+    height: auto;
     padding: 0 0 0 2;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
+    text-wrap: wrap;
 }
 
 .workflow-breadcrumb {
@@ -1507,9 +1510,9 @@ InspectScreen > .card {
 }
 
 .memory-figure {
-    width: auto;
+    width: 1fr;
     height: auto;
-    padding: 0 6 0 0;
+    padding: 0 2 0 0;
 }
 
 .memory-figure-label {

@@ -25,10 +25,10 @@ class MemoryUsageBar(Vertical):
             yield Static("capacity unknown", classes="text-muted")
             return
         used = self._used or 0
-        percent = min(100.0, (used / self._total) * 100)
+        percent = (used / self._total) * 100
         bar = ProgressBar(total=100, show_eta=False, show_percentage=True)
         yield bar
-        bar.update(progress=percent)
+        bar.update(progress=min(100.0, percent))
         yield Static(
             f"{_format(used)} / {_format(self._total)}  ({percent:.1f}%)"
         )

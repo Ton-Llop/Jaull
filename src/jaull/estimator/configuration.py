@@ -329,6 +329,11 @@ def _exhausted_ladder_message(
             "fit with CPU/GPU offloading, which is significantly slower; that is "
             "a placement estimate, not a verified run."
         )
+    if chosen is CompatibilityStatus.MEMORY_PRESSURE:
+        return (
+            f"No {unit} has a confirmed resident fit. The reported CPU option exceeds "
+            "available RAM and is experimental; paging and performance have not been validated."
+        )
     if chosen is CompatibilityStatus.UNKNOWN:
         return (
             f"No {unit} could be confirmed to fit: the memory model could not "
@@ -366,6 +371,7 @@ def _fallback_option(
     """Choose the most actionable result after the ladder is exhausted."""
     priority = (
         CompatibilityStatus.OFFLOADING_REQUIRED,
+        CompatibilityStatus.MEMORY_PRESSURE,
         CompatibilityStatus.UNKNOWN,
         CompatibilityStatus.INSUFFICIENT,
     )

@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Digits, Footer, Static
 
 from jaull.domain.hardware import AcceleratorType, ComputeBackend, HardwareProfile
+from jaull.presentation.plan_labels import format_gib
 from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.tui.widgets.progress_step import ProgressStepList
 from jaull.tui.widgets.summary_card import SummaryCard
@@ -127,7 +128,10 @@ class HardwareAnalysisScreen(Screen[None]):
         rows = _summary_rows(profile)
         figures = dict(rows)
         content.mount(
-            _MemoryHeadline(figures.get("RAM", "unknown"), figures.get("VRAM"))
+            _MemoryHeadline(
+                figures.get("RAM", "unknown"), figures.get("VRAM"),
+                ram_available=format_gib(profile.memory.available_bytes),
+            )
         )
         content.mount(
             SummaryCard(
@@ -189,16 +193,20 @@ class _MemoryHeadline(Horizontal):
 
     DEFAULT_CLASSES = "memory-headline"
 
-    def __init__(self, ram: str, vram: str | None) -> None:
+    def __init__(self, ram: str, vram: str | None, *, ram_available: str) -> None:
         super().__init__()
         self._ram = ram
         self._vram = vram
+        self._ram_available = ram_available
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="memory-figure"):
             yield Static("RAM", classes="memory-figure-label")
             yield Digits(_digits(self._ram), classes="memory-figure-value")
-            yield Static(_unit(self._ram), classes="memory-figure-unit")
+            yield Static(
+                f"{_unit(self._ram)} total | {self._ram_available} available",
+                classes="memory-figure-unit",
+            )
         if self._vram is not None:
             with Vertical(classes="memory-figure"):
                 yield Static("VRAM", classes="memory-figure-label")
@@ -220,7 +228,7 @@ def _unit(value: str) -> str:
 def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
     rows = [
         ("CPU", profile.cpu.model or "unknown"),
-        ("RAM", _fmt(profile.memory.total_bytes)),
+        ("RAM", format_gib(profile.memory.total_bytes)),
     ]
     if profile.gpus:
         gpu = profile.gpus[0]

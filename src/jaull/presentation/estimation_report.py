@@ -136,7 +136,20 @@ def _breakdown_table(estimate: MemoryEstimate) -> Table:
         )
 
     if estimate.total_bytes is not None:
-        table.add_row("Total required", format_bytes(estimate.total_bytes), "", "")
+        if estimate.assessment.physical_bytes is not None:
+            table.add_row("Estimated consumption", format_bytes(estimate.physical_bytes), "", "")
+            table.add_row("Reserve shortfall", format_bytes(
+                estimate.assessment.reserve_shortfall_bytes
+            ), "", "")
+        table.add_row(
+            "Budget including reserve" if estimate.assessment.physical_bytes is not None
+            else "Total required", format_bytes(estimate.total_bytes), "", "",
+        )
+    for component in estimate.runtime_overhead.components:
+        table.add_row(
+            component.name + " (overhead detail)", format_bytes(component.bytes),
+            component.source.value, component.explanation,
+        )
 
     return table
 
@@ -170,7 +183,10 @@ def _assessment_table(estimate: MemoryEstimate) -> Table:
     table.add_row("Confidence", assessment.confidence.value)
     table.add_row("Effective device", assessment.effective_device.value)
     if assessment.ratio is not None:
-        table.add_row("Utilisation", f"{assessment.ratio * 100:.1f}%")
+        table.add_row(
+            "Budget utilisation" if assessment.physical_bytes is not None else "Utilisation",
+            f"{assessment.ratio * 100:.1f}%",
+        )
     if assessment.reasons:
         table.add_row("Reasons", "\n".join(f"- {r}" for r in assessment.reasons))
     return table
@@ -193,6 +209,7 @@ def _pretty_status(status: CompatibilityStatus) -> str:
         CompatibilityStatus.COMFORTABLE: "[green]Comfortable[/green]",
         CompatibilityStatus.COMPATIBLE: "[green]Compatible[/green]",
         CompatibilityStatus.TIGHT: "[yellow]Tight fit[/yellow]",
+        CompatibilityStatus.MEMORY_PRESSURE: "[yellow]Experimental RAM pressure[/yellow]",
         CompatibilityStatus.OFFLOADING_REQUIRED: "[yellow]Offloading required[/yellow]",
         CompatibilityStatus.INSUFFICIENT: "[red]Insufficient[/red]",
         CompatibilityStatus.UNKNOWN: "Unknown",

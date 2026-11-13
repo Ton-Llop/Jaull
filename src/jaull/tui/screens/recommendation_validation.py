@@ -27,6 +27,7 @@ from jaull.domain.experiments import (
     RequestedComputeBackend,
 )
 from jaull.domain.hardware import HardwareProfile
+from jaull.domain.inference import TargetDevice
 from jaull.domain.requirements import UserRequirements, WorkloadProfile
 from jaull.domain.runtime import (
     ExecutionReadinessStatus,
@@ -518,7 +519,7 @@ class RecommendationValidationScreen(Screen[None]):
         self.query_one("#validation-intro", Static).display = bool(saved)
         succeeded = record.observation.success
         heading = (
-            "Configuration validated" if succeeded else "Validation failed during execution"
+            "Execution succeeded" if succeeded else "Validation failed during execution"
         )
         if saved:
             heading = (
@@ -645,6 +646,26 @@ def _result_rows(record: ExperimentRecord) -> list[tuple[str, str]]:
         rows.append(("Peak VRAM", format_bytes(observation.peak_vram_bytes)))
     if observation.failure_reason is not None:
         rows.append(("Failure", observation.failure_reason.value))
+    if record.prediction.assessment.effective_device is TargetDevice.CPU:
+        available = observation.min_available_ram_bytes
+        reserve = record.prediction.device_reserve.bytes
+        rows.extend([
+            ("Desired RAM reserve", format_bytes(reserve)),
+            ("Minimum system RAM available", format_bytes(available)),
+            ("Reserve preserved", (
+                "Not measured" if available is None or reserve is None else
+                "Yes" if available >= reserve else "No"
+            )),
+            ("Sustained performance", "Not measured"),
+        ])
+        if observation.system_swap_in_bytes is not None:
+            rows.append(("System swap in", format_bytes(observation.system_swap_in_bytes)))
+        if observation.system_swap_out_bytes is not None:
+            rows.append(("System swap out", format_bytes(observation.system_swap_out_bytes)))
+        if observation.runtime_allocation is not None:
+            for buffer in observation.runtime_allocation.buffers:
+                if buffer.raw_label.startswith("CPU_REPACK"):
+                    rows.append(("CPU repacking allocation (not RSS)", format_bytes(buffer.bytes)))
     return rows
 
 
@@ -674,8 +695,14 @@ def _prediction_block(record: ExperimentRecord) -> Widget:
     )
     children.append(MetricRow("Difference", _metric_error(comparison.ram.error_percent)))
     children.append(
-        MetricRow("Compatibility", _humanise(comparison.compatibility.outcome.value))
+        MetricRow("Execution prediction", _humanise(comparison.compatibility.outcome.value))
     )
+    children.append(MetricRow(
+        "Budget including reserve", format_bytes(record.prediction.total_bytes),
+    ))
+    children.append(MetricRow(
+        record.prediction.device_reserve.name, format_bytes(record.prediction.device_reserve.bytes),
+    ))
     for reason in (comparison.ram.unavailable_reason, comparison.vram.unavailable_reason):
         if reason:
             children.append(Static(reason, classes="text-muted-tight"))

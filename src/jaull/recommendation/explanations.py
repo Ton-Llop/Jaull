@@ -117,6 +117,8 @@ def _configuration_memory_reason(
         return f"{display_label} fits with limited memory headroom."
     if assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED:
         return f"{display_label} requires an offloaded memory placement."
+    if assessment.status is CompatibilityStatus.MEMORY_PRESSURE:
+        return f"{display_label} is an experimental CPU option; RAM fit is not confirmed."
     return None
 
 
@@ -150,6 +152,11 @@ def build_warnings(
         has_gpu = assessment.available_vram_bytes is not None
         if assessment.status is CompatibilityStatus.TIGHT:
             warnings.append(_tight_warning(device, has_gpu))
+        elif assessment.status is CompatibilityStatus.MEMORY_PRESSURE:
+            warnings.append(
+                "Estimated CPU consumption exceeds available RAM. This is an experimental "
+                "option, not a confirmed fit; paging may substantially reduce throughput."
+            )
         elif assessment.status is CompatibilityStatus.OFFLOADING_REQUIRED:
             # The configuration ladder already explains the offload when it
             # exhausted itself, and its wording is the more precise of the two

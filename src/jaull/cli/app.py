@@ -28,10 +28,12 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
+    RAM_RESERVE_DEFAULT_BYTES,
 )
 from jaull.runtime.quality_eval_runner import QualityProfile, QualityRunRequest
 
 _DEFAULT_RESERVE_GIB = DEVICE_RESERVE_DEFAULT_BYTES / (1024**3)
+_DEFAULT_RAM_RESERVE_GIB = RAM_RESERVE_DEFAULT_BYTES / (1024**3)
 
 app = typer.Typer(
     add_completion=False,
@@ -181,7 +183,13 @@ def estimate_command(
         _DEFAULT_RESERVE_GIB,
         "--device-reserve-gib",
         min=0.0,
-        help="Fixed GPU/CPU reserve to leave free (GiB).",
+        help="GPU reserve to leave free (GiB); GGUF keeps at least 1 GiB of VRAM.",
+    ),
+    ram_reserve_gib: float = typer.Option(
+        _DEFAULT_RAM_RESERVE_GIB,
+        "--ram-reserve-gib",
+        min=0.0,
+        help="RAM reserve for CPU execution (GiB); independent of the GPU reserve.",
     ),
     as_json: bool = typer.Option(
         False, "--json", help="Emit stable JSON to stdout instead of a Rich report."
@@ -217,6 +225,7 @@ def estimate_command(
         kv_dtype=kv_dtype,
         safety_margin_percent=safety_margin_percent,
         device_reserve_gib=device_reserve_gib,
+        ram_reserve_gib=ram_reserve_gib,
         as_json=as_json,
         resolve_base_model=not no_resolve_base_model,
         recommend_runtime=not no_runtime_recommendation,

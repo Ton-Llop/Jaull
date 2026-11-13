@@ -36,6 +36,7 @@ from jaull.domain.benchmarks import (
 from jaull.domain.estimation import HardwareFitMode, HardwareFitResult, MemoryEstimate
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity
 from jaull.domain.hardware import ComputeBackend, HardwareProfile
+from jaull.domain.inference import TargetDevice
 from jaull.domain.runtime import (
     LlamaCppBackendCapability,
     LlamaCppRuntimeCapability,
@@ -1194,13 +1195,18 @@ def _memory_rows(
         for result in results
         if result.record.observation.peak_ram_bytes is not None
     ]
-    if estimate is not None and estimate.total_bytes is not None and measured_values:
+    if (
+        estimate is not None and estimate.physical_bytes is not None and measured_values
+        and estimate.assessment.effective_device is TargetDevice.CPU
+        and all(result.record.requested_backend is ComputeBackend.CPU for result in results)
+    ):
         measured = max(measured_values)
         rows.extend(
             [
-                ("Estimated", _bytes(estimate.total_bytes)),
+                ("Estimated", _bytes(estimate.physical_bytes)),
                 ("Measured", _bytes(measured)),
-                ("Difference", _memory_delta(estimate.total_bytes, measured)),
+                ("Difference", _memory_delta(estimate.physical_bytes, measured)),
+                ("Budget including reserve", _bytes(estimate.total_bytes)),
             ]
         )
     for result in results:
@@ -1215,6 +1221,22 @@ def _memory_rows(
             rows.append((f"{label} peak RAM", _bytes(observation.peak_ram_bytes)))
         if observation.peak_vram_bytes is not None:
             rows.append((f"{label} peak VRAM", _bytes(observation.peak_vram_bytes)))
+        available = getattr(observation, "min_available_ram_bytes", None)
+        if available is not None:
+            rows.append((f"{label} minimum system RAM available", _bytes(available)))
+            if estimate is not None and estimate.assessment.effective_device is TargetDevice.CPU:
+                reserve = estimate.device_reserve.bytes
+                if reserve is not None:
+                    rows.append((
+                        f"{label} reserve preserved", "Yes" if available >= reserve else "No",
+                    ))
+        for field, name in (
+            ("system_swap_in_bytes", "system swap in"),
+            ("system_swap_out_bytes", "system swap out"),
+        ):
+            value = getattr(observation, field, None)
+            if value is not None:
+                rows.append((f"{label} {name}", _bytes(value)))
     return rows
 
 

@@ -24,7 +24,7 @@ from jaull.domain.benchmarks import (
     BenchmarkRequest,
     LlamaBenchBinaryStatus,
 )
-from jaull.domain.execution import ExecutionFailureReason, ExecutionRequest
+from jaull.domain.execution import ExecutionFailureReason, ExecutionObservation, ExecutionRequest
 from jaull.domain.hardware import ComputeBackend
 from jaull.execution.errors import (
     ExecutableNotFoundError,
@@ -94,6 +94,7 @@ class LlamaBenchRunner:
                 exit_code=exc.result.exit_code,
                 peak_ram_bytes=exc.result.observation.peak_ram_bytes,
                 peak_vram_bytes=exc.result.observation.peak_vram_bytes,
+                system_memory=exc.result.observation,
             )
         except ExecutionFailedError as exc:
             return _failed_observation(
@@ -107,6 +108,7 @@ class LlamaBenchRunner:
                 exit_code=exc.result.exit_code,
                 peak_ram_bytes=exc.result.observation.peak_ram_bytes,
                 peak_vram_bytes=exc.result.observation.peak_vram_bytes,
+                system_memory=exc.result.observation,
             )
         except ExecutionError as exc:
             if exc.observation is None:
@@ -122,6 +124,7 @@ class LlamaBenchRunner:
                 exit_code=exc.observation.exit_code,
                 peak_ram_bytes=exc.observation.peak_ram_bytes,
                 peak_vram_bytes=exc.observation.peak_vram_bytes,
+                system_memory=exc.observation,
             )
 
         raw_output = "\n".join((result.stdout, result.stderr))
@@ -142,6 +145,7 @@ class LlamaBenchRunner:
                 exit_code=result.exit_code,
                 peak_ram_bytes=result.observation.peak_ram_bytes,
                 peak_vram_bytes=result.observation.peak_vram_bytes,
+                system_memory=result.observation,
             )
         observed = {(item.kind, item.tokens) for item in measurements}
         expected = [
@@ -166,6 +170,7 @@ class LlamaBenchRunner:
                 exit_code=result.exit_code,
                 peak_ram_bytes=result.observation.peak_ram_bytes,
                 peak_vram_bytes=result.observation.peak_vram_bytes,
+                system_memory=result.observation,
             )
         protocol = parse_llama_bench_protocol(raw_output, warmup="--no-warmup" not in command)
         # A completed measurement is kept even if the reported settings are missing or
@@ -187,6 +192,9 @@ class LlamaBenchRunner:
             peak_vram_bytes=result.observation.peak_vram_bytes,
             raw_stdout=result.stdout,
             raw_stderr=result.stderr,
+            min_available_ram_bytes=result.observation.min_available_ram_bytes,
+            system_swap_in_bytes=result.observation.system_swap_in_bytes,
+            system_swap_out_bytes=result.observation.system_swap_out_bytes,
         )
 
 
@@ -271,6 +279,7 @@ def _failed_observation(
     exit_code: int | None,
     peak_ram_bytes: int | None,
     peak_vram_bytes: int | None,
+    system_memory: ExecutionObservation | None = None,
 ) -> BenchmarkObservation:
     return BenchmarkObservation(
         success=False,
@@ -280,6 +289,15 @@ def _failed_observation(
         methodology=LLAMA_BENCH_V2,
         peak_ram_bytes=peak_ram_bytes,
         peak_vram_bytes=peak_vram_bytes,
+        min_available_ram_bytes=(
+            system_memory.min_available_ram_bytes if system_memory is not None else None
+        ),
+        system_swap_in_bytes=(
+            system_memory.system_swap_in_bytes if system_memory is not None else None
+        ),
+        system_swap_out_bytes=(
+            system_memory.system_swap_out_bytes if system_memory is not None else None
+        ),
         command=command,
         exit_code=exit_code,
         failure_reason=failure_reason,

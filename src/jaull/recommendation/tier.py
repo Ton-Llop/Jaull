@@ -65,6 +65,8 @@ def choose_tier(
     """
     if hard_penalty < 1.0:
         return RecommendationTier.BEST_EFFORT
+    if status is CompatibilityStatus.MEMORY_PRESSURE:
+        return RecommendationTier.BEST_EFFORT
     if confidence is EstimationConfidence.UNKNOWN:
         return RecommendationTier.BEST_EFFORT
     if actionability is ActionabilityLevel.SPECULATIVE:

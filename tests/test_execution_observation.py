@@ -40,6 +40,9 @@ def test_execution_observation_success_serializes_measurement_metadata() -> None
         # A runtime's own memory report, when one was parsed. ``peak_vram_bytes``
         # above stays the driver's view; this is a separate observation source.
         "runtime_allocation": None,
+        "min_available_ram_bytes": None,
+        "system_swap_in_bytes": None,
+        "system_swap_out_bytes": None,
     }
     assert ExecutionObservation.model_validate_json(observation.model_dump_json()) == observation
 

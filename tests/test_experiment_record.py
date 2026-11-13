@@ -85,7 +85,7 @@ def test_complete_record_can_be_built() -> None:
     assert record.hardware.cpu.model == "Ryzen 5 5500U"
     assert record.artifact.filename == "tinyllama.Q4_K_M.gguf"
     assert record.runtime is runtime
-    assert record.prediction_engine == "memory-estimator-v1"
+    assert record.prediction_engine == "memory-estimator-v2"
     assert record.comparison_engine == "prediction-comparison-v1"
     assert isinstance(record.comparison, PredictionComparison)
     assert record.observation.success is True

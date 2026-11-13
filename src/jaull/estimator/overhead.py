@@ -9,6 +9,7 @@ from jaull.domain.estimation import (
     RuntimeOverheadEstimate,
 )
 from jaull.estimator.policies import (
+    CPU_COMPUTE_ALLOWANCE_BYTES,
     GGUF_OVERHEAD_BASE_BYTES,
     GGUF_OVERHEAD_WEIGHT_FRACTION,
     OVERHEAD_BASE_BYTES,
@@ -59,6 +60,46 @@ def estimate_overhead(
 
 def _gib(value: int) -> str:
     return f"{value / (1024**3):.2f}"
+
+
+def estimate_gguf_cpu_overhead(weights_bytes: int | None) -> RuntimeOverheadEstimate:
+    """CPU fallback heuristic, not the GPU compute-buffer calibration.
+
+    Reuse the general runtime allowance (512 MiB + 10% of weights) until
+    tensor/kernel-specific repacking is known. A single observed CPU_REPACK
+    allocation must not become a universal constant or an RSS correction.
+    """
+    result = estimate_overhead(weights_bytes)
+    compute = CPU_COMPUTE_ALLOWANCE_BYTES
+    assert result.component.bytes is not None
+    return result.model_copy(update={
+        "component": result.component.model_copy(update={
+            "explanation": result.component.explanation + (
+                " CPU allowance, not GPU calibration. CPU repacking is runtime-dependent "
+                "and is not separately sized; this heuristic is not an upper bound."
+            ),
+        }),
+        "components": [
+            MemoryComponent(
+                name="CPU compute allowance", bytes=compute,
+                source=EstimateSource.ASSUMED, confidence=EstimationConfidence.LOW,
+                explanation=f"{_gib(compute)} GiB heuristic; actual compute buffers "
+                "depend on token batching.",
+            ),
+            MemoryComponent(
+                name="Other CPU runtime allowance", bytes=result.component.bytes - compute,
+                source=EstimateSource.ASSUMED, confidence=EstimationConfidence.LOW,
+                explanation="Remaining general runtime heuristic; not a measured allocation.",
+            ),
+            MemoryComponent(
+                name="CPU repacking", bytes=None,
+                source=EstimateSource.UNKNOWN, confidence=EstimationConfidence.UNKNOWN,
+                explanation="Depends on tensor types, CPU kernels and runtime build. "
+                "Not separately added to the heuristic total.",
+            ),
+        ],
+        "unmodelled_components": ["CPU repacking"],
+    })
 
 
 __all__ = [

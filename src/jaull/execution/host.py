@@ -202,8 +202,12 @@ class _ProcessExecutionSampler:
         self._nvidia = NvidiaProcessMemorySampler(nvml_provider)
         self._peak_ram_bytes: int | None = None
         self._peak_vram_bytes: int | None = None
+        self._min_available_ram_bytes: int | None = None
+        self._swap_start: tuple[int, int] | None = None
+        self._swap_latest: tuple[int, int] | None = None
 
     def sample(self) -> None:
+        self._sample_system_memory()
         ram = self._sample_ram()
         if ram is not None:
             self._peak_ram_bytes = _max_optional(self._peak_ram_bytes, ram)
@@ -220,7 +224,7 @@ class _ProcessExecutionSampler:
         exit_code: int | None,
         failure_reason: ExecutionFailureReason | None,
     ) -> ExecutionObservation:
-        return _observation(
+        result = _observation(
             success=success,
             start=start,
             metadata=self._metadata,
@@ -229,6 +233,32 @@ class _ProcessExecutionSampler:
             peak_ram_bytes=self._peak_ram_bytes,
             peak_vram_bytes=self._peak_vram_bytes,
         )
+        changes: dict[str, int | None] = {
+            "min_available_ram_bytes": self._min_available_ram_bytes,
+        }
+        if self._swap_start is not None and self._swap_latest is not None:
+            changes["system_swap_in_bytes"] = max(0, self._swap_latest[0] - self._swap_start[0])
+            changes["system_swap_out_bytes"] = max(0, self._swap_latest[1] - self._swap_start[1])
+        return result.model_copy(update=changes)
+
+    def _sample_system_memory(self) -> None:
+        try:
+            available = int(psutil.virtual_memory().available)
+            self._min_available_ram_bytes = (
+                available if self._min_available_ram_bytes is None
+                else min(self._min_available_ram_bytes, available)
+            )
+        except (psutil.Error, OSError, AttributeError, NotImplementedError):
+            pass
+        if os.name == "nt":
+            return  # psutil's Windows swap I/O counters are always zero, not measurements.
+        try:
+            swap = psutil.swap_memory()
+            counters = (int(swap.sin), int(swap.sout))
+            self._swap_start = self._swap_start or counters
+            self._swap_latest = counters
+        except (psutil.Error, OSError, AttributeError, NotImplementedError):
+            pass
 
     def close(self) -> None:
         self._nvidia.close()

@@ -203,7 +203,9 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
         return "\n".join(lines)
 
     has_confirmed = any(
-        rec.displayed_status is not CompatibilityStatus.UNKNOWN
+        rec.displayed_status not in {
+            CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+        }
         for rec in state.recommendations
     )
     lines += [
@@ -215,7 +217,9 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
     unconfirmed_section_started = False
     for rec in state.recommendations:
         if (
-            rec.displayed_status is CompatibilityStatus.UNKNOWN
+            rec.displayed_status in {
+                CompatibilityStatus.UNKNOWN, CompatibilityStatus.MEMORY_PRESSURE,
+            }
             and not unconfirmed_section_started
         ):
             unconfirmed_section_started = True
@@ -227,6 +231,8 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
             ]
         if rec.displayed_status is CompatibilityStatus.UNKNOWN:
             heading = "Unconfirmed alternative"
+        elif rec.displayed_status is CompatibilityStatus.MEMORY_PRESSURE:
+            heading = "Experimental CPU alternative"
         elif rec.is_primary:
             heading = rec.tier.replace("_", " ").title()
         else:

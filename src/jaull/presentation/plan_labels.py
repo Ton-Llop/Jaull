@@ -89,7 +89,10 @@ def hardware_summary(profile: HardwareProfile | None) -> str:
     parts: list[str] = []
     if profile.cpu.model:
         parts.append(_short_cpu(profile.cpu.model))
-    parts.append(f"{_round_gib(profile.memory.total_bytes)} RAM")
+    parts.append(
+        f"RAM {format_gib(profile.memory.total_bytes)} total "
+        f"({format_gib(profile.memory.available_bytes)} available)"
+    )
     if profile.gpus:
         gpu = profile.gpus[0]
         parts.append(f"{_short_gpu(gpu.name)} {_round_gib(gpu.vram_total_bytes)}")

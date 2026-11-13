@@ -330,7 +330,7 @@ def test_result_serialization_keeps_original_current_observation_and_provenance(
     )
     assert payload["original_prediction_engine"] == "memory-estimator-v1"
     assert payload["original_comparison_engine"] == "prediction-comparison-v1"
-    assert payload["current_provenance"]["prediction_engine"] == "memory-estimator-v1"
+    assert payload["current_provenance"]["prediction_engine"] == "memory-estimator-v2"
     assert payload["current_provenance"]["comparison_engine"] == (
         "prediction-comparison-v1"
     )
@@ -373,6 +373,7 @@ def _record(
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         ),
         environment=_environment(),
+        prediction_engine="memory-estimator-v1",
     )
 
 

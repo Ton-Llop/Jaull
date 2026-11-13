@@ -8,6 +8,7 @@ _LABELS: dict[CompatibilityStatus, tuple[str, str]] = {
     CompatibilityStatus.COMFORTABLE: ("Comfortable", "badge-comfortable"),
     CompatibilityStatus.COMPATIBLE: ("Compatible", "badge-compatible"),
     CompatibilityStatus.TIGHT: ("Tight fit", "badge-tight"),
+    CompatibilityStatus.MEMORY_PRESSURE: ("Experimental RAM pressure", "badge-tight"),
     CompatibilityStatus.OFFLOADING_REQUIRED: ("Offloading required", "badge-offloading"),
     CompatibilityStatus.INSUFFICIENT: ("Insufficient", "badge-insufficient"),
     CompatibilityStatus.UNKNOWN: ("Unknown", "badge-unknown"),
