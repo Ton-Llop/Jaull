@@ -201,6 +201,28 @@ A failed run keeps the history and reports next to the composer, ready to retry.
 
 ![Run screen after a failed generation](assets/tui-run-error.svg)
 
+## Setting up a local server
+
+**Set up a local server**, on the welcome screen, leaves a model running as an
+OpenAI-compatible `llama-server`, on one screen with five steps:
+
+1. **Machine and backend.** The detected backend, with the alternatives in a list.
+2. **llama.cpp.** The build Jaull installed for that backend, or **Install llama.cpp**,
+   which downloads the pinned official build and checks its SHA-256.
+3. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
+   context per person and port.
+4. **Model.** A downloaded model from the list, or a repository and quantization to
+   download. To choose one, run Guided analysis first; the model it downloads appears in
+   the list.
+5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
+   [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). The output
+   shows the plan, the URL, the API key once, the start script and, when shared, the
+   firewall rule for an administrator; Jaull never changes the firewall. **Stop server**
+   stops it.
+
+If a server is already running when the screen opens, its status is shown and only Stop is
+available.
+
 ## Advanced tools
 
 The individual tools keep their own screens, including the memory estimation view.

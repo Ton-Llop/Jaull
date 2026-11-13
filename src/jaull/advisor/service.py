@@ -111,6 +111,7 @@ if TYPE_CHECKING:
         QualityCandidateOutcome,
         QualityCandidateSelection,
     )
+    from jaull.application.serving.models import ServerPlan, ServerStart
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
         BenchmarkMatrixResult,
@@ -125,6 +126,7 @@ if TYPE_CHECKING:
     from jaull.evaluation.quality_records import QualityEvidence
     from jaull.evaluation.quality_storage import QualityEvidenceStore
     from jaull.execution.ports import ExecutionBackendProtocol
+    from jaull.execution.server_process import ServerProcessManager, ServerStatus
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
     from jaull.recommendation.capability_catalog import CatalogReadResult
@@ -132,6 +134,7 @@ if TYPE_CHECKING:
     from jaull.recommendation.shadow import ShadowReport
     from jaull.runtime.llama_bench_runner import LlamaBenchRunner
     from jaull.runtime.llama_cpp_runner import LlamaCppRunner
+    from jaull.runtime.llama_cpp_updates import BuildRelease
     from jaull.runtime.locator import RuntimeLocator
     from jaull.runtime.quality_eval_runner import QualityProfile, QualityRunRequest
     from jaull.runtime.transformers_benchmark_runner import TransformersBenchmarkRunner
@@ -532,23 +535,230 @@ class AdvisorService:
 
         return select_runtime_backend(hardware or self.scan_hardware())
 
-    def install_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation:
-        """Install the pinned official llama.cpp build for this machine and ``backend``."""
+    def install_llama_cpp(
+        self, backend: ComputeBackend, *, latest: bool = False,
+    ) -> LlamaCppInstallation:
+        """Install the pinned official llama.cpp build for this machine and ``backend``.
+
+        ``latest`` installs the newest upstream build instead, verified with the
+        SHA-256 GitHub publishes; Jaull has not validated it.
+        """
         import httpx
 
         from jaull.runtime import policies as runtime_policies
-        from jaull.runtime.llama_cpp_install import install_llama_cpp, managed_root
+        from jaull.runtime.llama_cpp_install import (
+            LlamaCppInstallError,
+            install_llama_cpp,
+            managed_root,
+        )
         from jaull.runtime.llama_cpp_release import current_platform, package_for
+        from jaull.runtime.llama_cpp_updates import package_from_release
 
         os_name, arch = current_platform()
         timeout = httpx.Timeout(
             runtime_policies.LLAMA_CPP_DOWNLOAD_CONNECT_TIMEOUT_SECONDS,
             read=runtime_policies.LLAMA_CPP_DOWNLOAD_READ_TIMEOUT_SECONDS,
         )
+        if latest:
+            newest = self._newest_llama_cpp_build(ttl_seconds=0)
+            if newest is None:
+                raise LlamaCppInstallError("Could not read the newest llama.cpp build from GitHub.")
+            package = package_from_release(newest, os_name, arch, backend)
+        else:
+            package = package_for(os_name, arch, backend)
         with httpx.Client(timeout=timeout) as client:
-            return install_llama_cpp(
-                package_for(os_name, arch, backend), root=managed_root(), client=client,
+            return install_llama_cpp(package, root=managed_root(), client=client)
+
+    def llama_cpp_update_notice(self) -> str | None:
+        """A note when the pinned llama.cpp build is much older than upstream's newest."""
+        from jaull.runtime.llama_cpp_updates import update_notice
+
+        return update_notice(self._newest_llama_cpp_build())
+
+    def _newest_llama_cpp_build(self, *, ttl_seconds: float | None = None) -> BuildRelease | None:
+        from datetime import UTC, datetime
+
+        import httpx
+
+        from jaull.paths import user_cache_dir
+        from jaull.runtime import policies as runtime_policies
+        from jaull.runtime.llama_cpp_updates import fetch_newest_build
+
+        policy = runtime_policies
+        ttl = policy.LLAMA_CPP_UPDATE_CHECK_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+        with httpx.Client(timeout=policy.LLAMA_CPP_UPDATE_CHECK_TIMEOUT_SECONDS) as client:
+            return fetch_newest_build(
+                client,
+                cache_path=user_cache_dir("runtimes", "llama.cpp-releases.json"),
+                now=datetime.now(UTC),
+                ttl_seconds=ttl,
             )
+
+    def plan_server(
+        self,
+        *,
+        repo_id: str,
+        artifact: ModelArtifact,
+        users: int,
+        context_per_user: int,
+        backend: ComputeBackend | None = None,
+        llama_server_path: Path | None = None,
+    ) -> ServerPlan:
+        """Size a llama-server for ``users`` and find the binary. Composes; no policy here."""
+        from jaull.application.serving import size_server
+        from jaull.application.serving.models import ServerPlan
+        from jaull.domain.inference import InferenceConfiguration, TargetDevice
+        from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
+        from jaull.runtime.llama_cpp_release import current_platform
+        from jaull.runtime.llama_server import server_binary_for
+
+        hardware = self.scan_hardware()
+        selection = self.select_runtime_backend(hardware)
+        if backend is not None:
+            selection = _selection_for_requested_backend(selection, backend)
+        cpu = selection.selected_backend is ComputeBackend.CPU
+        analysis = self.inspect_model(repo_id)
+        base = InferenceConfiguration(
+            context_length=context_per_user,
+            quantization=artifact.quantization,
+            target_device=TargetDevice.CPU if cpu else TargetDevice.AUTO,
+        )
+        sizing = size_server(
+            users=users,
+            context_per_user=context_per_user,
+            base=base,
+            estimate_for=lambda config: self.estimate_model(analysis, hardware, config),
+        )
+        launch = self.plan_launch(
+            runtime=RuntimeName.LLAMA_CPP, estimate=sizing.estimate, hardware=hardware,
+            local_artifact=artifact, backend_selection=selection,
+            overrides=ExecutionOverrides(n_gpu_layers=0) if cpu else None,
+        )
+        binary = llama_server_path
+        if binary is None:
+            managed = managed_installation_for(
+                managed_root(), *current_platform(), selection.selected_backend,
+            )
+            installation = managed or self._resolved_llama_cpp_installation()
+            binary = server_binary_for(installation)
+        if binary is None:
+            raise ExecutionPlanningError(
+                "llama-server was not found. Install it with "
+                f"`jaull runtime install --backend {selection.selected_backend.value}`."
+            )
+        return ServerPlan(
+            artifact=artifact,
+            alias=repo_id.split("/")[-1],
+            backend=selection.selected_backend,
+            sizing=sizing,
+            launch=launch,
+            server_binary=binary,
+        )
+
+    def start_server(
+        self,
+        plan: ServerPlan,
+        *,
+        lan: bool = False,
+        port: int | None = None,
+        tls_cert: Path | None = None,
+        tls_key: Path | None = None,
+    ) -> ServerStart:
+        """Start ``plan`` detached with the security defaults. Composes; no policy here."""
+        from jaull.application.serving.models import ServerStart
+        from jaull.application.serving.security import firewall_rule, subnet_of
+        from jaull.execution.server_process import lan_ipv4
+        from jaull.runtime import policies as runtime_policies
+        from jaull.runtime.llama_cpp_release import current_platform
+        from jaull.runtime.llama_server import ServerLaunch, server_argv
+
+        manager = self._server_manager()
+        api_key_path, new_key = manager.ensure_api_key()
+        policy = runtime_policies
+        host = policy.LLAMA_SERVER_LAN_HOST if lan else policy.LLAMA_SERVER_LOCAL_HOST
+        chosen_port = port or runtime_policies.LLAMA_SERVER_DEFAULT_PORT
+        argv = server_argv(ServerLaunch(
+            binary=plan.server_binary,
+            model=Path(plan.artifact.local_path or plan.artifact.filename),
+            parallel=plan.sizing.parallel,
+            total_context=plan.sizing.total_context,
+            context_per_user=plan.sizing.context_per_user,
+            host=host,
+            port=chosen_port,
+            api_key_file=api_key_path,
+            alias=plan.alias,
+            launch_flags=tuple(plan.launch.flags),
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+        ))
+        os_name, _ = current_platform()
+        script = manager.write_start_script(argv, windows=os_name == "windows")
+        state = manager.start(
+            argv, host=host, port=chosen_port, alias=plan.alias, tls=tls_cert is not None,
+        )
+        rule = lan_url = None
+        if lan:
+            address = lan_ipv4()
+            subnet = subnet_of(*address) if address is not None else None
+            rule = firewall_rule(os_name, chosen_port, subnet=subnet)
+            if address is not None:
+                lan_url = f"{'https' if tls_cert else 'http'}://{address[0]}:{chosen_port}"
+        return ServerStart(
+            state=state, api_key_path=api_key_path, new_api_key=new_key,
+            start_script=script, firewall_rule=rule, lan_url=lan_url,
+        )
+
+    def prepare_serve_artifact(
+        self,
+        repo_id: str,
+        *,
+        quantization: str | None,
+        revision: str | None = None,
+        on_progress: Callable[[str], None] | None = None,
+    ) -> ModelArtifact:
+        """Resolve, download if missing, and verify the GGUF a server will load."""
+        def report(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        report(f"Resolving {repo_id}" + (f" ({quantization})" if quantization else ""))
+        artifact = self.resolve_artifact(repo_id, quantization=quantization, revision=revision)
+        if not artifact.is_downloaded:
+            report(f"Downloading {artifact.filename}")
+            artifact = self.download_artifact(
+                artifact,
+                DownloadProgressReporter(report) if on_progress is not None else None,
+            )
+        report(f"Verifying {artifact.filename}")
+        return self.verify_artifact(artifact)
+
+    def gguf_quantization(self, filename: str) -> str | None:
+        """The quantization a downloaded GGUF's file name declares, to resolve it again."""
+        from jaull.huggingface.classifiers import gguf_quantization
+
+        return gguf_quantization(filename)
+
+    def managed_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation | None:
+        """The build ``jaull runtime install`` put in place for ``backend``, if any."""
+        from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
+        from jaull.runtime.llama_cpp_release import current_platform
+
+        return managed_installation_for(managed_root(), *current_platform(), backend)
+
+    def stop_server(self) -> bool:
+        return self._server_manager().stop()
+
+    def server_status(self) -> ServerStatus:
+        return self._server_manager().status()
+
+    def server_log_tail(self) -> str:
+        return self._server_manager().log_tail()
+
+    def _server_manager(self) -> ServerProcessManager:
+        from jaull.execution.server_process import ServerProcessManager
+        from jaull.paths import user_data_dir
+
+        return ServerProcessManager(user_data_dir("serve"))
 
     def inspect_llama_cpp_runtime(
         self,

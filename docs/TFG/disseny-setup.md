@@ -1,6 +1,7 @@
 # Disseny: Setup (desplegar un servidor de model local amb Jaull)
 
-Estat: **proposta**, pendent de revisió de l'autor (2026-11-13). No hi ha codi.
+Estat (2026-11-13): les tres parts implementades: la CLI (`jaull runtime install`, `jaull serve start/stop/status`)
+i la pantalla Setup de la TUI. Vegeu «Estat de la implementació» al final.
 
 ## Per què
 
@@ -59,8 +60,8 @@ Entrada: l'estimació de memòria del model triat i el nombre d'usuaris demanat.
 - Amb més d'un usuari, KV compartit (`--kv-unified`) amb un context total `-c` i un màxim per usuari
   (`--kv-unified-per-slot`), com a la configuració proposada per a Biosfer.
 - Marge: el sostre de la GPU menys un marge de política. El cas de `-np 8` amb 32K fixos (uns 22,1 GiB de 24) va penjar
-  el PC de Biosfer; la configuració amb 192K compartits va funcionar. **PENDENT** fixar el valor del marge a
-  `policies.py` a partir d'aquestes dues dades, marcat com a hipòtesi.
+  el PC de Biosfer; la configuració amb 192K compartits va funcionar. Fixat a 0,875 de la VRAM a
+  `application/serving/policies.py`, marcat com a hipòtesi.
 - Si el que demana l'usuari no hi cap, el Setup ho diu i proposa menys usuaris o menys context; no arrenca una
   configuració que l'estimador dona per inviable.
 
@@ -94,10 +95,11 @@ o del que sigui (Jaull mateix, el model).
 2. En compartir, Jaull **genera** la regla de tallafocs per a la subxarxa interna (Windows: `New-NetFirewallRule`;
    Linux: l'ordre equivalent) i la mostra per a l'administrador. No l'aplica sense confirmació explícita.
 3. Clau `--api-key` aleatòria, desada al directori de dades de Jaull i mostrada una vegada.
-4. Sense endpoints que no calen (`/slots`, interfície web pròpia) si el build ho permet. **PENDENT** comprovar els
-   flags exactes del b11889 a Windows i Linux.
+4. Sense endpoints que no calen (`/slots`, interfície web pròpia): el b11889 porta `--no-slots` i `--no-webui`
+   (comprovat amb el build de Linux; a Windows, **PENDENT**).
 5. Nivell de registre normal: mai `-lv 4` en servei, perquè escriuria els prompts.
-6. TLS opcional si el build el porta; si no, es documenta com a pendent.
+6. TLS opcional: el b11889 el porta (`--ssl-cert-file`, `--ssl-key-file`); Jaull el passa amb `--tls-cert` i
+   `--tls-key`. No s'ha provat amb un certificat real.
 
 ## Errors
 
@@ -127,3 +129,69 @@ valoració amb l'empresa).
 - **RAM experimental (2026-11-13):** a CPU, un pla passa a «Experimental RAM pressure» si el consum cap a la RAM total,
   sense deixar res per al sistema operatiu (`estimator/compatibility.py`, `hardware_fit.py`). Al portàtil (15,35 GiB)
   apareixia un model de 14,42 GiB. Cal una prova al portàtil abans de fixar un límit.
+
+## Estat de la implementació (2026-11-13)
+
+**Part 1, instal·lar llama.cpp:** `jaull runtime install --backend vulkan|cuda|cpu`. Comprovació física amb CPU al
+portàtil; CUDA (RTX 2060) i Vulkan (B60) **PENDENT**.
+
+**Part 2, servidor:** `jaull serve start/stop/status`, `jaull runtime install --latest` i
+`scripts/llama_cpp_catalog.py`.
+
+- Dimensionament (`application/serving/planner.py`): el KV compartit més gran que hi cap, amb cerca binària sobre
+  l'estimador. Marge: `SERVE_GPU_MAX_USAGE_FRACTION = 0.875` de la VRAM que dona l'escaneig, marcat com a hipòtesi
+  (22,1 GiB de 24 van penjar el PC de Biosfer; uns 20,8 GiB van funcionar). Si no hi cap, l'error diu el context
+  més gran que hi cap. No se serveix un model que necessita descarregar capes a la RAM.
+- Amb CPU, l'estimador no fa la col·locació (`hardware_fit` buit) i només dona l'avaluació; el servidor accepta
+  `comfortable` i `compatible`. Es va trobar en la prova física: la primera versió refusava un model d'1,5B.
+- Seguretat, els sis punts: escolta a `127.0.0.1`; amb `--lan`, regla de tallafocs generada i no aplicada; clau
+  aleatòria en un fitxer 0600 passada amb `--api-key-file`, de manera que no surt a `ps` ni a l'script; `--no-slots`
+  i `--no-webui`; cap `-lv`; HTTPS amb `--tls-cert` i `--tls-key` (el b11889 porta `--ssl-cert-file` i
+  `--ssl-key-file`).
+- Port per defecte 8090, perquè el 8080 és el de Keycloak a Biosfer. Un port ocupat es refusa i se'n proposa un de
+  lliure.
+- Versions més noves: des del novembre del 2026, `/releases/latest` de GitHub és una `v1.0.0` sense binaris i els
+  builds `b<número>` surten com a prerelease. Per això es pren el `b<número>` més alt de `/releases`.
+
+Prova física al portàtil (Linux, b11889 CPU, Qwen2.5-1.5B Q5_K_M, 2 usuaris de 8K):
+
+| Comprovació | Resultat |
+|---|---|
+| Arrencada i `/health` | llest; el registre diu `n_slots = 2, n_ctx_slot = 8192, kv_unified = 'true'` |
+| Petició sense clau | 401 |
+| Petició amb clau | resposta correcta |
+| `/slots`, interfície web | 501, 404 |
+| On escolta | només `127.0.0.1:8090`; amb `--lan`, `0.0.0.0:8090` i la regla `ufw` amb la subxarxa |
+| Clau a `ps` | no hi surt |
+| Segona arrencada, port ocupat | refusades amb el missatge esperat |
+| `stop`, `status` | aturat; `status` torna 1 |
+
+**Pendents de la part 2:**
+- Proves físiques a Windows: B60 + Vulkan (Biosfer) i RTX 2060 + CUDA. Amb Windows queden per veure l'arrencada
+  desacoblada, l'script `.bat`, la regla `New-NetFirewallRule` i el permís del tallafocs que Windows demana la
+  primera vegada.
+- El context per usuari no es limita al context d'entrenament del model: amb SmolLM2 i `--context 2000000`, el
+  missatge va proposar 131072.
+- L'avís de revisió més nova del model i l'avís de llama.cpp a `doctor`: no s'han fet; l'avís de llama.cpp només surt
+  a `serve start`.
+- `plan_server` fa servir la sonda de dispositius del llama.cpp localitzat per triar `--device`; si hi ha builds de
+  backends diferents instal·lats, la numeració podria no coincidir amb la del binari del servidor. No s'ha vist a la
+  pràctica.
+
+**Part 3, TUI:** opció «Set up a local server» a la pantalla principal, que obre `tui/screens/setup.py`: una sola
+pantalla amb els cinc passos, en lloc de cinc pantalles. La feina lenta va en un fil i la pantalla només recull les
+opcions; el text del pla i del resultat surt de `presentation/serving.py`, el mateix que escriu la CLI. Preparar
+l'artefacte (resoldre, baixar si cal, verificar) és ara un sol mètode de la façana (`prepare_serve_artifact`) que fan
+servir la CLI i la TUI.
+
+- Model: (a) un dels baixats, amb la quantització llegida del nom del fitxer; (b) un repositori i una quantització.
+  L'opció (c), obrir la cerca guiada i tornar al Setup amb el pla triat, **no s'ha fet**: la pantalla diu que es faci
+  primer l'anàlisi guiada i que el model baixat apareixerà a la llista.
+- Proves: sis proves amb un `AdvisorService` fals (arrencar i aturar a 80×24 i 160×48, repositori escrit i xarxa
+  local, camps que falten, instal·lar llama.cpp, error de dimensionament, accés des del menú).
+- Prova real al portàtil, sense pantalla: la pantalla amb l'`AdvisorService` real, backend CPU, SmolLM2 amb
+  2 usuaris de 4K: arrenca, mostra el pla i l'adreça, i s'atura.
+- Les proves de la TUI van trobar dos errors corregits: l'estat del servidor tapava la sortida de l'arrencada, on hi
+  ha la clau que només es mostra una vegada; i la pantalla importava `jaull.huggingface`, que la regla d'arquitectura
+  prohibeix a la TUI.
+- Captura de pantalla de `docs/assets/tui-welcome.svg`: no s'ha regenerat; ara el menú té una opció més.

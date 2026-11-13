@@ -162,7 +162,7 @@ async def _wait_for(
 # ---------------------------------------------------------------------------
 # Welcome
 # ---------------------------------------------------------------------------
-def test_welcome_screen_offers_guided_advanced_and_storage() -> None:
+def test_welcome_screen_offers_guided_setup_advanced_and_storage() -> None:
 
     async def scenario() -> None:
         app = JaullApp(services=_services())
@@ -170,7 +170,9 @@ def test_welcome_screen_offers_guided_advanced_and_storage() -> None:
             screen = pilot.app.screen
             assert isinstance(screen, WelcomeScreen)
             ids = {item.id for item in screen.query("ListItem")}
-            assert ids == {"welcome-guided", "welcome-advanced", "welcome-storage"}
+            assert ids == {
+                "welcome-guided", "welcome-setup", "welcome-advanced", "welcome-storage",
+            }
 
     _run(scenario())
 

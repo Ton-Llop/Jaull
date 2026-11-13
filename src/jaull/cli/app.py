@@ -6,6 +6,10 @@ from pathlib import Path
 
 import typer
 
+from jaull.application.serving.policies import (
+    SERVE_DEFAULT_CONTEXT_PER_USER,
+    SERVE_DEFAULT_USERS,
+)
 from jaull.cli.cases import (
     CaseOptions,
     CreateCaseOptions,
@@ -25,6 +29,7 @@ from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setu
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.runtime import run_runtime_install
 from jaull.cli.scan import run_scan
+from jaull.cli.serve import ServeOptions, run_serve_start, run_serve_status, run_serve_stop
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
@@ -68,6 +73,11 @@ runtime_app = typer.Typer(
     help="Install local runtimes managed by Jaull.",
 )
 app.add_typer(runtime_app, name="runtime")
+serve_app = typer.Typer(
+    add_completion=False,
+    help="Run a model as a local OpenAI-compatible server (llama-server).",
+)
+app.add_typer(serve_app, name="serve")
 
 
 def _is_interactive_terminal() -> bool:
@@ -442,8 +452,55 @@ def runtime_install_command(
     backend: ComputeBackend = typer.Option(
         ..., "--backend", case_sensitive=False, help="vulkan, cuda or cpu.",
     ),
+    latest: bool = typer.Option(
+        False, "--latest",
+        help="Install the newest upstream build instead (SHA-256 checked, not validated).",
+    ),
 ) -> None:
-    raise typer.Exit(code=run_runtime_install(backend))
+    raise typer.Exit(code=run_runtime_install(backend, latest=latest))
+
+
+@serve_app.command(
+    "start",
+    help="Start llama-server for a model, sized for N users, on this PC or the local network.",
+)
+def serve_start_command(
+    model_ref: str = typer.Argument(..., help="Hugging Face repo id or URL of a GGUF model."),
+    quantization: str | None = typer.Option(None, "--quantization", "-q"),
+    revision: str | None = typer.Option(None, "--revision"),
+    users: int = typer.Option(
+        SERVE_DEFAULT_USERS, "--users", min=1, help="People using the server at the same time.",
+    ),
+    context: int = typer.Option(
+        SERVE_DEFAULT_CONTEXT_PER_USER, "--context", min=1,
+        help="Largest context one user may reach, in tokens.",
+    ),
+    lan: bool = typer.Option(
+        False, "--lan", help="Listen on the local network (default: this PC only).",
+    ),
+    port: int | None = typer.Option(None, "--port", min=1, max=65535),
+    backend: ComputeBackend | None = typer.Option(
+        None, "--backend", case_sensitive=False, help="Override the detected backend.",
+    ),
+    llama_server: Path | None = typer.Option(None, "--llama-server"),
+    tls_cert: Path | None = typer.Option(None, "--tls-cert", help="PEM certificate for HTTPS."),
+    tls_key: Path | None = typer.Option(None, "--tls-key", help="PEM private key for HTTPS."),
+) -> None:
+    raise typer.Exit(code=run_serve_start(model_ref, ServeOptions(
+        quantization=quantization, users=users, context_per_user=context, lan=lan, port=port,
+        backend=backend, revision=revision, llama_server_path=llama_server,
+        tls_cert=tls_cert, tls_key=tls_key,
+    )))
+
+
+@serve_app.command("stop", help="Stop the server started by `jaull serve start`.")
+def serve_stop_command() -> None:
+    raise typer.Exit(code=run_serve_stop())
+
+
+@serve_app.command("status", help="Show whether the Jaull server is running and ready.")
+def serve_status_command() -> None:
+    raise typer.Exit(code=run_serve_status())
 
 
 @quality_app.command("setup", help="Check local evaluator; optionally prepare its pinned dataset.")

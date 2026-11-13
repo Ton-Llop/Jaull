@@ -144,6 +144,14 @@ def _is_auxiliary_gguf(path: PurePosixPath) -> bool:
     return bool(tokens & _AUXILIARY_GGUF_TOKENS) or "mtp" in folders
 
 
+def gguf_quantization(filename: str) -> str | None:
+    """The quantization a GGUF file name declares (``Q4_K_M``), or None."""
+    if not filename.lower().endswith(".gguf"):
+        return None
+    detected = _detect_quantization(filename)
+    return None if detected == "unknown" else detected
+
+
 def _detect_quantization(filename: str) -> str:
     stem = filename[: -len(".gguf")]
     stem = _MULTIPART_SUFFIX_RE.sub("", stem)

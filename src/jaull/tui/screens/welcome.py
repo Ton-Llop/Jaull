@@ -22,6 +22,11 @@ _MENU_ITEMS = [
         "Scan this machine, answer a few questions, get ranked models",
     ),
     (
+        "setup",
+        "Set up a local server",
+        "Leave a model running for this PC or the local network",
+    ),
+    (
         "advanced",
         "Advanced tools",
         "Scan, inspect, estimate, doctor",
@@ -86,6 +91,10 @@ class WelcomeScreen(Screen[None]):
         app = self._app()
         if key == "guided":
             app.start_guided_workflow()
+        elif key == "setup":
+            from jaull.tui.screens.setup import SetupScreen
+
+            app.push_screen(SetupScreen())
         elif key == "advanced":
             app.push_screen("advanced")
         elif key == "storage":

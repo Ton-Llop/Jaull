@@ -11,16 +11,20 @@ from jaull.runtime.llama_cpp_release import UnsupportedPlatformError
 
 
 def run_runtime_install(
-    backend: ComputeBackend, *, advisor: AdvisorService | None = None,
+    backend: ComputeBackend, *, latest: bool = False, advisor: AdvisorService | None = None,
 ) -> int:
     resolved = advisor or AdvisorService.default()
     try:
-        installation = resolved.install_llama_cpp(backend)
+        installation = (
+            resolved.install_llama_cpp(backend, latest=True) if latest
+            else resolved.install_llama_cpp(backend)
+        )
     except (UnsupportedPlatformError, LlamaCppInstallError) as exc:
         sys.stderr.write(f"{exc}\n")
         return 2
+    caveat = " (newest upstream build, not validated with Jaull)" if latest else ""
     sys.stdout.write(
-        f"llama.cpp {installation.version_text} ({backend.value}) ready: "
+        f"llama.cpp {installation.version_text} ({backend.value}) ready{caveat}: "
         f"{installation.llama_cli}\n"
     )
     return 0

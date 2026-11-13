@@ -16,6 +16,7 @@ from pathlib import Path
 
 import httpx
 
+from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import (
     LlamaCppInstallation,
     RuntimeDiscoveryMetadata,
@@ -154,6 +155,30 @@ def installation_in(directory: Path, build: str) -> LlamaCppInstallation | None:
     )
 
 
+def managed_installation_for(
+    root: Path, os_name: str, arch: str, backend: ComputeBackend,
+) -> LlamaCppInstallation | None:
+    """The newest complete managed build for this platform and ``backend``."""
+    if not root.is_dir():
+        return None
+    suffix = f"-{os_name}-{arch}-{backend.value}"
+    builds = [
+        directory for directory in root.iterdir()
+        if directory.is_dir() and not directory.name.startswith(".")
+        and directory.name.endswith(suffix)
+    ]
+    for directory in sorted(builds, key=lambda path: _build_number(path.name), reverse=True):
+        installation = installation_in(directory, directory.name.removesuffix(suffix))
+        if installation is not None:
+            return installation
+    return None
+
+
+def _build_number(directory_name: str) -> int:
+    build = directory_name.split("-", 1)[0]
+    return int(build[1:]) if build[1:].isdigit() else -1
+
+
 def _find_binary(directory: Path, name: str) -> Path | None:
     names = (f"{name}.exe", name) if os.name == "nt" else (name,)
     for candidate_name in names:
@@ -169,5 +194,6 @@ __all__ = [
     "extract_archive",
     "install_llama_cpp",
     "installation_in",
+    "managed_installation_for",
     "managed_root",
 ]

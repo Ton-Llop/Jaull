@@ -1,8 +1,9 @@
 # Command reference
 
-Main subcommands: `scan`, `inspect`, `estimate`, `doctor`, `run`, `runtime install` and
-`ui`. All of them are read-only except `run`, which explicitly downloads, verifies and
-executes a GGUF artifact, and `runtime install`, which downloads and installs llama.cpp.
+Main subcommands: `scan`, `inspect`, `estimate`, `doctor`, `run`, `runtime install`,
+`serve` and `ui`. All of them are read-only except `run`, which explicitly downloads,
+verifies and executes a GGUF artifact, `runtime install`, which downloads and installs
+llama.cpp, and `serve`, which starts and stops a local llama-server.
 
 ```bash
 uv run jaull                             # opens the TUI when run in a terminal
@@ -13,6 +14,7 @@ uv run jaull inspect <repo-id-or-url>    # analyse a model repository
 uv run jaull estimate <repo-id-or-url>   # memory footprint + compatibility
 uv run jaull run --model <repo> --prompt "Hello"   # download, verify and run a GGUF
 uv run jaull runtime install --backend vulkan      # install the pinned llama.cpp build
+uv run jaull serve start <repo> --users 4          # local OpenAI-compatible server
 ```
 
 Running `jaull` with no subcommand opens the TUI **only when stdin and stdout are both a
@@ -261,6 +263,57 @@ reuses the existing install. The runtime locator then finds the build without PA
 registration. Supported: Windows and Linux x64 with Vulkan, CUDA (12.x) or CPU; anything
 else is refused, not guessed. Exit code 2 when the combination is not pinned or the
 download fails verification.
+
+`--latest` installs the newest upstream build (the highest `b<number>` tag on GitHub)
+instead. Each file is still checked against the SHA-256 GitHub publishes for it, but Jaull
+has not validated that build; the output says so. To move the pinned build after testing
+one, `scripts/llama_cpp_catalog.py <tag>` prints the catalog to paste into
+`runtime/policies.py`.
+
+## `serve` — a model as a local OpenAI-compatible server
+
+```bash
+uv run jaull serve start <repo> -q Q4_K_M                         # this PC only, 1 user
+uv run jaull serve start <repo> -q Q4_K_M --users 8 --context 131072 --lan
+uv run jaull serve status
+uv run jaull serve stop
+```
+
+`start` resolves, downloads and verifies the GGUF like `run`, then sizes a `llama-server`
+for `--users` people at once (default 1) with up to `--context` tokens each (default
+32768). With one user the server gets that context. With more, the KV cache is one shared
+pool (`--kv-unified`): any user can reach the full context, and the pool is as large as
+fits, up to everyone at full context. The bytes come from the memory estimator; a server
+may plan at most 87.5 % of the GPU memory the scan reports (`SERVE_GPU_MAX_USAGE_FRACTION`,
+a hypothesis from two runs on the B60, see `docs/TFG/concurrencia-b60.md`), and on CPU
+only `comfortable` or `compatible` estimates are served. A request that does not fit is
+refused with the largest context that does. GPU offload to RAM is not served.
+
+The server starts detached, and `start` waits until `/health` answers. Defaults:
+
+- Listens on `127.0.0.1` only. `--lan` listens on every interface and prints a firewall
+  rule limited to the local subnet (`New-NetFirewallRule ... -RemoteAddress LocalSubnet`
+  on Windows, `ufw` with the detected subnet on Linux). Jaull never applies it.
+- A random API key, stored in Jaull's data directory (`serve/api-key`, mode 0600), passed
+  with `--api-key-file` so it never appears in the process list or the start script, and
+  printed once.
+- `--no-slots` and `--no-webui`; the log level stays at the default, which does not
+  write prompts.
+- HTTPS when both `--tls-cert` and `--tls-key` are given.
+- Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
+
+`start` also writes `serve/start-server.sh` (`.bat` on Windows) with the same command,
+to start the server by hand. `--backend` overrides the detected backend; the server binary
+comes from the managed build of that backend, or from the located llama.cpp. When the
+pinned llama.cpp build is more than 30 days older than upstream's newest, `start` prints a
+note (GitHub is asked at most once a day; without network there is no note).
+
+`stop` checks that the saved PID is still the `llama-server` Jaull started (same start
+time and executable) before stopping it. `status` exits 0 when the server is running and
+ready, 1 otherwise. Exit codes of `start`: 2 invalid reference or TLS options, 3 unknown
+quantization, 4 artifact error, 5 the server did not start (busy port, already running,
+early exit or no `/health` in time, with the last log lines), 6 it does not fit or could
+not be planned.
 
 ## `doctor` — environment health
 

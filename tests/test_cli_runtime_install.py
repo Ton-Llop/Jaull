@@ -41,13 +41,36 @@ def test_runtime_install_reports_unsupported_combinations(
 
 
 def test_the_command_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: list[ComputeBackend] = []
+    seen: list[tuple[ComputeBackend, bool]] = []
 
-    def fake(backend: ComputeBackend) -> int:
-        seen.append(backend)
+    def fake(backend: ComputeBackend, *, latest: bool) -> int:
+        seen.append((backend, latest))
         return 0
 
     monkeypatch.setattr("jaull.cli.app.run_runtime_install", fake)
     result = CliRunner().invoke(app, ["runtime", "install", "--backend", "vulkan"])
     assert result.exit_code == 0, result.output
-    assert seen == [ComputeBackend.VULKAN]
+    result = CliRunner().invoke(app, ["runtime", "install", "--backend", "cpu", "--latest"])
+    assert result.exit_code == 0, result.output
+    assert seen == [(ComputeBackend.VULKAN, False), (ComputeBackend.CPU, True)]
+
+
+class _Latest(_Advisor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.latest: list[bool] = []
+
+    def install_llama_cpp(  # type: ignore[override]
+        self, backend: ComputeBackend, *, latest: bool = False,
+    ) -> LlamaCppInstallation:
+        self.latest.append(latest)
+        return super().install_llama_cpp(backend)
+
+
+def test_latest_install_is_marked_not_validated(capsys: pytest.CaptureFixture[str]) -> None:
+    advisor = _Latest()
+    assert run_runtime_install(
+        ComputeBackend.CPU, latest=True, advisor=advisor,  # type: ignore[arg-type]
+    ) == 0
+    assert advisor.latest == [True]
+    assert "not validated" in capsys.readouterr().out

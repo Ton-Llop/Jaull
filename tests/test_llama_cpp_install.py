@@ -17,6 +17,7 @@ from jaull.runtime.llama_cpp_install import (
     download_verified,
     extract_archive,
     install_llama_cpp,
+    managed_installation_for,
 )
 from jaull.runtime.llama_cpp_release import LlamaCppPackage, ReleaseAsset
 
@@ -148,3 +149,29 @@ def test_an_archive_without_llama_server_is_refused(tmp_path: Path) -> None:
         install_llama_cpp(package, root=tmp_path / "managed", client=client)
     assert not (tmp_path / "managed" / package.directory_name).exists()
     assert [p.name for p in (tmp_path / "managed").iterdir()] == []  # no staging left behind
+
+
+def _managed_build(root: Path, name: str, *, complete: bool = True) -> None:
+    binaries = root / name / "llama-x"
+    binaries.mkdir(parents=True)
+    (binaries / "llama-cli").write_text("")
+    if complete:
+        (binaries / "llama-server").write_text("")
+
+
+def test_managed_installation_for_picks_the_newest_complete_build_of_the_backend(
+    tmp_path: Path,
+) -> None:
+    _managed_build(tmp_path, "b11889-linux-x86_64-vulkan")
+    _managed_build(tmp_path, "b9999-linux-x86_64-vulkan")
+    _managed_build(tmp_path, "b13000-linux-x86_64-vulkan", complete=False)
+    _managed_build(tmp_path, "b14000-linux-x86_64-cpu")
+    _managed_build(tmp_path, ".install-b15000-linux-x86_64-vulkan")
+
+    found = managed_installation_for(tmp_path, "linux", "x86_64", ComputeBackend.VULKAN)
+
+    assert found is not None
+    assert found.version_text == "b11889"
+    assert managed_installation_for(tmp_path, "linux", "x86_64", ComputeBackend.CUDA) is None
+    missing = tmp_path / "none"
+    assert managed_installation_for(missing, "linux", "x86_64", ComputeBackend.CPU) is None
