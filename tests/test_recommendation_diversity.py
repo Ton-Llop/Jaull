@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
 from pytest import MonkeyPatch
 
 from jaull.application.recommendation import policies
@@ -31,6 +34,90 @@ from tests.test_recommendation_engine_v2 import (
     _requirements,
     _selection,
 )
+
+
+def _cpu_display_plan(repo: str, budget: int, status: CompatibilityStatus) -> RankedPlan:
+    ranked = rank_execution_plans([_evaluated_gguf(repo_id=repo)], _requirements())[0]
+    estimate = ranked.plan.memory_prediction
+    assert estimate is not None
+    estimate = estimate.model_copy(update={
+        "total_bytes": budget,
+        "assessment": estimate.assessment.model_copy(update={
+            "status": status, "effective_device": "cpu", "available_ram_bytes": 2 * GIB,
+        }),
+    })
+    return replace(ranked, plan=ranked.plan.model_copy(update={"memory_prediction": estimate}))
+
+
+def test_display_reserves_one_slot_for_moderate_cpu_reclaim_without_confirming_fit():
+    confirmed = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+                 CompatibilityStatus.COMFORTABLE) for i in range(5)]
+    moderate = _cpu_display_plan("org/Conditional-7B-GGUF", 3 * GIB,
+                                 CompatibilityStatus.MEMORY_PRESSURE)
+    second = _cpu_display_plan("org/Other-7B-GGUF", 3 * GIB,
+                               CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware(vram_gib=None, ram_gib=16)
+    profile = profile.model_copy(update={"memory": profile.memory.model_copy(
+        update={"available_bytes": 2 * GIB},
+    )})
+    chosen = diversify_ranked_plans([*confirmed, moderate, second], limit=5, hardware=profile)
+    assert [item.primary for item in chosen] == [*confirmed[:4], moderate]
+    assert chosen[-1].primary.plan.memory_prediction.assessment.status is (
+        CompatibilityStatus.MEMORY_PRESSURE
+    )
+    assert diversify_ranked_plans([*confirmed, moderate], limit=1,
+                                  hardware=profile)[0].primary is confirmed[0]
+
+
+@pytest.mark.parametrize(("total", "available", "budget"), [
+    (16 * GIB, 2 * GIB, 8 * GIB),  # Absolute deficit is too large.
+    (4 * GIB, 2 * GIB, 3 * GIB),   # Deficit exceeds 15% of total RAM.
+    (4 * GIB, 3 * GIB, 7 * GIB // 2),  # Leaves too little system headroom.
+])
+def test_excessive_cpu_reclaim_does_not_displace_a_current_fit(total, available, budget):
+    ready = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+             CompatibilityStatus.COMFORTABLE) for i in range(2)]
+    pressure = _cpu_display_plan("org/Pressure-7B-GGUF", budget,
+                                 CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware(vram_gib=None).model_copy(update={
+        "memory": hardware().memory.model_copy(update={
+            "total_bytes": total, "available_bytes": available,
+        }),
+    })
+    assert [item.primary for item in diversify_ranked_plans(
+        [*ready, pressure], limit=2, hardware=profile,
+    )] == ready
+
+
+def test_gpu_recommendations_are_not_replaced_by_cpu_reclaim_options():
+    ready = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+             CompatibilityStatus.COMFORTABLE) for i in range(2)]
+    estimate = ready[0].plan.memory_prediction
+    assert estimate is not None
+    ready[0] = replace(ready[0], plan=ready[0].plan.model_copy(update={
+        "memory_prediction": estimate.model_copy(update={
+            "assessment": estimate.assessment.model_copy(update={"effective_device": "cuda"}),
+        }),
+    }))
+    pressure = _cpu_display_plan("org/Pressure-7B-GGUF", 3 * GIB,
+                                 CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware().model_copy(update={"memory": hardware().memory.model_copy(
+        update={"available_bytes": 2 * GIB},
+    )})
+    assert [item.primary for item in diversify_ranked_plans(
+        [*ready, pressure], limit=2, hardware=profile,
+    )] == ready
+
+
+def test_cpu_reclaim_warning_states_the_budget_deficit_without_promising_free_ram():
+    from jaull.recommendation.explanations import build_warnings
+
+    pressure = _cpu_display_plan("org/Pressure-7B-GGUF", 3 * GIB,
+                                 CompatibilityStatus.MEMORY_PRESSURE)
+    warnings = build_warnings(pressure.evaluated, _requirements(),
+                              selected_estimate=pressure.plan.memory_prediction)
+    assert any("Requires 1.00 GiB more available RAM" in line for line in warnings)
+    assert any("not guaranteed reclaimable" in line for line in warnings)
 
 
 def test_max_recommendations_is_five() -> None:

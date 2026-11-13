@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 
+from jaull.domain import policies
+from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, confirmed_model_repo_id
-from jaull.domain.recommendation import RecommendationPosition
+from jaull.domain.hardware import HardwareProfile
+from jaull.domain.recommendation import AssessmentLevel, RecommendationPosition
 from jaull.domain.requirements import UserRequirements
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_tie_key
 
@@ -33,6 +36,7 @@ def diversify_ranked_plans(
     *,
     limit: int,
     tie_key: TieKey | None = None,
+    hardware: HardwareProfile | None = None,
 ) -> list[DiversifiedRecommendation]:
     """Select up to ``limit`` logical models without re-ranking plan internals.
 
@@ -57,6 +61,9 @@ def diversify_ranked_plans(
         selected.append(candidate)
         remaining.remove(candidate)
 
+    if hardware is not None and limit > 1 and selected:
+        _include_moderate_cpu_alternative(selected, buckets, hardware, limit)
+
     return [
         DiversifiedRecommendation(
             primary=bucket.primary,
@@ -65,6 +72,62 @@ def diversify_ranked_plans(
         )
         for index, bucket in enumerate(selected)
     ]
+
+
+def _include_moderate_cpu_alternative(
+    selected: list[_IdentityBucket], buckets: Sequence[_IdentityBucket],
+    hardware: HardwareProfile, limit: int,
+) -> None:
+    first = selected[0].primary.plan.memory_prediction
+    if first is None or first.assessment.effective_device != "cpu":
+        return
+    confirmed = {CompatibilityStatus.COMFORTABLE, CompatibilityStatus.COMPATIBLE,
+                 CompatibilityStatus.TIGHT}
+    if first.assessment.status not in confirmed:
+        return
+    if any(item.primary.plan.memory_prediction is not None
+           and item.primary.plan.memory_prediction.assessment.status
+           is CompatibilityStatus.MEMORY_PRESSURE for item in selected):
+        return
+    chosen_keys = {bucket.key for bucket in selected}
+    for bucket in buckets:
+        if bucket.key in chosen_keys:
+            continue
+        for item in (bucket.primary, *bucket.alternatives):
+            if not _moderate_cpu_reclaim(item, hardware):
+                continue
+            alternative = _IdentityBucket(
+                key=bucket.key, primary=item,
+                alternatives=tuple(plan for plan in (bucket.primary, *bucket.alternatives)
+                                   if plan is not item),
+                original_index=bucket.original_index,
+            )
+            if len(selected) >= limit:
+                selected.pop()
+            selected.append(alternative)
+            return
+
+
+def _moderate_cpu_reclaim(item: RankedPlan, hardware: HardwareProfile) -> bool:
+    estimate = item.plan.memory_prediction
+    if item.assessment.rejected or estimate is None:
+        return False
+    if (estimate.assessment.status is not CompatibilityStatus.MEMORY_PRESSURE
+            or estimate.assessment.effective_device != "cpu"):
+        return False
+    useful = {AssessmentLevel.STRONG, AssessmentLevel.ADEQUATE}
+    if item.assessment.capability not in useful or item.assessment.suitability not in useful:
+        return False
+    budget = estimate.total_bytes
+    available, total = hardware.memory.available_bytes, hardware.memory.total_bytes
+    if budget is None or available <= 0 or total <= 0:
+        return False
+    deficit = budget - available
+    return (
+        0 < deficit <= min(policies.CPU_RECLAIM_MAX_BYTES,
+                           int(total * policies.CPU_RECLAIM_MAX_TOTAL_FRACTION))
+        and budget <= int(total * policies.CPU_RECLAIM_MODEL_BUDGET_FRACTION)
+    )
 
 
 @dataclass(frozen=True)

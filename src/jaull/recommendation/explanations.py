@@ -153,6 +153,16 @@ def build_warnings(
         if assessment.status is CompatibilityStatus.TIGHT:
             warnings.append(_tight_warning(device, has_gpu))
         elif assessment.status is CompatibilityStatus.MEMORY_PRESSURE:
+            estimate = selected_estimate or evaluated.memory_estimate
+            if estimate is not None and estimate.total_bytes is not None:
+                available = estimate.assessment.available_ram_bytes
+                if available is not None and estimate.total_bytes > available:
+                    deficit = (estimate.total_bytes - available) / 1024**3
+                    warnings.append(
+                        f"Requires {deficit:.2f} GiB more available RAM, including the "
+                        "estimated reserve and margin. Close other applications and "
+                        "recheck memory before running; this RAM is not guaranteed reclaimable."
+                    )
             warnings.append(
                 "Estimated CPU consumption exceeds available RAM. This is an experimental "
                 "option, not a confirmed fit; paging may substantially reduce throughput."

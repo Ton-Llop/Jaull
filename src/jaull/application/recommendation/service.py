@@ -124,6 +124,7 @@ def recommend(
         active_plans = apply_active_policy(ranked_plans, requirements)
         diversified_items = diversify_ranked_plans(
             active_plans, limit=limit, tie_key=tie_key_for(requirements),
+            hardware=hardware,
         )
         v2_priority = {
             item.evaluated.repo_id: float(len(active_plans) - index)

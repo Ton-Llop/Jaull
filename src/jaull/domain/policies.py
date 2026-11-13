@@ -54,6 +54,12 @@ CONCURRENCY_HEADROOM_PER_USER = 0.15
 # look impossible; beyond this point the honest answer is a warning, not a number.
 MAX_CONCURRENCY_HEADROOM = 2.0
 
+# Display at most one conditional CPU alternative alongside current fits.
+# These are recommendation policy bounds, not measurements of reclaimable RAM.
+CPU_RECLAIM_MAX_BYTES = 2 * 1024**3
+CPU_RECLAIM_MAX_TOTAL_FRACTION = 0.15
+CPU_RECLAIM_MODEL_BUDGET_FRACTION = 0.80
+
 # --------------------------------------------------------------------------
 # Compatibility ordering. Lower rank is better. `insufficient` can never be a
 # primary recommendation and `unknown` only ever appears as a flagged

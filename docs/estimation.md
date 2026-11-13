@@ -241,6 +241,15 @@ confirmed resident fit or a confirmed-fit primary recommendation. It may be run
 with warnings, but paging and sustained performance remain unverified. Consumption
 beyond total usable RAM remains insufficient. This does not add swap to RAM capacity
 or relax any GPU residency/offload constraint.
+
+When CPU recommendations already include current fits, display selection may reserve
+one of the remaining slots for a useful conditional alternative. Its additional RAM
+budget (including reserve and margin) must be at most both 2 GiB and 15% of total RAM,
+and its whole budget must leave 20% of total RAM outside the model. These are explicit
+display-policy bounds, not an estimate of reclaimable memory. The first recommendation
+and the `memory_pressure` assessment remain unchanged. The warning states how much more
+RAM must become available and asks the user to recheck after closing applications.
+
 For compatibility, estimate JSON keeps the active reserve in
 `memory.device_reserve_bytes`; its component is labelled `RAM reserve` for CPU
 execution. Hardware Fit's `ram_reserve_bytes` identifies the same reserve charged
