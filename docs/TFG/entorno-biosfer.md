@@ -120,7 +120,22 @@ El volum era buit, per això es va canviar el propietari en lloc d'esborrar-lo. 
 pujada de ZIPs va funcionar. No s'ha mesurat res més que això: no es va comprovar que el lot arribés a publicar-se
 ni a executar-se.
 
-### 6. Altres coses curtes
+### 6. MongoDB respon buit fins que es reinicia (2026-11-13)
+
+Tres dies després, el frontend no mostrava cap lot: el backend responia `200` amb `outputs.state rows=0` i, consultant
+MongoDB directament, totes les col·leccions de la base `lipopotamo` tenien 0 documents. Els fitxers de
+`shared_folders/drag-drop/` i `shared_folders/outputs/` seguien al disc, i els logs d'`acrobat` del dia 10 deien que els
+lots s'havien desat a MongoDB. Les dades són en un muntatge `bind` (`.docker-data/mongo/db`), no en un volum anònim.
+Un `docker restart lipopotamo_mongodb` les va tornar a mostrar. **VALIDATED** que el reinici ho resol; **UNVERIFIED**
+la causa. Segons l'usuari, ja li havia passat abans i també es resolia així.
+
+Aquell dia `juggler` i `acrobat` no corrien (no sortien a `docker ps`) i es van haver de tornar a aixecar amb les
+variables de la shell del punt 4.
+
+Abans de reiniciar res, no esborrar mai `.docker-data/mongo` ni fer `docker compose down -v`: les dades són al disc
+i un reinici del contenidor no les toca.
+
+### 7. Altres coses curtes
 
 - El backend va quedar en estat `Created` després d'un `--force-recreate` i va caldre `docker start
   lipopotamo_backend`. Docker no va avisar.

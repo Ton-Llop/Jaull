@@ -632,3 +632,67 @@ del missatge i no la velocitat del servidor (68-70 t/s amb el context buit).
 **Següent.** Passar a una branca nova i enviar la tasca sencera de la prova 1, en un sol missatge, amb dues salvaguardes
 afegides: llegir per rangs els fitxers de més de 1.500 línies i no repetir una ordre que falla dues vegades amb el mateix
 error. Apuntar els tokens de context, les compactacions i les ordres repetides.
+
+### Prova 3, tandes 2 i 3: la tasca sencera i dues rondes de refinament (2026-11-10)
+
+Mateixa configuració que el pas 1, amb `limit.output` ja a 32.768. Tot a la mateixa sessió d'OpenCode i a la mateixa branca,
+sense commits (`HEAD` a `86b98a3`).
+
+| | Tanda 2 (tasca sencera) | Refinament (panell i pestanyes) | Ronda 3 (Checks i gràfics) |
+|---|---|---|---|
+| Durada de l'últim torn, segons OpenCode | 17 min 43 s | **PENDENT** | 26 min 13 s |
+| Mitjana de tok/s del torn, segons OpenCode | 27,4 | **PENDENT** | 19,0 |
+| Context al final | 35.441 tokens (27 %) | 108.010 tokens (82 %) | 93.325 tokens (71 %) |
+| Compactacions | 1 en tota la prova, segons l'autor | | |
+| Build | `built in 1.62s`, segons l'agent | | `built in 1.26s`, segons l'agent |
+
+La tanda de refinament va començar a les 13:01, després d'una caiguda del servidor del model i del pont `-R`; la
+durada total de les tres tandes no s'ha pogut reconstruir. El servidor va estar ocupat uns 58 minuts en total segons el
+seu registre (**UNVERIFIED**: és una lectura del registre que no s'ha refet). Les durades i els tok/s d'OpenCode són del
+missatge final i no la velocitat del servidor.
+
+**Fitxers.** Segons els informes de l'agent: un component de panell nou, tres gràfics nous (distribució, boxplot i
+correlació), un fitxer de tipus i les funcions de comparació, i canvis a `OutputsDashboard.tsx` i `OutputsSidePanel.tsx`.
+L'emparellament de mostres entre lots fa servir identificadors normalitzats i no la posició.
+
+**Defectes trobats a l'exportació de la sessió**, abans de provar-ho al navegador (**VALIDATED** al codi exportat):
+1. El software de comparació no se selecciona per defecte: l'estat comença a `null` i res no el posa al primer comparable,
+   tot i que el prompt ho demanava.
+2. Una carrera de dades: els valors es desen en un `ref` i el càlcul només es dispara en canviar el software. Si es tria
+   abans que acabin les peticions, surt «no common variables» i no es recalcula (**UNVERIFIED** que passi a la pràctica).
+3. Els botons de la columna Checks porten un color fix (`#7a62c8`) per a tots els softwares, en lloc de l'estil
+   `CheckButton` amb el color de cadascun, que era el que es demanava.
+4. La paleta de 30 colors està copiada en tres fitxers en lloc de compartida.
+5. `VariableStatsRow.tsx` es va quedar sense esborrar (`Permission denied`), i l'informe deia que «no feia falta».
+
+**Prova al navegador.** Captura de les 14:00, abans de la ronda 3 segons l'hora, amb dos lots seleccionats i la variable
+HDL-C (vegeu la figura de la memòria). El que s'hi veu:
+- El panell carrega i dibuixa distribució, boxplot i correlació per als dos lots. **VALIDATED** que la funcionalitat bàsica
+  funciona.
+- **Possible error de dades:** la llista diu que un lot té 216 mostres, però la llegenda del gràfic en compta 3. Pot ser
+  que només 3 tinguin valor d'HDL-C o que la càrrega en perdi; **UNVERIFIED**, cal mirar-ho abans de donar el panell per
+  bo.
+- El títol de l'eix X («Sample (sorted)») es trepitja amb la llegenda de la distribució. La ronda 3 diu que ho va
+  corregir; no s'ha comprovat.
+- La correlació ocupa un requadre gran per dir que les mostres no es poden emparellar. Entre lots amb mostres diferents
+  és el resultat esperat, però l'espai es podria aprofitar.
+- Els eixos no porten unitats i un boxplot amb 3 mostres es veu igual que un de 29.
+
+**Veredicte de l'autor** (2026-11-13, **UNVERIFIED** perquè és una valoració):
+- **Funciona:** sí, però és millorable, sobretot en el format i en alguna part que no acaba de funcionar.
+- **Build:** el va fer el mateix agent; l'autor no l'ha repetit a mà.
+- **Intervencions:** 2 o 3 missatges de correcció.
+- **Temps:** més del que hauria trigat l'autor fent-ho a mà, i el resultat a mà hauria estat millor. Amb un model al núvol
+  (ChatGPT, Claude) hauria estat millor i més ràpid.
+- **Ús:** amb alguns retocs, la funcionalitat seria usable.
+
+**Conclusió de la prova 3.** Un model local de 35.000 milions de paràmetres (3.000 milions actius), executat a la B60 de
+Biosfer sense que el codi surti del PC, va implementar una funcionalitat nova en un projecte real que compila i funciona
+en el cas bàsic. Va necessitar 2 o 3 correccions, va deixar cinc defectes al codi i va trigar més que un desenvolupador.
+Respecte al Coder de les proves 1 i 2 és una millora clara: a la prova 1 no va escriure cap fitxer, i a la prova 2 va
+necessitar més de 55 minuts i un missatge de seguiment només per al pas 1, amb un informe que no coincidia amb el que
+havia fet. També van canviar el context (32K contra 128K) i els permisos, així que la millora no s'atribueix només al
+model. Per a
+Biosfer, la conclusió és que aquesta configuració pot servir per a canvis acotats amb revisió humana, no per delegar-hi
+feina sense supervisió. Una sola funcionalitat, en un sol projecte i amb un sol model: no es pot generalitzar a altres
+tasques ni comparar amb el núvol, que no s'ha mesurat.
