@@ -111,6 +111,7 @@ if TYPE_CHECKING:
         QualityCandidateOutcome,
         QualityCandidateSelection,
     )
+    from jaull.application.serving import ContextLimit
     from jaull.application.serving.models import ServerPlan, ServerStart
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
@@ -603,31 +604,27 @@ class AdvisorService:
         context_per_user: int,
         backend: ComputeBackend | None = None,
         llama_server_path: Path | None = None,
+        shared_context: bool = False,
     ) -> ServerPlan:
         """Size a llama-server for ``users`` and find the binary. Composes; no policy here."""
-        from jaull.application.serving import size_server
+        from jaull.application.serving import context_limit, size_server
         from jaull.application.serving.models import ServerPlan
-        from jaull.domain.inference import InferenceConfiguration, TargetDevice
         from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
         from jaull.runtime.llama_cpp_release import current_platform
         from jaull.runtime.llama_server import server_binary_for
 
-        hardware = self.scan_hardware()
-        selection = self.select_runtime_backend(hardware)
-        if backend is not None:
-            selection = _selection_for_requested_backend(selection, backend)
+        inputs = self._server_sizing_inputs(repo_id, artifact.quantization, backend)
+        hardware, selection, base = inputs.hardware, inputs.selection, inputs.base
         cpu = selection.selected_backend is ComputeBackend.CPU
-        analysis = self.inspect_model(repo_id)
-        base = InferenceConfiguration(
-            context_length=context_per_user,
-            quantization=artifact.quantization,
-            target_device=TargetDevice.CPU if cpu else TargetDevice.AUTO,
-        )
+        limit = context_limit(users=users, base=base, estimate_for=inputs.quick_estimate,
+                              native_limit=inputs.native)
         sizing = size_server(
             users=users,
             context_per_user=context_per_user,
             base=base,
-            estimate_for=lambda config: self.estimate_model(analysis, hardware, config),
+            estimate_for=inputs.estimate,
+            shared_context=shared_context,
+            native_limit=inputs.native,
         )
         launch = self.plan_launch(
             runtime=RuntimeName.LLAMA_CPP, estimate=sizing.estimate, hardware=hardware,
@@ -653,6 +650,65 @@ class AdvisorService:
             sizing=sizing,
             launch=launch,
             server_binary=binary,
+            context_limit=limit,
+        )
+
+    def server_context_limit(
+        self,
+        repo_id: str,
+        *,
+        quantization: str | None,
+        users: int,
+        backend: ComputeBackend | None = None,
+    ) -> ContextLimit:
+        """Largest context per person this machine can serve for a model, before any download."""
+        from jaull.application.serving import context_limit
+
+        inputs = self._server_sizing_inputs(repo_id, quantization, backend)
+        return context_limit(users=users, base=inputs.base, estimate_for=inputs.quick_estimate,
+                             native_limit=inputs.native)
+
+    def _server_sizing_inputs(
+        self, repo_id: str, quantization: str | None, backend: ComputeBackend | None,
+    ) -> _ServerSizingInputs:
+        from jaull.domain.enums import RepositoryType
+        from jaull.estimator.gguf_selection import select_variant
+        from jaull.metadata import service as metadata_service
+
+        hardware = self.scan_hardware()
+        selection = self.select_runtime_backend(hardware)
+        if backend is not None:
+            selection = _selection_for_requested_backend(selection, backend)
+        analysis = self.inspect_model(repo_id)
+        range_client = self._make_range_client()
+        if analysis.classification.primary_type is RepositoryType.GGUF:
+            # The GGUF header carries the declared context; the same enrichment as the
+            # context sweep, done once so the searches below need no network.
+            choice = select_variant(analysis.classification.gguf_variants, quantization)
+            enriched = metadata_service.enrich(
+                analysis, choice.variant, self.services.hf_client, range_client=range_client,
+            )
+            if enriched.enriched_config is not None:
+                analysis = analysis.model_copy(update={"config": enriched.enriched_config.config})
+        cpu = selection.selected_backend is ComputeBackend.CPU
+        base = InferenceConfiguration(
+            context_length=1,
+            quantization=quantization,
+            target_device=TargetDevice.CPU if cpu else TargetDevice.AUTO,
+        )
+
+        def estimate(config: InferenceConfiguration) -> MemoryEstimate:
+            return self.estimate_model(analysis, hardware, config, range_client=range_client)
+
+        def quick_estimate(config: InferenceConfiguration) -> MemoryEstimate:
+            return self.estimate_model(
+                analysis, hardware, config, resolve_base_model=False,
+                recommend_runtime=False, range_client=range_client,
+            )
+
+        return _ServerSizingInputs(
+            hardware=hardware, selection=selection, base=base,
+            native=native_context(analysis), estimate=estimate, quick_estimate=quick_estimate,
         )
 
     def start_server(
@@ -663,6 +719,7 @@ class AdvisorService:
         port: int | None = None,
         tls_cert: Path | None = None,
         tls_key: Path | None = None,
+        web_ui: bool = False,
     ) -> ServerStart:
         """Start ``plan`` detached with the security defaults. Composes; no policy here."""
         from jaull.application.serving.models import ServerStart
@@ -690,6 +747,7 @@ class AdvisorService:
             launch_flags=tuple(plan.launch.flags),
             tls_cert=tls_cert,
             tls_key=tls_key,
+            web_ui=web_ui,
         ))
         os_name, _ = current_platform()
         script = manager.write_start_script(argv, windows=os_name == "windows")
@@ -705,7 +763,7 @@ class AdvisorService:
                 lan_url = f"{'https' if tls_cert else 'http'}://{address[0]}:{chosen_port}"
         return ServerStart(
             state=state, api_key_path=api_key_path, new_api_key=new_key,
-            start_script=script, firewall_rule=rule, lan_url=lan_url,
+            start_script=script, firewall_rule=rule, lan_url=lan_url, web_ui=web_ui,
         )
 
     def prepare_serve_artifact(
@@ -2526,6 +2584,17 @@ def _vulkan_offload_runtime(runtime: RuntimeRecommendation) -> RuntimeRecommenda
             ],
         }
     )
+
+
+@dataclass(frozen=True)
+class _ServerSizingInputs:
+    hardware: HardwareProfile
+    selection: RuntimeBackendSelection
+    base: InferenceConfiguration
+    native: int | None
+    estimate: Callable[[InferenceConfiguration], MemoryEstimate]
+    #: Same estimate without re-reading metadata or a runtime recommendation, for searches.
+    quick_estimate: Callable[[InferenceConfiguration], MemoryEstimate]
 
 
 def _selection_for_requested_backend(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from jaull.application.serving.planner import ServerSizing
+from jaull.application.serving.planner import ContextLimit, ServerSizing
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeRecommendation
@@ -21,6 +21,8 @@ class ServerPlan:
     #: Placement from the launch planner (--n-gpu-layers, --device, ...).
     launch: RuntimeRecommendation
     server_binary: Path
+    #: The largest context per person this machine can serve with this model.
+    context_limit: ContextLimit | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class ServerStart:
     #: For the administrator to run when the server is shared; never applied.
     firewall_rule: str | None
     lan_url: str | None
+    #: True when llama.cpp's chat page is served at the root URL.
+    web_ui: bool = False
 
 
 __all__ = ["ServerPlan", "ServerStart"]

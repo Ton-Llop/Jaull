@@ -34,6 +34,10 @@ class ServeOptions:
     llama_server_path: Path | None = None
     tls_cert: Path | None = None
     tls_key: Path | None = None
+    #: Serve llama.cpp's chat page at the root URL (off by default).
+    web_ui: bool = False
+    #: One pool of ``context_per_user`` tokens for everyone, split as it is used.
+    shared_context: bool = False
 
 
 def run_serve_start(
@@ -58,11 +62,12 @@ def run_serve_start(
             context_per_user=options.context_per_user,
             backend=options.backend,
             llama_server_path=options.llama_server_path,
+            shared_context=options.shared_context,
         )
         _print_plan(console, plan)
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
-            tls_cert=options.tls_cert, tls_key=options.tls_key,
+            tls_cert=options.tls_cert, tls_key=options.tls_key, web_ui=options.web_ui,
         )
     except InvalidModelReferenceError as exc:
         _error(console, str(exc))

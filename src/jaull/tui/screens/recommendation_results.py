@@ -357,7 +357,7 @@ class _RecommendationInspector(Vertical):
         with Horizontal(classes="rec-actions"):
             action_reason = _runtime_action_reason(rec)
             run = Button(
-                "Run",
+                "Use for server" if getattr(self.app, "serve_handoff", None) else "Run",
                 id=f"res-run-{self._index}",
                 classes="-primary -compact",
                 disabled=action_reason is not None,

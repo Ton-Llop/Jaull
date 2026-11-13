@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from textual.app import App
@@ -7,7 +8,7 @@ from textual.binding import Binding
 
 from jaull.advisor.service import AdvisorService
 from jaull.bootstrap.container import ServiceContainer
-from jaull.domain.execution_plans import ExecutionPlan
+from jaull.domain.execution_plans import ArtifactVariantFormat, ExecutionPlan
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.requirements import UserAnswers
 from jaull.recommendation.models import ModelRecommendation
@@ -68,6 +69,9 @@ class JaullApp(App[None]):
     hardware_profile: HardwareProfile | None = None
     # Result of the most recent guided run, kept for the results screen.
     workflow_state: RecommendationWorkflowState | None = None
+    # Set while a guided search runs on behalf of Setup: choosing a plan sends its
+    # repository and quantization back there instead of opening the Run screen.
+    serve_handoff: Callable[[str, str | None], None] | None = None
 
     def __init__(
         self,
@@ -136,7 +140,29 @@ class JaullApp(App[None]):
         recommendation: ModelRecommendation,
         execution_plan: ExecutionPlan | None = None,
     ) -> None:
+        if self.serve_handoff is not None and self._send_to_setup(
+            execution_plan or recommendation.plan,
+        ):
+            return
         self.push_screen(RecommendationExecutionScreen(recommendation, execution_plan))
+
+    def _send_to_setup(self, plan: ExecutionPlan | None) -> bool:
+        """Hand the chosen plan back to Setup. False when Setup is no longer open."""
+        from jaull.tui.screens.setup import SetupScreen
+
+        handoff = self.serve_handoff
+        if handoff is None or not any(isinstance(s, SetupScreen) for s in self.screen_stack):
+            self.serve_handoff = None
+            return False
+        if plan is None or plan.artifact.format is not ArtifactVariantFormat.GGUF:
+            self.notify("llama-server serves GGUF models only. Choose a GGUF plan.",
+                        severity="warning")
+            return True
+        self.serve_handoff = None
+        handoff(plan.artifact.repo_id, plan.artifact.quantization)
+        while not isinstance(self.screen, SetupScreen):
+            self.pop_screen()
+        return True
 
     def validate_recommendation(
         self,

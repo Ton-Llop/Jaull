@@ -94,6 +94,73 @@ def test_pool_shrinks_to_the_largest_size_under_the_margin() -> None:
     assert len(estimator.calls) < 12
 
 
+def test_context_limit_is_the_largest_that_fits_and_matches_sizing() -> None:
+    from jaull.application.serving.planner import context_limit
+
+    limit = context_limit(users=8, base=BASE, estimate_for=FakeEstimator())
+
+    assert limit.largest_per_user is not None and limit.largest_per_user % 4096 == 0
+    # It really fits, and one step more does not.
+    size_server(users=8, context_per_user=limit.largest_per_user, base=BASE,
+                estimate_for=FakeEstimator(), shared_context=True)
+    with pytest.raises(ServerSizingError):
+        size_server(users=8, context_per_user=limit.largest_per_user + 4096, base=BASE,
+                    estimate_for=FakeEstimator(), shared_context=True)
+
+
+def test_context_limit_never_exceeds_the_native_context() -> None:
+    from jaull.application.serving.planner import context_limit
+
+    limit = context_limit(users=1, base=BASE, estimate_for=FakeEstimator(), native_limit=32768)
+
+    assert limit.largest_per_user == 32768 and limit.native == 32768
+    nothing = context_limit(users=1, base=BASE,
+                            estimate_for=FakeEstimator(mode=HardwareFitMode.TOO_LARGE))
+    assert nothing.largest_per_user is None
+
+
+def test_more_than_the_native_context_is_refused_with_the_limit() -> None:
+    with pytest.raises(ServerSizingError, match="trained for 8192 tokens") as error:
+        size_server(users=1, context_per_user=2_000_000, base=BASE,
+                    estimate_for=FakeEstimator(), native_limit=8192)
+
+    assert error.value.largest_context_per_user == 8192
+
+
+@pytest.mark.parametrize("native", [2048, 6000, 10000])
+@pytest.mark.parametrize("users", [1, 3])
+def test_native_limit_off_the_default_grid_is_respected(native: int, users: int) -> None:
+    from jaull.application.serving.planner import context_limit
+
+    estimator = FakeEstimator()
+    limit = context_limit(users=users, base=BASE, estimate_for=estimator, native_limit=native)
+    assert limit.largest_per_user == native
+    sizing = size_server(users=users, context_per_user=native, base=BASE,
+                         estimate_for=estimator, native_limit=native)
+    assert sizing.context_per_user == native
+    assert sizing.total_context == users * native
+    assert all(call.context_length <= native for call in estimator.calls)
+
+
+def test_shared_context_keeps_one_pool_of_the_asked_context() -> None:
+    estimator = FakeEstimator()
+    sizing = size_server(users=8, context_per_user=131072, base=BASE,
+                         estimate_for=estimator, shared_context=True)
+
+    assert sizing.parallel == 8 and sizing.unified_kv
+    assert sizing.total_context == 131072
+    assert sizing.context_per_user == 131072
+    # Sized for the whole pool, split across 8 sequences.
+    assert estimator.calls[-1].context_length * 8 >= 131072
+    assert estimator.calls[-1].concurrent_users == 8
+
+
+def test_shared_context_still_refuses_what_does_not_fit() -> None:
+    with pytest.raises(ServerSizingError):
+        size_server(users=4, context_per_user=2_000_000, base=BASE,
+                    estimate_for=FakeEstimator(), shared_context=True)
+
+
 def test_estimates_are_sized_per_sequence_share_of_the_pool() -> None:
     estimator = FakeEstimator()
     sizing = size_server(users=2, context_per_user=8192, base=BASE, estimate_for=estimator)

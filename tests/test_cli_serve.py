@@ -171,14 +171,14 @@ def test_commands_are_wired(monkeypatch: pytest.MonkeyPatch) -> None:
 
     result = runner.invoke(app, [
         "serve", "start", "a/b", "-q", "Q4_K_M", "--users", "4", "--context", "65536",
-        "--lan", "--port", "8091", "--backend", "CUDA",
+        "--lan", "--port", "8091", "--backend", "CUDA", "--web-ui", "--shared-context",
     ])
     assert result.exit_code == 0, result.output
     reference, options = seen[0]
     assert reference == "a/b"
     assert options == ServeOptions(
         quantization="Q4_K_M", users=4, context_per_user=65536, lan=True, port=8091,
-        backend=ComputeBackend.CUDA,
+        backend=ComputeBackend.CUDA, web_ui=True, shared_context=True,
     )
     assert runner.invoke(app, ["serve", "stop"]).exit_code == 0
     assert runner.invoke(app, ["serve", "status"]).exit_code == 1

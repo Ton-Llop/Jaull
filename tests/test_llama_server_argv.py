@@ -86,6 +86,11 @@ def test_launch_flags_are_kept_but_cannot_override_server_owned_ones() -> None:
     assert pairs["--flash-attn"] == "off"
 
 
+def test_chat_page_is_only_served_when_asked_for() -> None:
+    assert "--no-webui" not in server_argv(_launch(web_ui=True))
+    assert "--api-key-file" in server_argv(_launch(web_ui=True))
+
+
 def test_tls_files_are_passed_when_both_are_given() -> None:
     argv = server_argv(_launch(tls_cert=Path("/tls/cert.pem"), tls_key=Path("/tls/key.pem")))
 

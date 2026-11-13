@@ -170,8 +170,10 @@ Prova física al portàtil (Linux, b11889 CPU, Qwen2.5-1.5B Q5_K_M, 2 usuaris de
 - Proves físiques a Windows: B60 + Vulkan (Biosfer) i RTX 2060 + CUDA. Amb Windows queden per veure l'arrencada
   desacoblada, l'script `.bat`, la regla `New-NetFirewallRule` i el permís del tallafocs que Windows demana la
   primera vegada.
-- El context per usuari no es limita al context d'entrenament del model: amb SmolLM2 i `--context 2000000`, el
-  missatge va proposar 131072.
+- ~~El context per usuari no es limita al context d'entrenament del model~~. Resolt (2026-11-13): el context es
+  limita al que declara el model (capçalera GGUF), i el pla i la TUI mostren el context més gran per persona que
+  hi cap a la màquina, cercat amb l'estimador. Al portàtil: SmolLM2 8192 i Qwen2.5-1.5B 32768, els dos limitats pel
+  model, en uns 2 s. Petició de l'autor: les prediccions de memòria han encertat a la B60.
 - L'avís de revisió més nova del model i l'avís de llama.cpp a `doctor`: no s'han fet; l'avís de llama.cpp només surt
   a `serve start`.
 - `plan_server` fa servir la sonda de dispositius del llama.cpp localitzat per triar `--device`; si hi ha builds de
@@ -184,9 +186,19 @@ opcions; el text del pla i del resultat surt de `presentation/serving.py`, el ma
 l'artefacte (resoldre, baixar si cal, verificar) és ara un sol mètode de la façana (`prepare_serve_artifact`) que fan
 servir la CLI i la TUI.
 
-- Model: (a) un dels baixats, amb la quantització llegida del nom del fitxer; (b) un repositori i una quantització.
-  L'opció (c), obrir la cerca guiada i tornar al Setup amb el pla triat, **no s'ha fet**: la pantalla diu que es faci
-  primer l'anàlisi guiada i que el model baixat apareixerà a la llista.
+- Model: (a) un dels baixats, amb la quantització llegida del nom del fitxer; (b) un repositori i una quantització;
+  (c) «Find a model» obre la cerca guiada. Mentre dura, els botons Run diuen «Use for server», i el pla GGUF triat
+  torna al Setup amb el repositori i la quantització omplerts. Si se surt de la cerca, el lligam es cancel·la.
+- Context compartit (`--shared-context`, casella a la TUI), petició de l'autor: una sola bossa de `--context` tokens
+  per a tothom, en lloc de fer-la créixer cap a «tothom amb el context sencer». Una persona la pot fer servir
+  sencera i, si n'hi ha més, se la reparteixen a mesura que l'usen. llama.cpp reserva igualment tota la bossa a la
+  VRAM en arrencar. Comprovat al portàtil (4 usuaris, 8K: `n_slots = 4, n_ctx_slot = 8192, kv_unified = 'true'`).
+  **PENDENT** veure què fa llama.cpp quan la bossa s'acaba amb diverses converses llargues alhora (a la B60).
+- Pàgina de xat de llama.cpp: opcional i desactivada per defecte (`--web-ui` a la CLI, casella a la TUI). Amb la
+  pàgina activada continua calent la clau d'API. Es va afegir després de la prova amb la RTX 2060: des d'un altre PC
+  de la xarxa el servidor responia, però l'arrel donava 404, que és el comportament esperat amb `--no-webui`.
+- Backend: si n'hi ha un amb llama.cpp ja instal·lat per Jaull, surt preseleccionat i marcat com a recomanat
+  (petició de l'autor després de provar-ho amb la RTX 2060).
 - Proves: sis proves amb un `AdvisorService` fals (arrencar i aturar a 80×24 i 160×48, repositori escrit i xarxa
   local, camps que falten, instal·lar llama.cpp, error de dimensionament, accés des del menú).
 - Prova real al portàtil, sense pantalla: la pantalla amb l'`AdvisorService` real, backend CPU, SmolLM2 amb

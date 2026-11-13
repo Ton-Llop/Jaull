@@ -485,11 +485,18 @@ def serve_start_command(
     llama_server: Path | None = typer.Option(None, "--llama-server"),
     tls_cert: Path | None = typer.Option(None, "--tls-cert", help="PEM certificate for HTTPS."),
     tls_key: Path | None = typer.Option(None, "--tls-key", help="PEM private key for HTTPS."),
+    web_ui: bool = typer.Option(
+        False, "--web-ui", help="Also serve llama.cpp's chat page (it asks for the API key).",
+    ),
+    shared_context: bool = typer.Option(
+        False, "--shared-context",
+        help="One pool of --context tokens for everyone: one person can use all of it.",
+    ),
 ) -> None:
     raise typer.Exit(code=run_serve_start(model_ref, ServeOptions(
         quantization=quantization, users=users, context_per_user=context, lan=lan, port=port,
         backend=backend, revision=revision, llama_server_path=llama_server,
-        tls_cert=tls_cert, tls_key=tls_key,
+        tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
     )))
 
 

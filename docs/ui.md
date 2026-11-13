@@ -206,14 +206,22 @@ A failed run keeps the history and reports next to the composer, ready to retry.
 **Set up a local server**, on the welcome screen, leaves a model running as an
 OpenAI-compatible `llama-server`, on one screen with five steps:
 
-1. **Machine and backend.** The detected backend, with the alternatives in a list.
+1. **Machine and backend.** The detected backend, with the alternatives in a list. A
+   backend that already has a llama.cpp build installed by Jaull is preselected and marked
+   recommended.
 2. **llama.cpp.** The build Jaull installed for that backend, or **Install llama.cpp**,
    which downloads the pinned official build and checks its SHA-256.
 3. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
-   context per person and port.
+   context per person and port. Once a model is chosen, a line below shows the largest
+   context per person this machine can serve with it, never above what the model was
+   trained for. It is recomputed when the model, the people or the backend change.
+   **Enable the chat page** (off by default) also serves
+   llama.cpp's own chat page at the server URL, which asks for the API key. **Share the
+   context** keeps one pool of the given context for everyone (`--shared-context`).
 4. **Model.** A downloaded model from the list, or a repository and quantization to
-   download. To choose one, run Guided analysis first; the model it downloads appears in
-   the list.
+   download, or **Find a model**, which opens the guided search. There the Run buttons
+   read **Use for server**, and the chosen GGUF plan fills in the repository and
+   quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
    [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). The output
    shows the plan, the URL, the API key once, the start script and, when shared, the

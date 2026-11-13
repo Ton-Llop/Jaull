@@ -2,7 +2,8 @@
 
 Security defaults (docs/TFG/disseny-setup.md): the API key is read from a file
 so it never shows in the process list or the start script; the slot monitor and
-the bundled web UI are off; the log level stays at the default, because higher
+the bundled chat page (web UI) is off unless asked for, and then it still needs
+the API key; the log level stays at the default, because higher
 verbosity writes the prompts to the log.
 """
 
@@ -36,6 +37,8 @@ class ServerLaunch:
     launch_flags: tuple[RuntimeFlag, ...] = ()
     tls_cert: Path | None = None
     tls_key: Path | None = None
+    #: llama.cpp's own chat page at ``/``. Off by default.
+    web_ui: bool = False
 
     def __post_init__(self) -> None:
         if (self.tls_cert is None) != (self.tls_key is None):
@@ -60,8 +63,9 @@ def server_argv(launch: ServerLaunch) -> list[str]:
         "--api-key-file", str(launch.api_key_file),
         "--alias", launch.alias,
         "--no-slots",
-        "--no-webui",
     ]
+    if not launch.web_ui:
+        argv.append("--no-webui")
     if launch.tls_cert is not None and launch.tls_key is not None:
         argv += ["--ssl-cert-file", str(launch.tls_cert), "--ssl-key-file", str(launch.tls_key)]
     return argv

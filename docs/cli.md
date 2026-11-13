@@ -289,6 +289,15 @@ a hypothesis from two runs on the B60, see `docs/TFG/concurrencia-b60.md`), and 
 only `comfortable` or `compatible` estimates are served. A request that does not fit is
 refused with the largest context that does. GPU offload to RAM is not served.
 
+The plan also prints the largest context per person this machine can serve with that
+model and number of users, found with the estimator and never above the context the model
+declares (read from the GGUF header). Asking for more than the model declares is refused.
+
+`--shared-context` keeps the pool at exactly `--context` tokens instead of growing it: one
+person can use all of it, and several people split it as they use it. It needs much less
+memory than everyone at full context. What llama.cpp does when the pool runs out with
+several long conversations at once has not been measured yet.
+
 The server starts detached, and `start` waits until `/health` answers. Defaults:
 
 - Listens on `127.0.0.1` only. `--lan` listens on every interface and prints a firewall
@@ -297,8 +306,9 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
 - A random API key, stored in Jaull's data directory (`serve/api-key`, mode 0600), passed
   with `--api-key-file` so it never appears in the process list or the start script, and
   printed once.
-- `--no-slots` and `--no-webui`; the log level stays at the default, which does not
-  write prompts.
+- `--no-slots`, and `--no-webui` unless `--web-ui` is given. With `--web-ui` the
+  llama.cpp chat page is served at the root URL. It still needs the API key, entered in
+  its settings. The log level stays at the default, which does not write prompts.
 - HTTPS when both `--tls-cert` and `--tls-key` are given.
 - Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
 

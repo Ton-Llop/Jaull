@@ -328,7 +328,8 @@ class ExecutionPathsScreen(Screen[None]):
             yield Static("", id="paths-state-word", markup=False)
             yield Static("", id="paths-state-text", markup=False)
         with Horizontal(id="paths-actions"):
-            yield Button("Run", id="paths-run", classes="-primary", disabled=True)
+            run_label = "Use for server" if getattr(self.app, "serve_handoff", None) else "Run"
+            yield Button(run_label, id="paths-run", classes="-primary", disabled=True)
             yield ActionButton("Validate", id="paths-validate", disabled=True)
             yield ActionButton("Benchmark", id="paths-benchmark", disabled=True)
         with TabbedContent(initial="paths-evaluation" if self._open_evaluation else ""):

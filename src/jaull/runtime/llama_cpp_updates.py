@@ -109,8 +109,8 @@ def update_notice(
     if days < age_days:
         return None
     return (
-        f"llama.cpp {newest.tag} is available; Jaull installs {pinned_build}, which is {days} "
-        "days older and is the build validated with Jaull. To try the newer one: "
+        f"llama.cpp {newest.tag} is available. Jaull installs {pinned_build}, which is {days} "
+        "days older and is the build validated with Jaull. To try the newer one, run "
         "`jaull runtime install --backend <backend> --latest` (not validated)."
     )
 

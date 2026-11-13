@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import gcd
 
 from jaull.application.serving import policies
 from jaull.domain.estimation import HardwareFitMode, HardwareFitResult, MemoryEstimate
@@ -27,6 +28,17 @@ class ServerSizingError(ValueError):
     def __init__(self, message: str, *, largest_context_per_user: int | None) -> None:
         super().__init__(message)
         self.largest_context_per_user = largest_context_per_user
+
+
+@dataclass(frozen=True)
+class ContextLimit:
+    """The largest context one person can have on this machine, for ``users`` at once."""
+
+    users: int
+    #: Rounded down to the planning step. None when not even one step fits.
+    largest_per_user: int | None
+    #: What the model declares it was trained for, when known. Never exceeded.
+    native: int | None
 
 
 @dataclass(frozen=True)
@@ -48,11 +60,30 @@ def size_server(
     context_per_user: int,
     base: InferenceConfiguration,
     estimate_for: EstimateFor,
+    shared_context: bool = False,
+    native_limit: int | None = None,
 ) -> ServerSizing:
+    """``shared_context`` keeps the pool at ``context_per_user`` instead of growing it.
+
+    Everyone then draws from one pool of that size: a single person may use all of
+    it, and several people split it as they use it. Without the option the pool
+    grows, as far as it fits, towards everyone having the full context at once.
+    """
     if users < 1 or context_per_user < 1:
         raise ValueError("Users and context per user must be positive.")
-    step = policies.SERVE_CONTEXT_STEP_TOKENS
+    if native_limit is not None and context_per_user > native_limit:
+        limit = context_limit(users=users, base=base, estimate_for=estimate_for,
+                              native_limit=native_limit)
+        raise ServerSizingError(
+            f"The model was trained for {native_limit} tokens of context, less than the "
+            f"{context_per_user} asked for. The largest this machine can serve per person is "
+            f"{limit.largest_per_user or 0} tokens.",
+            largest_context_per_user=limit.largest_per_user,
+        )
+    step = _context_step(native_limit)
     full = _round_up(context_per_user, step)
+    if native_limit is not None:
+        full = min(full, native_limit)
     cache: dict[int, MemoryEstimate] = {}
 
     def estimate(share: int) -> MemoryEstimate:
@@ -68,20 +99,67 @@ def size_server(
     smallest = _smallest_share(full, users, step)
     if not fits(smallest):
         raise _does_not_fit(users, full, step, fits)
-    share = _largest(smallest // step, full // step, lambda k: fits(k * step)) * step
+    if shared_context:
+        share = smallest
+    else:
+        share = _largest(smallest // step, full // step, lambda k: fits(k * step)) * step
     chosen = estimate(share)
     return ServerSizing(
         parallel=users,
         context_per_user=full,
-        total_context=share * users,
+        # A shared pool is exactly the asked-for context. Its estimate used the
+        # rounded-up share, so it errs on the side of more memory.
+        total_context=full if shared_context else share * users,
         estimate=chosen,
         gpu_budget_bytes=_gpu_budget(chosen.hardware_fit),
     )
 
 
+def context_limit(
+    *,
+    users: int,
+    base: InferenceConfiguration,
+    estimate_for: EstimateFor,
+    native_limit: int | None = None,
+) -> ContextLimit:
+    """Largest context per person that fits for serving, searched with the estimator.
+
+    The pool is the smallest that lets one person reach that context, so the answer
+    holds both with and without ``shared_context``. It never exceeds what the model
+    declares; without a declaration the search stops at a policy ceiling.
+    """
+    if users < 1:
+        raise ValueError("Users must be positive.")
+    step = _context_step(native_limit)
+    ceiling = native_limit or policies.SERVE_CONTEXT_SEARCH_CEILING_TOKENS
+    cache: dict[int, bool] = {}
+
+    def fits_at(k: int) -> bool:
+        share = _smallest_share(k * step, users, step)
+        if share not in cache:
+            cache[share] = _fits_for_serving(estimate_for(base.model_copy(update={
+                "context_length": share, "concurrent_users": users,
+            })))
+        return cache[share]
+
+    top = max(1, ceiling // step)
+    if not fits_at(1):
+        return ContextLimit(users=users, largest_per_user=None, native=native_limit)
+    return ContextLimit(users=users, largest_per_user=_largest(1, top, fits_at) * step,
+                        native=native_limit)
+
+
 def _smallest_share(context: int, users: int, step: int) -> int:
     """Per-sequence share of the smallest pool that still lets one user reach ``context``."""
     return _round_up(-(-context // users), step)
+
+
+def _context_step(native_limit: int | None) -> int:
+    if native_limit is not None and native_limit < 1:
+        raise ValueError("Native context must be positive.")
+    # Keep both the search grid and its rounded estimates within the native limit.
+    return (gcd(policies.SERVE_CONTEXT_STEP_TOKENS, native_limit)
+            if native_limit is not None else policies.SERVE_CONTEXT_STEP_TOKENS)
 
 
 def _does_not_fit(
@@ -98,7 +176,7 @@ def _does_not_fit(
     context = largest * step
     return ServerSizingError(
         f"{full} tokens per user does not fit for serving {who} with the memory margin. "
-        f"The largest that fits is {context} tokens; choose fewer users or a shorter context.",
+        f"The largest that fits is {context} tokens. Choose fewer users or a shorter context.",
         largest_context_per_user=context,
     )
 
@@ -141,4 +219,11 @@ def _round_up(value: int, step: int) -> int:
     return -(-value // step) * step
 
 
-__all__ = ["EstimateFor", "ServerSizing", "ServerSizingError", "size_server"]
+__all__ = [
+    "ContextLimit",
+    "EstimateFor",
+    "ServerSizing",
+    "ServerSizingError",
+    "context_limit",
+    "size_server",
+]

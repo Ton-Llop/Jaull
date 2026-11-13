@@ -22,6 +22,10 @@ SERVE_CPU_ACCEPTED_STATUSES = frozenset({
     CompatibilityStatus.COMPATIBLE,
 })
 
+# Upper bound of the "largest context that fits" search when the model does not
+# declare its native context. Search bound, not a claim about any model.
+SERVE_CONTEXT_SEARCH_CEILING_TOKENS = 1_048_576
+
 # Context sizes are planned in steps of this many tokens.
 SERVE_CONTEXT_STEP_TOKENS = 4096
 
