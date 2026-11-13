@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 # Version 7 leaves auxiliary GGUF files (vision projector, importance matrix, MTP heads and
 # speculative-decoding draft models) out of the variants; earlier entries list them as
 # quantizations.
-ANALYSIS_CACHE_SCHEMA_VERSION = 7
+# Version 8 also excludes EAGLE3 drafts and auxiliary directories.
+ANALYSIS_CACHE_SCHEMA_VERSION = 8
 DEFAULT_TTL_SECONDS = 24 * 60 * 60
 
 

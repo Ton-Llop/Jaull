@@ -86,7 +86,7 @@ def _pick_primary(detected: set[RepositoryType]) -> RepositoryType:
     return RepositoryType.UNKNOWN
 
 
-_AUXILIARY_GGUF_TOKENS = frozenset({"mmproj", "imatrix", "mtp", "draft"})
+_AUXILIARY_GGUF_TOKENS = frozenset({"mmproj", "imatrix", "mtp", "draft", "eagle3"})
 
 
 def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
@@ -141,7 +141,9 @@ def _is_auxiliary_gguf(path: PurePosixPath) -> bool:
     """
     tokens = set(re.split(r"[^a-z0-9]+", path.name.lower()))
     folders = {part.lower() for part in path.parts[:-1]}
-    return bool(tokens & _AUXILIARY_GGUF_TOKENS) or "mtp" in folders
+    return bool(tokens & _AUXILIARY_GGUF_TOKENS) or bool(
+        folders & {"mtp", "draft", "eagle3", "mmproj"}
+    )
 
 
 def gguf_quantization(filename: str) -> str | None:

@@ -15,6 +15,32 @@ from tests._workflow_fixtures import candidate, hardware
 from tests.test_discovery_search import _requirements, _saved_chat_candidates
 
 
+def test_quality_on_small_gpu_inspects_mid_size_offload_as_well_as_resident_models():
+    req = _requirements().model_copy(update={"priority": RecommendationPriority.QUALITY})
+    pool = [candidate(f"family{i}/Model-3B-Instruct-GGUF", tags=["gguf"],
+                      downloads=1_000_000) for i in range(15)]
+    offload = [candidate(f"Qwen/Coder-{size}B-Instruct-GGUF", tags=["gguf"],
+                         downloads=500_000) for size in (7, 14)]
+    chosen = shortlist([*pool, *offload], req, 12,
+                       hardware=hardware(vram_gib=4, ram_gib=16))
+    assert {item.repo_id for item in offload} <= {item.repo_id for item in chosen}
+    assert any(item in pool for item in chosen)
+    assert len(chosen) <= 12
+
+
+def test_cpu_search_scale_uses_available_ram_but_keeps_larger_exploratory_candidates():
+    from jaull.discovery.candidate_filter import largest_fitting_billions
+
+    full = hardware(vram_gib=None, ram_gib=16)
+    constrained = full.model_copy(update={"memory": full.memory.model_copy(
+        update={"available_bytes": 2 * 1024**3},
+    )})
+    req = _requirements()
+    assert largest_fitting_billions(constrained, req) < largest_fitting_billions(full, req)
+    large = candidate("org/Model-14B-Instruct-GGUF", tags=["gguf"])
+    assert coarse_placement_hint(large, req, constrained).mode is HardwareFitMode.CPU_RAM
+
+
 def test_audit_preserves_inputs_and_replays_the_same_selection_and_decisions():
     req = _requirements(UseCase.GENERAL_CHAT)
     profile = hardware(vram_gib=24, ram_gib=14)

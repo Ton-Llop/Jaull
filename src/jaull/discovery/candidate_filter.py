@@ -678,8 +678,21 @@ def _hardware_aware_shortlist(
             ))
             if not _has_text_execution_signal(bucket[0].candidate):
                 continue
-        if mode is not None and _mode_order(mode, hardware) != best_class:
+        cover_offload = (
+            requirements.priority is RecommendationPriority.QUALITY
+            and mode is HardwareFitMode.GPU_OFFLOAD
+            and best_class == 0
+            and not _is_small(bucket[0])
+        )
+        if mode is not None and _mode_order(mode, hardware) != best_class and not cover_offload:
             continue
+        if cover_offload and "gguf" in preferred:
+            # Spend scarce offload coverage on the requested compact format,
+            # not a more popular native checkpoint of the same size.
+            bucket.sort(key=lambda entry: (
+                entry.other_task, not _is_gguf_candidate(entry.candidate),
+                -entry.score, entry.candidate.repo_id,
+            ))
         if larger_in_best_class and not cover_small and _is_small(bucket[0]):
             continue
         picked = _pop_bucket_candidate(bucket, selected_redundancy, selected_families)
@@ -699,7 +712,7 @@ def _hardware_aware_shortlist(
     # Quality needs comparisons across actual sizes, not just one winner from
     # the broad 14-32B class. Keep this bounded and retain the relevance/fit gates.
     quality_scale_coverage = (
-        requirements.priority is RecommendationPriority.QUALITY and not cover_small
+        requirements.priority is RecommendationPriority.QUALITY
     )
     exploration_left = limit // (2 if quality_scale_coverage else 4)
     if audit is not None:
@@ -1211,13 +1224,16 @@ def _candidate_vram_bytes(candidate: ModelCandidate, hardware: HardwareProfile) 
 def largest_fitting_billions(
     hardware: HardwareProfile, requirements: UserRequirements, *, quantization: str | None = None,
 ) -> float | None:
-    """The largest parameter count that would sit entirely in this machine's memory.
+    """The largest parameter count for the resident search envelope.
 
     Uses the shortlist's own coarse assumptions (default quantization, KV cache,
-    overhead, safety margin), so it is as approximate as they are. ``None`` when no
+    overhead, safety margin), using accelerator capacity or currently available
+    CPU RAM, so it is as approximate as they are. ``None`` when no
     memory pool is known. ``quantization`` asks the same question at another precision.
     """
-    pool = _planning_vram_bytes(hardware) or hardware.memory.total_bytes
+    # Search for usable resident choices now; total RAM remains an exploratory
+    # envelope in coarse_placement_hint, not the basis for dropping small models.
+    pool = _planning_vram_bytes(hardware) or hardware.memory.available_bytes
     if not pool:
         return None
     per_parameter = _bytes_per_parameter_hint(quantization or _COARSE_DEFAULT_QUANTIZATION)

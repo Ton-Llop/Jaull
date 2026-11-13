@@ -21,6 +21,7 @@ from jaull.domain.estimation import (
 )
 from jaull.domain.model import GgufVariant, ModelAnalysis, ModelConfig
 from jaull.exceptions import (
+    GgufVariantSelectionError,
     HuggingFaceUnavailableError,
     JaullError,
     ModelAccessDeniedError,
@@ -62,8 +63,9 @@ def enrich(
         hf_token: Optional token forwarded to the range client (unused here but
             declared for symmetry with future callers).
 
-    Never raises for expected failures — degrades to a partial result with
-    warnings so the caller can keep computing weights-only estimates.
+    Network and missing-metadata failures degrade to partial results. An auxiliary
+    draft architecture raises GgufVariantSelectionError: sizing it as the main
+    model would produce a false confirmed recommendation.
     """
     warnings: list[str] = []
     model_info = None
@@ -86,6 +88,11 @@ def enrich(
             )
             if gguf_header is not None and header_cache is not None:
                 header_cache.put(analysis, variant, gguf_header)
+
+    if gguf_header is not None and gguf_header.architecture == "eagle3":
+        raise GgufVariantSelectionError(
+            "The selected GGUF is an EAGLE3 speculative draft, not a standalone text model."
+        )
 
     base_resolution = base_model_resolver.resolve_base_model(
         model_info=model_info,

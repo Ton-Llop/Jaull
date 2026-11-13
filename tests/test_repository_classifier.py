@@ -85,16 +85,20 @@ def test_auxiliary_gguf_files_are_not_model_variants() -> None:
     files = [
         ModelFile(path="Qwen3.8-27B-Q4_K_M.gguf", size_bytes=16_000),
         ModelFile(path="Qwen3.8-27B-Q4_0.gguf", size_bytes=15_000),
+        ModelFile(path="imatrix/model-Q6_K.gguf", size_bytes=18_000),
         ModelFile(path="MTP/mtp-Qwen3.8-27B-Q4_0.gguf", size_bytes=900),
         ModelFile(path="Qwen3.8-27B-Uncensored-draft-Q8_0.gguf", size_bytes=1_600),  # draft model
         ModelFile(path="mmproj-F16.gguf", size_bytes=900),
         ModelFile(path="mmproj-BF16.gguf", size_bytes=900),
         ModelFile(path="imatrix_unsloth.gguf", size_bytes=10),
+        ModelFile(path="gpt-oss-20b-EAGLE3-Q8_0.gguf", size_bytes=900),
+        ModelFile(path="draft/model-Q8_0.gguf", size_bytes=900),
+        ModelFile(path="eagle3/model-BF16.gguf", size_bytes=900),
     ]
 
     classification = classify_repository(files)
 
-    assert {v.quantization for v in classification.gguf_variants} == {"Q4_K_M", "Q4_0"}
+    assert {v.quantization for v in classification.gguf_variants} == {"Q4_K_M", "Q4_0", "Q6_K"}
     q4_0 = next(v for v in classification.gguf_variants if v.quantization == "Q4_0")
     assert [f.path for f in q4_0.files] == ["Qwen3.8-27B-Q4_0.gguf"]
 

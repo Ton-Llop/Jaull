@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from jaull.adapters.cache.gguf_header_cache import GgufHeaderCache
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.estimation import EstimationConfidence, MetadataSource
@@ -16,7 +18,7 @@ from jaull.domain.model import (
     RepositoryClassification,
     SafetensorsSummary,
 )
-from jaull.exceptions import ModelAccessDeniedError
+from jaull.exceptions import GgufVariantSelectionError, ModelAccessDeniedError
 from jaull.metadata import service
 from jaull.metadata.range_reader import RangeResponse
 from tests._gguf_fixtures import build_header
@@ -92,6 +94,15 @@ def _gguf_analysis() -> ModelAnalysis:
         total_size_bytes=variant.total_bytes,
         warnings=[],
     )
+
+
+def test_auxiliary_architecture_is_rejected_even_with_a_generic_filename() -> None:
+    analysis = _gguf_analysis()
+    with pytest.raises(GgufVariantSelectionError, match="EAGLE3"):
+        service.enrich(
+            analysis, analysis.classification.gguf_variants[0], _StubClient(),
+            range_client=_StubRangeClient(build_header({"general.architecture": "eagle3"})),
+        )
 
 
 def test_enrich_with_resolvable_base_and_gguf_header() -> None:

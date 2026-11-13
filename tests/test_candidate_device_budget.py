@@ -15,6 +15,28 @@ from tests._workflow_fixtures import GIB, candidate, hardware
 from tests.test_discovery_search import _requirements
 
 
+def test_moe_active_size_does_not_replace_total_size_in_the_memory_envelope():
+    from jaull.discovery.candidate_filter import parameter_count_hint
+
+    profile = hardware(vram_gib=6, ram_gib=16)
+    req = _requirements()
+    dense = candidate("vendor/Model-30B-Instruct-GGUF", tags=["gguf"])
+    sparse = candidate("vendor/Model-30B-A3B-Instruct-GGUF", tags=["gguf", "moe"])
+    assert parameter_count_hint(sparse.repo_id) == 30
+    assert coarse_placement_hint(sparse, req, profile) == coarse_placement_hint(dense, req, profile)
+
+
+def test_moe_and_dense_candidates_use_the_same_offload_memory_rules():
+    profile = hardware(vram_gib=6, ram_gib=16)
+    req = _requirements()
+    dense = candidate("vendor/Model-18B-Instruct-GGUF", tags=["gguf"])
+    sparse = candidate("vendor/Model-18B-A2B-Instruct-GGUF", tags=["gguf", "moe"])
+    dense_hint = coarse_placement_hint(dense, req, profile)
+    sparse_hint = coarse_placement_hint(sparse, req, profile)
+    assert sparse_hint == dense_hint
+    assert sparse_hint.mode is HardwareFitMode.GPU_OFFLOAD
+
+
 def _card(backend, gib, availability=BackendAvailability.AVAILABLE, *, software=False):
     return AcceleratorProfile(
         name=f"{backend.value}-{gib}",
