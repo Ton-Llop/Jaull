@@ -243,9 +243,12 @@ beyond total usable RAM remains insufficient. This does not add swap to RAM capa
 or relax any GPU residency/offload constraint.
 
 When CPU recommendations already include current fits, display selection may reserve
-one of the remaining slots for a useful conditional alternative. Its additional RAM
-budget (including reserve and margin) must be at most both 2 GiB and 15% of total RAM,
-and its whole budget must leave 20% of total RAM outside the model. These are explicit
+one of the remaining slots for a useful conditional alternative. For Balanced (and other
+non-Quality priorities), its additional RAM budget (including reserve and margin) must
+be at most both 3 GiB and 15% of total RAM; the alternative occupies the last slot.
+Quality allows up to both 6 GiB and 25% and promotes the conditional alternative to the
+second slot, still behind the current-fit primary. In every case the whole budget must
+leave 20% of total RAM outside the model. These are explicit
 display-policy bounds, not an estimate of reclaimable memory. The first recommendation
 and the `memory_pressure` assessment remain unchanged. The warning states how much more
 RAM must become available and asks the user to recheck after closing applications.

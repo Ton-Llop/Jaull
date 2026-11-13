@@ -46,7 +46,13 @@ def _cpu_display_plan(repo: str, budget: int, status: CompatibilityStatus) -> Ra
             "status": status, "effective_device": "cpu", "available_ram_bytes": 2 * GIB,
         }),
     })
-    return replace(ranked, plan=ranked.plan.model_copy(update={"memory_prediction": estimate}))
+    assessment = ranked.assessment
+    if status is CompatibilityStatus.MEMORY_PRESSURE:
+        assessment = assessment.model_copy(update={
+            "feasibility": AssessmentLevel.WEAK, "execution_fitness": AssessmentLevel.WEAK,
+        })
+    return replace(ranked, plan=ranked.plan.model_copy(update={"memory_prediction": estimate}),
+                   assessment=assessment)
 
 
 def test_display_reserves_one_slot_for_moderate_cpu_reclaim_without_confirming_fit():
@@ -67,6 +73,65 @@ def test_display_reserves_one_slot_for_moderate_cpu_reclaim_without_confirming_f
     )
     assert diversify_ranked_plans([*confirmed, moderate], limit=1,
                                   hardware=profile)[0].primary is confirmed[0]
+
+
+def test_quality_shows_a_larger_conditional_option_that_balanced_keeps_out():
+    ready = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+             CompatibilityStatus.COMFORTABLE) for i in range(5)]
+    larger = _cpu_display_plan("org/Conditional-14B-GGUF", 5 * GIB,
+                               CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware(vram_gib=None, ram_gib=16)
+    profile = profile.model_copy(update={"memory": profile.memory.model_copy(
+        update={"available_bytes": 2 * GIB},
+    )})
+    balanced = diversify_ranked_plans([*ready, larger], limit=5, hardware=profile,
+                                      priority=RecommendationPriority.BALANCED)
+    quality = diversify_ranked_plans([*ready, larger], limit=5, hardware=profile,
+                                     priority=RecommendationPriority.QUALITY)
+    assert [item.primary for item in balanced] == ready
+    assert [item.primary for item in quality] == [ready[0], larger, *ready[1:4]]
+    assert quality[1].primary.plan.memory_prediction.assessment.status is (
+        CompatibilityStatus.MEMORY_PRESSURE
+    )
+
+
+@pytest.mark.parametrize(("total", "available", "budget"), [
+    (32 * GIB, 2 * GIB, 9 * GIB),  # More than 6 GiB to free.
+    (8 * GIB, GIB, 4 * GIB),      # More than 25% of system RAM to free.
+    (8 * GIB, 6 * GIB, 7 * GIB),  # Less than 20% left outside the model.
+])
+def test_quality_still_rejects_excessive_reclaim(total, available, budget):
+    ready = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+             CompatibilityStatus.COMFORTABLE) for i in range(2)]
+    larger = _cpu_display_plan("org/Conditional-14B-GGUF", budget,
+                               CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware(vram_gib=None).model_copy(update={
+        "memory": hardware().memory.model_copy(update={
+            "total_bytes": total, "available_bytes": available,
+        }),
+    })
+    assert [item.primary for item in diversify_ranked_plans(
+        [*ready, larger], limit=2, hardware=profile, priority=RecommendationPriority.QUALITY,
+    )] == ready
+
+
+@pytest.mark.parametrize(("priority", "ceiling"), [
+    (RecommendationPriority.BALANCED, 3 * GIB),
+    (RecommendationPriority.QUALITY, 6 * GIB),
+])
+@pytest.mark.parametrize("extra", [0, 1])
+def test_absolute_reclaim_limits_accept_the_boundary_only(priority, ceiling, extra):
+    ready = [_cpu_display_plan(f"org/Ready-{i}-7B-GGUF", GIB,
+             CompatibilityStatus.COMFORTABLE) for i in range(2)]
+    conditional = _cpu_display_plan("org/Conditional-7B-GGUF", 2 * GIB + ceiling + extra,
+                                    CompatibilityStatus.MEMORY_PRESSURE)
+    profile = hardware(vram_gib=None, ram_gib=32)
+    profile = profile.model_copy(update={"memory": profile.memory.model_copy(
+        update={"available_bytes": 2 * GIB},
+    )})
+    selected = diversify_ranked_plans([*ready, conditional], limit=2,
+                                      hardware=profile, priority=priority)
+    assert (selected[1].primary is conditional) is (extra == 0)
 
 
 @pytest.mark.parametrize(("total", "available", "budget"), [

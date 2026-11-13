@@ -10,7 +10,7 @@ from jaull.domain.estimation import CompatibilityStatus
 from jaull.domain.execution_plans import ExecutionPlan, ModelIdentity, confirmed_model_repo_id
 from jaull.domain.hardware import HardwareProfile
 from jaull.domain.recommendation import AssessmentLevel, RecommendationPosition
-from jaull.domain.requirements import UserRequirements
+from jaull.domain.requirements import RecommendationPriority, UserRequirements
 from jaull.recommendation.engine_v2 import RankedPlan, ranking_tie_key
 
 TieKey = Callable[[RankedPlan], Hashable]
@@ -37,6 +37,7 @@ def diversify_ranked_plans(
     limit: int,
     tie_key: TieKey | None = None,
     hardware: HardwareProfile | None = None,
+    priority: RecommendationPriority = RecommendationPriority.BALANCED,
 ) -> list[DiversifiedRecommendation]:
     """Select up to ``limit`` logical models without re-ranking plan internals.
 
@@ -62,7 +63,7 @@ def diversify_ranked_plans(
         remaining.remove(candidate)
 
     if hardware is not None and limit > 1 and selected:
-        _include_moderate_cpu_alternative(selected, buckets, hardware, limit)
+        _include_moderate_cpu_alternative(selected, buckets, hardware, limit, priority)
 
     return [
         DiversifiedRecommendation(
@@ -76,7 +77,7 @@ def diversify_ranked_plans(
 
 def _include_moderate_cpu_alternative(
     selected: list[_IdentityBucket], buckets: Sequence[_IdentityBucket],
-    hardware: HardwareProfile, limit: int,
+    hardware: HardwareProfile, limit: int, priority: RecommendationPriority,
 ) -> None:
     first = selected[0].primary.plan.memory_prediction
     if first is None or first.assessment.effective_device != "cpu":
@@ -94,7 +95,7 @@ def _include_moderate_cpu_alternative(
         if bucket.key in chosen_keys:
             continue
         for item in (bucket.primary, *bucket.alternatives):
-            if not _moderate_cpu_reclaim(item, hardware):
+            if not _moderate_cpu_reclaim(item, hardware, priority):
                 continue
             alternative = _IdentityBucket(
                 key=bucket.key, primary=item,
@@ -104,11 +105,16 @@ def _include_moderate_cpu_alternative(
             )
             if len(selected) >= limit:
                 selected.pop()
-            selected.append(alternative)
+            if priority is RecommendationPriority.QUALITY:
+                selected.insert(1, alternative)
+            else:
+                selected.append(alternative)
             return
 
 
-def _moderate_cpu_reclaim(item: RankedPlan, hardware: HardwareProfile) -> bool:
+def _moderate_cpu_reclaim(
+    item: RankedPlan, hardware: HardwareProfile, priority: RecommendationPriority,
+) -> bool:
     estimate = item.plan.memory_prediction
     if item.assessment.rejected or estimate is None:
         return False
@@ -123,9 +129,13 @@ def _moderate_cpu_reclaim(item: RankedPlan, hardware: HardwareProfile) -> bool:
     if budget is None or available <= 0 or total <= 0:
         return False
     deficit = budget - available
+    quality = priority is RecommendationPriority.QUALITY
+    max_bytes = (policies.CPU_RECLAIM_QUALITY_MAX_BYTES if quality
+                 else policies.CPU_RECLAIM_MAX_BYTES)
+    fraction = (policies.CPU_RECLAIM_QUALITY_MAX_TOTAL_FRACTION if quality
+                else policies.CPU_RECLAIM_MAX_TOTAL_FRACTION)
     return (
-        0 < deficit <= min(policies.CPU_RECLAIM_MAX_BYTES,
-                           int(total * policies.CPU_RECLAIM_MAX_TOTAL_FRACTION))
+        0 < deficit <= min(max_bytes, int(total * fraction))
         and budget <= int(total * policies.CPU_RECLAIM_MODEL_BUDGET_FRACTION)
     )
 
