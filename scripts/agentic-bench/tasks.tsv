@@ -1,0 +1,7 @@
+T1	9aa4abb	tests/test_artifact_storage.py
+T2	ce29a4c	tests/test_runtime_device_matching.py
+T3	06ebdbf	tests/test_discovery_search.py
+T4	b29601f	tests/test_repository_classifier.py
+T5	14e13fa	tests/test_tui_benchmark.py tests/test_memory_estimator.py
+T6	1d12f63	tests/test_runtime_llama_cpp.py tests/test_llama_cpp_runner_execution.py tests/test_execution_planner.py
+T7	e800e57	tests/test_recommendation_configuration.py
