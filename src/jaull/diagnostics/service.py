@@ -32,7 +32,8 @@ from jaull.domain.runtime import (
     RuntimeBackendSelection,
 )
 from jaull.execution.host import HostExecutionBackend
-from jaull.hardware.detector import merge_accelerators
+from jaull.hardware.detector import AcceleratorScan, combine_accelerators
+from jaull.hardware.linux_drm import DRM_SOURCE, detect_drm_adapters
 from jaull.hardware.nvidia import detect_nvidia_gpus
 from jaull.hardware.vulkan import detect_vulkan_accelerators
 from jaull.hardware.windows_adapters import detect_windows_adapters
@@ -173,16 +174,19 @@ def _check_nvidia_gpu() -> DiagnosticResult:
     )
 
 
-def _detected_accelerators() -> list[AcceleratorProfile]:
-    """What the probes found, one entry per device: NVML, Vulkan and the Windows listing."""
-    accelerators = merge_accelerators(
-        detect_nvidia_gpus().accelerators, detect_vulkan_accelerators().accelerators
+def _detected_accelerators() -> AcceleratorScan:
+    """What the probes found, one entry per device, combined as ``scan`` combines them."""
+    return combine_accelerators(
+        detect_nvidia_gpus().accelerators,
+        detect_vulkan_accelerators(),
+        detect_windows_adapters().accelerators,
+        detect_drm_adapters(),
     )
-    return merge_accelerators(accelerators, detect_windows_adapters().accelerators)
 
 
 def _check_accelerators() -> DiagnosticResult:
-    accelerators = _detected_accelerators()
+    scan = _detected_accelerators()
+    accelerators = scan.accelerators
     if not accelerators:
         return DiagnosticResult(
             name="Accelerators",
@@ -199,6 +203,8 @@ def _check_accelerators() -> DiagnosticResult:
         for accelerator in accelerators
     )
     detail = " | ".join(_accelerator_detail(item) for item in accelerators)
+    if scan.guidance:
+        detail = f"{detail}. {' '.join(scan.guidance)}"
     note = wsl2_acceleration_note(_os_label(), accelerators)
     return DiagnosticResult(
         name="Accelerators",
@@ -268,7 +274,7 @@ def _check_pytorch_runtime(
 
 
 def _runtime_hardware_profile() -> HardwareProfile:
-    accelerators = _detected_accelerators()
+    accelerators = _detected_accelerators().accelerators
     return HardwareProfile(
         os=platform.system() or "unknown",
         arch=platform.machine() or "unknown",
@@ -367,6 +373,12 @@ def _backend_detail(
     ):
         # Detected is not executable: Windows lists the adapter, no probe confirmed Vulkan.
         return "vulkan: not confirmed (adapter listed by Windows)"
+    if (
+        backend is ComputeBackend.VULKAN
+        and info.availability is BackendAvailability.UNKNOWN
+        and info.source == DRM_SOURCE
+    ):
+        return "vulkan: not confirmed (GPU listed by the Linux kernel)"
     return f"{backend.value}: {info.availability.value}"
 
 

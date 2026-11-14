@@ -3,6 +3,7 @@ from __future__ import annotations
 import platform
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from jaull.domain.execution_environment import wsl2_acceleration_note
 from jaull.domain.hardware import (
@@ -13,10 +14,20 @@ from jaull.domain.hardware import (
     HardwareProfile,
 )
 from jaull.hardware.cpu import detect_cpu
+from jaull.hardware.linux_drm import (
+    detect_drm_adapters,
+    normalized_pci_bus,
+    normalized_pci_id,
+)
 from jaull.hardware.memory import detect_memory
 from jaull.hardware.nvidia import NvmlProvider, detect_nvidia_gpus
 from jaull.hardware.storage import detect_storage
-from jaull.hardware.vulkan import VulkanCommandRunner, detect_vulkan_accelerators
+from jaull.hardware.vulkan import (
+    VULKANINFO_MISSING_WARNING,
+    VulkanCommandRunner,
+    VulkanProbe,
+    detect_vulkan_accelerators,
+)
 from jaull.hardware.windows_adapters import WindowsCommandRunner, detect_windows_adapters
 
 # Keys reported to ``on_step``, in the order they complete. The guided UI uses
@@ -48,16 +59,18 @@ def detect_hardware(
 
     nvidia = detect_nvidia_gpus(nvml_provider)
     vulkan = detect_vulkan_accelerators(vulkan_command_runner)
-    warnings.extend(vulkan.warnings)
-    accelerators = merge_accelerators(
-        [*nvidia.accelerators],
-        vulkan.accelerators,
-    )
-    # Identification only, merged last: a backend probe's type and memory win,
-    # and an adapter no probe confirmed stays listed with no backend available.
     windows = detect_windows_adapters(windows_command_runner)
+    scan = combine_accelerators(
+        nvidia.accelerators, vulkan, windows.accelerators, detect_drm_adapters(),
+    )
+    accelerators = scan.accelerators
+    # The guidance names the card and what to install, so the generic note is redundant.
+    warnings.extend(
+        warning for warning in vulkan.warnings
+        if not (scan.guidance and warning == VULKANINFO_MISSING_WARNING)
+    )
     warnings.extend(windows.warnings)
-    accelerators = merge_accelerators(accelerators, windows.accelerators)
+    warnings.extend(scan.guidance)
     # NVML is NVIDIA-specific. Its absence is normal on CPU/AMD/Intel systems,
     # so surface its warnings only when another probe confirms NVIDIA hardware.
     if any(item.vendor is AcceleratorVendor.NVIDIA for item in accelerators):
@@ -86,6 +99,69 @@ def detect_hardware(
     )
     notify(STEP_PROFILE)
     return profile
+
+
+@dataclass(frozen=True)
+class AcceleratorScan:
+    accelerators: list[AcceleratorProfile]
+    #: What to do about GPUs the kernel lists but no backend probe confirmed.
+    guidance: list[str]
+
+
+def combine_accelerators(
+    nvidia: list[AcceleratorProfile],
+    vulkan: VulkanProbe,
+    windows: list[AcceleratorProfile],
+    drm: list[AcceleratorProfile],
+) -> AcceleratorScan:
+    """One list of accelerators from every probe, shared by ``scan`` and ``doctor``.
+
+    Backend probes come first; the Windows and Linux kernel listings only identify.
+    A kernel-listed GPU is added only when no other probe reported it, so a card
+    with a missing or too-old Vulkan driver is still shown, with a note saying why.
+    """
+    accelerators = merge_accelerators([*nvidia], vulkan.accelerators)
+    # Identification only, merged last: a backend probe's type and memory win,
+    # and an adapter no probe confirmed stays listed with no backend available.
+    accelerators = merge_accelerators(accelerators, windows)
+    unreported = [card for card in drm if not _already_reported(card, accelerators)]
+    return AcceleratorScan(
+        accelerators=[*accelerators, *unreported],
+        guidance=[_unconfirmed_gpu_guidance(card, vulkan) for card in unreported],
+    )
+
+
+def _already_reported(card: AcceleratorProfile, accelerators: list[AcceleratorProfile]) -> bool:
+    bus = normalized_pci_bus(card.pci_bus_id)
+    for existing in accelerators:
+        if bus is not None and normalized_pci_bus(existing.pci_bus_id) == bus:
+            return True
+        same_vendor = normalized_pci_id(existing.vendor_id) == card.vendor_id
+        if same_vendor and normalized_pci_id(existing.device_id) == card.device_id:
+            return True
+        # NVML reports the vendor and bus but no device ID.
+        if same_vendor and existing.device_id is None and existing.vendor is card.vendor:
+            return True
+    return False
+
+
+def _unconfirmed_gpu_guidance(card: AcceleratorProfile, vulkan: VulkanProbe) -> str:
+    seen = f"The Linux kernel lists {card.name}"
+    if vulkan.tool_missing:
+        return (
+            f"{seen}, but vulkaninfo is not installed, so Jaull cannot check Vulkan on it. "
+            "Install the vulkan-tools package (Debian/Ubuntu: sudo apt install vulkan-tools; "
+            "Fedora: sudo dnf install vulkan-tools; Arch: sudo pacman -S vulkan-tools) "
+            "and scan again."
+        )
+    if vulkan.ran:
+        exposed = [item.name for item in vulkan.accelerators]
+        only = f" (it lists only: {', '.join(exposed)})" if exposed else ""
+        return (
+            f"{seen}, but Vulkan does not expose it{only}. The GPU driver may be too old "
+            "for this card: update Mesa and the kernel, then scan again."
+        )
+    return f"{seen}, but vulkaninfo failed, so Vulkan could not be checked on it."
 
 
 def _ignore(step: str) -> None:

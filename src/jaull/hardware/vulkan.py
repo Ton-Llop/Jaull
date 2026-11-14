@@ -53,10 +53,22 @@ _VULKAN_BUDGET_SOURCE = "vulkan-memory-budget"
 _DRM_ROOT = Path("/sys/class/drm")
 
 
+# Said when vulkaninfo is missing: without it AMD and Intel GPUs cannot be checked.
+VULKANINFO_MISSING_WARNING = (
+    "vulkaninfo is not installed, so AMD and Intel GPUs cannot be checked for Vulkan. "
+    "On Linux install the vulkan-tools package; on Windows it comes with the Vulkan "
+    "runtime of recent GPU drivers or the Vulkan SDK."
+)
+
+
 @dataclass(frozen=True)
 class VulkanProbe:
     accelerators: list[AcceleratorProfile]
     warnings: list[str]
+    #: vulkaninfo is not installed.
+    tool_missing: bool = False
+    #: vulkaninfo ran and its device list was read (it may list only software renderers).
+    ran: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,8 +104,7 @@ def detect_vulkan_accelerators(
         completed = runner(_VULKAN_COMMAND, _VULKAN_TIMEOUT_SECONDS)
     except FileNotFoundError:
         return VulkanProbe(
-            accelerators=[],
-            warnings=["vulkaninfo is not installed; skipping Vulkan detection."],
+            accelerators=[], warnings=[VULKANINFO_MISSING_WARNING], tool_missing=True,
         )
     except subprocess.TimeoutExpired as exc:
         logger.debug("vulkaninfo timed out", exc_info=exc)
@@ -129,7 +140,7 @@ def detect_vulkan_accelerators(
     if _needs_heap_memory(accelerators):
         accelerators, memory_warnings = _with_heap_memory(accelerators, runner)
         warnings.extend(memory_warnings)
-    return VulkanProbe(accelerators=accelerators, warnings=warnings)
+    return VulkanProbe(accelerators=accelerators, warnings=warnings, ran=True)
 
 
 def _needs_heap_memory(accelerators: list[AcceleratorProfile]) -> bool:
@@ -628,6 +639,7 @@ def _vendor(vendor_id: str | None) -> AcceleratorVendor:
 
 
 __all__ = [
+    "VULKANINFO_MISSING_WARNING",
     "VulkanCommandRunner",
     "VulkanDeviceHeaps",
     "VulkanHeapMemory",

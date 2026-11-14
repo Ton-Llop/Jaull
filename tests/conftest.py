@@ -25,3 +25,15 @@ def _isolated_user_dirs(tmp_path_factory: pytest.TempPathFactory,
     monkeypatch.setenv("XDG_DATA_HOME", str(base / "data"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(base / "cache"))
     monkeypatch.setenv("LOCALAPPDATA", str(base / "local"))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_drm(tmp_path_factory: pytest.TempPathFactory,
+                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test sees the GPUs of the machine it runs on through Linux DRM sysfs.
+
+    The kernel listing adds any card no other probe reported, so on a Linux PC
+    with a GPU the hardware tests would otherwise depend on that PC.
+    """
+    monkeypatch.setattr("jaull.hardware.linux_drm.DRM_ROOT",
+                        tmp_path_factory.mktemp("drm-empty"))

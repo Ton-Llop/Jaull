@@ -44,6 +44,11 @@ per-backend availability (CUDA / Vulkan / HIP / CPU).
 
 Non-NVIDIA adapters are discovered through `vulkaninfo --summary` when it is installed.
 Software renderers (llvmpipe and similar) are recorded as such, not as usable accelerators.
+On Linux, the GPUs the kernel lists (`/sys/class/drm`) are also read, with their name from
+`pci.ids` and, for `amdgpu`, their VRAM. A card that no backend probe reported is still
+shown, with Vulkan "not confirmed", and a warning says why: `vulkaninfo` is missing
+(install `vulkan-tools`) or the driver does not expose the card to Vulkan (update Mesa
+and the kernel). Such a card is identification only and is never used for planning.
 
 ## `inspect` — a Hugging Face model
 
