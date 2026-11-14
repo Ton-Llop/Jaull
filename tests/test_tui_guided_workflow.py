@@ -301,26 +301,33 @@ def test_hardware_screen_repeated_start_and_back_does_not_hang() -> None:
 
 
 def test_network_and_probes_do_not_block_the_event_loop() -> None:
-    """The UI must still answer keystrokes while a slow probe is running."""
+    """The UI keeps working while a slow probe is still running.
+
+    The detector blocks until the test releases it. Run on the event loop, it would
+    finish (after its 5 s timeout) before the test could look at the screen, so the
+    profile would already be set. No wall-clock budget: CI speed does not matter.
+    """
+    started, release = Event(), Event()
 
     async def scenario() -> None:
-        app = JaullApp(services=_services(detect_delay=0.6))
+        app = JaullApp(services=_services_with_blocking_detector(
+            started=started, release=release))
         async with app.run_test() as pilot:
             app.start_guided_workflow()
-            await pilot.pause()
+            await _wait_for(pilot, started.is_set)
 
-            started = time.perf_counter()
-            # If the probe ran on the event loop this would block for ~0.6 s.
+            await pilot.press("tab")  # the app still processes input
             await pilot.pause()
-            await pilot.pause()
-            elapsed = time.perf_counter() - started
-            assert elapsed < 0.4, elapsed
             assert isinstance(pilot.app.screen, HardwareAnalysisScreen)
+            assert app.hardware_profile is None  # the probe is still blocked off the loop
 
+            release.set()
             await _wait_for(pilot, lambda: app.hardware_profile is not None)
-            assert app.hardware_profile is not None
 
-    _run(scenario())
+    try:
+        _run(scenario())
+    finally:
+        release.set()  # never leave the probe thread parked
 
 
 # ---------------------------------------------------------------------------
