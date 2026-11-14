@@ -249,7 +249,9 @@ be at most both 3 GiB and 15% of total RAM; the alternative occupies the last sl
 Quality allows up to both 6 GiB and 25% and promotes the conditional alternative to the
 second slot, still behind the current-fit primary. In every case the whole budget must
 leave 20% of total RAM outside the model. These are explicit
-display-policy bounds, not an estimate of reclaimable memory. The first recommendation
+display-policy bounds, not an estimate of reclaimable memory. They are untested
+heuristics: the values (2026-11-13) were chosen by judgement, not measured, and are to
+be checked with a RAM-pressure run on the CPU-only laptop before they are relied on. The first recommendation
 and the `memory_pressure` assessment remain unchanged. The warning states how much more
 RAM must become available and asks the user to recheck after closing applications.
 

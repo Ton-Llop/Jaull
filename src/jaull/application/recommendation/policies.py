@@ -22,6 +22,9 @@ MAX_CONCURRENT_HEADER_READS = 8
 # Repository lookups for the task a re-quantization inherits from its declared base.
 MAX_CONCURRENT_LINEAGE_READS = 8
 MAX_VARIANT_DEEP_INSPECTION = 6
+# One extra round of inspections for shortlist slots lost to failed or drafter
+# candidates, so they are replaced without turning into an unbounded search.
+MAX_REPLACEMENT_INSPECTIONS = 6
 MAX_TARGETED_VARIANT_SEARCHES = 3
 
 MAX_RECOMMENDATIONS = 5
@@ -35,6 +38,7 @@ __all__ = [
     "MAX_CONCURRENT_LINEAGE_READS",
     "MAX_DEEP_INSPECTION",
     "MAX_RECOMMENDATIONS",
+    "MAX_REPLACEMENT_INSPECTIONS",
     "MAX_TARGETED_VARIANT_SEARCHES",
     "MAX_UNIQUE_CANDIDATES",
     "MAX_VARIANT_DEEP_INSPECTION",

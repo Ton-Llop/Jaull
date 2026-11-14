@@ -207,3 +207,13 @@ servir la CLI i la TUI.
   ha la clau que només es mostra una vegada; i la pantalla importava `jaull.huggingface`, que la regla d'arquitectura
   prohibeix a la TUI.
 - Captura de pantalla de `docs/assets/tui-welcome.svg`: no s'ha regenerat; ara el menú té una opció més.
+
+**Auditoria (2026-11-14), errors corregits a la pantalla Setup i a `serve`:**
+- Un repositori escrit i amagat tenia prioritat sobre el model descarregat triat: arrencava un altre model. Ara mana
+  el model de la llista, i triar-lo buida els camps escrits.
+- El límit de context es podia fer servir per a unes altres dades (per exemple, calculat per a 1 persona amb 8 a la
+  pantalla, i «Max» l'omplia igual). Ara el límit va lligat a model, quantització, persones i backend, i es torna a
+  calcular sol en deixar d'escriure.
+- Amb un model que no hi cap, el resum deia «ready to start». Ara el pas Model ho marca.
+- El llama.cpp trobat al PC es donava per bo per a qualsevol backend. Ara es mira si el seu build executa el backend
+  triat: la pantalla avisa, i `plan_server` el refusa en lloc de fer-lo servir.

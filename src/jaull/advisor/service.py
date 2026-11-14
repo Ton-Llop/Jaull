@@ -112,7 +112,7 @@ if TYPE_CHECKING:
         QualityCandidateSelection,
     )
     from jaull.application.serving import ContextLimit
-    from jaull.application.serving.models import ServerPlan, ServerStart
+    from jaull.application.serving.models import FoundLlamaServer, ServerPlan, ServerStart
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
         BenchmarkMatrixResult,
@@ -636,8 +636,18 @@ class AdvisorService:
             managed = managed_installation_for(
                 managed_root(), *current_platform(), selection.selected_backend,
             )
-            installation = managed or self._resolved_llama_cpp_installation()
-            binary = server_binary_for(installation)
+            if managed is not None:
+                binary = server_binary_for(managed)
+            else:
+                installation, ready = self._found_llama_cpp_for(selection)
+                if installation is not None and not ready:
+                    raise ExecutionPlanningError(
+                        f"The llama.cpp found on this PC ({installation.llama_cli}) does not "
+                        f"run {selection.selected_backend.value}. Install the pinned build with "
+                        f"`jaull runtime install --backend {selection.selected_backend.value}`, "
+                        "or choose another backend."
+                    )
+                binary = server_binary_for(installation) if installation else None
         if binary is None:
             raise ExecutionPlanningError(
                 "llama-server was not found. Install it with "
@@ -803,17 +813,65 @@ class AdvisorService:
 
         return managed_installation_for(managed_root(), *current_platform(), backend)
 
-    def found_llama_server(self) -> tuple[Path, str | None] | None:
+    def found_llama_server(
+        self, backend: ComputeBackend, selection: RuntimeBackendSelection | None = None,
+    ) -> FoundLlamaServer | None:
         """The llama-server ``plan_server`` falls back to when Jaull installed none.
 
-        It is the one next to the llama-cli Jaull finds on this PC (PATH, registry,
-        build folders), with that build's version text.
+        Among the builds found on this PC (PATH, registry, build folders) it is the one
+        best suited to ``backend``, and says whether that build really runs it.
         """
+        from jaull.application.serving.models import FoundLlamaServer
         from jaull.runtime.llama_server import server_binary_for
 
-        installation = self._resolved_llama_cpp_installation()
+        base = selection or self.select_runtime_backend()
+        installation, ready = self._found_llama_cpp_for(
+            _selection_for_requested_backend(base, backend),
+        )
+        if installation is None:
+            return None
         binary = server_binary_for(installation)
-        return None if binary is None else (binary, installation.version_text)
+        if binary is None:
+            return None
+        return FoundLlamaServer(path=binary, version=installation.version_text,
+                                supports_backend=ready)
+
+    def _found_llama_cpp_for(
+        self, selection: RuntimeBackendSelection,
+    ) -> tuple[LlamaCppInstallation | None, bool]:
+        """The found build for serving the selected backend, and whether it runs it.
+
+        Only builds that ship llama-server are considered, in the locator's order:
+        the first one whose probe makes the backend ready wins, otherwise the first
+        with a server (reported as not ready). A build with only llama-cli never
+        hides a complete one found later.
+        """
+        from jaull.domain.runtime import RuntimeResolutionStatus
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.runtime.llama_cpp_capability import (
+            evaluate_execution_readiness,
+            inspect_llama_cpp_runtime,
+        )
+        from jaull.runtime.llama_server import server_binary_for
+
+        host = HostExecutionBackend()
+        first: LlamaCppInstallation | None = None
+        for installation in self._runtime_locator().discover_llama_cpp():
+            if (installation.status is not RuntimeResolutionStatus.FOUND
+                    or installation.llama_cli is None
+                    or server_binary_for(installation) is None):
+                continue
+            first = first or installation
+            capability = inspect_llama_cpp_runtime(
+                backend=host, llama_cli_path=installation.llama_cli,
+                timeout_seconds=self.llama_cli_timeout_seconds,
+            )
+            readiness = evaluate_execution_readiness(
+                selection=selection, runtime_capability=capability,
+            )
+            if readiness.status is ExecutionReadinessStatus.READY:
+                return installation, True
+        return first, False
 
     def stop_server(self) -> bool:
         return self._server_manager().stop()

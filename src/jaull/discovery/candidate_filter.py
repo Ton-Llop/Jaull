@@ -20,6 +20,7 @@ from typing import Any
 
 from jaull.domain import licenses
 from jaull.domain.candidates import ModelCandidate
+from jaull.domain.drafters import DRAFTER_HUB_TAGS
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     EstimationConfidence,
@@ -309,7 +310,7 @@ def _rejection_reason(
 
     tags = {tag.lower() for tag in candidate.tags}
 
-    if "draft-model" in tags:
+    if tags & DRAFTER_HUB_TAGS:
         return "Repository declares a draft model; it requires a separate target model."
 
     if (candidate.library_name or "").casefold() in {"diffusers", "diffusion-single-file"} or (

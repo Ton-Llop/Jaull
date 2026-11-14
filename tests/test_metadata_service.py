@@ -96,12 +96,15 @@ def _gguf_analysis() -> ModelAnalysis:
     )
 
 
-def test_auxiliary_architecture_is_rejected_even_with_a_generic_filename() -> None:
+@pytest.mark.parametrize("architecture", ["eagle3", "dflash"])
+def test_auxiliary_architecture_is_rejected_even_with_a_generic_filename(
+    architecture: str,
+) -> None:
     analysis = _gguf_analysis()
-    with pytest.raises(GgufVariantSelectionError, match="EAGLE3"):
+    with pytest.raises(GgufVariantSelectionError, match=architecture.upper()):
         service.enrich(
             analysis, analysis.classification.gguf_variants[0], _StubClient(),
-            range_client=_StubRangeClient(build_header({"general.architecture": "eagle3"})),
+            range_client=_StubRangeClient(build_header({"general.architecture": architecture})),
         )
 
 
@@ -321,3 +324,18 @@ def test_a_network_error_does_not_stop_a_sibling_variant_from_being_read() -> No
                             range_client=client, header_budget=memo)
 
     assert result.gguf_header is not None
+
+
+def test_a_drafter_declared_only_by_the_base_config_is_rejected() -> None:
+    # Audit: with no readable GGUF header, a base config declaring dflash was accepted.
+    analysis = _gguf_analysis()
+    client = _StubClient(
+        card_data={"base_model": "org/Drafter-Base"},
+        base_config_json={"architectures": ["DFlashDraftModel"], "model_type": "dflash"},
+    )
+
+    with pytest.raises(GgufVariantSelectionError, match="DFLASH"):
+        service.enrich(
+            analysis=analysis, variant=analysis.classification.gguf_variants[0],
+            client=client, range_client=None,
+        )

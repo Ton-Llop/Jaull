@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # "class not fully defined".
 from jaull.domain import runtime as _runtime  # noqa: F401
 from jaull.domain.artifact_profile import ArtifactProfile
+from jaull.domain.drafters import is_drafter_architecture
 from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import (
     CompatibilityAssessment,
@@ -153,7 +154,7 @@ class EvaluatedCandidate(BaseModel):
         architecture = self.memory_estimate.architecture if self.memory_estimate else None
         if architecture is None and self.analysis is not None and self.analysis.config is not None:
             architecture = self.analysis.config.model_type
-        return (architecture or "").casefold() == "dflash"
+        return is_drafter_architecture(architecture)
 
 
 __all__ = ["EvaluatedCandidate", "ModelCandidate", "SearchQuery"]

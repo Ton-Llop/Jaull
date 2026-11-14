@@ -189,3 +189,79 @@ def test_start_defaults_are_local_one_user() -> None:
 
     assert options.lan is False
     assert options.users == 1
+
+
+def test_plan_server_refuses_a_found_build_that_does_not_run_the_backend(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    # Audit: without a Jaull build, the build found on the PC was used for any backend.
+    from jaull.advisor.service import AdvisorService
+    from jaull.application.execution import ExecutionPlanningError
+    from jaull.application.serving import ContextLimit
+    from jaull.domain.inference import InferenceConfiguration
+    from jaull.domain.runtime import LlamaCppInstallation, RuntimeSource
+
+    advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
+    selection = SimpleNamespace(selected_backend=ComputeBackend.CUDA)
+    inputs = SimpleNamespace(
+        hardware=None, selection=selection, native=None,
+        base=InferenceConfiguration(context_length=1),
+        estimate=lambda config: None, quick_estimate=lambda config: None,
+    )
+    monkeypatch.setattr(AdvisorService, "_server_sizing_inputs", lambda self, *args: inputs)
+    monkeypatch.setattr("jaull.application.serving.context_limit", lambda **kwargs: ContextLimit(
+        users=1, largest_per_user=8192, native=None))
+    monkeypatch.setattr("jaull.application.serving.size_server",
+                        lambda **kwargs: _plan().sizing)
+    monkeypatch.setattr(AdvisorService, "plan_launch", lambda self, **kwargs: _plan().launch)
+    monkeypatch.setattr("jaull.runtime.llama_cpp_install.managed_root", lambda: tmp_path)
+    found = LlamaCppInstallation(root="/opt", llama_cli="/opt/llama-cli",
+                                 source=RuntimeSource.DISCOVERED)
+    monkeypatch.setattr(AdvisorService, "_found_llama_cpp_for", lambda self, sel: (found, False))
+
+    with pytest.raises(ExecutionPlanningError, match="does not run cuda"):
+        advisor.plan_server(repo_id="a/b", artifact=ARTIFACT, users=1, context_per_user=8192)
+
+
+def test_a_cli_only_build_does_not_hide_a_complete_one_found_later(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    # Audit: selection by llama-cli picked a build without llama-server, then found no server.
+    from jaull.advisor.service import AdvisorService
+    from jaull.domain.runtime import (
+        ExecutionReadinessStatus,
+        LlamaCppInstallation,
+        RuntimeSource,
+    )
+
+    def build(name: str, *, server: bool) -> LlamaCppInstallation:
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "llama-cli").write_text("")
+        if server:
+            (folder / "llama-server").write_text("")
+        return LlamaCppInstallation(root=str(folder), llama_cli=str(folder / "llama-cli"),
+                                    source=RuntimeSource.DISCOVERED)
+
+    builds = [build("cli-only", server=False), build("complete", server=True)]
+    monkeypatch.setattr(AdvisorService, "_runtime_locator",
+                        lambda self: SimpleNamespace(discover_llama_cpp=lambda: builds))
+    probed: list[str] = []
+
+    def inspect(*, backend: Any, llama_cli_path: str, timeout_seconds: float) -> str:
+        probed.append(llama_cli_path)
+        return llama_cli_path
+
+    monkeypatch.setattr("jaull.runtime.llama_cpp_capability.inspect_llama_cpp_runtime", inspect)
+    monkeypatch.setattr(
+        "jaull.runtime.llama_cpp_capability.evaluate_execution_readiness",
+        lambda **kwargs: SimpleNamespace(status=ExecutionReadinessStatus.READY),
+    )
+    advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
+    selection = SimpleNamespace(selected_backend=ComputeBackend.CPU, alternatives=[])
+
+    found = advisor.found_llama_server(ComputeBackend.CPU, selection)  # type: ignore[arg-type]
+
+    assert found is not None and found.supports_backend
+    assert found.path == tmp_path / "complete" / "llama-server"
+    assert probed == [str(tmp_path / "complete" / "llama-cli")]

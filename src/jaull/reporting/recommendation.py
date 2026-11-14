@@ -50,7 +50,7 @@ from jaull.reporting.recommendation_labels import (
 )
 from jaull.workflow.state import RecommendationWorkflowState
 
-REPORT_SCHEMA_VERSION = 5
+REPORT_SCHEMA_VERSION = 6
 
 
 class _PolicyPositions(NamedTuple):

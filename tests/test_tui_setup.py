@@ -75,8 +75,11 @@ class SetupAdvisor:
         self.calls.append(("managed", {"backend": backend}))
         return INSTALLED if self.installed else None
 
-    def found_llama_server(self) -> tuple[Path, str | None] | None:
-        return None
+    found: Any = None
+
+    def found_llama_server(self, backend: ComputeBackend, selection: Any = None) -> Any:
+        self.calls.append(("found", {"backend": backend}))
+        return self.found
 
     def install_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation:
         self.calls.append(("install", {"backend": backend}))
@@ -436,5 +439,140 @@ def test_max_fills_the_context_with_the_largest_that_fits() -> None:
             maximum.press()
             await _wait_until(pilot, lambda: screen.query_one(
                 "#setup-context", Input).value == "98304")
+
+    asyncio.run(scenario())
+
+
+def test_a_downloaded_model_wins_over_hidden_typed_fields() -> None:
+    # Audit P1: typing a repository, then choosing a downloaded model, started the typed one.
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-repo", Input).value = "org/Typed-GGUF"
+            screen.query_one("#setup-quant", Input).value = "Q8_0"
+            screen.query_one("#setup-model", Select).value = 0
+            await pilot.pause(0.2)
+            await _wait_until(pilot, lambda: not screen._busy)
+            assert not screen.query_one("#setup-download").display
+            assert screen.query_one("#setup-repo", Input).value == ""
+            screen.query_one("#setup-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
+            assert advisor.called("prepare")[0]["repo_id"] == "org/Model-GGUF"
+            assert advisor.called("prepare")[0]["quantization"] == "Q4_K_M"
+
+    asyncio.run(scenario())
+
+
+def test_a_limit_for_other_inputs_is_never_used_and_is_rechecked_without_enter() -> None:
+    # Audit P2: going from 1 to 8 people kept Max enabled with the 1-person limit.
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
+            maximum = screen.query_one("#setup-preset-max", Button)
+            await pilot.pause()
+            assert not maximum.disabled
+
+            screen.query_one("#setup-users", Input).value = "8"
+            await pilot.pause()
+            assert maximum.disabled  # the 1-person limit no longer applies
+            assert screen._current_limit() is None
+            await _wait_until(pilot, lambda: len(advisor.called("limit")) == 2
+                              and not screen._busy)
+            assert advisor.called("limit")[1]["users"] == 8
+            await pilot.pause()
+            assert not maximum.disabled
+            assert screen._current_limit() is not None
+            assert screen._current_limit().users == 8
+
+    asyncio.run(scenario())
+
+
+def test_a_model_that_does_not_fit_is_not_ready_to_start() -> None:
+    # Audit P2: with no viable context the summary still said "ready to start".
+    class NoFit(SetupAdvisor):
+        def server_context_limit(self, repo_id: str, **kwargs: Any) -> Any:
+            from jaull.application.serving import ContextLimit
+
+            self.calls.append(("limit", {"repo_id": repo_id, **kwargs}))
+            return ContextLimit(users=kwargs["users"], largest_per_user=None, native=None)
+
+    async def scenario() -> None:
+        advisor = NoFit()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
+            await pilot.pause()
+            states = screen._step_states()
+            assert states[3] == ("warn", "does not fit here")
+            assert states[4][1] != "ready to start"
+            assert "does not fit" in _text(screen, "#setup-limit")
+
+    asyncio.run(scenario())
+
+
+def test_a_found_build_without_the_backend_is_not_presented_as_usable() -> None:
+    # Audit: "found on this PC" was shown for any backend, even one the build cannot run.
+    from jaull.application.serving.models import FoundLlamaServer
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor(installed=False)
+        advisor.found = FoundLlamaServer(path=Path("/opt/llama/llama-server"), version="b9000",
+                                         supports_backend=False)
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            assert advisor.called("found")[0] == {"backend": ComputeBackend.VULKAN}
+            runtime = _text(screen, "#setup-runtime")
+            assert "does not run vulkan" in runtime and "/opt/llama/llama-server" in runtime
+            assert screen.query_one("#setup-install", Button).display
+            assert screen._step_states()[1] == ("warn", "no vulkan build")
+
+            advisor.found = FoundLlamaServer(path=Path("/opt/llama/llama-server"),
+                                             version="b9000", supports_backend=True)
+            screen.query_one("#setup-backend", Select).value = ComputeBackend.CPU
+            await _wait_until(pilot, lambda: len(advisor.called("found")) == 2
+                              and not screen._busy)
+            assert "Using the llama.cpp found on this PC (b9000)" in _text(
+                screen, "#setup-runtime")
+            assert screen._step_states()[1] == ("done", "found on this PC")
+
+    asyncio.run(scenario())
+
+
+def test_a_pending_limit_check_runs_after_a_failed_one_and_the_error_stays() -> None:
+    # Audit: if the running check failed, the check pending for the new inputs never ran.
+    import time
+
+    class FailsFirst(SetupAdvisor):
+        def server_context_limit(self, repo_id: str, **kwargs: Any) -> Any:
+            first = not self.called("limit")
+            if first:
+                self.calls.append(("limit", {"repo_id": repo_id, **kwargs}))
+                time.sleep(1.5)  # long enough for the typing delay to end meanwhile
+                raise RuntimeError("Hugging Face did not answer")
+            return super().server_context_limit(repo_id, **kwargs)
+
+    async def scenario() -> None:
+        advisor = FailsFirst()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: bool(advisor.called("limit")))
+            screen.query_one("#setup-users", Input).value = "4"  # pending while busy
+            await _wait_until(pilot, lambda: len(advisor.called("limit")) == 2
+                              and not screen._busy)
+            assert advisor.called("limit")[1]["users"] == 4
+            await pilot.pause()
+            assert screen._current_limit() is not None
+            assert "Failed: Hugging Face did not answer" in _text(screen, "#setup-status")
 
     asyncio.run(scenario())

@@ -321,7 +321,7 @@ def run_workflow(
         # Recover unusable inspection slots once; do not expand into an unbounded search.
         replacement_slots = min(
             sum(item.failed or item.requires_target_model for item in evaluated),
-            policies.MAX_VARIANT_DEEP_INSPECTION,
+            policies.MAX_REPLACEMENT_INSPECTIONS,
         )
         if replacement_slots:
             inspected = {item.repo_id for item in evaluated}

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.markup import escape
@@ -22,6 +21,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import (
     Button,
     Checkbox,
@@ -49,6 +49,7 @@ from jaull.tui.widgets.context_bar import ContextBar
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.application.serving import ContextLimit
+    from jaull.application.serving.models import FoundLlamaServer
     from jaull.artifacts.storage import LocalModelFile
     from jaull.domain.hardware import HardwareProfile
     from jaull.domain.runtime import RuntimeBackendSelection
@@ -80,6 +81,10 @@ _GLYPHS = {
     _PENDING: ("○", palette.INK_3),
 }
 _BAR_WIDTH = 28
+# Typing pause before the largest context is worked out again (UI timing only).
+_LIMIT_CHECK_DELAY_SECONDS = 0.8
+# (repo id, quantization, people at once, backend)
+_LimitKey = tuple[str, "str | None", int, "ComputeBackend | None"]
 
 
 def _tokens(count: int) -> str:
@@ -150,6 +155,8 @@ class SetupScreen(Screen[None]):
         self._models: list[LocalModelFile] = []
         self._worker: Worker[None] | None = None
         self._picked: str | None = None
+        # The last failure, shown while idle until the next action the person starts.
+        self._error: str | None = None
         # Status shown while idle, until the person starts or stops a server.
         self._note: str | None = None
         # A backend change re-checks llama.cpp first, then the context limit.
@@ -157,8 +164,13 @@ class SetupScreen(Screen[None]):
         self._selection: RuntimeBackendSelection | None = None
         self._installed: dict[ComputeBackend, str] = {}
         self._limit: ContextLimit | None = None
-        # The llama-server the server falls back to when Jaull installed none.
-        self._found: tuple[Path, str | None] | None = None
+        # (repo, quantization, people, backend) the limit above was worked out for,
+        # and the one last asked for: a limit for other inputs is never shown.
+        self._limit_for: _LimitKey | None = None
+        self._limit_asked: _LimitKey | None = None
+        self._limit_timer: Timer | None = None
+        # Per backend: the llama-server found on this PC when Jaull installed none.
+        self._found: dict[ComputeBackend, FoundLlamaServer | None] = {}
 
     def compose(self) -> ComposeResult:
         yield ContextBar("Set up a local server", aside="Setup")
@@ -247,8 +259,12 @@ class SetupScreen(Screen[None]):
 
     # ------------------------------------------------------------------ workers
 
-    def _run(self, work: Callable[[AdvisorService], None], status: str) -> None:
+    def _run(
+        self, work: Callable[[AdvisorService], None], status: str, *, keeps_error: bool = False,
+    ) -> None:
         self._busy = True
+        if not keeps_error:
+            self._error = None  # a new action starts afresh
         self._refresh(status)
         advisor = self._advisor()
         self._worker = self.run_worker(lambda: work(advisor), thread=True,
@@ -260,13 +276,20 @@ class SetupScreen(Screen[None]):
             return
         if event.state is WorkerState.ERROR:
             self._busy = False
-            self._refresh(f"Failed: {event.worker.error}")
+            self._limit_asked = None  # A failed limit check may be retried.
+            self._error = f"Failed: {event.worker.error}"
+            self._refresh()
+            self._run_pending_limit_check()
         elif event.state in {WorkerState.SUCCESS, WorkerState.CANCELLED} and self._busy:
             self._busy = False
             self._refresh()
-            if self._limit_pending:
-                self._limit_pending = False
-                self._check_limit()
+            self._run_pending_limit_check()
+
+    def _run_pending_limit_check(self) -> None:
+        """Inputs changed while a worker ran: work out their limit now, success or not."""
+        if self._limit_pending:
+            self._limit_pending = False
+            self._check_limit()
 
     def _load(self, advisor: AdvisorService) -> None:
         hardware = advisor.scan_hardware()
@@ -280,7 +303,12 @@ class SetupScreen(Screen[None]):
                 installed[backend] = installation.version_text or ""
         models = [item for item, _ in advisor.local_models()]
         status = advisor.server_status()
-        self._found = advisor.found_llama_server()
+        _, default = backend_choices(
+            selection.selected_backend, [item.backend for item in selection.alternatives],
+            installed,
+        )
+        if default not in installed:
+            self._found[default] = advisor.found_llama_server(default, selection)
         self._later(self._loaded, hardware, selection, installed, models, status)
 
     def _loaded(
@@ -323,22 +351,30 @@ class SetupScreen(Screen[None]):
         return default
 
     def _check_runtime(self, backend: ComputeBackend) -> None:
+        selection = self._selection
+
         def check(advisor: AdvisorService) -> None:
             installation = advisor.managed_llama_cpp(backend)
+            if installation is None and backend not in self._found:
+                self._found[backend] = advisor.found_llama_server(backend, selection)
             self._later(self._runtime_checked, backend, installation is not None,
-                                      installation.version_text if installation else None)
+                        installation.version_text if installation else None)
 
         self._run(check, f"Looking for llama.cpp ({backend.value})...")
 
     def _runtime_checked(self, backend: ComputeBackend, found: bool, version: str | None) -> None:
+        local = self._found.get(backend)
         if found:
             text = f"llama.cpp {version} ({backend.value}), installed by Jaull."
-        elif self._found is not None:
-            path, local_version = self._found
-            version_note = f" ({local_version})" if local_version else ""
+        elif local is not None and local.supports_backend:
+            version_note = f" ({local.version})" if local.version else ""
             text = (f"Using the llama.cpp found on this PC{version_note}:"
-                    f"\n{path}\nYou can also install the pinned build for {backend.value}, "
+                    f"\n{local.path}\nYou can also install the pinned build for {backend.value}, "
                     "the one Jaull was tested with (SHA-256 checked).")
+        elif local is not None:
+            text = (f"The llama.cpp found on this PC does not run {backend.value}:"
+                    f"\n{local.path}\nInstall the pinned build for {backend.value} "
+                    "(SHA-256 checked), or choose another backend.")
         else:
             text = (f"No llama.cpp found for {backend.value}. Install the pinned build "
                     "(downloaded from the official release, SHA-256 checked).")
@@ -435,7 +471,8 @@ class SetupScreen(Screen[None]):
         self.query_one("#setup-result").set_class(running, "-running")
         idle = ("Ready. Press Start server." if not isinstance(self._model_reference(), str)
                 else "Choose a model, then Start server.")
-        text = status or ("A Jaull server is running." if running else self._note or idle)
+        text = status or ("A Jaull server is running." if running
+                          else self._error or self._note or idle)
         mark = (f"[{palette.ACCENT}]●[/] " if self._busy
                 else f"[{palette.OK}]●[/] " if running else "")
         self.query_one("#setup-status", Static).update(mark + escape(text))
@@ -448,21 +485,27 @@ class SetupScreen(Screen[None]):
         loaded = self._selection is not None
         backend = self._backend()
         numbers = self._numbers()
-        over = (isinstance(numbers, dict) and self._limit is not None
-                and self._limit.largest_per_user is not None
-                and numbers["context"] > self._limit.largest_per_user)
+        limit = self._current_limit()
+        over = (isinstance(numbers, dict) and limit is not None
+                and limit.largest_per_user is not None
+                and numbers["context"] > limit.largest_per_user)
         model = self._model_reference()
+        local = self._found.get(backend) if backend is not None else None
         states = [
             (_DONE, "ready") if loaded else (_PENDING, "scanning"),
             (_PENDING, "") if not loaded
             else (_DONE, f"{self._installed[backend]}".strip() or "installed")
             if backend in self._installed
-            else (_DONE, "found on this PC") if self._found is not None
+            else (_DONE, "found on this PC") if local is not None and local.supports_backend
+            else (_WARN, f"no {backend.value if backend else ''} build") if local is not None
             else (_WARN, "not installed"),
             (_WARN, numbers) if isinstance(numbers, str)
             else (_WARN, "context too large") if over
             else (_DONE, "this PC" if not self._lan() else "local network"),
             (_PENDING, "choose one") if isinstance(model, str)
+            # The check found no context at all that fits: nothing to start.
+            else (_WARN, "does not fit here")
+            if limit is not None and limit.largest_per_user is None
             else (_DONE, model[0].split("/")[-1]),
         ]
         if self._running:
@@ -499,7 +542,8 @@ class SetupScreen(Screen[None]):
         for _label, tokens in _PRESETS:
             self.query_one(f"#setup-preset-{tokens}", Button).set_class(
                 context == tokens, "-active")
-        largest = self._limit.largest_per_user if self._limit is not None else None
+        limit = self._current_limit()
+        largest = limit.largest_per_user if limit is not None else None
         maximum = self.query_one("#setup-preset-max", Button)
         maximum.disabled = largest is None
         maximum.set_class(largest is not None and context == largest, "-active")
@@ -518,16 +562,7 @@ class SetupScreen(Screen[None]):
         else:
             verdict = f"[{palette.OK}]✓ fits[/]"
             bar = bar_markup(ratio, _BAR_WIDTH)
-        stale = ""
-        if self._limit is not None and isinstance(numbers, dict) and (
-            numbers["users"] != self._limit.users
-        ):
-            people = "1 person" if self._limit.users == 1 else f"{self._limit.users} people"
-            stale = (f"\n[{palette.INK_3}]max worked out for {people}; "
-                     "press Enter in People to update[/]")
-        capacity.update(
-            f"{asked}  {bar}  [{palette.INK_2}]max {_tokens(largest)}[/]  {verdict}{stale}"
-        )
+        capacity.update(f"{asked}  {bar}  [{palette.INK_2}]max {_tokens(largest)}[/]  {verdict}")
 
     # ------------------------------------------------------------------ events
 
@@ -604,42 +639,68 @@ class SetupScreen(Screen[None]):
 
     def _model_reference(self) -> tuple[str, str | None] | str:
         """(repo id, quantization) of the chosen model, or what is missing."""
-        repo = self.query_one("#setup-repo", Input).value.strip()
-        if repo:
-            try:
-                return (normalize_repo_id(repo),
-                        self.query_one("#setup-quant", Input).value.strip() or None)
-            except InvalidModelReferenceError as exc:
-                return str(exc)
+        # The downloaded model on screen wins: the typed fields are hidden while
+        # one is chosen, so they must never decide what starts.
         selected = self.query_one("#setup-model", Select).value
-        if not isinstance(selected, int):
+        if isinstance(selected, int):
+            model = self._models[selected]
+            return model.repo_id, self._advisor().gguf_quantization(model.filename)
+        repo = self.query_one("#setup-repo", Input).value.strip()
+        if not repo:
             return "Choose a downloaded model or enter a repository."
-        model = self._models[selected]
-        return model.repo_id, self._advisor().gguf_quantization(model.filename)
+        try:
+            return (normalize_repo_id(repo),
+                    self.query_one("#setup-quant", Input).value.strip() or None)
+        except InvalidModelReferenceError as exc:
+            return str(exc)
+
+    def _limit_key(self) -> _LimitKey | None:
+        """What the largest context depends on, or None while the form is incomplete."""
+        model = self._model_reference()
+        users = self.query_one("#setup-users", Input).value.strip()
+        if isinstance(model, str) or not users.isdigit() or int(users) < 1:
+            return None
+        return model[0], model[1], int(users), self._backend()
+
+    def _current_limit(self) -> ContextLimit | None:
+        """The worked-out limit, only while it still matches what is on screen."""
+        if self._limit is None or self._limit_for != self._limit_key():
+            return None
+        return self._limit
+
+    def _schedule_limit_check(self) -> None:
+        """Re-check the limit shortly after typing stops, so no Enter is needed."""
+        if self._limit_timer is not None:
+            self._limit_timer.stop()
+        key = self._limit_key()
+        if key is None or key == self._limit_asked:
+            return
+        self.query_one("#setup-limit", Static).update("Working out the largest context...")
+        self._limit_timer = self.set_timer(_LIMIT_CHECK_DELAY_SECONDS, self._check_limit)
 
     def _check_limit(self) -> None:
         """Show the largest context per person for the chosen model and people at once."""
         if self._busy:
             self._limit_pending = True
             return
-        model = self._model_reference()
-        users = self.query_one("#setup-users", Input).value.strip()
-        if isinstance(model, str) or not users.isdigit() or int(users) < 1:
+        key = self._limit_key()
+        if key is None or key == self._limit_asked:
             return
-        repo_id, quantization = model
-        count, backend = int(users), self._backend()
-        self._limit = None  # The old maximum belongs to another model or head count.
+        repo_id, quantization, count, backend = key
+        self._limit_asked = key
 
         def check(advisor: AdvisorService) -> None:
             limit = advisor.server_context_limit(
                 repo_id, quantization=quantization, users=count, backend=backend,
             )
-            self._later(self._show_limit, limit)
+            self._later(self._show_limit, limit, key)
 
-        self._run(check, f"Looking for the largest context for {repo_id}...")
+        # A limit check runs on its own as the form changes: it must not hide the error
+        # of the action the person pressed.
+        self._run(check, f"Looking for the largest context for {repo_id}...", keeps_error=True)
 
-    def _show_limit(self, limit: ContextLimit) -> None:
-        self._limit = limit
+    def _show_limit(self, limit: ContextLimit, key: _LimitKey) -> None:
+        self._limit, self._limit_for = limit, key
         self._render_progress()
         who = "one person" if limit.users == 1 else f"each of {limit.users} people"
         if limit.largest_per_user is None:
@@ -652,7 +713,11 @@ class SetupScreen(Screen[None]):
 
     @on(Select.Changed, "#setup-model")
     def _model_changed(self) -> None:
-        self._show_download(not isinstance(self.query_one("#setup-model", Select).value, int))
+        chosen = isinstance(self.query_one("#setup-model", Select).value, int)
+        if chosen:
+            for field in ("#setup-repo", "#setup-quant"):
+                self.query_one(field, Input).value = ""
+        self._show_download(not chosen)
         self._check_limit()
         self._render_progress()
 
@@ -676,9 +741,10 @@ class SetupScreen(Screen[None]):
     def _preset(self, button_id: str) -> None:
         """A quick pick fills the context field; Max uses the largest that fits."""
         if button_id == "setup-preset-max":
-            if self._limit is None or self._limit.largest_per_user is None:
+            limit = self._current_limit()
+            if limit is None or limit.largest_per_user is None:
                 return
-            tokens = self._limit.largest_per_user
+            tokens = limit.largest_per_user
         else:
             tokens = int(button_id.removeprefix("setup-preset-"))
         self.query_one("#setup-context", Input).value = str(tokens)
@@ -686,6 +752,11 @@ class SetupScreen(Screen[None]):
     @on(Input.Submitted, "#setup-repo, #setup-quant, #setup-users")
     def _model_typed(self) -> None:
         self._check_limit()
+
+    @on(Input.Changed, "#setup-repo, #setup-quant, #setup-users")
+    def _limit_inputs_changed(self) -> None:
+        if self.is_mounted:
+            self._schedule_limit_check()
 
     def _find_model(self) -> None:
         """Open the guided search. Choosing a plan there calls :meth:`use_model`."""

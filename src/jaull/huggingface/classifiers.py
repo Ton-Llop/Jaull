@@ -10,6 +10,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import PurePosixPath
 
+from jaull.domain.drafters import DRAFTER_NAME_TOKENS
 from jaull.domain.enums import Format, RepositoryType
 from jaull.domain.model import GgufVariant, ModelFile, RepositoryClassification
 
@@ -86,7 +87,8 @@ def _pick_primary(detected: set[RepositoryType]) -> RepositoryType:
     return RepositoryType.UNKNOWN
 
 
-_AUXILIARY_GGUF_TOKENS = frozenset({"mmproj", "imatrix", "mtp", "draft", "eagle3"})
+_AUXILIARY_GGUF_TOKENS = frozenset({"mmproj", "imatrix", "mtp"}) | DRAFTER_NAME_TOKENS
+_AUXILIARY_GGUF_FOLDERS = frozenset({"mtp", "mmproj"}) | DRAFTER_NAME_TOKENS
 
 
 def _group_gguf_variants(files: Iterable[ModelFile]) -> list[GgufVariant]:
@@ -141,9 +143,7 @@ def _is_auxiliary_gguf(path: PurePosixPath) -> bool:
     """
     tokens = set(re.split(r"[^a-z0-9]+", path.name.lower()))
     folders = {part.lower() for part in path.parts[:-1]}
-    return bool(tokens & _AUXILIARY_GGUF_TOKENS) or bool(
-        folders & {"mtp", "draft", "eagle3", "mmproj"}
-    )
+    return bool(tokens & _AUXILIARY_GGUF_TOKENS) or bool(folders & _AUXILIARY_GGUF_FOLDERS)
 
 
 def gguf_quantization(filename: str) -> str | None:

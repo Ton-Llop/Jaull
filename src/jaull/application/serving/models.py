@@ -26,6 +26,16 @@ class ServerPlan:
 
 
 @dataclass(frozen=True)
+class FoundLlamaServer:
+    """A llama-server on this PC that Jaull did not install."""
+
+    path: Path
+    version: str | None
+    #: Its capability probe confirms the chosen backend. A build that does not is refused.
+    supports_backend: bool
+
+
+@dataclass(frozen=True)
 class ServerStart:
     state: ServerState
     api_key_path: Path
@@ -39,4 +49,4 @@ class ServerStart:
     web_ui: bool = False
 
 
-__all__ = ["ServerPlan", "ServerStart"]
+__all__ = ["FoundLlamaServer", "ServerPlan", "ServerStart"]

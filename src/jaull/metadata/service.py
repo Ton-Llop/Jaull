@@ -10,6 +10,7 @@ from typing import Protocol
 from huggingface_hub import hf_hub_url
 
 from jaull.analyzers.transformers import _model_config_from_dict
+from jaull.domain.drafters import is_drafter_architecture
 from jaull.domain.enrichment import (
     EnrichmentResult,
     GgufHeaderMetadata,
@@ -63,9 +64,9 @@ def enrich(
         hf_token: Optional token forwarded to the range client (unused here but
             declared for symmetry with future callers).
 
-    Network and missing-metadata failures degrade to partial results. An auxiliary
-    draft architecture raises GgufVariantSelectionError: sizing it as the main
-    model would produce a false confirmed recommendation.
+    Network and missing-metadata failures degrade to partial results. A drafter
+    architecture (``domain.drafters``) raises GgufVariantSelectionError: sizing it as
+    the main model would produce a false confirmed recommendation or server.
     """
     warnings: list[str] = []
     model_info = None
@@ -89,10 +90,7 @@ def enrich(
             if gguf_header is not None and header_cache is not None:
                 header_cache.put(analysis, variant, gguf_header)
 
-    if gguf_header is not None and gguf_header.architecture == "eagle3":
-        raise GgufVariantSelectionError(
-            "The selected GGUF is an EAGLE3 speculative draft, not a standalone text model."
-        )
+    _reject_drafter(gguf_header.architecture if gguf_header is not None else None)
 
     base_resolution = base_model_resolver.resolve_base_model(
         model_info=model_info,
@@ -114,6 +112,10 @@ def enrich(
         )
 
     enriched = config_merger.merge(gguf_header=gguf_header, base_config=base_config)
+    # Without a readable header the base configuration may be the only place that
+    # says the model is a drafter.
+    _reject_drafter(base_config.model_type if base_config is not None else None)
+    _reject_drafter(enriched.config.model_type if enriched is not None else None)
     if enriched is not None:
         warnings.extend(enriched.conflicts)
 
@@ -123,6 +125,14 @@ def enrich(
         gguf_header=gguf_header,
         warnings=warnings,
     )
+
+
+def _reject_drafter(architecture: str | None) -> None:
+    if architecture is not None and is_drafter_architecture(architecture):
+        raise GgufVariantSelectionError(
+            f"The selected GGUF is a {architecture.upper()} speculative draft, "
+            "not a standalone text model."
+        )
 
 
 def read_variant_header(

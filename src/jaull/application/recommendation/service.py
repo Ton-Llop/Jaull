@@ -61,7 +61,7 @@ def enrich_candidate_features(
     for item in evaluated:
         if item.failed:
             continue
-        # DFlash GGUFs are speculative drafter artifacts, not standalone target models.
+        # Speculative drafters (domain.drafters) need a target model; never standalone.
         if item.requires_target_model:
             continue
         usable.append(item)
