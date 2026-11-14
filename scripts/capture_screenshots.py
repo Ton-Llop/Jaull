@@ -897,7 +897,7 @@ class _SetupAdvisor:
         self.running = True
         return ServerStart(
             state=self._state(), api_key_path=Path("~/.local/share/jaull/serve/api-key"),
-            new_api_key="jaull-7f3c9a1e5b2d4c86", start_script=Path(
+            new_api_key="example-key-not-real", start_script=Path(
                 "~/.local/share/jaull/serve/start-server.sh"),
             firewall_rule=None, lan_url=None,
         )
