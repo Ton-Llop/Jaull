@@ -66,7 +66,11 @@ If something doesn't work, `uv run jaull doctor` tells you what is missing for e
 ### Serve a model (work in progress)
 
 The **Set up a local server** screen does this step by step and shows the largest context
-your machine can serve for the model you pick. From the command line:
+your machine can serve for the model you pick:
+
+![Set up a local server, right after starting it](docs/assets/tui-setup.svg)
+
+From the command line:
 
 ```bash
 uv run jaull serve start <repo-id-or-url> -q Q4_K_M --users 4 --context 32768 --lan
@@ -129,7 +133,8 @@ Full option reference: [docs/cli.md](docs/cli.md).
 
 ## What a recommendation looks like
 
-One recommendation from the search above, shortened from the exported report:
+One recommendation from an earlier search on the same machine, shortened from the exported
+report. It shows what a plan looks like once it has measurements of its own:
 
 ```text
 2. Qwen/Qwen2.5-0.5B-Instruct-GGUF — Safer option
@@ -328,7 +333,8 @@ same `AdvisorService`; neither contains business logic.
 
 ## The workflow in the terminal
 
-The TUI opens on a choice between a guided analysis and the individual tools:
+The TUI opens on a menu: the guided analysis, the local server setup, the individual tools
+and a screen to free disk space:
 
 ![Welcome screen with guided and advanced entry points](docs/assets/tui-welcome.svg)
 

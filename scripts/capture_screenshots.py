@@ -39,7 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from textual.widgets import Button, Input, Static, TextArea  # noqa: E402
+from textual.widgets import Button, Input, Select, Static, TextArea  # noqa: E402
 
 from _workflow_fixtures import (  # noqa: E402
     GIB,
@@ -70,6 +70,7 @@ from jaull.domain.runtime import (  # noqa: E402
     LlamaCppBackendCapabilityState,
     LlamaCppBinaryStatus,
     LlamaCppCapabilityReason,
+    LlamaCppInstallation,
     LlamaCppRuntimeCapability,
     LlamaCppRuntimeDevice,
     RuntimeBackendSelection,
@@ -78,6 +79,7 @@ from jaull.domain.runtime import (  # noqa: E402
     RuntimeFlagSource,
     RuntimeName,
     RuntimeRecommendation,
+    RuntimeSource,
     SelectedAcceleratorRef,
 )
 from jaull.evaluation.experiments import build_experiment_record  # noqa: E402
@@ -128,6 +130,7 @@ SCREENSHOTS = (
     "tui-run-error.svg",
     "tui-home.svg",
     "tui-estimate.svg",
+    "tui-setup.svg",
 )
 
 
@@ -797,6 +800,140 @@ async def _capture_estimate(app: JaullApp, pilot, out_dir: Path) -> None:  # typ
     _save(app, out_dir, "tui-estimate.svg")
 
 
+class _SetupAdvisor:
+    """Just enough of AdvisorService for the Setup screen: a desktop with an RTX 2060."""
+
+    services = None
+
+    def __init__(self) -> None:
+        self.running = False
+
+    def scan_hardware(self) -> object:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(cpu=SimpleNamespace(model="AMD Ryzen 5 3600 6-Core Processor"))
+
+    def select_runtime_backend(self, hardware: object) -> object:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            selected_backend=ComputeBackend.CUDA,
+            selected_accelerator=SimpleNamespace(name="NVIDIA GeForce RTX 2060"),
+            alternatives=[SimpleNamespace(backend=ComputeBackend.CPU)],
+        )
+
+    def managed_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation | None:
+        return LlamaCppInstallation(root="/x", llama_cli="/x/llama-cli",
+                                    source=RuntimeSource.MANAGED, version_text="b11889")
+
+    def found_llama_server(self) -> None:
+        return None
+
+    def local_models(self) -> list[tuple[object, bool]]:
+        from jaull.artifacts.storage import LocalModelFile
+
+        return [(LocalModelFile("Qwen/Qwen2.5-3B-Instruct-GGUF",
+                                "qwen2.5-3b-instruct-q4_k_m.gguf", Path("/m/q.gguf"),
+                                2 * 1024**3, None), False)]
+
+    def gguf_quantization(self, filename: str) -> str | None:
+        from jaull.huggingface.classifiers import gguf_quantization
+
+        return gguf_quantization(filename)
+
+    def server_status(self) -> object:
+        from jaull.execution.server_process import ServerStatus
+
+        return ServerStatus(state=self._state() if self.running else None,
+                            running=self.running, healthy=self.running)
+
+    def server_context_limit(self, repo_id: str, **kwargs: object) -> object:
+        from jaull.application.serving import ContextLimit
+
+        return ContextLimit(users=int(kwargs["users"]), largest_per_user=32768, native=32768)
+
+    def prepare_serve_artifact(self, repo_id: str, **kwargs: object) -> ModelArtifact:
+        return ModelArtifact(
+            repo_id=repo_id, revision="main", filename="qwen2.5-3b-instruct-q4_k_m.gguf",
+            format="gguf", quantization="Q4_K_M", local_path=Path("/m/q.gguf"),
+            is_downloaded=True,
+        )
+
+    def plan_server(self, **kwargs: object) -> object:
+        from types import SimpleNamespace
+
+        from jaull.application.serving import ServerSizing
+        from jaull.application.serving.models import ServerPlan
+        from jaull.domain.estimation import (
+            EstimationConfidence,
+            HardwareFitMode,
+            HardwareFitResult,
+            HardwareMemoryTopology,
+        )
+        fit = HardwareFitResult(
+            mode=HardwareFitMode.GPU_RESIDENT,
+            memory_topology=HardwareMemoryTopology.DISCRETE_MEMORY,
+            weights_bytes=2 * GIB, kv_cache_bytes=GIB, overhead_bytes=0,
+            available_vram_bytes=6 * GIB, gpu_required_bytes=int(3.4 * GIB), reason="fits",
+        )
+        sizing = ServerSizing(
+            parallel=int(kwargs["users"]),  # type: ignore[call-overload]
+            context_per_user=int(kwargs["context_per_user"]),  # type: ignore[call-overload]
+            total_context=int(kwargs["context_per_user"]),  # type: ignore[call-overload]
+            estimate=SimpleNamespace(hardware_fit=fit),  # type: ignore[arg-type]
+            gpu_budget_bytes=int(5.2 * GIB),
+        )
+        return ServerPlan(
+            artifact=kwargs["artifact"],  # type: ignore[arg-type]
+            alias="Qwen2.5-3B-Instruct-GGUF", backend=ComputeBackend.CUDA, sizing=sizing,
+            launch=RuntimeRecommendation(runtime=RuntimeName.LLAMA_CPP,
+                                         confidence=EstimationConfidence.HIGH),
+            server_binary=Path("/x/llama-server"),
+        )
+
+    def start_server(self, plan: object, **kwargs: object) -> object:
+        from jaull.application.serving.models import ServerStart
+
+        self.running = True
+        return ServerStart(
+            state=self._state(), api_key_path=Path("~/.local/share/jaull/serve/api-key"),
+            new_api_key="jaull-7f3c9a1e5b2d4c86", start_script=Path(
+                "~/.local/share/jaull/serve/start-server.sh"),
+            firewall_rule=None, lan_url=None,
+        )
+
+    def llama_cpp_update_notice(self) -> None:
+        return None
+
+    @staticmethod
+    def _state() -> object:
+        from jaull.execution.server_process import ServerState
+
+        return ServerState(
+            pid=4242, create_time=1.0, host="127.0.0.1", port=8090,
+            alias="Qwen2.5-3B-Instruct-GGUF", argv=["llama-server"],
+            log_path="~/.local/share/jaull/serve/server.log",
+            started_at="2026-11-14T12:00:00+00:00",
+        )
+
+
+async def _capture_setup(out_dir: Path, size: tuple[int, int]) -> None:
+    """The Setup screen right after Start server, with the result card in view."""
+    from jaull.tui.screens.setup import SetupScreen
+
+    app = JaullApp(advisor=_SetupAdvisor())  # type: ignore[arg-type]
+    async with app.run_test(size=size) as pilot:
+        screen = SetupScreen()
+        await app.push_screen(screen)
+        await _wait_for(pilot, lambda: not screen._busy and screen._selection is not None)
+        screen.query_one("#setup-model", Select).value = 0
+        await _wait_for(pilot, lambda: not screen._busy and screen._limit is not None)
+        screen.query_one("#setup-start", Button).press()
+        await _wait_for(pilot, lambda: screen._running and not screen._busy)
+        await _settle(pilot, 0.6)
+        _save(app, out_dir, "tui-setup.svg")
+
+
 async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
     """Write every documented screenshot into `out_dir`. Returns their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -845,6 +982,9 @@ async def capture_all(out_dir: Path, size: tuple[int, int]) -> list[Path]:
         finally:
             # A held gate would keep a worker thread parked past teardown.
             gates.release_all()
+
+    print("Capturing setup...")
+    await _capture_setup(out_dir, size)
 
     return [out_dir / name for name in SCREENSHOTS]
 
