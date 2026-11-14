@@ -57,7 +57,17 @@ def enrich_candidate_features(
     capability_analyzer: capability.CapabilityAnalyzer | None = None,
 ) -> list[EvaluatedCandidate]:
     """Populate candidate features used by v2 assessment and compatibility."""
-    usable = [item for item in evaluated if not item.failed]
+    usable = []
+    for item in evaluated:
+        if item.failed:
+            continue
+        architecture = item.memory_estimate.architecture if item.memory_estimate else None
+        if architecture is None and item.analysis is not None and item.analysis.config is not None:
+            architecture = item.analysis.config.model_type
+        # DFlash GGUFs are speculative drafter artifacts, not standalone target models.
+        if (architecture or "").casefold() == "dflash":
+            continue
+        usable.append(item)
     max_log = scoring.max_log_downloads([item.candidate for item in usable])
     analyzer = capability_analyzer or capability.MetadataCapabilityAnalyzer()
     enriched = [

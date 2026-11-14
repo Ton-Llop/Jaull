@@ -43,6 +43,7 @@ from jaull.domain.execution_plans import (
 from jaull.domain.experiments import ExperimentRecord, ExperimentWorkload
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import WeightPrecision
+from jaull.domain.model import ModelConfig
 from jaull.domain.recommendation import (
     AssessmentLevel,
     ExternalEvaluationEvidence,
@@ -100,6 +101,34 @@ def test_same_model_can_produce_multiple_execution_plans() -> None:
     assert len(plans) > 1
     assert {plan.artifact.quantization for plan in plans} >= {"Q4_K_M", "Q5_K_M"}
     assert all(plan.runtime_family is RuntimeName.LLAMA_CPP for plan in plans)
+
+
+@pytest.mark.parametrize("with_hardware", [False, True])
+@pytest.mark.parametrize("header_enriched_estimate", [False, True])
+def test_dflash_drafter_is_not_recommended_as_standalone(
+    with_hardware: bool, header_enriched_estimate: bool,
+) -> None:
+    draft = _evaluated_gguf("org/Qwen3.8-27B-DFlash2-GGUF")
+    assert draft.analysis is not None
+    draft = draft.model_copy(update={
+        "analysis": draft.analysis.model_copy(update={
+            "config": ModelConfig(model_type="qwen3_5" if header_enriched_estimate else "dflash"),
+        }),
+    })
+    if header_enriched_estimate:
+        assert draft.memory_estimate is not None
+        draft = draft.model_copy(update={
+            "memory_estimate": draft.memory_estimate.model_copy(update={"architecture": "dflash"}),
+        })
+    normal = _evaluated_gguf("org/Standalone-7B-GGUF")
+
+    recs = ranking.recommend(
+        [draft, normal],
+        _requirements(),
+        hardware=hardware() if with_hardware else None,
+    )
+
+    assert [rec.repo_id for rec in recs] == [normal.repo_id]
 
 
 @pytest.mark.parametrize("priority", list(RecommendationPriority))
