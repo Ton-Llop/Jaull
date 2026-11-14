@@ -463,14 +463,13 @@ class SetupScreen(Screen[None]):
         if not self.is_mounted:
             return  # A worker can finish after the person left the screen.
         running = self._running
-        self.query_one("#setup-start", Button).disabled = self._busy or running
         self.query_one("#setup-stop", Button).disabled = self._busy or not running
         self.query_one("#setup-install", Button).disabled = self._busy
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
         self.query_one("#setup-result").set_class(running, "-running")
-        idle = ("Ready. Press Start server." if not isinstance(self._model_reference(), str)
-                else "Choose a model, then Start server.")
+        choice = self._choice()
+        idle = choice if isinstance(choice, str) else "Ready. Press Start server."
         text = status or ("A Jaull server is running." if running
                           else self._error or self._note or idle)
         mark = (f"[{palette.ACCENT}]●[/] " if self._busy
@@ -503,6 +502,7 @@ class SetupScreen(Screen[None]):
             else (_WARN, "context too large") if over
             else (_DONE, "this PC" if not self._lan() else "local network"),
             (_PENDING, "choose one") if isinstance(model, str)
+            else (_PENDING, "context not checked") if limit is None
             # The check found no context at all that fits: nothing to start.
             else (_WARN, "does not fit here")
             if limit is not None and limit.largest_per_user is None
@@ -520,6 +520,9 @@ class SetupScreen(Screen[None]):
 
     def _render_progress(self) -> None:
         states = self._step_states()
+        self.query_one("#setup-start", Button).disabled = (
+            self._busy or self._running or isinstance(self._choice(), str)
+        )
         # The first step that still needs something is the one to look at.
         current = next((i for i, (state, _) in enumerate(states) if state != _DONE), None)
         parts = []
@@ -629,8 +632,24 @@ class SetupScreen(Screen[None]):
         if isinstance(model, str):
             return model
         repo_id, quantization = model
+        backend = self._backend()
+        if backend is None:
+            return "Install llama.cpp for the selected backend."
+        local = self._found.get(backend)
+        if (
+            backend not in self._installed
+            and (local is None or not local.supports_backend)
+        ):
+            return "Install llama.cpp for the selected backend."
+        limit = self._current_limit()
+        if limit is None:
+            return "Wait for the context check for these settings."
+        if limit.largest_per_user is None:
+            return "This model does not fit on this machine."
+        if numbers["context"] > limit.largest_per_user:
+            return "Choose a context within the calculated limit."
         return _Choice(
-            repo_id=repo_id, quantization=quantization, backend=self._backend(),
+            repo_id=repo_id, quantization=quantization, backend=backend,
             lan=self._lan(),
             users=numbers["users"], context=numbers["context"], port=numbers["port"],
             web_ui=self.query_one("#setup-webui", Checkbox).value,
@@ -700,6 +719,8 @@ class SetupScreen(Screen[None]):
         self._run(check, f"Looking for the largest context for {repo_id}...", keeps_error=True)
 
     def _show_limit(self, limit: ContextLimit, key: _LimitKey) -> None:
+        if key != self._limit_key():
+            return
         self._limit, self._limit_for = limit, key
         self._render_progress()
         who = "one person" if limit.users == 1 else f"each of {limit.users} people"

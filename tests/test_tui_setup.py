@@ -145,6 +145,7 @@ def test_setup_starts_a_downloaded_model_and_can_stop_it(size: tuple[int, int]) 
             screen.query_one("#setup-model", Select).value = 0
             await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
             screen.query_one("#setup-users", Input).value = "4"
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-start", Button).disabled)
             screen.query_one("#setup-start", Button).press()
             await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
 
@@ -182,6 +183,7 @@ def test_setup_uses_a_typed_repository_and_the_local_network() -> None:
             screen.query_one("#setup-port", Input).value = "8095"
             screen.query_one("#setup-webui", Checkbox).value = True
             screen.query_one("#setup-shared", Checkbox).value = True
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-start", Button).disabled)
             screen.query_one("#setup-start", Button).press()
             await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
 
@@ -225,15 +227,16 @@ def test_setup_asks_for_what_is_missing() -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await _open(pilot, app)
             start = screen.query_one("#setup-start", Button)
+            assert start.disabled
             start.press()
             await pilot.pause()
             assert "Choose a downloaded model" in _text(screen, "#setup-status")
             screen.query_one("#setup-model", Select).value = 0
             await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
             screen.query_one("#setup-users", Input).value = "0"
-            start.press()
             await pilot.pause()
-            assert "Enter a valid users." in _text(screen, "#setup-status")
+            assert start.disabled
+            assert screen._choice() == "Enter a valid users."
             assert advisor.called("prepare") == []
 
     asyncio.run(scenario())
@@ -514,6 +517,7 @@ def test_a_model_that_does_not_fit_is_not_ready_to_start() -> None:
             assert states[3] == ("warn", "does not fit here")
             assert states[4][1] != "ready to start"
             assert "does not fit" in _text(screen, "#setup-limit")
+            assert screen.query_one("#setup-start", Button).disabled
 
     asyncio.run(scenario())
 
@@ -544,6 +548,56 @@ def test_a_found_build_without_the_backend_is_not_presented_as_usable() -> None:
             assert "Using the llama.cpp found on this PC (b9000)" in _text(
                 screen, "#setup-runtime")
             assert screen._step_states()[1] == ("done", "found on this PC")
+
+    asyncio.run(scenario())
+
+
+def test_stale_context_result_does_not_replace_the_current_note() -> None:
+    from jaull.application.serving import ContextLimit
+
+    async def scenario() -> None:
+        app = JaullApp(advisor=SetupAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: screen._current_limit() is not None
+                              and not screen._busy)
+            old_key = screen._limit_key()
+            assert old_key is not None
+            screen.query_one("#setup-users", Input).value = "4"
+            note = screen.query_one("#setup-limit", Static)
+            note.update("Checking the new settings")
+            screen._show_limit(ContextLimit(users=1, largest_per_user=123, native=None), old_key)
+            assert _text(screen, "#setup-limit") == "Checking the new settings"
+            screen._render_progress()
+            assert screen.query_one("#setup-start", Button).disabled
+            assert screen.query_one("#setup-preset-max", Button).disabled
+
+    asyncio.run(scenario())
+
+
+def test_start_requires_valid_port_context_and_runtime() -> None:
+    async def scenario() -> None:
+        app = JaullApp(advisor=SetupAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            start = screen.query_one("#setup-start", Button)
+            await _wait_until(pilot, lambda: not start.disabled)
+            for field, invalid, valid in (("port", "65536", "8090"),
+                                           ("context", "98305", "4096")):
+                screen.query_one(f"#setup-{field}", Input).value = invalid
+                screen._render_progress()
+                assert start.disabled
+                assert isinstance(screen._choice(), str)
+                screen.query_one(f"#setup-{field}", Input).value = valid
+                screen._render_progress()
+                assert not start.disabled
+            screen._installed.clear()
+            screen._found.clear()
+            screen._render_progress()
+            assert start.disabled
+            assert screen._choice() == "Install llama.cpp for the selected backend."
 
     asyncio.run(scenario())
 
