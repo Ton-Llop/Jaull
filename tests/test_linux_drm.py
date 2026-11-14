@@ -9,6 +9,7 @@ not validated on a physical AMD card under Linux.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,12 @@ from jaull.hardware.vulkan import (
     VulkanProbe,
     accelerators_from_summary,
 )
+
+# The fake sysfs names PCI folders after the bus ("0000:03:00.0") and links them with
+# symlinks, as Linux does. Windows allows neither ':' in a folder name nor symlinks
+# without extra rights, and the code under test only runs on Linux anyway.
+pytestmark = pytest.mark.skipif(sys.platform == "win32",
+                                reason="simulated Linux sysfs; DRM detection is Linux only")
 
 GiB = 1024**3
 R9700_VRAM = 32 * GiB
