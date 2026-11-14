@@ -524,18 +524,19 @@ def test_a_found_build_without_the_backend_is_not_presented_as_usable() -> None:
 
     async def scenario() -> None:
         advisor = SetupAdvisor(installed=False)
-        advisor.found = FoundLlamaServer(path=Path("/opt/llama/llama-server"), version="b9000",
+        server_path = Path("/opt/llama/llama-server")
+        advisor.found = FoundLlamaServer(path=server_path, version="b9000",
                                          supports_backend=False)
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await _open(pilot, app)
             assert advisor.called("found")[0] == {"backend": ComputeBackend.VULKAN}
             runtime = _text(screen, "#setup-runtime")
-            assert "does not run vulkan" in runtime and "/opt/llama/llama-server" in runtime
+            assert "does not run vulkan" in runtime and str(server_path) in runtime
             assert screen.query_one("#setup-install", Button).display
             assert screen._step_states()[1] == ("warn", "no vulkan build")
 
-            advisor.found = FoundLlamaServer(path=Path("/opt/llama/llama-server"),
+            advisor.found = FoundLlamaServer(path=server_path,
                                              version="b9000", supports_backend=True)
             screen.query_one("#setup-backend", Select).value = ComputeBackend.CPU
             await _wait_until(pilot, lambda: len(advisor.called("found")) == 2
