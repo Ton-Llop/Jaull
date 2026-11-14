@@ -62,6 +62,7 @@ class HardwareAnalysisScreen(Screen[None]):
         )
         with VerticalScroll():
             yield Vertical(id="hardware-content")
+        yield Horizontal(id="hardware-actions", classes="actions-right")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -134,6 +135,14 @@ class HardwareAnalysisScreen(Screen[None]):
             )
         )
         content.mount(
+            Static(
+                "Models that use system RAM are assessed against RAM available at scan time. "
+                "Closing other applications and rescanning may expand the options that fit, "
+                "without guaranteeing better quality or speed.",
+                id="hardware-ram-note",
+            )
+        )
+        content.mount(
             SummaryCard(
                 "This machine",
                 [(label, value) for label, value in rows if label not in {"RAM", "VRAM"}],
@@ -146,8 +155,7 @@ class HardwareAnalysisScreen(Screen[None]):
             content.mount(WarningsPanel(profile.warnings))
 
         button = Button("Continue", id="hw-continue", classes="-primary")
-        actions = Horizontal(button, classes="actions-right")
-        content.mount(actions)
+        self.query_one("#hardware-actions", Horizontal).mount(button)
         self.call_after_refresh(button.focus)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

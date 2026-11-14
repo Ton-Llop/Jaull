@@ -28,6 +28,9 @@ OK = "#00ff9c"
 WARN = "#ffc400"
 BAD = "#ff2e63"
 
+# Tinted ground behind a warning value, such as an API key shown only once.
+WARN_TINT = "#241c00"
+
 __all__ = [
     "ACCENT",
     "ACCENT_DEEP",
@@ -40,4 +43,5 @@ __all__ = [
     "LINE_2",
     "OK",
     "WARN",
+    "WARN_TINT",
 ]

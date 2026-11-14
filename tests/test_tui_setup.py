@@ -322,8 +322,8 @@ def test_the_screen_preselects_the_installed_backend() -> None:
             screen = await _open(pilot, app)
             assert screen.query_one("#setup-backend", Select).value is ComputeBackend.CPU
             assert "b11889 (cpu)" in _text(screen, "#setup-runtime")
-            assert "CPU: Test CPU\nAccelerator: Intel Arc Pro B60" in _text(
-                screen, "#setup-hardware")
+            hardware = _text(screen, "#setup-hardware")
+            assert "Test CPU" in hardware and "Intel Arc Pro B60" in hardware
 
     asyncio.run(scenario())
 
@@ -414,5 +414,60 @@ def test_context_changes_during_a_limit_check_are_checked_afterwards() -> None:
                               and not screen._busy)
             assert advisor.called("limit")[-1]["users"] == 7
             assert "each of 7 people" in _text(screen, "#setup-limit")
+
+    asyncio.run(scenario())
+
+
+def test_presets_fill_the_context_and_the_bar_compares_it_with_what_fits() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            assert screen.query_one("#setup-preset-max", Button).disabled
+
+            screen.query_one("#setup-preset-65536", Button).press()
+            await pilot.pause()
+            assert screen.query_one("#setup-context", Input).value == "65536"
+            assert screen.query_one("#setup-preset-65536", Button).has_class("-active")
+
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
+            assert "fits" in _text(screen, "#setup-capacity")
+
+            screen.query_one("#setup-preset-131072", Button).press()
+            await pilot.pause()
+            assert "more than this machine can serve" in _text(screen, "#setup-capacity")
+            assert "context too large" in _text(screen, "#setup-state-3")
+
+            screen.query_one("#setup-preset-max", Button).press()
+            await pilot.pause()
+            assert screen.query_one("#setup-context", Input).value == "98304"
+
+    asyncio.run(scenario())
+
+
+def test_step_bar_follows_the_form() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            assert "choose one" in _text(screen, "#setup-state-4")
+            assert "Only programs on this PC" in _text(screen, "#setup-exposure-note")
+
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+            assert "local network" in _text(screen, "#setup-state-3")
+            assert "does not open the firewall" in _text(screen, "#setup-exposure-note")
+
+            screen.query_one("#setup-port", Input).value = "99999"
+            await pilot.pause()
+            assert "Enter a valid port." in _text(screen, "#setup-state-3")
+
+            screen.query_one("#setup-port", Input).value = "8090"
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
+            assert "ready to start" in _text(screen, "#setup-state-5")
 
     asyncio.run(scenario())

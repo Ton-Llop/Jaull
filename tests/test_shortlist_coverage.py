@@ -15,6 +15,15 @@ from tests._workflow_fixtures import candidate, hardware
 from tests.test_discovery_search import _requirements, _saved_chat_candidates
 
 
+def test_declared_drafter_does_not_spend_an_inspection_slot():
+    draft = candidate("org/Drafter-7B-GGUF", tags=["gguf", "draft-model"])
+    target = candidate("org/Target-7B-GGUF", tags=["gguf", "speculative-decoding"])
+    outcome = filter_candidates([draft, target], _requirements())
+    assert [item.repo_id for item in outcome.kept] == [target.repo_id]
+    assert outcome.rejected[0][0] == draft.repo_id
+    assert "target model" in outcome.rejected[0][1]
+
+
 def test_quality_on_small_gpu_inspects_mid_size_offload_as_well_as_resident_models():
     req = _requirements().model_copy(update={"priority": RecommendationPriority.QUALITY})
     pool = [candidate(f"family{i}/Model-3B-Instruct-GGUF", tags=["gguf"],

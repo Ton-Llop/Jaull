@@ -125,14 +125,14 @@ def _retained_candidates(state: RecommendationWorkflowState) -> list[dict[str, A
                 "selected": chosen,
                 "position": state.inspection_shortlist.index(candidate.repo_id) + 1
                 if chosen else None,
-                "reason": "bounded_coverage_and_relevance" if chosen
+                "reason": picks.get(candidate.repo_id, {}).get(
+                    "stage", "bounded_coverage_and_relevance",
+                ) if chosen
                 else "outside_bounded_inspection_shortlist",
             }
             recorded = audit.get("candidates", {}).get(candidate.repo_id)
             if recorded is not None:
                 row["inspection_selection"].update(
-                    reason=picks[candidate.repo_id]["stage"] if chosen
-                    else "outside_bounded_inspection_shortlist",
                     coarse_placement=recorded["placement"]["mode"],
                     placement_reason=recorded["placement"]["reason"],
                 )

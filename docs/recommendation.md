@@ -129,6 +129,7 @@ Budgets are centralised in `application/recommendation/policies.py`:
 | Results per query | 20 |
 | Unique candidates | 40 |
 | Deep inspections | 12 |
+| Replacement inspections for failed or auxiliary candidates | At most 6, one round |
 | Concurrent inspections | 4 |
 | Variant deep inspections | 6 |
 | Targeted alternative queries per Search | 3 |
@@ -210,7 +211,7 @@ first*, not how much weight it carries:
 
 | Priority | Axes, in order |
 |---|---|
-| **Quality** | suitability → capability → quantization quality → execution fitness |
+| **Quality** | extreme-quantization penalty → suitability → capability → runnability → declared size → quantization quality → execution fitness |
 | **Speed** | suitability → runnability → executability → memory efficiency |
 | **Memory** | memory efficiency → execution fitness → executability |
 | **Balanced** | suitability → runnability → capability → execution fitness → executability → memory headroom |

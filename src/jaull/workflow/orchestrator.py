@@ -318,6 +318,37 @@ def run_workflow(
             metadata_client=metadata_client,
             header_budget=header_budget,
         )
+        # Recover unusable inspection slots once; do not expand into an unbounded search.
+        replacement_slots = min(
+            sum(item.failed or item.requires_target_model for item in evaluated),
+            policies.MAX_VARIANT_DEEP_INSPECTION,
+        )
+        if replacement_slots:
+            inspected = {item.repo_id for item in evaluated}
+            replacements = candidate_filter.shortlist(
+                [item for item in candidates if item.repo_id not in inspected],
+                requirements, replacement_slots, hardware=hardware,
+                budget_bytes=_memory_budget(hardware),
+                targets_other_task=lambda item: scoring.targets_another_task(item, requirements),
+            )
+            if replacements:
+                extra, extra_latency = _evaluate(
+                    replacements, requirements, hardware, services, reporter, cancelled, telemetry,
+                    analysis_cache=analysis_cache, estimate_cache=estimate_cache,
+                    metadata_client=metadata_client, header_budget=header_budget,
+                )
+                evaluated.extend(extra)
+                candidate_latency.extend(extra_latency)
+                current = current.model_copy(update={
+                    "inspection_shortlist": [*(current.inspection_shortlist or []),
+                                             *(item.repo_id for item in replacements)],
+                })
+                inspection_audit.setdefault("steps", []).extend(
+                    {"repo_id": item.repo_id, "stage": "unusable_slot_replacement"}
+                    for item in replacements
+                )
+                current = current.model_copy(update={"inspection_audit": inspection_audit})
+                telemetry.increment("replacement_inspections", len(replacements))
         range_client = _build_range_client(services)
 
         def estimate_plan(

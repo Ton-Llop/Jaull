@@ -1532,6 +1532,13 @@ WorkflowHeader .context-title-row {
     color: $ink-2;
 }
 
+#hardware-ram-note {
+    height: auto;
+    max-width: 72;
+    margin-bottom: 1;
+    color: $ink-2;
+}
+
 /* The profile below is a definition list, and a label 110 cells from its
    value is not a pair any more. The figures above keep the full measure
    because they are read as a row; this one gets a reading width. */
@@ -1613,7 +1620,156 @@ WorkflowHeader .context-title-row {
    that scroll; these two now fit their content, so the line it drew down
    the right edge was reading as a frame around the page and marking nothing.
    --------------------------------------------------------------------- */
-#wizard-body,
-HardwareAnalysisScreen VerticalScroll {
+#wizard-body {
     scrollbar-size-vertical: 0;
+}
+
+/* ---------------------------------------------------------------------
+   Setup: five steps, each its own zone.
+
+   A step bar under the context bar says which step needs attention; each
+   section is separated by a rule and air, not by a box. The result of a start
+   is a callout (left edge only) that turns green while the server runs.
+   --------------------------------------------------------------------- */
+SetupScreen .setup-steps {
+    height: auto;
+    padding: 0 2;
+    margin: 1 0 0 0;
+    color: $ink-3;
+}
+
+SetupScreen #setup-body {
+    padding: 0 2;
+}
+
+SetupScreen .setup-section {
+    height: auto;
+    padding: 1 0 0 0;
+    border-bottom: solid $line;
+}
+
+SetupScreen .setup-section.-last {
+    border-bottom: none;
+}
+
+SetupScreen .setup-heading-row {
+    height: 1;
+    margin: 0 0 1 0;
+}
+
+SetupScreen .setup-title {
+    width: 1fr;
+}
+
+SetupScreen .setup-state {
+    width: auto;
+}
+
+SetupScreen .setup-text {
+    height: auto;
+    color: $ink;
+}
+
+SetupScreen .setup-section Select {
+    margin: 1 0 0 0;
+}
+
+SetupScreen #setup-install {
+    margin: 1 0 0 0;
+}
+
+SetupScreen .setup-note,
+SetupScreen .setup-help {
+    height: auto;
+    color: $ink-3;
+}
+
+SetupScreen .setup-note {
+    margin: 0 0 1 0;
+}
+
+SetupScreen #setup-exposure {
+    layout: horizontal;
+    width: 100%;
+    margin: 0;
+}
+
+SetupScreen #setup-exposure RadioButton {
+    width: auto;
+    margin: 0 4 0 0;
+}
+
+SetupScreen #setup-numbers {
+    height: auto;
+    margin: 1 0 0 0;
+}
+
+SetupScreen .setup-field {
+    width: 1fr;
+    height: auto;
+    margin: 0 2 0 0;
+}
+
+SetupScreen .setup-field Label {
+    color: $ink-2;
+    text-style: bold;
+}
+
+SetupScreen #setup-presets {
+    height: 1;
+    margin: 1 0 0 0;
+}
+
+SetupScreen .setup-presets-label {
+    width: 9;
+    color: $ink-2;
+}
+
+SetupScreen #setup-capacity {
+    height: auto;
+    margin: 1 0;
+}
+
+SetupScreen .setup-or {
+    height: 1;
+    color: $ink-3;
+    text-style: italic;
+    margin: 1 0 0 0;
+}
+
+SetupScreen #setup-model-inputs {
+    height: auto;
+}
+
+SetupScreen #setup-model-inputs Input {
+    width: 1fr;
+}
+
+SetupScreen #setup-find {
+    margin: 0;
+}
+
+SetupScreen .setup-output {
+    height: auto;
+    background: $well;
+    border-left: outer $line-2;
+    padding: 1 2;
+    margin: 0 0 1 0;
+}
+
+SetupScreen .setup-output.-empty {
+    display: none;
+}
+
+SetupScreen #setup-result.-running .setup-output {
+    border-left: outer $ok;
+}
+
+SetupScreen #setup-actions {
+    height: auto;
+    padding: 0 2;
+}
+
+SetupScreen #setup-status {
+    padding: 0 2;
 }

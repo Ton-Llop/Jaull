@@ -61,11 +61,8 @@ def enrich_candidate_features(
     for item in evaluated:
         if item.failed:
             continue
-        architecture = item.memory_estimate.architecture if item.memory_estimate else None
-        if architecture is None and item.analysis is not None and item.analysis.config is not None:
-            architecture = item.analysis.config.model_type
         # DFlash GGUFs are speculative drafter artifacts, not standalone target models.
-        if (architecture or "").casefold() == "dflash":
+        if item.requires_target_model:
             continue
         usable.append(item)
     max_log = scoring.max_log_downloads([item.candidate for item in usable])

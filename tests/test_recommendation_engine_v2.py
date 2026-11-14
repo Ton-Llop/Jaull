@@ -2249,6 +2249,29 @@ def test_an_aggressive_quantization_never_beats_one_that_fits(
     assert ranked[0].evaluated.repo_id == fits.repo_id
 
 
+def test_quality_does_not_let_inferred_capability_hide_extreme_quantization() -> None:
+    from dataclasses import replace
+
+    requirements = _requirements(RecommendationPriority.QUALITY)
+    ranked = rank_execution_plans([
+        _evaluated_gguf("org/Big-9B-GGUF", quantizations=("IQ1_M",)),
+        _evaluated_gguf("org/Small-4B-GGUF", quantizations=("Q5_K_M",)),
+    ], requirements)
+    extreme = next(item for item in ranked if item.plan.artifact.quantization == "IQ1_M")
+    ordinary = next(item for item in ranked if item.plan.artifact.quantization == "Q5_K_M")
+    extreme = replace(extreme, assessment=extreme.assessment.model_copy(update={
+        "capability": AssessmentLevel.STRONG, "suitability": AssessmentLevel.STRONG,
+    }))
+    ordinary = replace(ordinary, assessment=ordinary.assessment.model_copy(update={
+        "capability": AssessmentLevel.ADEQUATE, "suitability": AssessmentLevel.ADEQUATE,
+    }))
+    assert engine_v2._ranking_key(ordinary, requirements.priority) < engine_v2._ranking_key(
+        extreme, requirements.priority,
+    )
+    axes = [criterion.axis for criterion in ranking_criteria(extreme, requirements.priority)]
+    assert axes.index("aggressive_quantization") < axes.index("capability")
+
+
 def test_quality_prefers_a_resident_quantization_to_a_better_one_that_needs_offloading() -> None:
     """Found on a B60 box: a 32B model was offered at `Q6_K` needing 8 GiB of offloading, because
     Quality compared the quantization before whether the plan runs from the GPU alone, while a

@@ -522,7 +522,7 @@ class RecommendationResultsScreen(Screen[None]):
         ]
         with Horizontal(classes="rec-list-head"):
             yield Static(
-                "Confirmed recommendations" if confirmed else "No confirmed recommendations",
+                "Memory-compatible options" if confirmed else "No confirmed memory fit",
                 classes="section-title",
             )
             yield Static(
@@ -532,6 +532,11 @@ class RecommendationResultsScreen(Screen[None]):
                     if confirmed
                     else "rec-list-aside text-muted-tight"
                 ),
+            )
+        if confirmed:
+            yield Static(
+                "Memory fit is estimated; runtime readiness is assessed separately.",
+                classes="text-muted", markup=False,
             )
         for index, _rec in confirmed:
             yield self._rows[index]

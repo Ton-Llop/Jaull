@@ -309,6 +309,9 @@ def _rejection_reason(
 
     tags = {tag.lower() for tag in candidate.tags}
 
+    if "draft-model" in tags:
+        return "Repository declares a draft model; it requires a separate target model."
+
     if (candidate.library_name or "").casefold() in {"diffusers", "diffusion-single-file"} or (
         tags & {"diffusers", "diffusion-single-file"}
     ):

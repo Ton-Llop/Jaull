@@ -169,6 +169,11 @@ def test_hardware_ram_figures_and_header_fit_narrow_terminals(width: int) -> Non
             text = _visible_text(screen)
             assert "GiB total | 5.00 GiB available" in text
             assert "8.00" in [str(item.value) for item in screen.query(Digits)]
+            note = screen.query_one("#hardware-ram-note", Static)
+            assert "RAM available at scan time" in str(note.content)
+            assert "without guaranteeing better quality or speed" in str(note.content)
+            assert note.region.right <= width
+            assert note.region.bottom <= screen.query_one("#hw-continue", Button).region.y
             for figure in screen.query(".memory-figure"):
                 assert figure.region.right <= width
             header = WorkflowHeader(WorkflowStep.REQUIREMENTS, "Your needs")

@@ -1203,10 +1203,10 @@ def ranking_tie_key(
     assessment = item.assessment
     if priority is RecommendationPriority.QUALITY:
         priority_axes: tuple[int | float, ...] = (
-            _suitability_rank(item, priority),
-            _LEVEL_RANK[assessment.capability],
             # An aggressive quantization is only worth offering when nothing else fits.
             _aggressive_quantization_rank(item.plan),
+            _suitability_rank(item, priority),
+            _LEVEL_RANK[assessment.capability],
             # Runs-from-the-GPU before a better quantization: offloading is far slower.
             _runnability_rank(assessment),
             # Declared size is a quality heuristic, not proof of superiority.
@@ -1272,7 +1272,7 @@ def _model_size_rank(item: RankedPlan, priority: RecommendationPriority) -> int:
 def _aggressive_quantization_rank(plan: ExecutionPlan) -> int:
     """1 for a quantization the policy only offers when nothing else fits, else 0.
 
-    Used by Balanced, where headroom would otherwise prefer a 1-bit 30B model that fits with
+    Used by Quality and Balanced, where other priors could prefer a 1-bit 30B model that fits with
     room to spare over a 4-bit one that fits with less. Speed and Memory keep these on
     their ladders.
     """
@@ -1433,14 +1433,14 @@ def ranking_criteria(
     axes: tuple[tuple[str, str, int | float], ...]
     if priority is RecommendationPriority.QUALITY:
         axes = (
-            ("suitability", assessment.suitability.value, _suitability_rank(item, priority)),
-            ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
                 "aggressive_quantization",
                 (item.plan.artifact.quantization or "n/a")
                 + (" (aggressive)" if _aggressive_quantization_rank(item.plan) else ""),
                 _aggressive_quantization_rank(item.plan),
             ),
+            ("suitability", assessment.suitability.value, _suitability_rank(item, priority)),
+            ("capability", assessment.capability.value, _LEVEL_RANK[assessment.capability]),
             (
                 "runnability",
                 assessment.execution_fitness.value,

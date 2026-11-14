@@ -129,6 +129,37 @@ def test_full_successful_run() -> None:
     assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
 
 
+def test_drafter_inspection_slot_is_replaced_once_and_reported(monkeypatch) -> None:
+    from jaull.domain.model import ModelConfig
+
+    draft = "org/Drafter-7B-GGUF"
+    target = "org/Coder-7B-GGUF"
+    analyses = {
+        draft: gguf_analysis(repo_id=draft).model_copy(update={
+            "config": ModelConfig(model_type="dflash"),
+        }),
+        target: gguf_analysis(repo_id=target),
+    }
+    calls = []
+
+    def choose(pool, requirements, limit, **kwargs):
+        calls.append([item.repo_id for item in pool])
+        return pool[:1]
+
+    monkeypatch.setattr(orchestrator.candidate_filter, "shortlist", choose)
+    state = orchestrator.run_workflow(
+        answers(), hardware(), _container(_search_with(draft, target), analyses),
+    )
+    assert len(calls) == 2
+    assert calls[1] == [target]
+    assert target in (state.inspection_shortlist or [])
+    assert draft not in [rec.repo_id for rec in state.recommendations]
+    assert target in [rec.repo_id for rec in state.recommendations]
+    retained = report_to_dict(state)["search_strategy"]["retained_candidates"]
+    selected = next(row for row in retained if row["repo_id"] == target)
+    assert selected["inspection_selection"]["reason"] == "unusable_slot_replacement"
+
+
 @pytest.mark.parametrize("use_case", [UseCase.CODING, UseCase.DOCUMENT_QA, UseCase.REASONING])
 @pytest.mark.parametrize("size", [14, 22])
 @pytest.mark.parametrize(

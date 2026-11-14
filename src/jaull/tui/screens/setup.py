@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from rich.markup import escape
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -39,7 +40,9 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError
 from jaull.presentation.serving import plan_lines, start_lines, status_lines
 from jaull.runtime import policies as runtime_policies
+from jaull.tui import palette
 from jaull.tui.widgets.action_button import ActionButton
+from jaull.tui.widgets.bars import bar_markup
 from jaull.tui.widgets.context_bar import ContextBar
 
 if TYPE_CHECKING:
@@ -54,6 +57,62 @@ _MODEL_HINT = (
     "Not sure which model? Find one with the guided search. The plan you choose there "
     "comes back to this screen."
 )
+
+_STEPS = ("Machine", "llama.cpp", "Server", "Model", "Start")
+_TITLES = ("Machine and backend", "llama.cpp", "Server", "Model", "Start")
+
+_EXPOSURE_NOTE = {
+    False: "Only programs on this PC can connect.",
+    True: "Other devices on your network can connect with the API key. "
+          "Jaull does not open the firewall for you.",
+}
+
+# Quick picks for the context per person, in tokens.
+_PRESETS = (("8K", 8192), ("16K", 16384), ("32K", 32768), ("64K", 65536), ("128K", 131072))
+
+# Step states, each with a glyph and a colour so the meaning survives without colour.
+_DONE, _ACTIVE, _WARN, _PENDING = "done", "active", "warn", "pending"
+_GLYPHS = {
+    _DONE: ("✓", palette.OK),
+    _ACTIVE: ("●", palette.ACCENT),
+    _WARN: ("!", palette.WARN),
+    _PENDING: ("○", palette.INK_3),
+}
+_BAR_WIDTH = 28
+
+
+def _tokens(count: int) -> str:
+    """32768 -> '32 768', grouped so long contexts read at a glance."""
+    return f"{count:,}".replace(",", " ")
+
+
+def _styled_output(lines: list[str]) -> str:
+    """The plain output lines, coloured by role. The text itself is unchanged."""
+    styled: list[str] = []
+    key_next = False
+    for line in lines:
+        text = escape(line)
+        if key_next and line.startswith("  "):
+            styled.append(f"[b {palette.WARN} on {palette.WARN_TINT}] {text.strip()} [/]")
+            key_next = False
+            continue
+        key_next = line.startswith("API key (shown once")
+        if line.startswith(("Ready at", "On the local network", "Chat page")):
+            styled.append(f"[b {palette.OK}]{text}[/]")
+        elif key_next:
+            styled.append(f"[b {palette.WARN}]{text}[/]")
+        elif line.startswith("Serving "):
+            styled.append(f"[b {palette.INK}]{text}[/]")
+        elif line.startswith(("Start script", "Stop it with", "API key:", "  URL", "  PID",
+                              "  Log", "Server stopped", "No Jaull server")):
+            styled.append(f"[{palette.INK_2}]{text}[/]")
+        elif line.startswith(("Jaull does not change the firewall", "Note:")) or (
+            line.startswith("  sudo")
+        ):
+            styled.append(f"[{palette.WARN}]{text}[/]")
+        else:
+            styled.append(text)
+    return "\n".join(styled)
 
 
 def backend_choices(
@@ -81,20 +140,7 @@ def backend_choices(
 
 class SetupScreen(Screen[None]):
     BINDINGS = [("escape", "back", "Back")]
-
-    DEFAULT_CSS = """
-    SetupScreen #setup-body { padding: 0 2; }
-    SetupScreen .setup-heading { text-style: bold; margin: 1 0 0 0; }
-    SetupScreen .setup-text { height: auto; color: $text; }
-    SetupScreen .setup-note { height: auto; color: $text-muted; }
-    SetupScreen Select, SetupScreen RadioSet { margin: 0 0 1 0; }
-    SetupScreen #setup-numbers { height: auto; }
-    SetupScreen .setup-field { width: 1fr; height: auto; }
-    SetupScreen #setup-model-inputs { height: auto; }
-    SetupScreen #setup-model-inputs Input { width: 1fr; }
-    SetupScreen #setup-output { height: auto; margin: 1 0; }
-    SetupScreen #setup-actions { height: auto; padding: 0 2; }
-    """
+    # Styles live in styles.tcss (section "Setup"), next to the tokens they use.
 
     def __init__(self) -> None:
         super().__init__()
@@ -109,59 +155,86 @@ class SetupScreen(Screen[None]):
         self._limit_pending = False
         self._selection: RuntimeBackendSelection | None = None
         self._installed: dict[ComputeBackend, str] = {}
+        self._limit: ContextLimit | None = None
 
     def compose(self) -> ComposeResult:
         yield ContextBar("Set up a local server", aside="Setup")
+        yield Static("", id="setup-steps", classes="setup-steps")
         with VerticalScroll(id="setup-body"):
-            yield Static("1. Machine and backend", classes="setup-heading")
-            yield Static("Scanning hardware...", id="setup-hardware", classes="setup-text",
-                         markup=False)
-            yield Select[ComputeBackend]([], prompt="Backend", id="setup-backend",
-                                         allow_blank=True)
-            yield Static("2. llama.cpp", classes="setup-heading")
-            yield Static("", id="setup-runtime", classes="setup-text", markup=False)
-            yield ActionButton("Install llama.cpp", id="setup-install", disabled=True)
-            yield Static("3. Server", classes="setup-heading")
-            with RadioSet(id="setup-exposure"):
-                yield RadioButton("Only this PC", value=True, id="setup-local")
-                yield RadioButton("Share on the local network", id="setup-lan")
-            yield Checkbox("Enable the chat page (it asks for the API key)", id="setup-webui")
-            yield Checkbox(
-                "Share the context: one person can use all of it, several split it",
-                id="setup-shared",
-            )
-            with Horizontal(id="setup-numbers"):
-                with Vertical(classes="setup-field"):
-                    yield Label("People at once")
-                    yield Input(str(serving_policies.SERVE_DEFAULT_USERS), type="integer",
-                                id="setup-users")
-                with Vertical(classes="setup-field"):
-                    yield Label("Context per person (tokens)")
-                    yield Input(str(serving_policies.SERVE_DEFAULT_CONTEXT_PER_USER),
-                                type="integer", id="setup-context")
-                with Vertical(classes="setup-field"):
-                    yield Label("Port")
-                    yield Input(str(runtime_policies.LLAMA_SERVER_DEFAULT_PORT),
-                                type="integer", id="setup-port")
-            yield Static("Choose a model to see the largest context this machine can serve.",
-                         id="setup-limit", classes="setup-note", markup=False)
-            yield Static("4. Model", classes="setup-heading")
-            yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
-                              allow_blank=True)
-            with Horizontal(id="setup-model-inputs"):
-                yield Input(placeholder="or a Hugging Face repo id", id="setup-repo")
-                yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
-            yield Static(_MODEL_HINT, classes="setup-note", markup=False)
-            yield ActionButton("Find a model", id="setup-find")
-            yield Static("5. Start", classes="setup-heading")
-            yield Static("", id="setup-output", classes="setup-text", markup=False)
-        yield Static("Reading this machine...", id="setup-status", classes="status-line",
-                     markup=False)
+            with Vertical(classes="setup-section"):
+                yield from self._heading(1)
+                yield Static("Scanning hardware...", id="setup-hardware", classes="setup-text")
+                yield Select[ComputeBackend]([], prompt="Backend", id="setup-backend",
+                                             allow_blank=True)
+            with Vertical(classes="setup-section"):
+                yield from self._heading(2)
+                yield Static("", id="setup-runtime", classes="setup-text", markup=False)
+                yield ActionButton("Install llama.cpp", id="setup-install", disabled=True)
+            with Vertical(classes="setup-section"):
+                yield from self._heading(3)
+                with RadioSet(id="setup-exposure"):
+                    yield RadioButton("Only this PC", value=True, id="setup-local")
+                    yield RadioButton("Share on the local network", id="setup-lan")
+                yield Static(_EXPOSURE_NOTE[False], id="setup-exposure-note",
+                             classes="setup-note", markup=False)
+                yield Checkbox("Enable the chat page (it asks for the API key)",
+                               id="setup-webui")
+                yield Checkbox(
+                    "Share the context: one person can use all of it, several split it",
+                    id="setup-shared",
+                )
+                with Horizontal(id="setup-numbers"):
+                    yield from self._field("People at once", "setup-users",
+                                           serving_policies.SERVE_DEFAULT_USERS,
+                                           "chats served at the same time")
+                    yield from self._field("Context per person", "setup-context",
+                                           serving_policies.SERVE_DEFAULT_CONTEXT_PER_USER,
+                                           "tokens each chat remembers")
+                    yield from self._field("Port", "setup-port",
+                                           runtime_policies.LLAMA_SERVER_DEFAULT_PORT,
+                                           "change it if 8090 is taken")
+                with Horizontal(id="setup-presets"):
+                    yield Static("Context", classes="setup-presets-label")
+                    for label, tokens in _PRESETS:
+                        yield Button(label, id=f"setup-preset-{tokens}", classes="chip")
+                    yield Button("Max", id="setup-preset-max", classes="chip", disabled=True)
+                yield Static("", id="setup-capacity", classes="setup-capacity")
+                yield Static("Choose a model to see the largest context this machine can serve.",
+                             id="setup-limit", classes="setup-note", markup=False)
+            with Vertical(classes="setup-section"):
+                yield from self._heading(4)
+                yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
+                                  allow_blank=True)
+                yield Static("or download one", classes="setup-or")
+                with Horizontal(id="setup-model-inputs"):
+                    yield Input(placeholder="Hugging Face repo id", id="setup-repo")
+                    yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
+                yield Static(_MODEL_HINT, classes="setup-note", markup=False)
+                yield ActionButton("Find a model", id="setup-find")
+            with Vertical(classes="setup-section -last", id="setup-result"):
+                yield from self._heading(5)
+                yield Static("", id="setup-output", classes="setup-output -empty")
+        yield Static("Reading this machine...", id="setup-status", classes="status-line")
         with Horizontal(id="setup-actions"):
             yield Button("Start server", id="setup-start", classes="-primary", disabled=True)
             yield ActionButton("Stop server", id="setup-stop", disabled=True)
             yield ActionButton("Back", id="setup-back")
         yield Footer()
+
+    @staticmethod
+    def _heading(step: int) -> ComposeResult:
+        """A numbered title with the step's state on the right."""
+        with Horizontal(classes="setup-heading-row"):
+            yield Static(f"[b {palette.ACCENT}]{step:02d}[/]  [b]{_TITLES[step - 1]}[/]",
+                         classes="setup-title")
+            yield Static("", id=f"setup-state-{step}", classes="setup-state")
+
+    @staticmethod
+    def _field(label: str, field_id: str, default: int, help_text: str) -> ComposeResult:
+        with Vertical(classes="setup-field"):
+            yield Label(label)
+            yield Input(str(default), type="integer", id=field_id)
+            yield Static(help_text, classes="setup-help", markup=False)
 
     def on_mount(self) -> None:
         self._run(self._load, "Reading this machine...")
@@ -212,10 +285,12 @@ class SetupScreen(Screen[None]):
         status: ServerStatus,
     ) -> None:
         accelerator = selection.selected_accelerator
+        label = f"[{palette.INK_2}]{{:<13}}[/]"
         self.query_one("#setup-hardware", Static).update(
-            f"CPU: {hardware.cpu.model or 'unknown'}\n"
-            + (f"Accelerator: {accelerator.name}" if accelerator is not None
-               else "Accelerator: none. The server runs on the CPU.")
+            label.format("CPU") + escape(hardware.cpu.model or "unknown") + "\n"
+            + label.format("Accelerator")
+            + (f"[b]{escape(accelerator.name)}[/]" if accelerator is not None
+               else f"[{palette.WARN}]none[/], the server runs on the CPU")
         )
         self._selection, self._installed = selection, installed
         default = self._set_backends()
@@ -322,7 +397,12 @@ class SetupScreen(Screen[None]):
             update(*args, **kwargs)
 
     def _output(self, lines: list[str]) -> None:
-        self.query_one("#setup-output", Static).update("\n".join(lines))
+        output = self.query_one("#setup-output", Static)
+        output.update(_styled_output(lines))
+        output.set_class(not lines, "-empty")
+        if lines:
+            # The result holds the URL and the key: bring it into view.
+            self.call_after_refresh(output.scroll_visible)
 
     def _show_server(self, status: ServerStatus, *, describe: bool = True) -> None:
         self._running = status.running
@@ -339,9 +419,100 @@ class SetupScreen(Screen[None]):
         self.query_one("#setup-install", Button).disabled = self._busy
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
-        self.query_one("#setup-status", Static).update(
-            status or ("A Jaull server is running." if running
-                       else self._note or "Choose a model, then Start server.")
+        self.query_one("#setup-result").set_class(running, "-running")
+        text = status or ("A Jaull server is running." if running
+                          else self._note or "Choose a model, then Start server.")
+        mark = (f"[{palette.ACCENT}]●[/] " if self._busy
+                else f"[{palette.OK}]●[/] " if running else "")
+        self.query_one("#setup-status", Static).update(mark + escape(text))
+        self._render_progress()
+
+    # ---------------------------------------------------------- live summary
+
+    def _step_states(self) -> list[tuple[str, str]]:
+        """(state, short note) for each of the five steps, from what is on screen now."""
+        loaded = self._selection is not None
+        backend = self._backend()
+        numbers = self._numbers()
+        over = (isinstance(numbers, dict) and self._limit is not None
+                and self._limit.largest_per_user is not None
+                and numbers["context"] > self._limit.largest_per_user)
+        model = self._model_reference()
+        states = [
+            (_DONE, "ready") if loaded else (_PENDING, "scanning"),
+            (_PENDING, "") if not loaded
+            else (_DONE, f"{self._installed[backend]}".strip() or "installed")
+            if backend in self._installed else (_WARN, "not installed"),
+            (_WARN, numbers) if isinstance(numbers, str)
+            else (_WARN, "context too large") if over
+            else (_DONE, "this PC" if not self._lan() else "local network"),
+            (_PENDING, "choose one") if isinstance(model, str)
+            else (_DONE, model[0].split("/")[-1]),
+        ]
+        if self._running:
+            states.append((_DONE, "running"))
+        elif self._busy:
+            states.append((_ACTIVE, "working"))
+        elif all(state == _DONE for state, _ in states):
+            states.append((_ACTIVE, "ready to start"))
+        else:
+            states.append((_PENDING, ""))
+        return states
+
+    def _render_progress(self) -> None:
+        states = self._step_states()
+        # The first step that still needs something is the one to look at.
+        current = next((i for i, (state, _) in enumerate(states) if state != _DONE), None)
+        parts = []
+        for index, (name, (state, note)) in enumerate(zip(_STEPS, states, strict=True)):
+            shown = _ACTIVE if index == current and state == _PENDING else state
+            glyph, colour = _GLYPHS[shown]
+            weight = "b " if index == current else ""
+            parts.append(f"[{weight}{colour}]{glyph} {name}[/]")
+            heading = self.query_one(f"#setup-state-{index + 1}", Static)
+            heading.update(f"[{colour}]{glyph} {escape(note)}[/]" if note else "")
+        self.query_one("#setup-steps", Static).update(
+            f" [{palette.LINE_2}]──[/] ".join(parts)
+        )
+        self._render_capacity()
+
+    def _render_capacity(self) -> None:
+        """Requested context per person against the largest that fits, as a bar."""
+        numbers = self._numbers()
+        context = numbers["context"] if isinstance(numbers, dict) else None
+        for _label, tokens in _PRESETS:
+            self.query_one(f"#setup-preset-{tokens}", Button).set_class(
+                context == tokens, "-active")
+        largest = self._limit.largest_per_user if self._limit is not None else None
+        maximum = self.query_one("#setup-preset-max", Button)
+        maximum.disabled = largest is None
+        maximum.set_class(largest is not None and context == largest, "-active")
+        capacity = self.query_one("#setup-capacity", Static)
+        if context is None:
+            capacity.update(f"[{palette.WARN}]! Enter the context as a whole number of tokens.[/]")
+            return
+        asked = f"[b]{_tokens(context)}[/] tokens per person"
+        if largest is None:
+            capacity.update(
+                f"{asked}  [{palette.INK_3}]choose a model to compare with what fits[/]"
+            )
+            return
+        ratio = context / largest if largest else 1.0
+        if context > largest:
+            verdict = f"[b {palette.BAD}]✗ more than this machine can serve[/]"
+            bar = f"[{palette.BAD}]{'━' * _BAR_WIDTH}[/]"
+        else:
+            verdict = f"[{palette.OK}]✓ fits[/]"
+            bar = bar_markup(ratio, _BAR_WIDTH)
+        stale = ""
+        if self._limit is not None and isinstance(numbers, dict) and (
+            numbers["users"] != self._limit.users
+        ):
+            people = "1 person" if self._limit.users == 1 else f"{self._limit.users} people"
+            stale = (f"\n[{palette.INK_3}]max worked out for {people}; "
+                     "press Enter in People to update[/]")
+        capacity.update(
+            f"{asked}  {bar}  [{palette.INK_2}]max {_tokens(largest)}[/]  {verdict}{stale}"
         )
 
     # ------------------------------------------------------------------ events
@@ -356,6 +527,9 @@ class SetupScreen(Screen[None]):
     def _pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "setup-back":
             self.action_back()
+            return
+        if (event.button.id or "").startswith("setup-preset-"):
+            self._preset(event.button.id or "")
             return
         if self._busy:
             return
@@ -380,21 +554,31 @@ class SetupScreen(Screen[None]):
         value = self.query_one("#setup-backend", Select).value
         return value if isinstance(value, ComputeBackend) else None
 
-    def _choice(self) -> _Choice | str:
-        """The choices from the form, or what is missing."""
+    def _numbers(self) -> dict[str, int] | str:
+        """People, context and port from the form, or what is wrong with them."""
         numbers: dict[str, int] = {}
         for key, low, high in (("users", 1, None), ("context", 1, None), ("port", 1, 65535)):
             text = self.query_one(f"#setup-{key}", Input).value.strip()
             if not text.isdigit() or int(text) < low or (high is not None and int(text) > high):
                 return f"Enter a valid {key}."
             numbers[key] = int(text)
+        return numbers
+
+    def _lan(self) -> bool:
+        return self.query_one("#setup-lan", RadioButton).value
+
+    def _choice(self) -> _Choice | str:
+        """The choices from the form, or what is missing."""
+        numbers = self._numbers()
+        if isinstance(numbers, str):
+            return numbers
         model = self._model_reference()
         if isinstance(model, str):
             return model
         repo_id, quantization = model
         return _Choice(
             repo_id=repo_id, quantization=quantization, backend=self._backend(),
-            lan=self.query_one("#setup-lan", RadioButton).value,
+            lan=self._lan(),
             users=numbers["users"], context=numbers["context"], port=numbers["port"],
             web_ui=self.query_one("#setup-webui", Checkbox).value,
             shared_context=self.query_one("#setup-shared", Checkbox).value,
@@ -426,6 +610,7 @@ class SetupScreen(Screen[None]):
             return
         repo_id, quantization = model
         count, backend = int(users), self._backend()
+        self._limit = None  # The old maximum belongs to another model or head count.
 
         def check(advisor: AdvisorService) -> None:
             limit = advisor.server_context_limit(
@@ -436,6 +621,8 @@ class SetupScreen(Screen[None]):
         self._run(check, f"Looking for the largest context for {repo_id}...")
 
     def _show_limit(self, limit: ContextLimit) -> None:
+        self._limit = limit
+        self._render_progress()
         who = "one person" if limit.users == 1 else f"each of {limit.users} people"
         if limit.largest_per_user is None:
             text = f"This model does not fit for serving {who} on this machine."
@@ -448,6 +635,29 @@ class SetupScreen(Screen[None]):
     @on(Select.Changed, "#setup-model")
     def _model_changed(self) -> None:
         self._check_limit()
+        self._render_progress()
+
+    @on(Input.Changed)
+    @on(Checkbox.Changed)
+    def _form_changed(self) -> None:
+        """Every keystroke updates the step bar and the capacity bar; nothing slow runs."""
+        if self.is_mounted:
+            self._render_progress()
+
+    @on(RadioSet.Changed, "#setup-exposure")
+    def _exposure_changed(self) -> None:
+        self.query_one("#setup-exposure-note", Static).update(_EXPOSURE_NOTE[self._lan()])
+        self._render_progress()
+
+    def _preset(self, button_id: str) -> None:
+        """A quick pick fills the context field; Max uses the largest that fits."""
+        if button_id == "setup-preset-max":
+            if self._limit is None or self._limit.largest_per_user is None:
+                return
+            tokens = self._limit.largest_per_user
+        else:
+            tokens = int(button_id.removeprefix("setup-preset-"))
+        self.query_one("#setup-context", Input).value = str(tokens)
 
     @on(Input.Submitted, "#setup-repo, #setup-quant, #setup-users")
     def _model_typed(self) -> None:

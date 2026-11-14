@@ -148,5 +148,12 @@ class EvaluatedCandidate(BaseModel):
     def repo_id(self) -> str:
         return self.candidate.repo_id
 
+    @property
+    def requires_target_model(self) -> bool:
+        architecture = self.memory_estimate.architecture if self.memory_estimate else None
+        if architecture is None and self.analysis is not None and self.analysis.config is not None:
+            architecture = self.analysis.config.model_type
+        return (architecture or "").casefold() == "dflash"
+
 
 __all__ = ["EvaluatedCandidate", "ModelCandidate", "SearchQuery"]

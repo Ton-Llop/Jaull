@@ -292,7 +292,8 @@ def test_unknown_recommendations_are_separate_and_keep_the_assessment_reason() -
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
-            assert "Confirmed recommendations" in _visible_text(screen)
+            assert "Memory-compatible options" in _visible_text(screen)
+            assert "runtime readiness is assessed separately" in _visible_text(screen)
             assert "Unconfirmed alternatives" in _visible_text(screen)
             assert "KV cache could not be estimated." in _visible_text(screen)
             assert len(screen.query(".rec-row")) == 5
@@ -315,7 +316,7 @@ def test_only_unknown_still_shows_an_alternative_and_executable_unknown_can_vali
             await pilot.pause()
             screen = pilot.app.screen
             assert isinstance(screen, RecommendationResultsScreen)
-            assert "No confirmed recommendations" in _visible_text(screen)
+            assert "No confirmed memory fit" in _visible_text(screen)
             assert "Unconfirmed alternatives" in _visible_text(screen)
             assert not screen.query_one("#res-validate-0", Button).disabled
 
@@ -333,7 +334,7 @@ def test_cpu_pressure_is_shown_as_an_unconfirmed_experimental_alternative() -> N
             app.show_recommendations(RecommendationWorkflowState(recommendations=[rec]))
             await pilot.pause(0.1)
             text = _visible_text(pilot.app.screen)
-            assert "No confirmed recommendations" in text
+            assert "No confirmed memory fit" in text
             assert "Unconfirmed alternatives" in text
             assert "Experimental RAM pressure" in text
             assert "1 unconfirmed alternative" in text
@@ -1589,7 +1590,7 @@ def test_results_compare_and_details_can_reopen_without_duplicate_ids() -> None:
             await pilot.pause()
             # The list names the model and how it would execute; the execution
             # paths themselves live on their own screen behind "Paths".
-            assert "Confirmed recommendations" in _visible_text(pilot.app.screen)
+            assert "Memory-compatible options" in _visible_text(pilot.app.screen)
             assert "llama.cpp" in _visible_text(pilot.app.screen)
 
             for _ in range(2):
