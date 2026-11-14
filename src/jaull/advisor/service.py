@@ -803,6 +803,18 @@ class AdvisorService:
 
         return managed_installation_for(managed_root(), *current_platform(), backend)
 
+    def found_llama_server(self) -> tuple[Path, str | None] | None:
+        """The llama-server ``plan_server`` falls back to when Jaull installed none.
+
+        It is the one next to the llama-cli Jaull finds on this PC (PATH, registry,
+        build folders), with that build's version text.
+        """
+        from jaull.runtime.llama_server import server_binary_for
+
+        installation = self._resolved_llama_cpp_installation()
+        binary = server_binary_for(installation)
+        return None if binary is None else (binary, installation.version_text)
+
     def stop_server(self) -> bool:
         return self._server_manager().stop()
 

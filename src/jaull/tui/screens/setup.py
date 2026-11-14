@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.markup import escape
@@ -156,6 +157,8 @@ class SetupScreen(Screen[None]):
         self._selection: RuntimeBackendSelection | None = None
         self._installed: dict[ComputeBackend, str] = {}
         self._limit: ContextLimit | None = None
+        # The llama-server the server falls back to when Jaull installed none.
+        self._found: tuple[Path, str | None] | None = None
 
     def compose(self) -> ComposeResult:
         yield ContextBar("Set up a local server", aside="Setup")
@@ -205,10 +208,12 @@ class SetupScreen(Screen[None]):
                 yield from self._heading(4)
                 yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
                                   allow_blank=True)
-                yield Static("or download one", classes="setup-or")
-                with Horizontal(id="setup-model-inputs"):
-                    yield Input(placeholder="Hugging Face repo id", id="setup-repo")
-                    yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
+                yield Button("Use another model instead", id="setup-other", classes="chip")
+                with Vertical(id="setup-download"):
+                    yield Static("or download one", classes="setup-or")
+                    with Horizontal(id="setup-model-inputs"):
+                        yield Input(placeholder="Hugging Face repo id", id="setup-repo")
+                        yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
                 yield Static(_MODEL_HINT, classes="setup-note", markup=False)
                 yield ActionButton("Find a model", id="setup-find")
             with Vertical(classes="setup-section -last", id="setup-result"):
@@ -237,6 +242,7 @@ class SetupScreen(Screen[None]):
             yield Static(help_text, classes="setup-help", markup=False)
 
     def on_mount(self) -> None:
+        self.query_one("#setup-other", Button).display = False
         self._run(self._load, "Reading this machine...")
 
     # ------------------------------------------------------------------ workers
@@ -274,6 +280,7 @@ class SetupScreen(Screen[None]):
                 installed[backend] = installation.version_text or ""
         models = [item for item, _ in advisor.local_models()]
         status = advisor.server_status()
+        self._found = advisor.found_llama_server()
         self._later(self._loaded, hardware, selection, installed, models, status)
 
     def _loaded(
@@ -324,12 +331,18 @@ class SetupScreen(Screen[None]):
         self._run(check, f"Looking for llama.cpp ({backend.value})...")
 
     def _runtime_checked(self, backend: ComputeBackend, found: bool, version: str | None) -> None:
-        self.query_one("#setup-runtime", Static).update(
-            f"llama.cpp {version} ({backend.value}), installed by Jaull." if found else
-            f"No llama.cpp installed by Jaull for {backend.value}. Install the pinned build "
-            "(downloaded from the official release, SHA-256 checked), or Jaull uses the "
-            "llama.cpp it finds on this PC."
-        )
+        if found:
+            text = f"llama.cpp {version} ({backend.value}), installed by Jaull."
+        elif self._found is not None:
+            path, local_version = self._found
+            version_note = f" ({local_version})" if local_version else ""
+            text = (f"Using the llama.cpp found on this PC{version_note}:"
+                    f"\n{path}\nYou can also install the pinned build for {backend.value}, "
+                    "the one Jaull was tested with (SHA-256 checked).")
+        else:
+            text = (f"No llama.cpp found for {backend.value}. Install the pinned build "
+                    "(downloaded from the official release, SHA-256 checked).")
+        self.query_one("#setup-runtime", Static).update(text)
         self.query_one("#setup-install", Button).display = not found
 
     def _install(self, backend: ComputeBackend) -> None:
@@ -420,8 +433,9 @@ class SetupScreen(Screen[None]):
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
         self.query_one("#setup-result").set_class(running, "-running")
-        text = status or ("A Jaull server is running." if running
-                          else self._note or "Choose a model, then Start server.")
+        idle = ("Ready. Press Start server." if not isinstance(self._model_reference(), str)
+                else "Choose a model, then Start server.")
+        text = status or ("A Jaull server is running." if running else self._note or idle)
         mark = (f"[{palette.ACCENT}]●[/] " if self._busy
                 else f"[{palette.OK}]●[/] " if running else "")
         self.query_one("#setup-status", Static).update(mark + escape(text))
@@ -442,7 +456,9 @@ class SetupScreen(Screen[None]):
             (_DONE, "ready") if loaded else (_PENDING, "scanning"),
             (_PENDING, "") if not loaded
             else (_DONE, f"{self._installed[backend]}".strip() or "installed")
-            if backend in self._installed else (_WARN, "not installed"),
+            if backend in self._installed
+            else (_DONE, "found on this PC") if self._found is not None
+            else (_WARN, "not installed"),
             (_WARN, numbers) if isinstance(numbers, str)
             else (_WARN, "context too large") if over
             else (_DONE, "this PC" if not self._lan() else "local network"),
@@ -493,9 +509,7 @@ class SetupScreen(Screen[None]):
             return
         asked = f"[b]{_tokens(context)}[/] tokens per person"
         if largest is None:
-            capacity.update(
-                f"{asked}  [{palette.INK_3}]choose a model to compare with what fits[/]"
-            )
+            capacity.update(asked)  # the note below says to choose a model first
             return
         ratio = context / largest if largest else 1.0
         if context > largest:
@@ -530,6 +544,10 @@ class SetupScreen(Screen[None]):
             return
         if (event.button.id or "").startswith("setup-preset-"):
             self._preset(event.button.id or "")
+            return
+        if event.button.id == "setup-other":
+            self.query_one("#setup-model", Select).clear()  # shows the download fields again
+            self.query_one("#setup-repo", Input).focus()
             return
         if self._busy:
             return
@@ -634,8 +652,14 @@ class SetupScreen(Screen[None]):
 
     @on(Select.Changed, "#setup-model")
     def _model_changed(self) -> None:
+        self._show_download(not isinstance(self.query_one("#setup-model", Select).value, int))
         self._check_limit()
         self._render_progress()
+
+    def _show_download(self, show: bool) -> None:
+        """A downloaded model hides the download fields; one button brings them back."""
+        self.query_one("#setup-download").display = show
+        self.query_one("#setup-other", Button).display = not show
 
     @on(Input.Changed)
     @on(Checkbox.Changed)

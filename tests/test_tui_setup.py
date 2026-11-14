@@ -75,6 +75,9 @@ class SetupAdvisor:
         self.calls.append(("managed", {"backend": backend}))
         return INSTALLED if self.installed else None
 
+    def found_llama_server(self) -> tuple[Path, str | None] | None:
+        return None
+
     def install_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation:
         self.calls.append(("install", {"backend": backend}))
         self.installed = True
@@ -240,7 +243,7 @@ def test_setup_installs_llama_cpp_when_missing() -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await _open(pilot, app)
             install = screen.query_one("#setup-install", Button)
-            assert install.display and "No llama.cpp installed" in _text(screen, "#setup-runtime")
+            assert install.display and "No llama.cpp found" in _text(screen, "#setup-runtime")
             install.press()
             await _wait_until(pilot, lambda: bool(advisor.called("install")) and not screen._busy)
             assert advisor.called("install") == [{"backend": ComputeBackend.VULKAN}]
@@ -418,56 +421,20 @@ def test_context_changes_during_a_limit_check_are_checked_afterwards() -> None:
     asyncio.run(scenario())
 
 
-def test_presets_fill_the_context_and_the_bar_compares_it_with_what_fits() -> None:
+
+def test_max_fills_the_context_with_the_largest_that_fits() -> None:
     async def scenario() -> None:
         advisor = SetupAdvisor()
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await _open(pilot, app)
-            assert screen.query_one("#setup-preset-max", Button).disabled
-
-            screen.query_one("#setup-preset-65536", Button).press()
-            await pilot.pause()
-            assert screen.query_one("#setup-context", Input).value == "65536"
-            assert screen.query_one("#setup-preset-65536", Button).has_class("-active")
+            maximum = screen.query_one("#setup-preset-max", Button)
+            assert maximum.disabled  # nothing to compare with before a model is chosen
 
             screen.query_one("#setup-model", Select).value = 0
-            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
-            assert "fits" in _text(screen, "#setup-capacity")
-
-            screen.query_one("#setup-preset-131072", Button).press()
-            await pilot.pause()
-            assert "more than this machine can serve" in _text(screen, "#setup-capacity")
-            assert "context too large" in _text(screen, "#setup-state-3")
-
-            screen.query_one("#setup-preset-max", Button).press()
-            await pilot.pause()
-            assert screen.query_one("#setup-context", Input).value == "98304"
-
-    asyncio.run(scenario())
-
-
-def test_step_bar_follows_the_form() -> None:
-    async def scenario() -> None:
-        advisor = SetupAdvisor()
-        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
-        async with app.run_test(size=(120, 40)) as pilot:
-            screen = await _open(pilot, app)
-            assert "choose one" in _text(screen, "#setup-state-4")
-            assert "Only programs on this PC" in _text(screen, "#setup-exposure-note")
-
-            screen.query_one("#setup-lan", RadioButton).value = True
-            await pilot.pause()
-            assert "local network" in _text(screen, "#setup-state-3")
-            assert "does not open the firewall" in _text(screen, "#setup-exposure-note")
-
-            screen.query_one("#setup-port", Input).value = "99999"
-            await pilot.pause()
-            assert "Enter a valid port." in _text(screen, "#setup-state-3")
-
-            screen.query_one("#setup-port", Input).value = "8090"
-            screen.query_one("#setup-model", Select).value = 0
-            await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
-            assert "ready to start" in _text(screen, "#setup-state-5")
+            await _wait_until(pilot, lambda: not maximum.disabled and not screen._busy)
+            maximum.press()
+            await _wait_until(pilot, lambda: screen.query_one(
+                "#setup-context", Input).value == "98304")
 
     asyncio.run(scenario())

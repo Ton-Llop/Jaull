@@ -1639,8 +1639,16 @@ SetupScreen .setup-steps {
 }
 
 SetupScreen #setup-body {
-    padding: 0 2;
+    padding: 0 4 0 2;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $bg;
+    scrollbar-background-hover: $bg;
+    scrollbar-background-active: $bg;
+    scrollbar-color: $line;
+    scrollbar-color-hover: $line-2;
+    scrollbar-color-active: $accent-deep;
 }
+
 
 SetupScreen .setup-section {
     height: auto;
@@ -1737,6 +1745,14 @@ SetupScreen .setup-or {
     margin: 1 0 0 0;
 }
 
+SetupScreen #setup-exposure-note {
+    margin: 0 0 1 0;
+}
+
+SetupScreen #setup-webui {
+    margin: 0;
+}
+
 SetupScreen #setup-model-inputs {
     height: auto;
 }
@@ -1771,5 +1787,15 @@ SetupScreen #setup-actions {
 }
 
 SetupScreen #setup-status {
-    padding: 0 2;
+    border-top: solid $line;
+    padding: 1 2 0 2;
+    margin: 0;
+}
+
+SetupScreen #setup-other {
+    margin: 1 0 0 0;
+}
+
+SetupScreen #setup-download {
+    height: auto;
 }
