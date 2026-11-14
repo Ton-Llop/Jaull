@@ -1,13 +1,21 @@
 # Jaull
 
-**From local hardware to evidence-backed LLM deployment decisions.**
+**Find out which local AI models your PC can actually run, and why.**
 
 [![codecov](https://codecov.io/gh/Ton-Llop/Jaull/graph/badge.svg)](https://codecov.io/gh/Ton-Llop/Jaull)
 
-Jaull tells you which open language models your machine can really run, picks the exact
-file and runtime for each one, and explains the order. It can then run them, benchmark them
-and score them on your own hardware. No language model writes the ranking or the
-explanations.
+[Website](https://jaull.tech) · [Quick start](#quick-start) ·
+[What each button does](#what-each-button-does) · [Project status](STATUS.md)
+
+Running a language model on your own computer means picking a model, a quantization and a
+runtime that fit in your memory. Most people find out the hard way, by downloading a model
+that doesn't fit or that crawls because half of it ended up in RAM. Jaull does that homework
+for you. It checks your CPU, RAM and GPU, asks a few plain questions (what you want it for,
+which language, whether speed or quality matters more) and shows up to five models that fit,
+with the exact file to get and the reason it picked each one.
+
+You don't need to know what GGUF, Q4_K_M or a KV cache is. If you do, every number is still
+there, and each one says whether it was measured or estimated.
 
 ![Jaull results screen from a real search on an RTX 2060](docs/assets/tui-results-rtx2060.svg)
 
@@ -15,64 +23,67 @@ explanations.
 English general chat, Balanced priority, commercial use required. Five plans, each with its
 memory fit, runtime and file format.*
 
-**One recommendation from the same search**, shortened from the exported report:
+## What you can do with it
 
-```text
-2. Qwen/Qwen2.5-0.5B-Instruct-GGUF — Safer option
-   Q5_K_M · llama.cpp on CUDA · fits comfortably (1.74 GiB) · apache-2.0, commercial use OK
-   llama-server --model Qwen2.5-0.5B-Instruct-GGUF.Q5_K_M.gguf --ctx-size 4096 --n-gpu-layers -1
+- Get recommendations for your machine. Jaull reads model metadata from Hugging Face, so
+  nothing big is downloaded until you choose a model.
+- Run a recommended model from the same screen, then measure its speed and quality on your
+  own PC. Those measurements can reorder the list; an estimate never passes for a measurement.
+- Install a verified build of llama.cpp with one command, for CUDA, Vulkan or the CPU.
+- Serve a model to the people at home or in the office (work in progress). You pick the model
+  and how many people will use it, and Jaull sizes the context, starts `llama-server` and
+  gives you the address and an API key.
 
-   Why this position: placement confirmed · strong fit for chat · strong runnability ·
-                      weak capability (a 0.5B model) · lots of memory headroom
-   Measured on this machine, this exact file:
-     IFEval, 541 prompts      25.9 % (140/541)
-     tg128 generation speed   median 246.1 tok/s over 6 calls (observed 218.6–271.7)
-   Measured evidence did not change its position (#2 → #2).
-   Warning: confidence is low; runtime overhead is a documented heuristic, not a measurement.
-```
-
-To try it: [Quick start](#quick-start). To find your way around the screens:
-[What each button does](#what-each-button-does).
-
----
-
-Jaull is an explainable local-AI qualification toolkit. It reads your machine, selects
-candidate language models, resolves the exact artifact you would actually run, verifies it,
-checks whether a local runtime and compute backend can execute it, runs it, benchmarks it,
-and compares what it predicted against what really happened.
-
-The question it is built around:
-
-> **Can this exact model, artifact, runtime and configuration satisfy the workload we want
-> to run on this infrastructure?**
-
-A recommendation is only the beginning of that answer. Everything after it — the artifact,
-the revision, the runtime, the backend, the execution, the measurement — is what turns a
-plausible suggestion into a decision you can defend.
-
-```text
-predict → acquire → verify → execute → benchmark → compare → qualify → deploy
-```
-
-Jaull implements `predict → compare` today. `qualify` and `deploy` are the direction the
-project is heading in; see [Where Jaull is going](#where-jaull-is-going) for what is real
-and what is not.
-
-Jaull is an active open-source engineering project developed as an undergraduate
-end-of-degree project (TFG) on local-AI infrastructure. It is usable, it is tested, and it
-is not finished.
-
----
+It runs on Linux, Windows and WSL2, with NVIDIA GPUs (CUDA), Intel Arc GPUs (Vulkan, tested
+on an Arc Pro B60) or just the CPU. AMD and Apple Silicon are untested, and a report from one
+of them helps a lot (see [Contributing](#contributing)). No language model writes the ranking
+or the explanations: they come from explicit, tested rules.
 
 ## Quick start
 
-Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/Ton-Llop/Jaull.git
 cd Jaull
-make setup
+uv sync --locked
 uv run jaull ui
+```
+
+The app opens on a menu. **Guided analysis** scans your hardware, asks the questions and
+shows the recommendations. **Set up a local server** walks you through serving a model.
+**Advanced tools** has the individual tools.
+
+To run models you also need llama.cpp. If you don't have it, Jaull can install the official
+build for you (it checks the SHA-256 of the download):
+
+```bash
+uv run jaull runtime install --backend vulkan   # or cuda, or cpu
+```
+
+If something doesn't work, `uv run jaull doctor` tells you what is missing for each action.
+
+### Serve a model (work in progress)
+
+The **Set up a local server** screen does this step by step and shows the largest context
+your machine can serve for the model you pick. From the command line:
+
+```bash
+uv run jaull serve start <repo-id-or-url> -q Q4_K_M --users 4 --context 32768 --lan
+uv run jaull serve status
+uv run jaull serve stop
+```
+
+The server speaks the OpenAI API, so any client that lets you set a base URL can use it. The
+API key is shown once. Jaull never touches your firewall: with `--lan` it prints the rule an
+administrator can run.
+
+### Full setup
+
+For quality evaluation you also need Docker. `make setup` prepares everything at once:
+
+```bash
+make setup
 ```
 
 `make setup` requires **GNU Make**, `uv`, and a running Docker daemon. It runs
@@ -115,6 +126,54 @@ uv run jaull run --model <repo> --prompt "Hello"   # download, verify and execut
 ```
 
 Full option reference: [docs/cli.md](docs/cli.md).
+
+## What a recommendation looks like
+
+One recommendation from the search above, shortened from the exported report:
+
+```text
+2. Qwen/Qwen2.5-0.5B-Instruct-GGUF — Safer option
+   Q5_K_M · llama.cpp on CUDA · fits comfortably (1.74 GiB) · apache-2.0, commercial use OK
+   llama-server --model Qwen2.5-0.5B-Instruct-GGUF.Q5_K_M.gguf --ctx-size 4096 --n-gpu-layers -1
+
+   Why this position: placement confirmed · strong fit for chat · strong runnability ·
+                      weak capability (a 0.5B model) · lots of memory headroom
+   Measured on this machine, this exact file:
+     IFEval, 541 prompts      25.9 % (140/541)
+     tg128 generation speed   median 246.1 tok/s over 6 calls (observed 218.6–271.7)
+   Measured evidence did not change its position (#2 → #2).
+   Warning: confidence is low; runtime overhead is a documented heuristic, not a measurement.
+```
+
+---
+
+## How Jaull works
+
+Jaull is an explainable local-AI qualification toolkit. It reads your machine, selects
+candidate language models, resolves the exact artifact you would actually run, verifies it,
+checks whether a local runtime and compute backend can execute it, runs it, benchmarks it,
+and compares what it predicted against what really happened.
+
+The question it is built around:
+
+> **Can this exact model, artifact, runtime and configuration satisfy the workload we want
+> to run on this infrastructure?**
+
+A recommendation is only the beginning of that answer. Everything after it — the artifact,
+the revision, the runtime, the backend, the execution, the measurement — is what turns a
+plausible suggestion into a decision you can defend.
+
+```text
+predict → acquire → verify → execute → benchmark → compare → qualify → deploy
+```
+
+Jaull implements `predict → compare` today. `qualify` and `deploy` are the direction the
+project is heading in; see [Where Jaull is going](#where-jaull-is-going) for what is real
+and what is not.
+
+Jaull is an active open-source engineering project developed as an undergraduate
+end-of-degree project (TFG) on local-AI infrastructure. It is usable, it is tested, and it
+is not finished.
 
 ---
 
@@ -317,6 +376,7 @@ button that says so, and downloads always need their own checkbox. Keys: `Esc` g
 |---|---|
 | **Guided analysis** | Scans the hardware, asks the questions, searches the Hub and ranks plans. |
 | **Advanced tools** | Opens the individual tools: Scan, Inspect, Estimate, Doctor and Evaluate local GGUF quality. |
+| **Set up a local server** | Five steps on one screen: backend, llama.cpp (with an install button), who can connect and how much context, the model, and **Start server**. Work in progress. |
 | **Find models** (wizard) | Runs the search with your answers. *What matters most?* picks the priority: Best quality, Balanced, Fast responses or Lowest memory. |
 | **Cancel / Retry / Start again** (search) | Stop the search, try again after an error, or go back to the questions. |
 
