@@ -181,3 +181,45 @@ def has_usable_accelerator(hardware: HardwareProfile) -> bool:
         )
         for accelerator in hardware.accelerators
     )
+
+
+def primary_accelerator(hardware: HardwareProfile) -> AcceleratorProfile | None:
+    """The accelerator to name first: the one backend selection would plan with.
+
+    A dedicated card before an integrated one, then one with a backend that works,
+    then the most dedicated memory, then discovery order. On a desktop with an
+    AMD APU and a Radeon card, Vulkan lists the APU first and names it after the
+    CPU; showing that one alone made the card look undetected (reported on Reddit
+    for an R9700). Software renderers are never primary.
+    """
+
+    candidates = [
+        (index, accelerator)
+        for index, accelerator in enumerate(hardware.accelerators)
+        if accelerator.type is not AcceleratorType.SOFTWARE
+    ]
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda item: (
+            item[1].type is not AcceleratorType.DEDICATED,
+            not any(
+                backend.availability is BackendAvailability.AVAILABLE
+                for backend in item[1].backends
+            ),
+            -(item[1].dedicated_memory_bytes or 0),
+            item[0],
+        ),
+    )[1]
+
+
+def gpu_label(hardware: HardwareProfile) -> str:
+    """One line naming the GPU for summaries, whatever its vendor."""
+
+    if hardware.gpus:
+        return hardware.gpus[0].name
+    accelerator = primary_accelerator(hardware)
+    if accelerator is None:
+        return "none detected (CPU inference only)"
+    return accelerator.name

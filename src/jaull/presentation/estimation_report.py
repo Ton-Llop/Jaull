@@ -163,7 +163,7 @@ def _resources_table(estimate: MemoryEstimate) -> Table:
         "Available VRAM",
         format_bytes(assessment.available_vram_bytes)
         if assessment.available_vram_bytes is not None
-        else "no NVIDIA GPU detected",
+        else "unknown (no dedicated GPU memory reported)",
     )
     table.add_row(
         "Available RAM",

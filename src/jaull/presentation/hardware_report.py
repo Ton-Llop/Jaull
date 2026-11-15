@@ -3,7 +3,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
-from jaull.domain.hardware import ComputeBackendInfo, HardwareProfile
+from jaull.domain.hardware import ComputeBackendInfo, HardwareProfile, primary_accelerator
 from jaull.presentation.console import format_bytes
 
 
@@ -42,8 +42,10 @@ def render_hardware(profile: HardwareProfile, console: Console) -> None:
                 "CUDA available",
                 f"Yes ({gpu.cuda_version})" if gpu.cuda_version else "unknown",
             )
+    elif (primary := primary_accelerator(profile)) is not None:
+        table.add_row("GPU", f"{primary.name} (details below)")
     else:
-        table.add_row("GPU", "no NVIDIA GPU detected")
+        table.add_row("GPU", "none detected (CPU inference only)")
 
     if profile.accelerators:
         for idx, accelerator in enumerate(profile.accelerators):

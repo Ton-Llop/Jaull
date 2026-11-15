@@ -8,6 +8,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
+from jaull.domain.hardware import gpu_label
 from jaull.tui.widgets.banner import Banner
 from jaull.tui.widgets.summary_card import SummaryCard
 
@@ -98,7 +99,7 @@ class AdvancedToolsScreen(Screen[None]):
         profile = self._app().hardware_profile
         if profile is None:
             return []
-        gpu = profile.gpus[0].name if profile.gpus else "no NVIDIA GPU detected"
+        gpu = gpu_label(profile)
         return [
             ("OS", profile.os),
             ("CPU", profile.cpu.model or "unknown"),

@@ -11,7 +11,12 @@ from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Digits, Footer, Static
 
-from jaull.domain.hardware import AcceleratorType, ComputeBackend, HardwareProfile
+from jaull.domain.hardware import (
+    AcceleratorType,
+    ComputeBackend,
+    HardwareProfile,
+    primary_accelerator,
+)
 from jaull.presentation.plan_labels import format_gib
 from jaull.runtime.backend_selection import select_runtime_backend
 from jaull.tui.widgets.progress_step import ProgressStepList
@@ -242,14 +247,7 @@ def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
         gpu = profile.gpus[0]
         rows.append(("GPU", gpu.name))
         rows.append(("VRAM", _fmt(gpu.vram_total_bytes)))
-    elif accelerator := next(
-        (
-            item
-            for item in profile.accelerators
-            if item.type is not AcceleratorType.SOFTWARE
-        ),
-        None,
-    ):
+    elif accelerator := primary_accelerator(profile):
         rows.append(("Accelerator", accelerator.name))
         if accelerator.dedicated_memory_bytes is not None:
             rows.append(("Accelerator memory", _fmt(accelerator.dedicated_memory_bytes)))
@@ -259,6 +257,14 @@ def _summary_rows(profile: HardwareProfile) -> list[tuple[str, str]]:
         elif accelerator.shared_memory:
             rows.append(("Accelerator memory", "shared system memory"))
         rows.append(("Compute backend", _backend_summary(profile)))
+        others = [
+            item for item in profile.accelerators
+            if item is not accelerator and item.type is not AcceleratorType.SOFTWARE
+        ]
+        if others:
+            rows.append(("Also detected", ", ".join(
+                f"{item.name} ({item.type.value})" for item in others
+            )))
     else:
         rows.append(("GPU", "none detected — CPU inference only"))
     rows.append(("Platform", f"{profile.os} ({profile.arch})"))

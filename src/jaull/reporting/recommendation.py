@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from jaull.domain.estimation import CompatibilityStatus
+from jaull.domain.hardware import gpu_label
 from jaull.domain.licenses import LEGAL_DISCLAIMER
 from jaull.domain.recommendation import AssessmentLevel
 from jaull.domain.requirements import RecommendationPriority, UseCase
@@ -161,7 +162,7 @@ def report_to_markdown(state: RecommendationWorkflowState) -> str:
 
     if state.hardware is not None:
         hw = state.hardware
-        gpu = hw.gpus[0].name if hw.gpus else "no NVIDIA GPU detected"
+        gpu = gpu_label(hw)
         lines += [
             "## Hardware",
             "",
