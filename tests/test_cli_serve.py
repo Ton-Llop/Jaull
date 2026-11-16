@@ -468,3 +468,15 @@ def test_without_a_certificate_a_shared_start_stays_plain_http() -> None:
     run_serve_start("a/b", ServeOptions(quantization=None, lan=True), advisor)  # type: ignore[arg-type]
 
     assert advisor.start_calls[0]["tls_cert"] is None
+
+
+def test_a_shared_start_inside_wsl_warns_instead_of_printing_a_useless_rule() -> None:
+    from dataclasses import replace
+
+    from jaull.application.serving.security import WSL_NOT_REACHABLE_WARNING
+    from jaull.presentation.serving import start_lines
+
+    started = FakeAdvisor().start_server(_plan())
+    out = "\n".join(start_lines(replace(started, wsl=True, firewall_rule=None)))
+
+    assert WSL_NOT_REACHABLE_WARNING in out and "ufw" not in out

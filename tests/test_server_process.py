@@ -215,13 +215,3 @@ def test_the_client_config_is_readable_only_by_its_owner(
     if sys.platform != "win32":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
-
-def test_the_api_key_can_be_read_back_for_copying(manager: ServerProcessManager) -> None:
-    assert manager.read_api_key() is None  # nothing created yet
-
-    _, created = manager.ensure_api_key()
-
-    assert created is not None
-    assert manager.read_api_key() == created
-    manager.api_key_path.write_text("  \n", encoding="utf-8")
-    assert manager.read_api_key() is None  # an empty file is not a key

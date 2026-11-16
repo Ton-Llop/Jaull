@@ -55,6 +55,23 @@ class ServerStart:
     web_ui: bool = False
     #: The opencode configuration written for this server; it holds the API key.
     client_config: Path | None = None
+    #: Shared from inside WSL: nothing else on the network can reach it.
+    wsl: bool = False
 
 
-__all__ = ["FoundLlamaServer", "ServerPlan", "ServerStart"]
+@dataclass(frozen=True)
+class ServerShare:
+    """Where other devices reach a running server, and what sharing it needs."""
+
+    #: This PC's network address when shared, the loopback address when not.
+    base_url: str
+    #: llama.cpp's chat page, when it is served.
+    chat_url: str | None
+    shared: bool
+    #: For the administrator to run when shared; never applied by Jaull.
+    firewall_rule: str | None
+    #: Running inside WSL: other devices cannot reach this address.
+    wsl: bool = False
+
+
+__all__ = ["FoundLlamaServer", "ServerPlan", "ServerShare", "ServerStart"]

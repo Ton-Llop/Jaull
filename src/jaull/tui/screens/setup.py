@@ -26,6 +26,7 @@ from textual.timer import Timer
 from textual.widgets import (
     Button,
     Checkbox,
+    Collapsible,
     Footer,
     Input,
     Label,
@@ -42,12 +43,15 @@ from jaull.application.serving.security import (
     LAN_WITHOUT_TLS_WARNING,
     PROMPT_CACHE_NOTE,
     SLOTS_ARE_NOT_USERS,
+    WSL_NOT_REACHABLE_WARNING,
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError
+from jaull.presentation.qr import qr_lines
 from jaull.presentation.serving import plan_lines, start_lines, status_lines
 from jaull.runtime import policies as runtime_policies
 from jaull.tui import palette
+from jaull.tui.clipboard import copy_api_key, copy_opencode_config, copy_text
 from jaull.tui.widgets.action_button import ActionButton
 from jaull.tui.widgets.bars import bar_markup
 from jaull.tui.widgets.context_bar import ContextBar
@@ -55,7 +59,7 @@ from jaull.tui.widgets.context_bar import ContextBar
 if TYPE_CHECKING:
     from jaull.advisor.service import AdvisorService
     from jaull.application.serving import ContextLimit
-    from jaull.application.serving.models import FoundLlamaServer
+    from jaull.application.serving.models import FoundLlamaServer, ServerShare
     from jaull.artifacts.storage import LocalModelFile
     from jaull.domain.hardware import HardwareProfile
     from jaull.domain.runtime import RuntimeBackendSelection
@@ -97,6 +101,13 @@ _LimitKey = tuple[str, "str | None", int, "ComputeBackend | None"]
 def _tokens(count: int) -> str:
     """32768 -> '32 768', grouped so long contexts read at a glance."""
     return f"{count:,}".replace(",", " ")
+
+
+def _qr_markup(text: str, *, plain: bool = False) -> str:
+    """A QR in the text colour on the screen's own background, or (``plain``) the classic
+    white-on-black code that every scanner reads."""
+    style = "#ffffff on #000000" if plain else palette.INK
+    return "\n".join(f"[{style}]{line}[/]" for line in qr_lines(text, inverted=not plain))
 
 
 def _styled_output(lines: list[str]) -> str:
@@ -161,6 +172,11 @@ class SetupScreen(Screen[None]):
         # A long action (a download) froze the form until it ends.
         self._locked = False
         self._running = False
+        # Where the running server can be reached, and whether the key is shown as a QR.
+        self._share: ServerShare | None = None
+        self._key_qr = False
+        self._key_qr_timer: Timer | None = None
+        self._qr_plain = False
         self._models: list[LocalModelFile] = []
         self._worker: Worker[None] | None = None
         self._picked: str | None = None
@@ -248,13 +264,34 @@ class SetupScreen(Screen[None]):
                 yield ActionButton("Find a model", id="setup-find")
             with Vertical(classes="setup-section -last", id="setup-result"):
                 yield from self._heading(5)
-                yield Static("", id="setup-output", classes="setup-output -empty")
+                # What to hand over once the server runs: a row and a Copy for each thing.
+                with Horizontal(id="setup-address-row", classes="setup-copy-row"):
+                    yield Static("", id="setup-address", classes="setup-copy-label")
+                    yield ActionButton("Copy", id="setup-copy-address")
+                with Horizontal(id="setup-key-row", classes="setup-copy-row"):
+                    yield Static("API key   ••••••••••••••••", classes="setup-copy-label")
+                    yield ActionButton("Show as QR", id="setup-key-qr-toggle")
+                    yield ActionButton("Copy", id="setup-copy-key")
+                yield Static("", id="setup-key-qr", classes="setup-qr")
+                with Horizontal(id="setup-opencode-row", classes="setup-copy-row"):
+                    yield Static("opencode config   ready to paste", classes="setup-copy-label")
+                    yield ActionButton("Copy", id="setup-copy-opencode")
+                with Horizontal(id="setup-firewall-row", classes="setup-copy-row"):
+                    yield Static("Firewall   an administrator has to run one command",
+                                 classes="setup-copy-label")
+                    yield ActionButton("Copy", id="setup-copy-firewall")
+                with Vertical(id="setup-qr-box"):
+                    yield Static("[b]Open the chat on your phone[/]: scan this code.",
+                                 id="setup-qr-note")
+                    yield Static("", id="setup-qr", classes="setup-qr")
+                yield ActionButton("Can't scan? White box", id="setup-qr-style")
+                yield Static("", id="setup-share-hint", classes="setup-note", markup=False)
+                with Collapsible(title="Technical details", collapsed=True, id="setup-details"):
+                    yield Static("", id="setup-output", classes="setup-output -empty")
         yield Static("Reading this machine...", id="setup-status", classes="status-line")
         with Horizontal(id="setup-actions"):
             yield Button("Start server", id="setup-start", classes="-primary", disabled=True)
             yield ActionButton("Monitor", id="setup-monitor", disabled=True)
-            # Short on purpose: five buttons must still fit in 80 columns.
-            yield ActionButton("Copy key", id="setup-copy-key", disabled=True)
             yield ActionButton("Stop server", id="setup-stop", disabled=True)
             yield ActionButton("Back", id="setup-back")
         yield Footer()
@@ -421,13 +458,7 @@ class SetupScreen(Screen[None]):
 
     def _copy_api_key(self) -> None:
         """Put the key on the clipboard. The status line never shows it."""
-        key = self._advisor().server_api_key()
-        if key is None:
-            self._note = "There is no API key stored. Restart the server to create one."
-        else:
-            self.app.copy_to_clipboard(key)
-            self._note = ("API key copied. If paste gives nothing, your terminal blocks "
-                          "copying: the key is in the file named in the server output.")
+        self._note = copy_api_key(self.app, self._advisor())
         self._refresh(self._note)
 
     def _make_certificate(self) -> None:
@@ -510,12 +541,80 @@ class SetupScreen(Screen[None]):
         output = self.query_one("#setup-output", Static)
         output.update(_styled_output(lines))
         output.set_class(not lines, "-empty")
+        self.query_one("#setup-details").display = bool(lines)
         if lines:
-            # The result holds the URL and the key: bring it into view.
-            self.call_after_refresh(output.scroll_visible)
+            # The result holds what to hand over: bring it into view.
+            self.call_after_refresh(self.query_one("#setup-result").scroll_visible)
+
+    def _render_share(self, running: bool) -> None:
+        """The hand-over rows: address, key, opencode config, firewall command and QR."""
+        share = self._share if running else None
+        for row in self.query(".setup-copy-row"):
+            row.display = running  # the key and its config only exist with a server
+        self.query_one("#setup-firewall-row").display = bool(share and share.firewall_rule)
+        if not running:
+            self._key_qr = False
+        if share is not None:
+            label, address = (("Chat page", share.chat_url) if share.chat_url
+                              else ("API address", f"{share.base_url}/v1"))
+            self.query_one("#setup-address", Static).update(
+                f"{label}   [b]{escape(address)}[/]")
+        qr_box = self.query_one("#setup-qr-box")
+        qr_box.display = bool(share and share.shared and share.chat_url and not share.wsl)
+        if qr_box.display and share is not None and share.chat_url:
+            self.query_one("#setup-qr", Static).update(
+                _qr_markup(share.chat_url, plain=self._qr_plain))
+        hint = ""
+        if share is not None and share.wsl:
+            hint = WSL_NOT_REACHABLE_WARNING
+        elif share is not None and not share.chat_url:
+            hint = ("To chat from a browser or a phone, turn on 'Enable the chat page' "
+                    "and start again.")
+        elif share is not None and not share.shared:
+            hint = ("Only this PC can reach it. Choose 'Share on the local network' to open "
+                    "it elsewhere.")
+        hint_widget = self.query_one("#setup-share-hint", Static)
+        hint_widget.update(hint)
+        hint_widget.display = bool(hint)
+        self._render_key_qr()
+
+    def _set_key_qr(self, shown: bool) -> None:
+        """Show or hide the key's QR. Shown, it hides itself after a while."""
+        self._key_qr = shown
+        if self._key_qr_timer is not None:
+            self._key_qr_timer.stop()
+            self._key_qr_timer = None
+        if shown:
+            self._key_qr_timer = self.set_timer(
+                serving_policies.SERVE_KEY_QR_VISIBLE_SECONDS, lambda: self._set_key_qr(False))
+        self._render_key_qr()
+
+    def on_screen_suspend(self) -> None:
+        # Leaving Setup (the monitor opens on top): the QR must not stay behind.
+        if self._key_qr:
+            self._set_key_qr(False)
+
+    def _render_key_qr(self) -> None:
+        """The key as a QR, only while asked for: whoever sees the screen could scan it."""
+        view = self.query_one("#setup-key-qr", Static)
+        key = self._advisor().server_api_key() if self._key_qr else None
+        if key is None:
+            self._key_qr = False
+        view.update(
+            f"[b]Scan to read the API key.[/] Anyone who sees this screen can scan it.\n"
+            f"{_qr_markup(key, plain=self._qr_plain)}" if key is not None else ""
+        )
+        view.display = key is not None
+        self.query_one("#setup-key-qr-toggle", Button).label = (
+            "[ Hide QR ]" if key is not None else "[ Show as QR ]")
+        style = self.query_one("#setup-qr-style", Button)
+        style.display = bool(self.query_one("#setup-qr-box").display or key is not None)
+        style.label = "[ Transparent ]" if self._qr_plain else "[ Can't scan? White box ]"
 
     def _show_server(self, status: ServerStatus, *, describe: bool = True) -> None:
         self._running = status.running
+        self._share = (self._advisor().server_share(status.state)
+                       if status.running and status.state is not None else None)
         if status.running and describe:
             self._output(status_lines(status))
         self._refresh()
@@ -526,7 +625,7 @@ class SetupScreen(Screen[None]):
         running = self._running
         self.query_one("#setup-stop", Button).disabled = self._busy or not running
         self.query_one("#setup-monitor", Button).disabled = not running
-        self.query_one("#setup-copy-key", Button).disabled = not running
+        self._render_share(running)
         self.query_one("#setup-install", Button).disabled = self._busy
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
@@ -677,6 +776,21 @@ class SetupScreen(Screen[None]):
             self._open_monitor()
         elif event.button.id == "setup-copy-key":
             self._copy_api_key()
+        elif event.button.id == "setup-copy-opencode":
+            self._note = copy_opencode_config(self.app, self._advisor())
+            self._refresh(self._note)
+        elif event.button.id == "setup-copy-address" and self._share is not None:
+            share = self._share
+            self._note = copy_text(self.app, share.chat_url or f"{share.base_url}/v1", "Address")
+            self._refresh(self._note)
+        elif event.button.id == "setup-copy-firewall" and self._share is not None:
+            self._note = copy_text(self.app, self._share.firewall_rule or "", "Firewall command")
+            self._refresh(self._note)
+        elif event.button.id == "setup-key-qr-toggle":
+            self._set_key_qr(not self._key_qr)
+        elif event.button.id == "setup-qr-style":
+            self._qr_plain = not self._qr_plain
+            self._render_share(self._running)
         elif event.button.id == "setup-stop":
             self._note = None
             self._stop()

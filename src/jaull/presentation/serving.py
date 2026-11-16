@@ -8,6 +8,7 @@ from jaull.application.serving.security import (
     SELF_SIGNED_CERTIFICATE_NOTE,
     SHARED_POOL_OVERFLOW_WARNING,
     SLOTS_ARE_NOT_USERS,
+    WSL_NOT_REACHABLE_WARNING,
 )
 from jaull.execution.server_certificate import ServerCertificate
 from jaull.execution.server_process import ServerStatus
@@ -91,6 +92,8 @@ def start_lines(started: ServerStart) -> list[str]:
         if not state.tls:
             lines.append(f"Warning: {LAN_WITHOUT_TLS_WARNING}")
         lines.append(f"Note: {SLOTS_ARE_NOT_USERS}")
+    if started.wsl:
+        lines.append(f"Warning: {WSL_NOT_REACHABLE_WARNING}")
     if started.web_ui:
         page = started.lan_url or state.url
         lines.append(f"Chat page: {page}/  (enter the API key in its settings)")

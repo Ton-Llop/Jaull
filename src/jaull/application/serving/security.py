@@ -20,6 +20,11 @@ SLOTS_ARE_NOT_USERS = (
     "request can take any free slot, and nothing keeps one person's conversations "
     "apart from another's."
 )
+# Inside WSL the network is internal to the PC: nothing else on the network reaches it.
+WSL_NOT_REACHABLE_WARNING = (
+    "Jaull is running inside WSL, whose network is internal to this PC: other devices, like "
+    "a phone, cannot reach this address. Run Jaull in Windows to share it on the local network."
+)
 # What a certificate Jaull makes itself does and does not give.
 SELF_SIGNED_CERTIFICATE_NOTE = (
     "Self-signed: the traffic is encrypted, but browsers and programs do not trust it by "
@@ -75,6 +80,7 @@ __all__ = [
     "SELF_SIGNED_CERTIFICATE_NOTE",
     "SHARED_POOL_OVERFLOW_WARNING",
     "SLOTS_ARE_NOT_USERS",
+    "WSL_NOT_REACHABLE_WARNING",
     "firewall_rule",
     "subnet_of",
 ]

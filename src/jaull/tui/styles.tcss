@@ -1794,6 +1794,31 @@ SetupScreen #setup-result.-running .setup-output {
     border-left: outer $ok;
 }
 
+SetupScreen .setup-copy-row {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+SetupScreen .setup-copy-label {
+    width: 1fr;
+    height: 1;
+}
+
+SetupScreen #setup-qr-box {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+SetupScreen .setup-qr {
+    height: auto;
+    width: auto;
+    margin: 0 0 1 0;
+}
+
+SetupScreen #setup-details {
+    margin: 1 0 0 0;
+}
+
 SetupScreen #setup-actions {
     height: auto;
     padding: 0 2;

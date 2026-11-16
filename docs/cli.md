@@ -311,7 +311,7 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
 
 - Listens on `127.0.0.1` only. `--lan` listens on every interface and prints a firewall
   rule limited to the local subnet (`New-NetFirewallRule ... -RemoteAddress LocalSubnet`
-  on Windows, `ufw` with the detected subnet on Linux). Jaull never applies it.
+  on Windows, `ufw` with the detected subnet on Linux). Jaull never applies it. Inside WSL it prints no rule and warns instead: WSL's network is internal to the PC and a phone cannot reach it, so run Jaull in Windows.
 - A random API key, stored in Jaull's data directory (`serve/api-key`, mode 0600), passed
   with `--api-key-file` so it never appears in the process list or the start script, and
   printed once.

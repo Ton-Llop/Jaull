@@ -63,6 +63,8 @@ class ServerState(BaseModel):
     parallel: int | None = None
     context_per_user: int | None = None
     slots: bool = False
+    #: llama.cpp's own chat page is served at the root URL.
+    web_ui: bool = False
 
     @property
     def url(self) -> str:
@@ -124,6 +126,13 @@ class ServerProcessManager:
             return None
         return key or None
 
+    def read_client_config(self, name: str) -> str | None:
+        """The text of a client configuration written by ``write_client_config``, if any."""
+        try:
+            return (self.directory / name).read_text(encoding="utf-8")
+        except OSError:
+            return None
+
     def write_client_config(self, name: str, config: dict[str, Any]) -> Path:
         """A client configuration next to the key. It holds the key, so only its owner reads it."""
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -168,6 +177,7 @@ class ServerProcessManager:
         parallel: int | None = None,
         context_per_user: int | None = None,
         slots: bool = False,
+        web_ui: bool = False,
         health_timeout_seconds: float = policies.LLAMA_SERVER_HEALTH_TIMEOUT_SECONDS,
         poll_seconds: float = policies.LLAMA_SERVER_HEALTH_POLL_SECONDS,
     ) -> ServerState:
@@ -207,6 +217,7 @@ class ServerProcessManager:
             parallel=parallel,
             context_per_user=context_per_user,
             slots=slots,
+            web_ui=web_ui,
         )
         self.state_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
         try:
@@ -310,6 +321,16 @@ def free_port(host: str, start: int) -> int | None:
         if port_available(host, port):
             return port
     return None
+
+
+def running_in_wsl() -> bool:
+    """Whether Jaull runs inside WSL, whose network other devices cannot reach."""
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower()
+    except OSError:
+        return False
 
 
 def lan_ipv4() -> tuple[str, str] | None:

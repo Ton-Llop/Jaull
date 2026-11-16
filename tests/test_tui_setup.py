@@ -14,7 +14,7 @@ from textual.pilot import Pilot
 from textual.widgets import Button, Checkbox, Input, RadioButton, Select, Static
 
 from jaull.application.serving import ServerSizingError
-from jaull.application.serving.models import ServerPlan, ServerStart
+from jaull.application.serving.models import ServerPlan, ServerShare, ServerStart
 from jaull.artifacts.storage import LocalModelFile
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
@@ -133,6 +133,16 @@ class SetupAdvisor:
 
     def server_api_key(self) -> str | None:
         return self.key
+
+    def server_opencode_config(self) -> str | None:
+        return '{"provider": {"jaull": {}}}'
+
+    #: Where the running server is reached; a local one unless a test says otherwise.
+    share = ServerShare(base_url="http://127.0.0.1:8090", chat_url=None, shared=False,
+                        firewall_rule=None)
+
+    def server_share(self, state: Any) -> ServerShare:
+        return self.share
 
     #: Set to CERTIFICATE to act as a machine where `jaull serve cert` was run before.
     detected: Any = None
@@ -825,7 +835,12 @@ def test_nothing_is_filled_in_when_there_is_no_certificate() -> None:
     asyncio.run(scenario())
 
 
-def test_the_copy_button_puts_the_api_key_on_the_clipboard() -> None:
+def test_the_copy_button_sits_next_to_the_key_and_copies_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No system tool: the test must never touch the real clipboard of whoever runs it.
+    monkeypatch.setattr("jaull.tui.clipboard._system_copy", lambda text: False)
+
     async def scenario() -> None:
         advisor = SetupAdvisor()
         app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
@@ -833,44 +848,26 @@ def test_the_copy_button_puts_the_api_key_on_the_clipboard() -> None:
         app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
         async with app.run_test(size=(80, 24)) as pilot:
             screen = await _open(pilot, app)
-            button = screen.query_one("#setup-copy-key", Button)
-            assert button.disabled  # no server, no key to copy
-            assert button.region.right <= 80
+            row = screen.query_one("#setup-key-row")
+            assert not row.display  # no server, no key
 
             advisor.running = True
             screen._show_server(advisor.server_status(), describe=False)
             await pilot.pause()
-            assert not button.disabled
-            assert button.region.right <= 80
+            button = screen.query_one("#setup-copy-key", Button)
+            assert row.display and button.region.right <= 80
             button.press()
             await pilot.pause()
 
             assert copied == ["KEY123"]
-            status = _text(screen, "#setup-status")
-            assert "API key copied" in status and "KEY123" not in status
+            assert "KEY123" not in _text(screen, "#setup-status")
+
+            screen.query_one("#setup-copy-opencode", Button).press()
+            await pilot.pause()
+            assert copied[1].startswith('{"provider"')
 
     asyncio.run(scenario())
 
-
-def test_a_missing_key_file_says_so_instead_of_copying_nothing() -> None:
-    async def scenario() -> None:
-        advisor = SetupAdvisor()
-        advisor.key = None
-        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
-        copied: list[str] = []
-        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
-        async with app.run_test(size=(120, 40)) as pilot:
-            screen = await _open(pilot, app)
-            advisor.running = True
-            screen._show_server(advisor.server_status(), describe=False)
-            await pilot.pause()
-            screen.query_one("#setup-copy-key", Button).press()
-            await pilot.pause()
-
-            assert copied == []
-            assert "no api key" in _text(screen, "#setup-status").lower()
-
-    asyncio.run(scenario())
 
 
 _LOCKED_INPUTS = ("#setup-users", "#setup-context", "#setup-port", "#setup-repo",
@@ -954,5 +951,81 @@ def test_typing_never_locks_the_form() -> None:
             for _ in range(20):
                 await pilot.pause(0.02)
                 assert not screen.query_one("#setup-users", Input).disabled
+
+    asyncio.run(scenario())
+
+
+def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("jaull.tui.clipboard._system_copy", lambda text: False)
+    monkeypatch.setattr(
+        "jaull.application.serving.policies.SERVE_KEY_QR_VISIBLE_SECONDS", 0.3)
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.share = ServerShare(
+            base_url="https://192.168.1.107:8090", chat_url="https://192.168.1.107:8090/",
+            shared=True, firewall_rule="sudo ufw allow from 192.168.1.0/24 to any port 8090",
+        )
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        copied: list[str] = []
+        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+        async with app.run_test(size=(120, 50)) as pilot:
+            screen = await _open(pilot, app)
+            for row in ("#setup-address-row", "#setup-firewall-row", "#setup-qr-box"):
+                assert not screen.query_one(row).display  # nothing runs yet
+
+            advisor.running = True
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            for row in ("#setup-address-row", "#setup-firewall-row", "#setup-qr-box"):
+                assert screen.query_one(row).display, row
+            assert "https://192.168.1.107:8090/" in _text(screen, "#setup-address")
+            assert _text(screen, "#setup-qr").count("\n") > 10  # a real QR, many lines
+            transparent = _text(screen, "#setup-qr").split("\n")[0]
+            screen.query_one("#setup-qr-style", Button).press()
+            await pilot.pause()
+            assert len(_text(screen, "#setup-qr").split("\n")[0]) > len(transparent)  # quiet zone
+            screen.query_one("#setup-qr-style", Button).press()
+            await pilot.pause()
+            assert _text(screen, "#setup-qr").split("\n")[0] == transparent
+
+            screen.query_one("#setup-copy-address", Button).press()
+            await pilot.pause()
+            screen.query_one("#setup-copy-firewall", Button).press()
+            await pilot.pause()
+            assert copied == ["https://192.168.1.107:8090/", advisor.share.firewall_rule]
+
+            # The key as a QR only while asked for, never as text, and it hides itself.
+            toggle = screen.query_one("#setup-key-qr-toggle", Button)
+            assert not screen.query_one("#setup-key-qr").display
+            toggle.press()
+            await pilot.pause()
+            assert screen.query_one("#setup-key-qr").display
+            assert "KEY123" not in _text(screen, "#setup-key-qr")
+            toggle.press()
+            await pilot.pause()
+            assert not screen.query_one("#setup-key-qr").display
+            toggle.press()
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-key-qr").display)
+
+            # A server only this PC reaches: no firewall command, no QR, and a hint why.
+            advisor.share = ServerShare(base_url="http://127.0.0.1:8090", chat_url=None,
+                                        shared=False, firewall_rule=None)
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            assert not screen.query_one("#setup-firewall-row").display
+            assert not screen.query_one("#setup-qr-box").display
+            assert screen.query_one("#setup-share-hint").display
+
+            # Shared from inside WSL: the address is unreachable, so say so, no QR for it.
+            advisor.share = ServerShare(base_url="https://172.17.6.33:8090",
+                                        chat_url="https://172.17.6.33:8090/", shared=True,
+                                        firewall_rule=None, wsl=True)
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            assert not screen.query_one("#setup-qr-box").display
+            assert "inside WSL" in _text(screen, "#setup-share-hint")
 
     asyncio.run(scenario())

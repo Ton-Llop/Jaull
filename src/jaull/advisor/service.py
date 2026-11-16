@@ -112,7 +112,12 @@ if TYPE_CHECKING:
         QualityCandidateSelection,
     )
     from jaull.application.serving import ContextLimit
-    from jaull.application.serving.models import FoundLlamaServer, ServerPlan, ServerStart
+    from jaull.application.serving.models import (
+        FoundLlamaServer,
+        ServerPlan,
+        ServerShare,
+        ServerStart,
+    )
     from jaull.benchmarks.matrix import (
         BenchmarkMatrixRequest,
         BenchmarkMatrixResult,
@@ -129,7 +134,11 @@ if TYPE_CHECKING:
     from jaull.execution.ports import ExecutionBackendProtocol
     from jaull.execution.server_certificate import ServerCertificate
     from jaull.execution.server_monitor import ServerMonitor
-    from jaull.execution.server_process import ServerProcessManager, ServerStatus
+    from jaull.execution.server_process import (
+        ServerProcessManager,
+        ServerState,
+        ServerStatus,
+    )
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
     from jaull.recommendation.capability_catalog import CatalogReadResult
@@ -756,8 +765,7 @@ class AdvisorService:
             opencode_config,
         )
         from jaull.application.serving.models import ServerStart
-        from jaull.application.serving.security import firewall_rule, subnet_of
-        from jaull.execution.server_process import lan_ipv4
+        from jaull.execution.server_process import running_in_wsl
         from jaull.runtime import policies as runtime_policies
         from jaull.runtime.llama_cpp_release import current_platform
         from jaull.runtime.llama_server import ServerLaunch, server_argv, slots_allowed
@@ -794,15 +802,12 @@ class AdvisorService:
         state = manager.start(
             argv, host=host, port=chosen_port, alias=plan.alias, tls=tls_cert is not None,
             total_context=plan.sizing.total_context, parallel=plan.sizing.parallel,
-            context_per_user=plan.sizing.context_per_user, slots=slots,
+            context_per_user=plan.sizing.context_per_user, slots=slots, web_ui=web_ui,
         )
-        rule = lan_url = None
-        if lan:
-            address = lan_ipv4()
-            subnet = subnet_of(*address) if address is not None else None
-            rule = firewall_rule(os_name, chosen_port, subnet=subnet)
-            if address is not None:
-                lan_url = f"{'https' if tls_cert else 'http'}://{address[0]}:{chosen_port}"
+        lan_url, rule = self._lan_share(chosen_port, tls_cert is not None) if lan else (None, None)
+        wsl = lan and running_in_wsl()
+        if wsl:
+            rule = None  # a Linux rule for WSL's internal network helps nobody
         key = new_key or api_key_path.read_text(encoding="utf-8").strip()
         client_config = manager.write_client_config(OPENCODE_CONFIG_FILENAME, opencode_config(
             base_url=f"{lan_url or state.url}/v1", api_key=key, alias=plan.alias,
@@ -811,7 +816,7 @@ class AdvisorService:
         return ServerStart(
             state=state, api_key_path=api_key_path, new_api_key=new_key,
             start_script=script, firewall_rule=rule, lan_url=lan_url, web_ui=web_ui,
-            client_config=client_config,
+            client_config=client_config, wsl=wsl,
         )
 
     def prepare_serve_artifact(
@@ -925,9 +930,44 @@ class AdvisorService:
     def stop_server(self) -> bool:
         return self._server_manager().stop()
 
+    def _lan_share(self, port: int, tls: bool) -> tuple[str | None, str | None]:
+        """(URL on this PC's network address, firewall rule for it) for a shared server."""
+        from jaull.application.serving.security import firewall_rule, subnet_of
+        from jaull.execution.server_process import lan_ipv4
+        from jaull.runtime.llama_cpp_release import current_platform
+
+        address = lan_ipv4()
+        os_name, _ = current_platform()
+        subnet = subnet_of(*address) if address is not None else None
+        rule = firewall_rule(os_name, port, subnet=subnet)
+        url = f"{'https' if tls else 'http'}://{address[0]}:{port}" if address is not None else None
+        return url, rule
+
+    def server_share(self, state: ServerState) -> ServerShare:
+        """Where other devices reach the running server ``state`` and what sharing needs."""
+        from jaull.application.serving.models import ServerShare
+        from jaull.execution.server_process import running_in_wsl
+        from jaull.runtime import policies as runtime_policies
+
+        wsl = False
+        if state.host != runtime_policies.LLAMA_SERVER_LAN_HOST:
+            base, rule, shared = state.url, None, False
+        else:
+            lan_url, rule = self._lan_share(state.port, state.tls)
+            base, shared, wsl = lan_url or state.url, True, running_in_wsl()
+            rule = None if wsl else rule
+        return ServerShare(base_url=base, chat_url=f"{base}/" if state.web_ui else None,
+                           shared=shared, firewall_rule=rule, wsl=wsl)
+
     def server_api_key(self) -> str | None:
         """The running server's API key, for a person to copy; None when it is not stored."""
         return self._server_manager().read_api_key()
+
+    def server_opencode_config(self) -> str | None:
+        """The opencode.json written at start (it holds the API key); None when missing."""
+        from jaull.application.serving.client_config import OPENCODE_CONFIG_FILENAME
+
+        return self._server_manager().read_client_config(OPENCODE_CONFIG_FILENAME)
 
     def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
         """A self-signed HTTPS certificate for this PC's network address and name."""

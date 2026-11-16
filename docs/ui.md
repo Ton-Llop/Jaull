@@ -229,15 +229,35 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    read **Use for server**, and the chosen GGUF plan fills in the repository and
    quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
-   [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). The output
-   shows the plan, the URL, the API key once, the start script, the path of a ready
-   `opencode.json` for the opencode coding agent and, when shared, the firewall rule for an
-   administrator; Jaull never changes the firewall. **Stop server** stops it.
+   [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). When it is
+   running, this step becomes a hand-over card (below); the plan, the start script and the
+   log are under **Technical details**, folded. Jaull never changes the firewall.
+   **Stop server** stops it.
 
-If a server is already running when the screen opens, its status is shown and only Monitor,
-**Copy key** and Stop are available. **Copy key** puts the API key on the clipboard through
-the terminal (it never appears on screen again); if pasting gives nothing, the terminal
-blocks copying and the key is in the file named in the server output.
+If a server is already running when the screen opens, its status is shown and only Monitor
+and Stop are available.
+
+While a server runs, step 5 is a card with one row for each thing to hand over, and a
+**Copy** beside each:
+
+- **Chat page** (or the **API address** when the chat page is off): the URL other devices use.
+- **API key**, hidden, with **Show as QR**. The QR holds only the key, so a phone's camera
+  offers to copy it; it is never put in a URL, hides itself after 30 seconds and when you
+  leave Setup, and anyone who sees the screen while it shows could scan it.
+- **opencode config**: the ready-made `opencode.json`.
+- **Firewall**, when shared: the command an administrator has to run.
+- A **QR code of the chat page** when the server is shared and serves it, to open it on a
+  phone without typing the address. It is drawn inverted, in the text colour on the
+  screen's own background, with no white box. Phone cameras read inverted codes, but not
+  every scanner app does: **Can't scan? White box** switches to the classic code, white on
+  black, which every scanner reads. With the server only on this PC, or the chat page off, a line
+  says what to change.
+- Inside WSL there is no QR and no firewall command: WSL's network is internal to the PC, so
+  a phone cannot reach the address. The card says to run Jaull in Windows instead.
+
+Copy uses the system clipboard (`clip.exe`, `wl-copy`, `xclip`, `pbcopy`) and the terminal's
+own copy sequence only as a fallback, which tmux blocks unless `set -g set-clipboard on` is
+set. The key is never printed in the status line.
 
 While a download runs, the model or llama.cpp, the whole form is locked: fields, choices,
 checkboxes and chips are greyed out, so nothing changes under the download. Only Back

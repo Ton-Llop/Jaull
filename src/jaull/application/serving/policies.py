@@ -47,6 +47,10 @@ SERVE_CLIENT_POOL_SHARE = 0.5
 SERVE_CLIENT_OUTPUT_TOKENS = 8192
 SERVE_CLIENT_OUTPUT_MAX_SHARE = 0.25
 
+# The API key shown as a QR hides itself after this long, in case it is left open.
+# Product decision: long enough to point a phone at it, short enough to be forgotten.
+SERVE_KEY_QR_VISIBLE_SECONDS = 30.0
+
 # Context sizes are planned in steps of this many tokens.
 SERVE_CONTEXT_STEP_TOKENS = 4096
 

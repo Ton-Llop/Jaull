@@ -24,6 +24,7 @@ dependencies = [
     "accelerate>=1.14.0",
     "bitsandbytes>=0.50.2",
     "cryptography>=43",
+    "segno>=1.6.6",
 ]
 
 # Development tooling is a dependency *group*, not an optional feature: it is
