@@ -213,7 +213,10 @@ def test_results_screen_can_open_benchmark_screen(tmp_path: Path) -> None:
             assert screen.query_one("#res-speed-0", Button).disabled is False
 
             screen.query_one("#res-speed-0", Button).press()
-            await pilot.pause()
+            # The screen is pushed before it finishes mounting; leaving the app now would
+            # tear it down mid-mount (a race a slow Windows runner loses).
+            await _wait_until(pilot, lambda: isinstance(app.screen, RecommendationBenchmarkScreen)
+                              and bool(app.screen.query("#benchmark-start")))
 
             assert isinstance(pilot.app.screen, RecommendationBenchmarkScreen)
 

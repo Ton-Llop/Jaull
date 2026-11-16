@@ -925,6 +925,10 @@ class AdvisorService:
     def stop_server(self) -> bool:
         return self._server_manager().stop()
 
+    def server_api_key(self) -> str | None:
+        """The running server's API key, for a person to copy; None when it is not stored."""
+        return self._server_manager().read_api_key()
+
     def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
         """A self-signed HTTPS certificate for this PC's network address and name."""
         import socket

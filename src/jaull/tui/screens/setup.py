@@ -158,6 +158,8 @@ class SetupScreen(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         self._busy = True
+        # A long action (a download) froze the form until it ends.
+        self._locked = False
         self._running = False
         self._models: list[LocalModelFile] = []
         self._worker: Worker[None] | None = None
@@ -251,6 +253,8 @@ class SetupScreen(Screen[None]):
         with Horizontal(id="setup-actions"):
             yield Button("Start server", id="setup-start", classes="-primary", disabled=True)
             yield ActionButton("Monitor", id="setup-monitor", disabled=True)
+            # Short on purpose: five buttons must still fit in 80 columns.
+            yield ActionButton("Copy key", id="setup-copy-key", disabled=True)
             yield ActionButton("Stop server", id="setup-stop", disabled=True)
             yield ActionButton("Back", id="setup-back")
         yield Footer()
@@ -279,8 +283,13 @@ class SetupScreen(Screen[None]):
 
     def _run(
         self, work: Callable[[AdvisorService], None], status: str, *, keeps_error: bool = False,
+        locks_form: bool = False,
     ) -> None:
+        """Run ``work`` off the UI thread. ``locks_form`` is for the long actions the person
+        starts (a download): the form is frozen until they end, so nothing is edited under
+        them. Quiet background checks never lock it, or typing would be interrupted."""
         self._busy = True
+        self._locked = locks_form
         if not keeps_error:
             self._error = None  # a new action starts afresh
         self._refresh(status)
@@ -294,12 +303,14 @@ class SetupScreen(Screen[None]):
             return
         if event.state is WorkerState.ERROR:
             self._busy = False
+            self._locked = False
             self._limit_asked = None  # A failed limit check may be retried.
             self._error = f"Failed: {event.worker.error}"
             self._refresh()
             self._run_pending_limit_check()
         elif event.state in {WorkerState.SUCCESS, WorkerState.CANCELLED} and self._busy:
             self._busy = False
+            self._locked = False
             self._refresh()
             self._run_pending_limit_check()
 
@@ -405,7 +416,19 @@ class SetupScreen(Screen[None]):
             self._later(self._installed_now, backend,
                                       installation.version_text or "")
 
-        self._run(install, f"Downloading and checking llama.cpp ({backend.value})...")
+        self._run(install, f"Downloading and checking llama.cpp ({backend.value})...",
+                  locks_form=True)
+
+    def _copy_api_key(self) -> None:
+        """Put the key on the clipboard. The status line never shows it."""
+        key = self._advisor().server_api_key()
+        if key is None:
+            self._note = "There is no API key stored. Restart the server to create one."
+        else:
+            self.app.copy_to_clipboard(key)
+            self._note = ("API key copied. If paste gives nothing, your terminal blocks "
+                          "copying: the key is in the file named in the server output.")
+        self._refresh(self._note)
 
     def _make_certificate(self) -> None:
         def make(advisor: AdvisorService) -> None:
@@ -460,7 +483,7 @@ class SetupScreen(Screen[None]):
             # The live panel opens on top; the key and URL stay here, one Esc away.
             self._later(self._open_monitor)
 
-        self._run(start, "Preparing the model...")
+        self._run(start, "Preparing the model...", locks_form=True)
 
     def _stop(self) -> None:
         def stop(advisor: AdvisorService) -> None:
@@ -503,9 +526,11 @@ class SetupScreen(Screen[None]):
         running = self._running
         self.query_one("#setup-stop", Button).disabled = self._busy or not running
         self.query_one("#setup-monitor", Button).disabled = not running
+        self.query_one("#setup-copy-key", Button).disabled = not running
         self.query_one("#setup-install", Button).disabled = self._busy
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
+        self._lock_form(self._locked)
         self.query_one("#setup-result").set_class(running, "-running")
         choice = self._choice()
         idle = choice if isinstance(choice, str) else "Ready. Press Start server."
@@ -515,6 +540,18 @@ class SetupScreen(Screen[None]):
                 else f"[{palette.OK}]●[/] " if running else "")
         self.query_one("#setup-status", Static).update(mark + escape(text))
         self._render_progress()
+
+    def _lock_form(self, locked: bool) -> None:
+        """Freeze or free what the person edits. Buttons and the backend list have their own
+        busy rules above, and Max follows the context limit, so none of them is touched."""
+        body = self.query_one("#setup-body")
+        for widget in body.query("Input, Checkbox, RadioSet"):
+            widget.disabled = locked
+        model = self.query_one("#setup-model", Select)
+        model.disabled = locked
+        for chip in body.query("Button.chip"):
+            if chip.id != "setup-preset-max":
+                chip.disabled = locked
 
     # ---------------------------------------------------------- live summary
 
@@ -587,7 +624,7 @@ class SetupScreen(Screen[None]):
         limit = self._current_limit()
         largest = limit.largest_per_user if limit is not None else None
         maximum = self.query_one("#setup-preset-max", Button)
-        maximum.disabled = largest is None
+        maximum.disabled = largest is None or self._locked
         maximum.set_class(largest is not None and context == largest, "-active")
         capacity = self.query_one("#setup-capacity", Static)
         if context is None:
@@ -638,6 +675,8 @@ class SetupScreen(Screen[None]):
             self._make_certificate()
         elif event.button.id == "setup-monitor":
             self._open_monitor()
+        elif event.button.id == "setup-copy-key":
+            self._copy_api_key()
         elif event.button.id == "setup-stop":
             self._note = None
             self._stop()

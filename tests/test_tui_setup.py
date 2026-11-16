@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -81,8 +82,16 @@ class SetupAdvisor:
         self.calls.append(("found", {"backend": backend}))
         return self.found
 
+    #: When set, a download (llama.cpp or the model) waits here, like a slow real one.
+    gate: threading.Event | None = None
+
+    def _download(self) -> None:
+        if self.gate is not None:
+            self.gate.wait(10)
+
     def install_llama_cpp(self, backend: ComputeBackend) -> LlamaCppInstallation:
         self.calls.append(("install", {"backend": backend}))
+        self._download()
         self.installed = True
         return INSTALLED
 
@@ -95,6 +104,7 @@ class SetupAdvisor:
     def prepare_serve_artifact(self, repo_id: str, **kwargs: Any) -> ModelArtifact:
         self.calls.append(("prepare", {"repo_id": repo_id, **kwargs}))
         kwargs["on_progress"]("Verifying model-Q4_K_M.gguf")
+        self._download()
         return ARTIFACT
 
     def plan_server(self, **kwargs: Any) -> ServerPlan:
@@ -117,6 +127,12 @@ class SetupAdvisor:
     def create_server_certificate(self, *, renew: bool = False) -> Any:
         self.calls.append(("certificate", {"renew": renew}))
         return CERTIFICATE
+
+    #: The key in the server's key file; None when the file is missing.
+    key: str | None = "KEY123"
+
+    def server_api_key(self) -> str | None:
+        return self.key
 
     #: Set to CERTIFICATE to act as a machine where `jaull serve cert` was run before.
     detected: Any = None
@@ -805,5 +821,138 @@ def test_nothing_is_filled_in_when_there_is_no_certificate() -> None:
             screen.query_one("#setup-lan", RadioButton).value = True
             await pilot.pause()
             assert screen.query_one("#setup-tls-cert", Input).value == ""
+
+    asyncio.run(scenario())
+
+
+def test_the_copy_button_puts_the_api_key_on_the_clipboard() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        copied: list[str] = []
+        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = await _open(pilot, app)
+            button = screen.query_one("#setup-copy-key", Button)
+            assert button.disabled  # no server, no key to copy
+            assert button.region.right <= 80
+
+            advisor.running = True
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            assert not button.disabled
+            assert button.region.right <= 80
+            button.press()
+            await pilot.pause()
+
+            assert copied == ["KEY123"]
+            status = _text(screen, "#setup-status")
+            assert "API key copied" in status and "KEY123" not in status
+
+    asyncio.run(scenario())
+
+
+def test_a_missing_key_file_says_so_instead_of_copying_nothing() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.key = None
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        copied: list[str] = []
+        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            advisor.running = True
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            screen.query_one("#setup-copy-key", Button).press()
+            await pilot.pause()
+
+            assert copied == []
+            assert "no api key" in _text(screen, "#setup-status").lower()
+
+    asyncio.run(scenario())
+
+
+_LOCKED_INPUTS = ("#setup-users", "#setup-context", "#setup-port", "#setup-repo",
+                  "#setup-quant", "#setup-tls-cert", "#setup-tls-key")
+_LOCKED_BUTTONS = ("#setup-preset-8192", "#setup-other", "#setup-cert", "#setup-find",
+                   "#setup-install", "#setup-start", "#setup-stop")
+
+
+def _assert_form_locked(screen: SetupScreen, locked: bool) -> None:
+    for selector in _LOCKED_INPUTS:
+        assert screen.query_one(selector, Input).disabled is locked, selector
+    for selector in ("#setup-webui", "#setup-shared", "#setup-cache"):
+        assert screen.query_one(selector, Checkbox).disabled is locked, selector
+    for selector in ("#setup-model", "#setup-backend"):
+        assert screen.query_one(selector, Select).disabled is locked, selector
+    assert screen.query_one("#setup-exposure").disabled is locked
+    if locked:
+        for selector in _LOCKED_BUTTONS:
+            assert screen.query_one(selector, Button).disabled, selector
+    # Leaving is always possible: the download carries on without the screen.
+    assert not screen.query_one("#setup-back", Button).disabled
+
+
+def test_the_form_is_locked_while_a_model_downloads() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.gate = threading.Event()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: not screen._busy
+                              and not screen.query_one("#setup-start", Button).disabled)
+            _assert_form_locked(screen, False)
+
+            screen.query_one("#setup-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("prepare")))
+            await pilot.pause()
+            _assert_form_locked(screen, True)
+            assert screen.query_one("#setup-preset-max", Button).disabled
+
+            advisor.gate.set()
+            await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
+            _assert_form_locked(screen, False)
+
+    asyncio.run(scenario())
+
+
+def test_the_form_is_locked_while_llama_cpp_downloads() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor(installed=False)
+        advisor.gate = threading.Event()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            await _wait_until(pilot, lambda: not screen._busy
+                              and not screen.query_one("#setup-install", Button).disabled)
+
+            screen.query_one("#setup-install", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("install")))
+            await pilot.pause()
+            _assert_form_locked(screen, True)
+
+            advisor.gate.set()
+            await _wait_until(pilot, lambda: advisor.installed and not screen._busy)
+            _assert_form_locked(screen, False)
+
+    asyncio.run(scenario())
+
+
+def test_typing_never_locks_the_form() -> None:
+    # The context limit is re-checked in the background while the person types; that quiet
+    # work must not disable the fields they are typing in.
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-model", Select).value = 0
+            screen.query_one("#setup-users", Input).value = "3"
+            for _ in range(20):
+                await pilot.pause(0.02)
+                assert not screen.query_one("#setup-users", Input).disabled
 
     asyncio.run(scenario())

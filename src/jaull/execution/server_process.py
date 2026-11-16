@@ -116,6 +116,14 @@ class ServerProcessManager:
             handle.write(key + "\n")
         return path, key
 
+    def read_api_key(self) -> str | None:
+        """The stored key, or None when there is no usable key file."""
+        try:
+            key = self.api_key_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        return key or None
+
     def write_client_config(self, name: str, config: dict[str, Any]) -> Path:
         """A client configuration next to the key. It holds the key, so only its owner reads it."""
         self.directory.mkdir(parents=True, exist_ok=True)

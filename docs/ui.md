@@ -234,8 +234,15 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    `opencode.json` for the opencode coding agent and, when shared, the firewall rule for an
    administrator; Jaull never changes the firewall. **Stop server** stops it.
 
-If a server is already running when the screen opens, its status is shown and only Monitor
-and Stop are available.
+If a server is already running when the screen opens, its status is shown and only Monitor,
+**Copy key** and Stop are available. **Copy key** puts the API key on the clipboard through
+the terminal (it never appears on screen again); if pasting gives nothing, the terminal
+blocks copying and the key is in the file named in the server output.
+
+While a download runs, the model or llama.cpp, the whole form is locked: fields, choices,
+checkboxes and chips are greyed out, so nothing changes under the download. Only Back
+stays available (the download carries on without the screen). Quiet background checks, such
+as re-working out the largest context while you type, never lock it.
 
 ### Server monitor
 
