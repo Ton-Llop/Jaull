@@ -145,3 +145,10 @@ def test_without_prompt_cache_nothing_is_kept_between_requests() -> None:
     private = server_argv(_launch(prompt_cache=False))
     assert "--no-cache-prompt" in private
     assert private[private.index("--cache-ram") + 1] == "0"
+
+
+def test_the_prompt_cache_gets_the_ceiling_jaull_sized() -> None:
+    sized = server_argv(_launch(cache_ram_mib=2867))
+    assert sized[sized.index("--cache-ram") + 1] == "2867"
+    off = server_argv(_launch(prompt_cache=False, cache_ram_mib=2867))
+    assert "--no-cache-prompt" in off and off[off.index("--cache-ram") + 1] == "0"

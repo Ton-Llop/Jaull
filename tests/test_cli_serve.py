@@ -297,3 +297,16 @@ def test_no_prompt_cache_flag_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert seen[0].prompt_cache is False
+
+
+def test_the_plan_says_how_much_ram_the_prompt_cache_may_take() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import plan_lines
+
+    sized = "\n".join(plan_lines(replace(_plan(), prompt_cache_bytes=2 * GiB,
+                                         ram_available_bytes=12 * GiB)))
+    assert "Prompt cache in RAM: up to 2.0 GiB (12.0 GiB of RAM free now)." in sized
+    off = "\n".join(plan_lines(replace(_plan(), prompt_cache_bytes=0,
+                                       ram_available_bytes=3 * GiB)))
+    assert "Prompt cache in RAM: off, not enough free RAM" in off

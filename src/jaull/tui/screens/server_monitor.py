@@ -21,6 +21,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Sparkline, Static
 from textual.worker import Worker, WorkerState
 
+from jaull.application.serving import policies as serving_policies
 from jaull.execution.server_monitor import (
     MonitorError,
     ServerMonitor,
@@ -40,6 +41,10 @@ _REFRESH_SECONDS = 1.0
 # One minute of generation speed in the sparkline.
 _HISTORY = 60
 _BAR = 30
+
+
+def _gib(count: int) -> str:
+    return f"{count / 1024**3:.1f} GiB"
 
 
 def _tokens(count: int) -> str:
@@ -83,6 +88,7 @@ class ServerMonitorScreen(Screen[None]):
             yield Sparkline(list(self._history), id="monitor-spark")
             yield Static("", id="monitor-pool", classes="monitor-text")
             yield Static("", id="monitor-slots", classes="monitor-text")
+            yield Static("", id="monitor-memory", classes="monitor-text")
             yield Static("", id="monitor-note", classes="monitor-note", markup=False)
         with Horizontal(id="monitor-actions"):
             yield ActionButton("Stop server", id="monitor-stop")
@@ -170,6 +176,7 @@ class ServerMonitorScreen(Screen[None]):
         self._card("generation", f"{rates.generation:.1f} t/s" if rates else "-", palette.ACCENT)
         self._card("prompt", f"{rates.prompt:.0f} t/s" if rates else "-", palette.INK_2)
         self._render_slots(snapshot)
+        self._render_memory(snapshot)
         self.query_one("#monitor-note", Static).update(
             snapshot.slots_note or "The connection details and the API key stay on the Setup "
             "screen: press Esc to see them. Numbers come from llama-server itself."
@@ -205,6 +212,31 @@ class ServerMonitorScreen(Screen[None]):
                 f"{_tokens(slot.used_tokens):>9} / {_tokens(slot.n_ctx)}  {state_text}"
             )
         slots_view.update("\n".join(lines))
+
+    def _render_memory(self, snapshot: ServerSnapshot) -> None:
+        lines = ["[b]Memory[/]"]
+        if snapshot.process_ram_bytes is not None:
+            lines.append(f"  llama-server RAM   {_gib(snapshot.process_ram_bytes)}")
+        available, total = snapshot.ram_available_bytes, snapshot.ram_total_bytes
+        if available is not None and total:
+            free = available / total
+            low = free < serving_policies.SERVE_RAM_LOW_FRACTION
+            colour = palette.BAD if low else palette.INK_2
+            lines.append(
+                f"  System RAM in use  {bar_markup(1 - free, _BAR)}  "
+                f"[{colour}]{_gib(available)} free of {_gib(total)}[/]"
+            )
+            if low:
+                lines.append(
+                    f"  [{palette.WARN}]! System RAM is running low. Close other programs, or "
+                    "restart the server with less context or with the prompt cache off.[/]"
+                )
+        lines.append(
+            f"  VRAM (this server) {_gib(snapshot.process_vram_bytes)}"
+            if snapshot.process_vram_bytes is not None else
+            f"  [{palette.INK_3}]VRAM per process is only readable on NVIDIA GPUs.[/]"
+        )
+        self.query_one("#monitor-memory", Static).update("\n".join(lines))
 
     # ------------------------------------------------------------------ actions
 

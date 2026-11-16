@@ -25,6 +25,10 @@ class ServerPlan:
     context_limit: ContextLimit | None = None
     #: The llama.cpp build of ``server_binary`` when known (``b11889``).
     build: str | None = None
+    #: Ceiling for llama.cpp's prompt cache in system RAM; 0 keeps it off.
+    prompt_cache_bytes: int | None = None
+    #: Free system RAM when the plan was made, to explain the ceiling.
+    ram_available_bytes: int | None = None
 
 
 @dataclass(frozen=True)

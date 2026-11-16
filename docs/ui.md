@@ -246,6 +246,10 @@ every second from the server itself, it shows:
 - Generation and prompt speed, with the last minute of generation as a sparkline.
 - The shared context pool in use, and one bar per conversation with its tokens and
   whether it is answering.
+- Memory: the RAM llama-server holds, the system RAM in use with a warning when less than
+  10 % is free, and the server's VRAM on NVIDIA GPUs (other GPUs do not report it per
+  process). The limits are set when the server starts, and llama-server cannot change
+  them while running, so the warning suggests what to change at the next start.
 
 The per-conversation figures need llama-server's `/slots`, which Jaull turns on only for a
 build checked to expose no conversation text (b11889). With another build the monitor

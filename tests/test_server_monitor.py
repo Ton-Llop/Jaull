@@ -274,3 +274,60 @@ def test_the_monitor_says_when_no_server_runs() -> None:
             assert screen.query_one("#monitor-stop", Button).disabled
 
     asyncio.run(scenario())
+
+
+
+class FakeMemory:
+    def __init__(self, available: int) -> None:
+        self.available = available
+
+    def process(self, pid: int) -> tuple[int | None, int | None]:
+        return 3 * 1024**3, 17 * 1024**3
+
+    def system(self) -> tuple[int | None, int | None]:
+        return self.available, 64 * 1024**3
+
+
+def test_the_snapshot_carries_process_and_system_memory(tmp_path: Path) -> None:
+    key = tmp_path / "api-key"
+    key.write_text("k")
+    monitor = ServerMonitor(
+        "http://x", key, slots=False, pid=4242, memory=FakeMemory(40 * 1024**3),
+        http_get=lambda url, headers: _response(200, text=METRICS),
+    )
+
+    snapshot = monitor.read()
+
+    assert snapshot.process_ram_bytes == 3 * 1024**3
+    assert snapshot.process_vram_bytes == 17 * 1024**3
+    assert (snapshot.ram_available_bytes, snapshot.ram_total_bytes) == (40 * 1024**3, 64 * 1024**3)
+
+
+def test_the_panel_warns_when_system_ram_runs_low() -> None:
+    class LowRam(FakeMonitor):
+        def read(self) -> ServerSnapshot:
+            from dataclasses import replace
+
+            return replace(super().read(), process_ram_bytes=3 * 1024**3,
+                           ram_available_bytes=4 * 1024**3, ram_total_bytes=64 * 1024**3)
+
+    class Advisor(MonitorAdvisor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.monitor = LowRam()
+
+    async def scenario() -> None:
+        advisor = Advisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = ServerMonitorScreen()
+            await app.push_screen(screen)
+            await _wait_until(pilot, lambda: advisor.monitor.reads >= 2)
+            await pilot.pause()
+            memory = _text(screen, "#monitor-memory")
+            assert "llama-server RAM   3.0 GiB" in memory
+            assert "4.0 GiB free of 64.0 GiB" in memory
+            assert "System RAM is running low" in memory
+            assert "only readable on NVIDIA" in memory
+
+    asyncio.run(scenario())

@@ -244,3 +244,13 @@ segon, la gent que està rebent resposta, la cua, la velocitat i el context de c
 - **PENDENT, trobat aquí:** la memòria cau de llama.cpp pot ocupar fins a 8 GiB de RAM del sistema (`--cache-ram`, per
   defecte), i el dimensionament del servidor no ho compta. A la B60 no importa (la RAM és a part de la VRAM), però en
   un servidor de CPU sí. Cal decidir si es limita, es desactiva per defecte en CPU o s'afegeix a l'estimació.
+
+**Memòria cau i RAM al panell (2026-11-16):** resol el PENDENT anterior.
+- `--cache-ram` es dimensiona en arrencar: la RAM lliure, menys la que ocupa el model a la RAM, menys el 20 % del
+  total per a la resta del PC, amb el sostre de 8 GiB de llama.cpp. Per sota de 512 MiB s'apaga. El 20 % és una
+  decisió de producte, no mesurada. Prova real a WSL (7,4 GiB, 6,5 lliures, servidor de CPU amb Qwen2.5-1.5B): el pla
+  diu 2,5 GiB i llama-server rep `--cache-ram 2521`, en lloc dels 8 GiB per defecte.
+- El panell mostra la RAM del procés llama-server, la RAM del sistema (amb avís per sota del 10 % lliure) i la VRAM del
+  procés en NVIDIA. Intel i AMD no la donen per procés.
+- No s'ajusta en calent: llama-server no permet canviar `--cache-ram` ni la bossa de KV amb el servidor encès, i
+  reiniciar-lo talla les converses. Un reinici automàtic quan no hi hagi ningú queda com a treball futur.

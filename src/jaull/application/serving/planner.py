@@ -115,6 +115,31 @@ def size_server(
     )
 
 
+def prompt_cache_bytes(*, ram_total: int, ram_available: int, model_ram: int) -> int:
+    """How much system RAM llama.cpp's prompt cache may take; 0 turns the RAM cache off.
+
+    Free RAM now, minus what the model will put in RAM (its host share on a GPU, all
+    of it on a CPU server), minus a share of the total left to the rest of the PC,
+    capped at llama.cpp's own default. llama.cpp evicts the oldest entries when the
+    cache is full, so this is a ceiling, not an allocation.
+    """
+    room = (
+        ram_available - model_ram
+        - int(ram_total * policies.SERVE_RAM_LEFT_FOR_SYSTEM_FRACTION)
+    )
+    budget = min(room, policies.SERVE_PROMPT_CACHE_MAX_BYTES)
+    return budget if budget >= policies.SERVE_PROMPT_CACHE_MIN_BYTES else 0
+
+
+def model_ram_bytes(estimate: MemoryEstimate) -> int:
+    """System RAM the served model itself takes, from the estimate the server was sized on."""
+    fit = estimate.hardware_fit
+    if fit is not None:
+        return fit.ram_physical_bytes or 0
+    # A CPU-target estimate has no placement: the whole model lives in RAM.
+    return estimate.total_bytes or 0
+
+
 def context_limit(
     *,
     users: int,
@@ -225,5 +250,7 @@ __all__ = [
     "ServerSizing",
     "ServerSizingError",
     "context_limit",
+    "model_ram_bytes",
+    "prompt_cache_bytes",
     "size_server",
 ]

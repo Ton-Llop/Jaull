@@ -33,6 +33,14 @@ def plan_lines(plan: ServerPlan) -> list[str]:
             f"  Largest context per person on this machine: {limit.largest_per_user} "
             f"tokens{native}."
         )
+    if plan.prompt_cache_bytes is not None:
+        free = (f" ({format_bytes(plan.ram_available_bytes)} of RAM free now)"
+                if plan.ram_available_bytes is not None else "")
+        lines.append(
+            f"  Prompt cache in RAM: up to {format_bytes(plan.prompt_cache_bytes)}{free}."
+            if plan.prompt_cache_bytes else
+            f"  Prompt cache in RAM: off, not enough free RAM{free}."
+        )
     fit = sizing.estimate.hardware_fit
     physical = fit.gpu_physical_bytes if fit is not None else None
     if physical is not None and sizing.gpu_budget_bytes is not None:

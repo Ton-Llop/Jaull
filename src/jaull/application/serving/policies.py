@@ -26,6 +26,17 @@ SERVE_CPU_ACCEPTED_STATUSES = frozenset({
 # declare its native context. Search bound, not a claim about any model.
 SERVE_CONTEXT_SEARCH_CEILING_TOKENS = 1_048_576
 
+# llama.cpp's prompt cache keeps idle conversations in system RAM, 8 GiB by default
+# (--cache-ram). The server's own sizing never counted it, so Jaull sizes it at start:
+# what is free, minus what the model itself puts in RAM, minus a share left to the
+# rest of the PC, up to llama.cpp's default. HYPOTHESIS: the share is a product
+# decision, not measured. Below the minimum the RAM cache is not worth having.
+SERVE_PROMPT_CACHE_MAX_BYTES = 8 * 1024**3
+SERVE_PROMPT_CACHE_MIN_BYTES = 512 * 1024**2
+SERVE_RAM_LEFT_FOR_SYSTEM_FRACTION = 0.20
+# The server monitor warns when free system RAM falls below this share of the total.
+SERVE_RAM_LOW_FRACTION = 0.10
+
 # Context sizes are planned in steps of this many tokens.
 SERVE_CONTEXT_STEP_TOKENS = 4096
 

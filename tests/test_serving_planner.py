@@ -260,3 +260,27 @@ def test_explicit_cpu_target_is_judged_by_the_assessment() -> None:
     with pytest.raises(ServerSizingError):
         size_server(users=1, context_per_user=8192, base=BASE,
                     estimate_for=estimate_with(CompatibilityStatus.COMFORTABLE))
+
+
+def test_prompt_cache_ceiling_leaves_room_for_the_model_and_the_system() -> None:
+    from jaull.application.serving.planner import prompt_cache_bytes
+
+    # Plenty free (the B60 PC: 64 GiB, model on the GPU): llama.cpp's own 8 GiB default.
+    assert prompt_cache_bytes(ram_total=64 * GiB, ram_available=50 * GiB,
+                              model_ram=GiB // 2) == 8 * GiB
+    # A CPU server on a 16 GiB laptop: 12 free - 6 model - 3.2 for the system = 2.8 GiB.
+    tight = prompt_cache_bytes(ram_total=16 * GiB, ram_available=12 * GiB, model_ram=6 * GiB)
+    assert tight == 12 * GiB - 6 * GiB - int(16 * GiB * 0.20)
+    # Too little left: the RAM cache is off rather than a few useless MiB.
+    assert prompt_cache_bytes(ram_total=16 * GiB, ram_available=8 * GiB,
+                              model_ram=5 * GiB) == 0
+
+
+def test_model_ram_comes_from_the_placement_or_the_whole_cpu_estimate() -> None:
+    from jaull.application.serving.planner import model_ram_bytes
+
+    gpu = SimpleNamespace(hardware_fit=SimpleNamespace(ram_physical_bytes=515 * MiB),
+                          total_bytes=20 * GiB)
+    cpu = SimpleNamespace(hardware_fit=None, total_bytes=3 * GiB)
+    assert model_ram_bytes(gpu) == 515 * MiB  # type: ignore[arg-type]
+    assert model_ram_bytes(cpu) == 3 * GiB  # type: ignore[arg-type]

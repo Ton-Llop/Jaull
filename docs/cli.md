@@ -325,8 +325,11 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   not separate users: everyone shares one key and nothing keeps one person's
   conversations apart from another's.
 - llama.cpp's prompt cache stays on (upstream default): the start of each conversation is
-  reused on the next turn and idle conversations are kept in up to 8 GiB of system RAM
-  (`--cache-ram`). `--no-prompt-cache` passes `--no-cache-prompt --cache-ram 0`: nothing
+  reused on the next turn and idle conversations are kept in system RAM. Jaull sizes that
+  RAM ceiling (`--cache-ram`) at start: the RAM free now, minus what the model itself puts
+  in RAM, minus 20 % of the total left to the rest of the PC, up to llama.cpp's own 8 GiB
+  default. Under 512 MiB the RAM cache is turned off. The plan prints the figure. The
+  20 % is a product decision, not measured. `--no-prompt-cache` passes `--no-cache-prompt --cache-ram 0`: nothing
   stays in memory after a request, and a faster reply can no longer show that someone sent
   the same beginning, but every turn reprocesses the whole conversation, which is much
   slower on long chats.

@@ -17,9 +17,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
+import psutil
+
+from jaull.hardware.nvidia import NvidiaProcessMemorySampler
 
 # Field names that would carry what people typed or received.
 _TEXT_FIELDS = frozenset({"prompt", "prompts", "messages", "content", "text", "generated_text"})
@@ -63,6 +66,13 @@ class ServerSnapshot:
     slots: tuple[SlotUsage, ...] | None
     #: Why there are no slots, in words for the person reading the panel.
     slots_note: str | None = None
+    #: Resident system RAM of the llama-server process (weights mapped in RAM, KV on the
+    #: host, prompt cache). None when the process cannot be read.
+    process_ram_bytes: int | None = None
+    ram_available_bytes: int | None = None
+    ram_total_bytes: int | None = None
+    #: Device memory of the process; only NVIDIA (NVML) attributes it per process.
+    process_vram_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -80,8 +90,10 @@ class ServerMonitor:
         api_key_path: Path,
         *,
         slots: bool,
+        pid: int | None = None,
         http_get: HttpGet | None = None,
         clock: Callable[[], float] = time.monotonic,
+        memory: MemoryReader | None = None,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._key_path = api_key_path
@@ -91,6 +103,8 @@ class ServerMonitor:
         )
         self._get = http_get or _http_get
         self._clock = clock
+        self._pid = pid
+        self._memory = memory or ProcessMemoryReader()
 
     def read(self) -> ServerSnapshot:
         headers = {"Authorization": f"Bearer {self._key()}"}
@@ -107,7 +121,15 @@ class ServerMonitor:
                 )
             except ValueError:
                 slots = None
+        process_ram, process_vram = (
+            self._memory.process(self._pid) if self._pid is not None else (None, None)
+        )
+        available, total = self._memory.system()
         return ServerSnapshot(
+            process_ram_bytes=process_ram,
+            process_vram_bytes=process_vram,
+            ram_available_bytes=available,
+            ram_total_bytes=total,
             at=self._clock(),
             requests_processing=int(metrics.get("requests_processing", 0)),
             requests_deferred=int(metrics.get("requests_deferred", 0)),
@@ -135,6 +157,35 @@ class ServerMonitor:
         if response.status_code != 200:
             raise MonitorError(f"{path} answered HTTP {response.status_code}.")
         return response
+
+
+class MemoryReader(Protocol):
+    def process(self, pid: int) -> tuple[int | None, int | None]: ...
+
+    def system(self) -> tuple[int | None, int | None]: ...
+
+
+class ProcessMemoryReader:
+    """Resident RAM of a process, its NVIDIA VRAM when NVML can attribute it, and free RAM."""
+
+    def __init__(self) -> None:
+        self._nvidia: NvidiaProcessMemorySampler | None = None
+
+    def process(self, pid: int) -> tuple[int | None, int | None]:
+        try:
+            ram: int | None = int(psutil.Process(pid).memory_info().rss)
+        except (psutil.Error, OSError):
+            ram = None
+        if self._nvidia is None:
+            self._nvidia = NvidiaProcessMemorySampler()
+        return ram, self._nvidia.sample_pid_bytes(pid)
+
+    def system(self) -> tuple[int | None, int | None]:
+        try:
+            memory = psutil.virtual_memory()
+        except (psutil.Error, OSError):
+            return None, None
+        return int(memory.available), int(memory.total)
 
 
 class SlotsCarryTextError(ValueError):
@@ -227,7 +278,9 @@ def _http_get(url: str, headers: dict[str, str]) -> httpx.Response:
 
 
 __all__ = [
+    "MemoryReader",
     "MonitorError",
+    "ProcessMemoryReader",
     "ServerMonitor",
     "ServerSnapshot",
     "SlotUsage",

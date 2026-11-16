@@ -46,6 +46,8 @@ class ServerLaunch:
     slots: bool = False
     #: llama.cpp's prompt cache (on by default upstream). Off: nothing kept between requests.
     prompt_cache: bool = True
+    #: Ceiling for the prompt cache in system RAM, in MiB; None leaves llama.cpp's default.
+    cache_ram_mib: int | None = None
 
     def __post_init__(self) -> None:
         if (self.tls_cert is None) != (self.tls_key is None):
@@ -77,6 +79,8 @@ def server_argv(launch: ServerLaunch) -> list[str]:
     if not launch.prompt_cache:
         # Both: the per-slot cache and the RAM copy of idle slots (8 GiB by default).
         argv += ["--no-cache-prompt", "--cache-ram", "0"]
+    elif launch.cache_ram_mib is not None:
+        argv += ["--cache-ram", str(launch.cache_ram_mib)]
     if launch.tls_cert is not None and launch.tls_key is not None:
         argv += ["--ssl-cert-file", str(launch.tls_cert), "--ssl-key-file", str(launch.tls_key)]
     return argv

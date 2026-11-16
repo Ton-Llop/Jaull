@@ -608,7 +608,12 @@ class AdvisorService:
         shared_context: bool = False,
     ) -> ServerPlan:
         """Size a llama-server for ``users`` and find the binary. Composes; no policy here."""
-        from jaull.application.serving import context_limit, size_server
+        from jaull.application.serving import (
+            context_limit,
+            model_ram_bytes,
+            prompt_cache_bytes,
+            size_server,
+        )
         from jaull.application.serving.models import ServerPlan
         from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
         from jaull.runtime.llama_cpp_release import current_platform
@@ -666,6 +671,12 @@ class AdvisorService:
             server_binary=binary,
             context_limit=limit,
             build=build,
+            prompt_cache_bytes=prompt_cache_bytes(
+                ram_total=hardware.memory.total_bytes,
+                ram_available=hardware.memory.available_bytes,
+                model_ram=model_ram_bytes(sizing.estimate),
+            ),
+            ram_available_bytes=hardware.memory.available_bytes,
         )
 
     def server_context_limit(
@@ -767,6 +778,10 @@ class AdvisorService:
             web_ui=web_ui,
             slots=slots,
             prompt_cache=prompt_cache,
+            cache_ram_mib=(
+                plan.prompt_cache_bytes // 1024**2 if plan.prompt_cache_bytes is not None
+                else None
+            ),
         ))
         os_name, _ = current_platform()
         script = manager.write_start_script(argv, windows=os_name == "windows")
@@ -892,7 +907,8 @@ class AdvisorService:
         status = manager.status()
         if not status.running or status.state is None:
             return None
-        return ServerMonitor(status.state.url, manager.api_key_path, slots=status.state.slots)
+        return ServerMonitor(status.state.url, manager.api_key_path,
+                             slots=status.state.slots, pid=status.state.pid)
 
     def stop_server(self) -> bool:
         return self._server_manager().stop()
