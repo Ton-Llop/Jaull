@@ -199,3 +199,18 @@ def test_start_scripts_repeat_the_command(manager: ServerProcessManager) -> None
     bat = manager.write_start_script(argv, windows=True)
     assert bat.name == "start-server.bat"
     assert b'"/opt/llama b/llama-server" --model /m/q.gguf --port 8090\r\n' in bat.read_bytes()
+
+
+def test_the_client_config_is_readable_only_by_its_owner(
+    manager: ServerProcessManager,
+) -> None:
+    import json
+    import stat
+    import sys
+
+    path = manager.write_client_config("opencode.json", {"provider": {"jaull": {}}})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"provider": {"jaull": {}}}
+    assert path.parent == manager.directory
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600

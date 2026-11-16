@@ -339,7 +339,14 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
 - Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
 
 `start` also writes `serve/start-server.sh` (`.bat` on Windows) with the same command,
-to start the server by hand. `--backend` overrides the detected backend; the server binary
+to start the server by hand, and `serve/opencode.json`, a ready configuration for the
+[opencode](https://opencode.ai) coding agent: the server's URL (the network one with
+`--lan`), the API key, the model name and a context limit. It holds the key, so it is
+mode 0600 and goes to `~/.config/opencode/opencode.json` on the PC that runs opencode,
+never into a project folder. The limit is the context per person, except with a pool that
+can overflow: then it is half the pool (`SERVE_CLIENT_POOL_SHARE`, a heuristic, not
+measured), so the agent alone cannot fill it and end everyone's chat. The answer limit is
+8192 tokens, at most a quarter of that context. `--backend` overrides the detected backend; the server binary
 comes from the managed build of that backend, or from the located llama.cpp. When the
 pinned llama.cpp build is more than 30 days older than upstream's newest, `start` prints a
 note (GitHub is asked at most once a day; without network there is no note).

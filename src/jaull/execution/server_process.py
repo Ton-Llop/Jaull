@@ -9,6 +9,7 @@ llama-server executable, so a reused PID is never killed.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shlex
@@ -20,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import psutil
@@ -113,6 +115,16 @@ class ServerProcessManager:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(key + "\n")
         return path, key
+
+    def write_client_config(self, name: str, config: dict[str, Any]) -> Path:
+        """A client configuration next to the key. It holds the key, so only its owner reads it."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path = self.directory / name
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(config, handle, indent=2)
+            handle.write("\n")
+        return path
 
     def write_start_script(self, argv: list[str], *, windows: bool) -> Path:
         """The same command as a script, to start the server by hand or at boot."""

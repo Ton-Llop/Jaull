@@ -326,3 +326,19 @@ def test_a_shared_pool_warns_that_overflowing_it_stops_every_chat() -> None:
     assert SHARED_POOL_OVERFLOW_WARNING in "\n".join(plan_lines(capped))
     # A pool as large as everyone's full context cannot overflow.
     assert SHARED_POOL_OVERFLOW_WARNING not in "\n".join(plan_lines(roomy))
+
+
+def test_start_says_where_the_opencode_config_is() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import start_lines
+
+    started = FakeAdvisor().start_server(_plan())
+    shared = "\n".join(start_lines(replace(started,
+                                            client_config=Path("/data/serve/opencode.json"))))
+    assert "opencode config (it contains the API key): /data/serve/opencode.json" in shared
+    assert "only works on this PC" not in shared  # the fake start is shared on the LAN
+
+    local = "\n".join(start_lines(replace(started, lan_url=None, firewall_rule=None,
+                                           client_config=Path("/data/serve/opencode.json"))))
+    assert "only works on this PC" in local

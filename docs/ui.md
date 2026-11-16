@@ -229,9 +229,9 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
    [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). The output
-   shows the plan, the URL, the API key once, the start script and, when shared, the
-   firewall rule for an administrator; Jaull never changes the firewall. **Stop server**
-   stops it.
+   shows the plan, the URL, the API key once, the start script, the path of a ready
+   `opencode.json` for the opencode coding agent and, when shared, the firewall rule for an
+   administrator; Jaull never changes the firewall. **Stop server** stops it.
 
 If a server is already running when the screen opens, its status is shown and only Monitor
 and Stop are available.

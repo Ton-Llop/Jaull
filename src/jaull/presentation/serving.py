@@ -74,6 +74,15 @@ def start_lines(started: ServerStart) -> list[str]:
                   f"  {started.new_api_key}"]
     else:
         lines.append(f"API key: in {started.api_key_path}")
+    if started.client_config is not None:
+        lines.append(f"opencode config (it contains the API key): {started.client_config}")
+        lines.append(
+            "  Copy it to ~/.config/opencode/opencode.json on the PC that runs opencode, "
+            "not into a project folder."
+            if started.lan_url is not None else
+            "  The server listens only on this PC, so it only works on this PC. Start with "
+            "--lan to use it from another one."
+        )
     lines += [f"Start script: {started.start_script}", "Stop it with: jaull serve stop"]
     if started.firewall_rule is not None:
         lines += [

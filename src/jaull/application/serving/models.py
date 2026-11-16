@@ -53,6 +53,8 @@ class ServerStart:
     lan_url: str | None
     #: True when llama.cpp's chat page is served at the root URL.
     web_ui: bool = False
+    #: The opencode configuration written for this server; it holds the API key.
+    client_config: Path | None = None
 
 
 __all__ = ["FoundLlamaServer", "ServerPlan", "ServerStart"]

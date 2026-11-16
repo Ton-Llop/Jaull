@@ -37,6 +37,16 @@ SERVE_RAM_LEFT_FOR_SYSTEM_FRACTION = 0.20
 # The server monitor warns when free system RAM falls below this share of the total.
 SERVE_RAM_LOW_FRACTION = 0.10
 
+# The opencode configuration written at start. With a shared pool, a client given the whole
+# pool can fill it alone and end every other chat (measured, docs/TFG/concurrencia-b60.md),
+# so it gets this share of the pool. HEURISTIC: half leaves room for a few web chats while an
+# agent keeps a long context; not measured with real use.
+SERVE_CLIENT_POOL_SHARE = 0.5
+# Largest answer the client asks for in one turn, and at most this share of its context so
+# the prompt keeps the rest. Product decisions, not measurements.
+SERVE_CLIENT_OUTPUT_TOKENS = 8192
+SERVE_CLIENT_OUTPUT_MAX_SHARE = 0.25
+
 # Context sizes are planned in steps of this many tokens.
 SERVE_CONTEXT_STEP_TOKENS = 4096
 

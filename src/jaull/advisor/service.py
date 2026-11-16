@@ -749,6 +749,11 @@ class AdvisorService:
         prompt_cache: bool = True,
     ) -> ServerStart:
         """Start ``plan`` detached with the security defaults. Composes; no policy here."""
+        from jaull.application.serving.client_config import (
+            OPENCODE_CONFIG_FILENAME,
+            client_context_limit,
+            opencode_config,
+        )
         from jaull.application.serving.models import ServerStart
         from jaull.application.serving.security import firewall_rule, subnet_of
         from jaull.execution.server_process import lan_ipv4
@@ -797,9 +802,15 @@ class AdvisorService:
             rule = firewall_rule(os_name, chosen_port, subnet=subnet)
             if address is not None:
                 lan_url = f"{'https' if tls_cert else 'http'}://{address[0]}:{chosen_port}"
+        key = new_key or api_key_path.read_text(encoding="utf-8").strip()
+        client_config = manager.write_client_config(OPENCODE_CONFIG_FILENAME, opencode_config(
+            base_url=f"{lan_url or state.url}/v1", api_key=key, alias=plan.alias,
+            context_limit=client_context_limit(plan.sizing),
+        ))
         return ServerStart(
             state=state, api_key_path=api_key_path, new_api_key=new_key,
             start_script=script, firewall_rule=rule, lan_url=lan_url, web_ui=web_ui,
+            client_config=client_config,
         )
 
     def prepare_serve_artifact(
