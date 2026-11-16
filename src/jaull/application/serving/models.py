@@ -23,6 +23,8 @@ class ServerPlan:
     server_binary: Path
     #: The largest context per person this machine can serve with this model.
     context_limit: ContextLimit | None = None
+    #: The llama.cpp build of ``server_binary`` when known (``b11889``).
+    build: str | None = None
 
 
 @dataclass(frozen=True)

@@ -158,7 +158,10 @@ def test_setup_starts_a_downloaded_model_and_can_stop_it(size: tuple[int, int]) 
             assert advisor.called("prepare")[0]["quantization"] == "Q4_K_M"
             plan = advisor.called("plan")[0]
             assert plan["users"] == 4 and plan["backend"] is ComputeBackend.VULKAN
-            assert advisor.called("start")[0] == {"lan": False, "port": 8090, "web_ui": False}
+            assert advisor.called("start")[0] == {
+                "lan": False, "port": 8090, "web_ui": False,
+                "tls_cert": None, "tls_key": None, "prompt_cache": True,
+            }
             output = _text(screen, "#setup-output")
             assert "4 users at once" in output and "KEY123" in output
             assert screen.query_one("#setup-start", Button).disabled
@@ -194,7 +197,10 @@ def test_setup_uses_a_typed_repository_and_the_local_network() -> None:
 
             assert advisor.called("prepare")[0]["repo_id"] == "org/Other-GGUF"
             assert advisor.called("prepare")[0]["quantization"] == "IQ4_XS"
-            assert advisor.called("start")[0] == {"lan": True, "port": 8095, "web_ui": True}
+            assert advisor.called("start")[0] == {
+                "lan": True, "port": 8095, "web_ui": True,
+                "tls_cert": None, "tls_key": None, "prompt_cache": True,
+            }
             assert advisor.called("plan")[0]["shared_context"] is True
 
     asyncio.run(scenario())
@@ -634,5 +640,84 @@ def test_a_pending_limit_check_runs_after_a_failed_one_and_the_error_stays() -> 
             await pilot.pause()
             assert screen._current_limit() is not None
             assert "Failed: Hugging Face did not answer" in _text(screen, "#setup-status")
+
+    asyncio.run(scenario())
+
+
+def test_sharing_without_https_warns_and_https_files_reach_the_server(tmp_path: Path) -> None:
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    cert.write_text("cert")
+    key.write_text("key")
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            note = screen.query_one("#setup-exposure-note", Static)
+            assert not screen.query_one("#setup-tls").display
+            assert not note.has_class("-warn")
+
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+            assert screen.query_one("#setup-tls").display
+            assert note.has_class("-warn")
+            assert "without HTTPS" in _text(screen, "#setup-exposure-note")
+            assert "not separate users" in _text(screen, "#setup-exposure-note")
+
+            screen.query_one("#setup-tls-cert", Input).value = str(cert)
+            await pilot.pause()
+            assert screen._tls_files() == "HTTPS needs both a certificate and a private key file."
+            screen.query_one("#setup-tls-key", Input).value = str(key)
+            await pilot.pause()
+            assert not note.has_class("-warn")
+            assert "Served over HTTPS" in _text(screen, "#setup-exposure-note")
+            assert "not separate users" in _text(screen, "#setup-exposure-note")
+
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-start", Button).disabled)
+            screen.query_one("#setup-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
+            started = advisor.called("start")[0]
+            assert (started["tls_cert"], started["tls_key"]) == (cert, key)
+
+    asyncio.run(scenario())
+
+
+def test_a_missing_https_key_is_named_before_starting(tmp_path: Path) -> None:
+    cert = tmp_path / "cert.pem"
+    cert.write_text("cert")
+
+    async def scenario() -> None:
+        app = JaullApp(advisor=SetupAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-lan", RadioButton).value = True
+            screen.query_one("#setup-tls-cert", Input).value = str(cert)
+            await pilot.pause()
+            assert screen._tls_files() == "HTTPS needs both a certificate and a private key file."
+            screen.query_one("#setup-tls-key", Input).value = str(tmp_path / "nope.pem")
+            await pilot.pause()
+            assert str(screen._tls_files()).startswith("The HTTPS private key file was not found")
+
+    asyncio.run(scenario())
+
+
+def test_turning_the_prompt_cache_off_explains_the_cost_and_reaches_the_server() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            assert "Faster replies" in _text(screen, "#setup-cache-note")
+            screen.query_one("#setup-cache", Checkbox).value = False
+            await pilot.pause()
+            assert "reprocesses the whole conversation" in _text(screen, "#setup-cache-note")
+
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-start", Button).disabled)
+            screen.query_one("#setup-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
+            assert advisor.called("start")[0]["prompt_cache"] is False
 
     asyncio.run(scenario())

@@ -492,11 +492,16 @@ def serve_start_command(
         False, "--shared-context",
         help="One pool of --context tokens for everyone: one person can use all of it.",
     ),
+    no_prompt_cache: bool = typer.Option(
+        False, "--no-prompt-cache",
+        help="Keep nothing between requests: more private, much slower on long chats.",
+    ),
 ) -> None:
     raise typer.Exit(code=run_serve_start(model_ref, ServeOptions(
         quantization=quantization, users=users, context_per_user=context, lan=lan, port=port,
         backend=backend, revision=revision, llama_server_path=llama_server,
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
+        prompt_cache=not no_prompt_cache,
     )))
 
 

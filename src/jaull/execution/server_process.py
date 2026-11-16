@@ -56,6 +56,11 @@ class ServerState(BaseModel):
     argv: list[str]
     log_path: str
     started_at: str
+    # What the monitor needs; absent in states saved before it existed.
+    total_context: int | None = None
+    parallel: int | None = None
+    context_per_user: int | None = None
+    slots: bool = False
 
     @property
     def url(self) -> str:
@@ -139,6 +144,10 @@ class ServerProcessManager:
         port: int,
         alias: str,
         tls: bool = False,
+        total_context: int | None = None,
+        parallel: int | None = None,
+        context_per_user: int | None = None,
+        slots: bool = False,
         health_timeout_seconds: float = policies.LLAMA_SERVER_HEALTH_TIMEOUT_SECONDS,
         poll_seconds: float = policies.LLAMA_SERVER_HEALTH_POLL_SECONDS,
     ) -> ServerState:
@@ -174,6 +183,10 @@ class ServerProcessManager:
             argv=argv,
             log_path=str(self.log_path),
             started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            total_context=total_context,
+            parallel=parallel,
+            context_per_user=context_per_user,
+            slots=slots,
         )
         self.state_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
         try:

@@ -130,3 +130,18 @@ def test_server_binary_missing_returns_none(tmp_path: Path) -> None:
 
     assert server_binary_for(installation) is None
     assert server_binary_for(installation.model_copy(update={"llama_cli": None})) is None
+
+
+def test_metrics_always_and_slots_only_when_allowed() -> None:
+    plain = server_argv(_launch())
+    assert "--metrics" in plain and "--no-slots" in plain and "--slots" not in plain
+    with_slots = server_argv(_launch(slots=True))
+    assert "--slots" in with_slots and "--no-slots" not in with_slots
+
+
+def test_without_prompt_cache_nothing_is_kept_between_requests() -> None:
+    plain = server_argv(_launch())
+    assert "--no-cache-prompt" not in plain and "--cache-ram" not in plain
+    private = server_argv(_launch(prompt_cache=False))
+    assert "--no-cache-prompt" in private
+    assert private[private.index("--cache-ram") + 1] == "0"

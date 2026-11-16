@@ -265,3 +265,35 @@ def test_a_cli_only_build_does_not_hide_a_complete_one_found_later(
     assert found is not None and found.supports_backend
     assert found.path == tmp_path / "complete" / "llama-server"
     assert probed == [str(tmp_path / "complete" / "llama-cli")]
+
+
+def test_lan_without_tls_warns_and_slots_are_explained() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import start_lines
+
+    started = ServerStart(
+        state=STATE.model_copy(update={"tls": False}), api_key_path=Path("/k"),
+        new_api_key=None, start_script=Path("/s"), firewall_rule=None,
+        lan_url="http://192.168.1.50:8090",
+    )
+    text = "\n".join(start_lines(started))
+    assert "Warning: Shared without HTTPS" in text and "not separate users" in text
+
+    secure = replace(started, state=STATE.model_copy(update={"tls": True}),
+                     lan_url="https://192.168.1.50:8090")
+    secure_text = "\n".join(start_lines(secure))
+    assert "without HTTPS" not in secure_text and "not separate users" in secure_text
+    local = replace(started, lan_url=None)
+    assert "not separate users" not in "\n".join(start_lines(local))
+
+
+def test_no_prompt_cache_flag_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[ServeOptions] = []
+    monkeypatch.setattr("jaull.cli.app.run_serve_start",
+                        lambda reference, options: seen.append(options) or 0)
+
+    result = CliRunner().invoke(app, ["serve", "start", "a/b", "--no-prompt-cache"])
+
+    assert result.exit_code == 0, result.output
+    assert seen[0].prompt_cache is False

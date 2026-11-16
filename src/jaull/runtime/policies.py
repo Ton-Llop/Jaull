@@ -99,3 +99,7 @@ LLAMA_SERVER_HEALTH_POLL_SECONDS = 1.0
 LLAMA_SERVER_STOP_TIMEOUT_SECONDS = 15.0
 LLAMA_SERVER_LOG_TAIL_LINES = 20
 LLAMA_SERVER_API_KEY_BYTES = 32
+# Builds whose /slots answer was checked to carry no conversation text (only token
+# counts and sampling settings), so it may be enabled for the server monitor. Checked
+# on b11889 (2026-11-16) with a marker in the prompt. Any other build keeps --no-slots.
+LLAMA_SERVER_SLOTS_VERIFIED_BUILDS = frozenset({"b11889"})

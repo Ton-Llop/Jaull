@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.markup import escape
@@ -37,6 +38,11 @@ from textual.worker import Worker, WorkerState
 
 from jaull.application.model_reference import normalize_repo_id
 from jaull.application.serving import policies as serving_policies
+from jaull.application.serving.security import (
+    LAN_WITHOUT_TLS_WARNING,
+    PROMPT_CACHE_NOTE,
+    SLOTS_ARE_NOT_USERS,
+)
 from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError
 from jaull.presentation.serving import plan_lines, start_lines, status_lines
@@ -112,7 +118,7 @@ def _styled_output(lines: list[str]) -> str:
         elif line.startswith(("Start script", "Stop it with", "API key:", "  URL", "  PID",
                               "  Log", "Server stopped", "No Jaull server")):
             styled.append(f"[{palette.INK_2}]{text}[/]")
-        elif line.startswith(("Jaull does not change the firewall", "Note:")) or (
+        elif line.startswith(("Jaull does not change the firewall", "Note:", "Warning:")) or (
             line.startswith("  sudo")
         ):
             styled.append(f"[{palette.WARN}]{text}[/]")
@@ -192,12 +198,20 @@ class SetupScreen(Screen[None]):
                     yield RadioButton("Share on the local network", id="setup-lan")
                 yield Static(_EXPOSURE_NOTE[False], id="setup-exposure-note",
                              classes="setup-note", markup=False)
+                with Horizontal(id="setup-tls"):
+                    yield Input(placeholder="HTTPS certificate (.pem), optional",
+                                id="setup-tls-cert")
+                    yield Input(placeholder="HTTPS private key (.pem)", id="setup-tls-key")
                 yield Checkbox("Enable the chat page (it asks for the API key)",
                                id="setup-webui")
                 yield Checkbox(
                     "Share the context: one person can use all of it, several split it",
                     id="setup-shared",
                 )
+                yield Checkbox("Cache conversations between turns (faster replies)",
+                               value=True, id="setup-cache")
+                yield Static(PROMPT_CACHE_NOTE[True], id="setup-cache-note",
+                             classes="setup-note", markup=False)
                 with Horizontal(id="setup-numbers"):
                     yield from self._field("People at once", "setup-users",
                                            serving_policies.SERVE_DEFAULT_USERS,
@@ -234,6 +248,7 @@ class SetupScreen(Screen[None]):
         yield Static("Reading this machine...", id="setup-status", classes="status-line")
         with Horizontal(id="setup-actions"):
             yield Button("Start server", id="setup-start", classes="-primary", disabled=True)
+            yield ActionButton("Monitor", id="setup-monitor", disabled=True)
             yield ActionButton("Stop server", id="setup-stop", disabled=True)
             yield ActionButton("Back", id="setup-back")
         yield Footer()
@@ -255,6 +270,7 @@ class SetupScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#setup-other", Button).display = False
+        self.query_one("#setup-tls").display = False  # only when sharing on the network
         self._run(self._load, "Reading this machine...")
 
     # ------------------------------------------------------------------ workers
@@ -413,6 +429,8 @@ class SetupScreen(Screen[None]):
             progress("Starting llama-server and waiting until it is ready...")
             started = advisor.start_server(
                 plan, lan=choice.lan, port=choice.port, web_ui=choice.web_ui,
+                tls_cert=choice.tls_cert, tls_key=choice.tls_key,
+                prompt_cache=choice.prompt_cache,
             )
             lines += ["", *start_lines(started)]
             notice = advisor.llama_cpp_update_notice()
@@ -421,6 +439,8 @@ class SetupScreen(Screen[None]):
             self._later(self._output, lines)
             # Keep the start output: it holds the API key, which is shown only once.
             self._later(self._show_server, advisor.server_status(), describe=False)
+            # The live panel opens on top; the key and URL stay here, one Esc away.
+            self._later(self._open_monitor)
 
         self._run(start, "Preparing the model...")
 
@@ -464,6 +484,7 @@ class SetupScreen(Screen[None]):
             return  # A worker can finish after the person left the screen.
         running = self._running
         self.query_one("#setup-stop", Button).disabled = self._busy or not running
+        self.query_one("#setup-monitor", Button).disabled = not running
         self.query_one("#setup-install", Button).disabled = self._busy
         self.query_one("#setup-find", Button).disabled = self._busy
         self.query_one("#setup-backend", Select).disabled = self._busy
@@ -595,6 +616,8 @@ class SetupScreen(Screen[None]):
             backend = self._backend()
             if backend is not None:
                 self._install(backend)
+        elif event.button.id == "setup-monitor":
+            self._open_monitor()
         elif event.button.id == "setup-stop":
             self._note = None
             self._stop()
@@ -648,13 +671,48 @@ class SetupScreen(Screen[None]):
             return "This model does not fit on this machine."
         if numbers["context"] > limit.largest_per_user:
             return "Choose a context within the calculated limit."
+        tls = self._tls_files()
+        if isinstance(tls, str):
+            return tls
         return _Choice(
             repo_id=repo_id, quantization=quantization, backend=backend,
-            lan=self._lan(),
+            lan=self._lan(), tls_cert=tls[0], tls_key=tls[1],
+            prompt_cache=self.query_one("#setup-cache", Checkbox).value,
             users=numbers["users"], context=numbers["context"], port=numbers["port"],
             web_ui=self.query_one("#setup-webui", Checkbox).value,
             shared_context=self.query_one("#setup-shared", Checkbox).value,
         )
+
+    def _tls_files(self) -> tuple[Path | None, Path | None] | str:
+        """Certificate and key for HTTPS when sharing, or what is wrong with them."""
+        if not self._lan():
+            return None, None
+        cert = self.query_one("#setup-tls-cert", Input).value.strip()
+        key = self.query_one("#setup-tls-key", Input).value.strip()
+        if not cert and not key:
+            return None, None
+        if not cert or not key:
+            return "HTTPS needs both a certificate and a private key file."
+        for label, value in (("certificate", cert), ("private key", key)):
+            if not Path(value).expanduser().is_file():
+                return f"The HTTPS {label} file was not found: {value}"
+        return Path(cert).expanduser(), Path(key).expanduser()
+
+    def _exposure_text(self) -> tuple[str, bool]:
+        """The note under the exposure choice, and whether it is a warning."""
+        if not self._lan():
+            return _EXPOSURE_NOTE[False], False
+        tls = self._tls_files()
+        if isinstance(tls, tuple) and tls[0] is not None:
+            return f"{_EXPOSURE_NOTE[True]} Served over HTTPS. {SLOTS_ARE_NOT_USERS}", False
+        return f"{LAN_WITHOUT_TLS_WARNING} {SLOTS_ARE_NOT_USERS}", True
+
+    def _render_exposure(self) -> None:
+        text, warning = self._exposure_text()
+        note = self.query_one("#setup-exposure-note", Static)
+        note.update(text)
+        note.set_class(warning, "-warn")
+        self.query_one("#setup-tls").display = self._lan()
 
     def _model_reference(self) -> tuple[str, str | None] | str:
         """(repo id, quantization) of the chosen model, or what is missing."""
@@ -753,10 +811,13 @@ class SetupScreen(Screen[None]):
         """Every keystroke updates the step bar and the capacity bar; nothing slow runs."""
         if self.is_mounted:
             self._render_progress()
+            self._render_exposure()
+            self.query_one("#setup-cache-note", Static).update(
+                PROMPT_CACHE_NOTE[self.query_one("#setup-cache", Checkbox).value])
 
     @on(RadioSet.Changed, "#setup-exposure")
     def _exposure_changed(self) -> None:
-        self.query_one("#setup-exposure-note", Static).update(_EXPOSURE_NOTE[self._lan()])
+        self._render_exposure()
         self._render_progress()
 
     def _preset(self, button_id: str) -> None:
@@ -804,6 +865,19 @@ class SetupScreen(Screen[None]):
             self._note, self._picked = self._picked, None
             self._refresh()
             self._check_limit()
+        elif self._running:
+            # The server may have been stopped from the monitor.
+            self._run(
+                lambda advisor: self._later(
+                    self._show_server, advisor.server_status(), describe=False),
+                "Checking the server...", keeps_error=True,
+            )
+
+    def _open_monitor(self) -> None:
+        from jaull.tui.screens.server_monitor import ServerMonitorScreen
+
+        if self._running and self.is_current:
+            self.app.push_screen(ServerMonitorScreen())
 
     def _advisor(self) -> AdvisorService:
         from jaull.tui.app import JaullApp
@@ -826,6 +900,9 @@ class _Choice:
     port: int
     web_ui: bool
     shared_context: bool
+    tls_cert: Path | None = None
+    tls_key: Path | None = None
+    prompt_cache: bool = True
 
 
 __all__ = ["SetupScreen"]

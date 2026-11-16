@@ -1692,6 +1692,19 @@ SetupScreen .setup-help {
     color: $ink-3;
 }
 
+SetupScreen .setup-note.-warn {
+    color: $warn;
+}
+
+SetupScreen #setup-tls {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+SetupScreen #setup-tls Input {
+    width: 1fr;
+}
+
 SetupScreen .setup-note {
     margin: 0 0 1 0;
 }
@@ -1798,4 +1811,67 @@ SetupScreen #setup-other {
 
 SetupScreen #setup-download {
     height: auto;
+}
+
+/* ------------------------------------------------------------------------
+   Server monitor: the running llama-server, refreshed every second.
+   ------------------------------------------------------------------------ */
+ServerMonitorScreen #monitor-body {
+    padding: 1 4 0 2;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $bg;
+    scrollbar-color: $line;
+}
+
+ServerMonitorScreen .monitor-header {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+ServerMonitorScreen #monitor-cards {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+ServerMonitorScreen .monitor-card {
+    width: 1fr;
+    height: auto;
+    background: $well;
+    border-left: outer $line-2;
+    padding: 0 2;
+    margin: 0 1 0 0;
+}
+
+ServerMonitorScreen .monitor-card-label {
+    color: $text-muted;
+}
+
+ServerMonitorScreen .monitor-card-value {
+    height: auto;
+}
+
+ServerMonitorScreen .monitor-section {
+    color: $text-muted;
+    margin: 1 0 0 0;
+}
+
+ServerMonitorScreen #monitor-spark {
+    height: 4;
+    margin: 0 0 1 0;
+}
+
+ServerMonitorScreen .monitor-text {
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+ServerMonitorScreen .monitor-note {
+    height: auto;
+    color: $text-muted;
+}
+
+ServerMonitorScreen #monitor-actions {
+    height: auto;
+    padding: 0 2;
+    border-top: solid $line;
 }

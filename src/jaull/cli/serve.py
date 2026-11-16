@@ -38,6 +38,8 @@ class ServeOptions:
     web_ui: bool = False
     #: One pool of ``context_per_user`` tokens for everyone, split as it is used.
     shared_context: bool = False
+    #: llama.cpp's prompt cache. Off: more private, much slower on long chats.
+    prompt_cache: bool = True
 
 
 def run_serve_start(
@@ -68,6 +70,7 @@ def run_serve_start(
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
             tls_cert=options.tls_cert, tls_key=options.tls_key, web_ui=options.web_ui,
+            prompt_cache=options.prompt_cache,
         )
     except InvalidModelReferenceError as exc:
         _error(console, str(exc))

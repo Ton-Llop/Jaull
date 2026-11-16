@@ -8,6 +8,33 @@ from __future__ import annotations
 
 import ipaddress
 
+# Shown before and after starting a server shared on the network without HTTPS.
+LAN_WITHOUT_TLS_WARNING = (
+    "Shared without HTTPS: prompts, answers and the API key cross the local network "
+    "unencrypted, so anyone on it who can capture traffic can read them. Give a "
+    "certificate and a key to serve over HTTPS."
+)
+# Slots are easy to read as accounts; they are not.
+SLOTS_ARE_NOT_USERS = (
+    "Slots are parallel lanes, not separate users: everyone shares one API key, any "
+    "request can take any free slot, and nothing keeps one person's conversations "
+    "apart from another's."
+)
+# What the prompt cache switch changes, in both directions.
+PROMPT_CACHE_NOTE = {
+    True: (
+        "Faster replies: the start of each conversation is kept and reused on the next "
+        "turn, and llama.cpp keeps idle conversations in up to 8 GiB of system RAM. That "
+        "content stays in the server's memory after a chat ends, and a reply that starts "
+        "sooner can show that someone else sent the same beginning."
+    ),
+    False: (
+        "Nothing is kept between requests, so finished conversations leave nothing in "
+        "memory. Every turn reprocesses the whole conversation: long chats answer much "
+        "more slowly, from seconds to tens of seconds per turn on long contexts."
+    ),
+}
+
 
 def firewall_rule(os_name: str, port: int, *, subnet: str | None = None) -> str:
     """The command that opens ``port`` to the local network only.
@@ -30,4 +57,10 @@ def subnet_of(address: str, netmask: str) -> str:
     return str(ipaddress.IPv4Interface(f"{address}/{netmask}").network)
 
 
-__all__ = ["firewall_rule", "subnet_of"]
+__all__ = [
+    "LAN_WITHOUT_TLS_WARNING",
+    "PROMPT_CACHE_NOTE",
+    "SLOTS_ARE_NOT_USERS",
+    "firewall_rule",
+    "subnet_of",
+]

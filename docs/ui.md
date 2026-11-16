@@ -218,6 +218,11 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    **Enable the chat page** (off by default) also serves
    llama.cpp's own chat page at the server URL, which asks for the API key. **Share the
    context** keeps one pool of the given context for everyone (`--shared-context`).
+   Sharing on the network shows two fields for an HTTPS certificate and key. Without them
+   the note under the choice turns into a warning: traffic crosses the network
+   unencrypted. It also says that slots are parallel lanes, not separate users.
+   **Cache conversations between turns** (on by default) shows what it costs either way:
+   faster replies but content kept in memory, or nothing kept but long chats much slower.
 4. **Model.** A downloaded model from the list, or a repository and quantization to
    download, or **Find a model**, which opens the guided search. There the Run buttons
    read **Use for server**, and the chosen GGUF plan fills in the repository and
@@ -228,8 +233,23 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    firewall rule for an administrator; Jaull never changes the firewall. **Stop server**
    stops it.
 
-If a server is already running when the screen opens, its status is shown and only Stop is
-available.
+If a server is already running when the screen opens, its status is shown and only Monitor
+and Stop are available.
+
+### Server monitor
+
+After **Start server** the monitor opens on top of Setup, and **Monitor** reopens it while
+the server runs. Esc goes back to Setup, where the URL and the API key stay. Refreshed
+every second from the server itself, it shows:
+
+- People being answered right now and how many wait in the queue.
+- Generation and prompt speed, with the last minute of generation as a sparkline.
+- The shared context pool in use, and one bar per conversation with its tokens and
+  whether it is answering.
+
+The per-conversation figures need llama-server's `/slots`, which Jaull turns on only for a
+build checked to expose no conversation text (b11889). With another build the monitor
+shows the aggregate figures and says why. **Stop server** stops it from here too.
 
 ## Advanced tools
 

@@ -3,7 +3,9 @@
 Security defaults (docs/TFG/disseny-setup.md): the API key is read from a file
 so it never shows in the process list or the start script; the slot monitor and
 the bundled chat page (web UI) is off unless asked for, and then it still needs
-the API key; the log level stays at the default, because higher
+the API key; the slot monitor is on only for builds whose /slots answer was checked
+to carry no conversation text; /metrics (aggregate counters, behind the API key)
+feeds Jaull's server monitor; the log level stays at the default, because higher
 verbosity writes the prompts to the log.
 """
 
@@ -13,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from jaull.domain.runtime import LlamaCppInstallation, RuntimeFlag
+from jaull.runtime import policies
 
 # Set from the server sizing and the security defaults; a launch flag with the
 # same name (from the single-run planner) is ignored.
@@ -39,6 +42,10 @@ class ServerLaunch:
     tls_key: Path | None = None
     #: llama.cpp's own chat page at ``/``. Off by default.
     web_ui: bool = False
+    #: Expose /slots (token counts per slot) to key holders. See ``slots_allowed``.
+    slots: bool = False
+    #: llama.cpp's prompt cache (on by default upstream). Off: nothing kept between requests.
+    prompt_cache: bool = True
 
     def __post_init__(self) -> None:
         if (self.tls_cert is None) != (self.tls_key is None):
@@ -62,13 +69,22 @@ def server_argv(launch: ServerLaunch) -> list[str]:
         "--port", str(launch.port),
         "--api-key-file", str(launch.api_key_file),
         "--alias", launch.alias,
-        "--no-slots",
+        "--metrics",
+        "--slots" if launch.slots else "--no-slots",
     ]
     if not launch.web_ui:
         argv.append("--no-webui")
+    if not launch.prompt_cache:
+        # Both: the per-slot cache and the RAM copy of idle slots (8 GiB by default).
+        argv += ["--no-cache-prompt", "--cache-ram", "0"]
     if launch.tls_cert is not None and launch.tls_key is not None:
         argv += ["--ssl-cert-file", str(launch.tls_cert), "--ssl-key-file", str(launch.tls_key)]
     return argv
+
+
+def slots_allowed(build: str | None) -> bool:
+    """Whether this build's /slots was verified to expose numbers only, never text."""
+    return build is not None and build in policies.LLAMA_SERVER_SLOTS_VERIFIED_BUILDS
 
 
 def server_binary_for(installation: LlamaCppInstallation) -> Path | None:
@@ -80,4 +96,4 @@ def server_binary_for(installation: LlamaCppInstallation) -> Path | None:
     return server if server.is_file() else None
 
 
-__all__ = ["ServerLaunch", "server_argv", "server_binary_for"]
+__all__ = ["ServerLaunch", "server_argv", "server_binary_for", "slots_allowed"]

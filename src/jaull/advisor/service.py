@@ -127,6 +127,7 @@ if TYPE_CHECKING:
     from jaull.evaluation.quality_records import QualityEvidence
     from jaull.evaluation.quality_storage import QualityEvidenceStore
     from jaull.execution.ports import ExecutionBackendProtocol
+    from jaull.execution.server_monitor import ServerMonitor
     from jaull.execution.server_process import ServerProcessManager, ServerStatus
     from jaull.experiments.runner import ExperimentRunner
     from jaull.experiments.storage import ExperimentStore
@@ -632,12 +633,14 @@ class AdvisorService:
             overrides=ExecutionOverrides(n_gpu_layers=0) if cpu else None,
         )
         binary = llama_server_path
+        build: str | None = None
         if binary is None:
             managed = managed_installation_for(
                 managed_root(), *current_platform(), selection.selected_backend,
             )
             if managed is not None:
                 binary = server_binary_for(managed)
+                build = managed.version_text
             else:
                 installation, ready = self._found_llama_cpp_for(selection)
                 if installation is not None and not ready:
@@ -648,6 +651,7 @@ class AdvisorService:
                         "or choose another backend."
                     )
                 binary = server_binary_for(installation) if installation else None
+                build = installation.version_text if installation else None
         if binary is None:
             raise ExecutionPlanningError(
                 "llama-server was not found. Install it with "
@@ -661,6 +665,7 @@ class AdvisorService:
             launch=launch,
             server_binary=binary,
             context_limit=limit,
+            build=build,
         )
 
     def server_context_limit(
@@ -730,6 +735,7 @@ class AdvisorService:
         tls_cert: Path | None = None,
         tls_key: Path | None = None,
         web_ui: bool = False,
+        prompt_cache: bool = True,
     ) -> ServerStart:
         """Start ``plan`` detached with the security defaults. Composes; no policy here."""
         from jaull.application.serving.models import ServerStart
@@ -737,9 +743,10 @@ class AdvisorService:
         from jaull.execution.server_process import lan_ipv4
         from jaull.runtime import policies as runtime_policies
         from jaull.runtime.llama_cpp_release import current_platform
-        from jaull.runtime.llama_server import ServerLaunch, server_argv
+        from jaull.runtime.llama_server import ServerLaunch, server_argv, slots_allowed
 
         manager = self._server_manager()
+        slots = slots_allowed(plan.build)
         api_key_path, new_key = manager.ensure_api_key()
         policy = runtime_policies
         host = policy.LLAMA_SERVER_LAN_HOST if lan else policy.LLAMA_SERVER_LOCAL_HOST
@@ -758,11 +765,15 @@ class AdvisorService:
             tls_cert=tls_cert,
             tls_key=tls_key,
             web_ui=web_ui,
+            slots=slots,
+            prompt_cache=prompt_cache,
         ))
         os_name, _ = current_platform()
         script = manager.write_start_script(argv, windows=os_name == "windows")
         state = manager.start(
             argv, host=host, port=chosen_port, alias=plan.alias, tls=tls_cert is not None,
+            total_context=plan.sizing.total_context, parallel=plan.sizing.parallel,
+            context_per_user=plan.sizing.context_per_user, slots=slots,
         )
         rule = lan_url = None
         if lan:
@@ -872,6 +883,16 @@ class AdvisorService:
             if readiness.status is ExecutionReadinessStatus.READY:
                 return installation, True
         return first, False
+
+    def server_monitor(self) -> ServerMonitor | None:
+        """A reader for the running server's live counters, or None when none is running."""
+        from jaull.execution.server_monitor import ServerMonitor
+
+        manager = self._server_manager()
+        status = manager.status()
+        if not status.running or status.state is None:
+            return None
+        return ServerMonitor(status.state.url, manager.api_key_path, slots=status.state.slots)
 
     def stop_server(self) -> bool:
         return self._server_manager().stop()

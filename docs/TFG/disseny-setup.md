@@ -217,3 +217,30 @@ servir la CLI i la TUI.
 - Amb un model que no hi cap, el resum deia «ready to start». Ara el pas Model ho marca.
 - El llama.cpp trobat al PC es donava per bo per a qualsevol backend. Ara es mira si el seu build executa el backend
   triat: la pantalla avisa, i `plan_server` el refusa en lloc de fer-lo servir.
+
+**Panell del servidor (2026-11-16), petició de l'autor:** una pantalla que s'obre després d'arrencar i mostra, cada
+segon, la gent que està rebent resposta, la cua, la velocitat i el context de cada conversa.
+- Dades: `/metrics` (sempre, agregat) i `/slots` (per conversa), tots dos darrere de la clau d'API. Comprovat amb el
+  b11889 i un marcador al prompt: `/slots` només dona números (tokens del prompt i de la resposta, si genera,
+  paràmetres de mostreig), no el text. Per això el punt 4 de seguretat canvia: `/slots` s'activa només amb els builds
+  comprovats (`LLAMA_SERVER_SLOTS_VERIFIED_BUILDS`, avui b11889). Amb qualsevol altre continua `--no-slots`, i el
+  panell deixa de llegir-lo si mai hi apareix text.
+- llama-server només suma als comptadors de `/metrics` quan acaba una petició. La velocitat en directe surt del
+  progrés de cada slot (`n_decoded`) entre dues lectures.
+- Python i Textual, sense RabbitMQ: l'estat ja és dins de llama-server i n'hi ha prou de preguntar-li per HTTP en local.
+- Prova real al portàtil (b11889 CPU, SmolLM2, 2 usuaris, 4K compartits): 1 persona responent, 130,9 t/s, la bossa al
+  18 % i la conversa 1 amb 732 tokens.
+
+**Tancament del Setup (2026-11-16):**
+- TLS a la TUI: dos camps (certificat i clau) que surten en compartir a la xarxa, amb la mateixa implementació que la
+  CLI (`--ssl-cert-file`, `--ssl-key-file`). Prova real al portàtil amb un certificat autosignat: HTTPS respon 200,
+  HTTP ja no respon, i el panell del servidor llegeix `/metrics` i `/slots` per HTTPS.
+- Memòria cau del prompt: opció per desactivar-la (`--no-prompt-cache` a la CLI, casella a la TUI), que passa
+  `--no-cache-prompt --cache-ram 0`. Encesa, les converses deixen el seu contingut a la memòria del servidor (fins a
+  8 GiB de RAM per defecte a llama.cpp) i un temps de resposta més curt pot delatar que algú ha enviat el mateix
+  començament. Apagada, cada torn torna a processar tota la conversa: molt més lent en converses llargues.
+- Avís en compartir per LAN sense TLS (el trànsit i la clau van sense xifrar) i nota que els slots no són usuaris
+  independents: tothom comparteix la clau i res no separa les converses d'una persona de les d'una altra.
+- **PENDENT, trobat aquí:** la memòria cau de llama.cpp pot ocupar fins a 8 GiB de RAM del sistema (`--cache-ram`, per
+  defecte), i el dimensionament del servidor no ho compta. A la B60 no importa (la RAM és a part de la VRAM), però en
+  un servidor de CPU sí. Cal decidir si es limita, es desactiva per defecte en CPU o s'afegeix a l'estimació.

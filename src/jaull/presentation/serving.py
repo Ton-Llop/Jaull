@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from jaull.application.serving.models import ServerPlan, ServerStart
+from jaull.application.serving.security import LAN_WITHOUT_TLS_WARNING, SLOTS_ARE_NOT_USERS
 from jaull.execution.server_process import ServerStatus
 from jaull.presentation.console import format_bytes
 
@@ -48,6 +49,9 @@ def start_lines(started: ServerStart) -> list[str]:
     lines = [f"Ready at {state.url}  (OpenAI API: {state.url}/v1)"]
     if started.lan_url is not None:
         lines.append(f"On the local network: {started.lan_url}/v1")
+        if not state.tls:
+            lines.append(f"Warning: {LAN_WITHOUT_TLS_WARNING}")
+        lines.append(f"Note: {SLOTS_ARE_NOT_USERS}")
     if started.web_ui:
         page = started.lan_url or state.url
         lines.append(f"Chat page: {page}/  (enter the API key in its settings)")

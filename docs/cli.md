@@ -311,10 +311,25 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
 - A random API key, stored in Jaull's data directory (`serve/api-key`, mode 0600), passed
   with `--api-key-file` so it never appears in the process list or the start script, and
   printed once.
-- `--no-slots`, and `--no-webui` unless `--web-ui` is given. With `--web-ui` the
-  llama.cpp chat page is served at the root URL. It still needs the API key, entered in
-  its settings. The log level stays at the default, which does not write prompts.
-- HTTPS when both `--tls-cert` and `--tls-key` are given.
+- `--no-webui` unless `--web-ui` is given. With `--web-ui` the llama.cpp chat page is
+  served at the root URL. It still needs the API key, entered in its settings. The log
+  level stays at the default, which does not write prompts.
+- `--metrics` (aggregate counters) always, and `--slots` (token counts per conversation)
+  only on a build checked to expose no conversation text there
+  (`LLAMA_SERVER_SLOTS_VERIFIED_BUILDS`, today b11889). Both need the API key. Any other
+  build runs with `--no-slots`. They feed the server monitor in the TUI, which also stops
+  reading `/slots` if an answer ever carries text.
+- HTTPS when both `--tls-cert` and `--tls-key` are given. Shared with `--lan` but without
+  them, `start` warns that prompts, answers and the API key cross the network
+  unencrypted. Whenever the server is shared it also says that slots are parallel lanes,
+  not separate users: everyone shares one key and nothing keeps one person's
+  conversations apart from another's.
+- llama.cpp's prompt cache stays on (upstream default): the start of each conversation is
+  reused on the next turn and idle conversations are kept in up to 8 GiB of system RAM
+  (`--cache-ram`). `--no-prompt-cache` passes `--no-cache-prompt --cache-ram 0`: nothing
+  stays in memory after a request, and a faster reply can no longer show that someone sent
+  the same beginning, but every turn reprocesses the whole conversation, which is much
+  slower on long chats.
 - Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
 
 `start` also writes `serve/start-server.sh` (`.bat` on Windows) with the same command,
