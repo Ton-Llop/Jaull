@@ -300,8 +300,11 @@ declares (read from the GGUF header). Asking for more than the model declares is
 
 `--shared-context` keeps the pool at exactly `--context` tokens instead of growing it: one
 person can use all of it, and several people split it as they use it. It needs much less
-memory than everyone at full context. What llama.cpp does when the pool runs out with
-several long conversations at once has not been measured yet.
+memory than everyone at full context. The price: when the conversations together outgrow
+the pool, llama-server queues nothing and ends every running request at once with
+"Context size has been exceeded", not only the longest (measured on an Arc Pro B60,
+[`docs/TFG/concurrencia-b60.md`](TFG/concurrencia-b60.md)). The plan says so whenever the
+pool is smaller than everyone's full context.
 
 The server starts detached, and `start` waits until `/health` answers. Defaults:
 

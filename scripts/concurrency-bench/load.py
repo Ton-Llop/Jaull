@@ -25,6 +25,7 @@ import time
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 PARAGRAPH = (
     "Local inference keeps data on the machine that owns it. A laboratory that analyses "
@@ -83,6 +84,13 @@ def one_request(url: str, model: str, prompt: str, max_tokens: int, api_key: str
                 if data == "[DONE]":
                     break
                 event = json.loads(data)
+                if event.get("error"):
+                    # llama-server reports e.g. "Context size has been exceeded" inside the
+                    # stream after some tokens; the answer is cut, so the request failed.
+                    error = event["error"]
+                    result.error = str(error.get("message", error) if isinstance(error, dict)
+                                       else error)
+                    break
                 for choice in event.get("choices") or []:
                     delta = choice.get("delta") or {}
                     if delta.get("content") or delta.get("reasoning_content"):
@@ -105,8 +113,8 @@ def one_request(url: str, model: str, prompt: str, max_tokens: int, api_key: str
         decode_s = result.total_s - (result.ttft_s or 0.0)
         if result.completion_tokens and decode_s > 0:
             result.decode_tok_s = result.completion_tokens / decode_s
-        result.ok = result.ttft_s is not None
-        if not result.ok:
+        result.ok = result.ttft_s is not None and not result.error
+        if result.ttft_s is None and not result.error:
             result.error = "no content streamed"
     except (OSError, ValueError, http.client.HTTPException) as exc:
         # A failed request is a result to record, not a reason to stop the round.
@@ -187,6 +195,7 @@ def main() -> None:
               f"{fmt(median([r.decode_tok_s for r in all_ok if r.decode_tok_s])):>10} "
               f"{fmt(median(aggregates)):>9} {failed:>6} {exact:>12}")
 
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["level", "repeat", "index", "ok", "ttft_s", "total_s", "completion_tokens",

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from jaull.application.serving.models import ServerPlan, ServerStart
-from jaull.application.serving.security import LAN_WITHOUT_TLS_WARNING, SLOTS_ARE_NOT_USERS
+from jaull.application.serving.security import (
+    LAN_WITHOUT_TLS_WARNING,
+    SHARED_POOL_OVERFLOW_WARNING,
+    SLOTS_ARE_NOT_USERS,
+)
 from jaull.execution.server_process import ServerStatus
 from jaull.presentation.console import format_bytes
 
@@ -26,6 +30,8 @@ def plan_lines(plan: ServerPlan) -> list[str]:
         )
     else:
         lines.append(f"  1 user, {sizing.context_per_user} tokens of context.")
+    if sizing.unified_kv and sizing.total_context < sizing.parallel * sizing.context_per_user:
+        lines.append(f"  {SHARED_POOL_OVERFLOW_WARNING}")
     limit = plan.context_limit
     if limit is not None and limit.largest_per_user is not None:
         native = f" (the model was trained for {limit.native})" if limit.native else ""

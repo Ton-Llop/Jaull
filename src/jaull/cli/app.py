@@ -482,7 +482,10 @@ def serve_start_command(
     backend: ComputeBackend | None = typer.Option(
         None, "--backend", case_sensitive=False, help="Override the detected backend.",
     ),
-    llama_server: Path | None = typer.Option(None, "--llama-server"),
+    llama_server: Path | None = typer.Option(
+        None, "--llama-server",
+        help="Use this llama-server binary instead of the one Jaull installed or found.",
+    ),
     tls_cert: Path | None = typer.Option(None, "--tls-cert", help="PEM certificate for HTTPS."),
     tls_key: Path | None = typer.Option(None, "--tls-key", help="PEM private key for HTTPS."),
     web_ui: bool = typer.Option(

@@ -20,6 +20,12 @@ SLOTS_ARE_NOT_USERS = (
     "request can take any free slot, and nothing keeps one person's conversations "
     "apart from another's."
 )
+# Measured on the B60 (docs/TFG/concurrencia-b60.md): llama-server queues nothing when the
+# shared pool fills, it ends every running request with "Context size has been exceeded".
+SHARED_POOL_OVERFLOW_WARNING = (
+    "If the conversations together outgrow the pool, llama-server stops all of them at "
+    "once, not only the longest."
+)
 # What the prompt cache switch changes, in both directions.
 PROMPT_CACHE_NOTE = {
     True: (
@@ -60,6 +66,7 @@ def subnet_of(address: str, netmask: str) -> str:
 __all__ = [
     "LAN_WITHOUT_TLS_WARNING",
     "PROMPT_CACHE_NOTE",
+    "SHARED_POOL_OVERFLOW_WARNING",
     "SLOTS_ARE_NOT_USERS",
     "firewall_rule",
     "subnet_of",

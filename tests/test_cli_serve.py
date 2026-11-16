@@ -310,3 +310,19 @@ def test_the_plan_says_how_much_ram_the_prompt_cache_may_take() -> None:
     off = "\n".join(plan_lines(replace(_plan(), prompt_cache_bytes=0,
                                        ram_available_bytes=3 * GiB)))
     assert "Prompt cache in RAM: off, not enough free RAM" in off
+
+
+def test_a_shared_pool_warns_that_overflowing_it_stops_every_chat() -> None:
+    from dataclasses import replace
+
+    from jaull.application.serving.security import SHARED_POOL_OVERFLOW_WARNING
+    from jaull.presentation.serving import plan_lines
+
+    plan = _plan()
+    one_pool = replace(plan, sizing=replace(plan.sizing, total_context=131072))
+    capped = plan  # 8 people up to 128K each in a 192K pool: it can overflow too.
+    roomy = replace(plan, sizing=replace(plan.sizing, total_context=8 * 131072))
+    assert SHARED_POOL_OVERFLOW_WARNING in "\n".join(plan_lines(one_pool))
+    assert SHARED_POOL_OVERFLOW_WARNING in "\n".join(plan_lines(capped))
+    # A pool as large as everyone's full context cannot overflow.
+    assert SHARED_POOL_OVERFLOW_WARNING not in "\n".join(plan_lines(roomy))
