@@ -14,6 +14,7 @@ from textual.pilot import Pilot
 from textual.widgets import Button, Checkbox, Input, RadioButton, Select, Static
 
 from jaull.application.serving import ServerSizingError
+from jaull.application.serving import policies as serving_policies
 from jaull.application.serving.models import ServerPlan, ServerShare, ServerStart
 from jaull.artifacts.storage import LocalModelFile
 from jaull.domain.artifacts import ModelArtifact
@@ -146,9 +147,13 @@ class SetupAdvisor:
 
     #: Set to CERTIFICATE to act as a machine where `jaull serve cert` was run before.
     detected: Any = None
+    #: Raised by the detection, like an unreadable certificate file.
+    detected_error: Exception | None = None
 
     def detected_server_certificate(self) -> Any:
         self.calls.append(("detected", {}))
+        if self.detected_error is not None:
+            raise self.detected_error
         return self.detected
 
     def stop_server(self) -> bool:
@@ -959,8 +964,6 @@ def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("jaull.tui.clipboard._system_copy", lambda text: False)
-    monkeypatch.setattr(
-        "jaull.application.serving.policies.SERVE_KEY_QR_VISIBLE_SECONDS", 0.3)
 
     async def scenario() -> None:
         advisor = SetupAdvisor()
@@ -997,7 +1000,18 @@ def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
             await pilot.pause()
             assert copied == ["https://192.168.1.107:8090/", advisor.share.firewall_rule]
 
-            # The key as a QR only while asked for, never as text, and it hides itself.
+            # The key as a QR only while asked for, and never as text.
+            hide_timers: list[Any] = []
+            real_set_timer = screen.set_timer
+
+            def capture(delay: float, callback: Any = None, **kwargs: Any) -> Any:
+                # The auto-hide is checked through its timer, not by waiting for the clock.
+                if delay == serving_policies.SERVE_KEY_QR_VISIBLE_SECONDS:
+                    hide_timers.append(callback)
+                    return SimpleNamespace(stop=lambda: None)
+                return real_set_timer(delay, callback, **kwargs)
+
+            screen.set_timer = capture  # type: ignore[method-assign]
             toggle = screen.query_one("#setup-key-qr-toggle", Button)
             assert not screen.query_one("#setup-key-qr").display
             toggle.press()
@@ -1007,8 +1021,30 @@ def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
             toggle.press()
             await pilot.pause()
             assert not screen.query_one("#setup-key-qr").display
+
+            # Shown again, it hides itself when its timer fires.
             toggle.press()
-            await _wait_until(pilot, lambda: not screen.query_one("#setup-key-qr").display)
+            await pilot.pause()
+            assert screen.query_one("#setup-key-qr").display and hide_timers
+            hide_timers[-1]()
+            await pilot.pause()
+            assert not screen.query_one("#setup-key-qr").display
+
+            # Leaving Setup (the monitor opens on top) must not leave the key's QR behind.
+            toggle.press()
+            await pilot.pause()
+            assert screen.query_one("#setup-key-qr").display
+            screen.on_screen_suspend()
+            await pilot.pause()
+            assert not screen.query_one("#setup-key-qr").display
+
+            # A local server that serves the chat page: the hint says to share it.
+            advisor.share = ServerShare(base_url="http://127.0.0.1:8090",
+                                        chat_url="http://127.0.0.1:8090/", shared=False,
+                                        firewall_rule=None)
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            assert "Only this PC" in _text(screen, "#setup-share-hint")
 
             # A server only this PC reaches: no firewall command, no QR, and a hint why.
             advisor.share = ServerShare(base_url="http://127.0.0.1:8090", chat_url=None,
@@ -1027,5 +1063,40 @@ def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
             await pilot.pause()
             assert not screen.query_one("#setup-qr-box").display
             assert "inside WSL" in _text(screen, "#setup-share-hint")
+
+    asyncio.run(scenario())
+
+
+def test_an_unreadable_certificate_is_named_instead_of_filled_in() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.detected_error = RuntimeError("The certificate cannot be read. Use --renew.")
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+
+            assert screen.query_one("#setup-tls-cert", Input).value == ""
+            assert "--renew" in _text(screen, "#setup-status")
+
+    asyncio.run(scenario())
+
+
+def test_a_certificate_that_misses_this_pcs_address_says_so() -> None:
+    from dataclasses import replace
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.create_server_certificate = (  # type: ignore[method-assign]
+            lambda renew=False: replace(CERTIFICATE, missing=("192.168.1.50",)))
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-lan", RadioButton).value = True
+            screen.query_one("#setup-cert", Button).press()
+            await _wait_until(pilot, lambda: not screen._busy
+                              and bool(screen.query_one("#setup-tls-cert", Input).value))
+            assert "192.168.1.50" in _text(screen, "#setup-status")
 
     asyncio.run(scenario())

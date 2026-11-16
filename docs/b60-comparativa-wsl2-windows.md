@@ -136,9 +136,11 @@ La nota del projecte deia que el pont WSL2 → Windows quedava sense implementar
 
 ## 8. Com reproduir-ho
 
-WSL2 (binari de Linux, variables de Mesa Dozen ja exportades):
+WSL2 (binari de Linux). Abans cal exportar les variables de la instal·lació local de Mesa Dozen: la primera fa que el carregador de Vulkan faci servir el controlador Dozen, i la segona que trobi les seves biblioteques.
 
 ```
+export VK_ICD_FILENAMES=$HOME/mesa-dzn/root/usr/share/vulkan/icd.d/dzn_icd.json
+export LD_LIBRARY_PATH=$HOME/mesa-dzn/root/usr/lib/x86_64-linux-gnu
 ~/llama.cpp/build-vulkan/bin/llama-bench -m <model.gguf> -dev Vulkan0 -ngl 99 -fa off -p 512 -n 128 -r 5
 ```
 

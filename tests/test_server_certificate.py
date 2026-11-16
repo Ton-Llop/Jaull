@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from cryptography import x509
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import ExtendedKeyUsageOID
 
 from jaull.execution.server_certificate import ensure_server_certificate
@@ -131,3 +131,26 @@ def test_the_certificate_lasts_a_year() -> None:
     # Not rotated often on purpose: the key sits next to an API key that never expires, and a
     # certificate that keeps changing teaches people to accept the browser warning.
     assert policies.LLAMA_SERVER_CERTIFICATE_DAYS == 365
+
+
+def test_a_certificate_without_names_covers_nothing(tmp_path: Path) -> None:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "bare")])
+    bare = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        .public_key(key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(NOW).not_valid_after(NOW + timedelta(days=30))
+        .sign(key, hashes.SHA256())
+    )
+    folder = tmp_path / "tls"
+    folder.mkdir()
+    (folder / "server-cert.pem").write_bytes(bare.public_bytes(serialization.Encoding.PEM))
+    (folder / "server-key.pem").write_text("key")
+
+    kept = _make(tmp_path)
+
+    assert not kept.created and kept.names == ()
+    assert "192.168.1.107" in kept.missing

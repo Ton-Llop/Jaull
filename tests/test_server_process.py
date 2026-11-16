@@ -215,3 +215,38 @@ def test_the_client_config_is_readable_only_by_its_owner(
     if sys.platform != "win32":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
+
+
+def test_the_stored_key_and_client_files_are_read_back(manager: ServerProcessManager) -> None:
+    assert manager.read_api_key() is None and manager.read_client_config("x.json") is None
+
+    _, key = manager.ensure_api_key()
+    manager.write_client_config("x.json", {"a": 1})
+
+    assert manager.read_api_key() == key
+    assert manager.read_client_config("x.json") is not None
+    manager.api_key_path.write_text("  \n", encoding="utf-8")
+    assert manager.read_api_key() is None  # an empty file is not a key
+
+
+def test_running_inside_wsl_is_told_by_its_environment_or_kernel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jaull.execution.server_process import running_in_wsl
+
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+    assert running_in_wsl()
+    monkeypatch.delenv("WSL_DISTRO_NAME")
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", lambda self, **kw: "Linux 5.15 microsoft-standard-WSL2")
+        assert running_in_wsl()
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", lambda self, **kw: "Linux 6.8 generic")
+        assert not running_in_wsl()
+
+    def missing(self: Path, **kwargs: object) -> str:
+        raise OSError("no /proc here")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", missing)
+        assert not running_in_wsl()
