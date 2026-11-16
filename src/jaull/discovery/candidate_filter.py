@@ -808,7 +808,15 @@ def _hardware_aware_shortlist(
                     eligible_novel_candidates=[entry.candidate.repo_id for entry in novel],
                 )
             if novel:
+                # Spread bounded Quality exploration across sizes before repeating one.
+                selected_sizes = [
+                    parameter_count_hint(entry.candidate.repo_id) for entry in selected
+                ]
+                if audit is not None and quality_scale_coverage:
+                    decision["selected_size_billions"] = selected_sizes
                 group = sorted(novel, key=lambda entry: (
+                    selected_sizes.count(parameter_count_hint(entry.candidate.repo_id))
+                    if quality_scale_coverage else 0,
                     -(parameter_count_hint(entry.candidate.repo_id) or 0)
                     if quality_scale_coverage
                     else -_scale_order(parameter_count_hint(entry.candidate.repo_id)),
@@ -823,6 +831,9 @@ def _hardware_aware_shortlist(
             entry
             for entry in group
             if entry is not first and abs(entry.score - first.score) <= _SCORE_TIE_EPSILON
+            and (not (quality_scale_coverage and explored)
+                 or parameter_count_hint(entry.candidate.repo_id)
+                 == parameter_count_hint(first.candidate.repo_id))
             and (_version_key(first) in selected_versions
                  or _version_key(entry) not in selected_versions)
         ]

@@ -125,7 +125,7 @@ AGGRESSIVE_QUANTIZATIONS: frozenset[str] = frozenset(
         "Q1_0",
         "IQ1_S", "IQ1_M",
         "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M",
-        "Q2_K", "Q2_K_L", "Q2_K_XL",
+        "Q2_K", "Q2_K_S", "Q2_K_L", "Q2_K_XL",
         "IQ3_XXS", "IQ3_XS",
         "Q3_K_S",
     }

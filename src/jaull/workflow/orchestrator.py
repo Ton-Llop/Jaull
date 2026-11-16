@@ -34,7 +34,9 @@ from jaull.domain.candidates import (
     ModelCandidate,
     SearchQuery,
 )
+from jaull.domain.enums import RepositoryType
 from jaull.domain.estimation import MemoryEstimate
+from jaull.domain.gguf_variants import preferred_gguf_variants
 from jaull.domain.hardware import HardwareProfile, planning_accelerator_memory_bytes
 from jaull.domain.inference import InferenceConfiguration
 from jaull.domain.model import ModelAnalysis, SafetensorsSummary
@@ -320,7 +322,14 @@ def run_workflow(
         )
         # Recover unusable inspection slots once; do not expand into an unbounded search.
         replacement_slots = min(
-            sum(item.failed or item.requires_target_model for item in evaluated),
+            sum(
+                item.failed or item.requires_target_model or (
+                    item.analysis is not None
+                    and item.analysis.classification.primary_type is RepositoryType.GGUF
+                    and not preferred_gguf_variants(item.analysis.classification.gguf_variants)
+                )
+                for item in evaluated
+            ),
             policies.MAX_REPLACEMENT_INSPECTIONS,
         )
         if replacement_slots:

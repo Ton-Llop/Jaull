@@ -129,7 +129,7 @@ Budgets are centralised in `application/recommendation/policies.py`:
 | Results per query | 20 |
 | Unique candidates | 40 |
 | Deep inspections | 12 |
-| Replacement inspections for failed or auxiliary candidates | At most 6, one round |
+| Replacement inspections for failed, auxiliary or unselectable GGUF candidates | At most 6, one round |
 | Concurrent inspections | 4 |
 | Variant deep inspections | 6 |
 | Targeted alternative queries per Search | 3 |
@@ -457,13 +457,17 @@ candidates. This is search coverage, not demonstrated quality or final recommend
 order. Size-unknown hits require a GGUF or declared text-generation signal for the initial
 exploration slot; unconfirmed hits remain available if the budget is not filled.
 
-For Quality on machines whose planning envelope extends beyond the medium class,
-exploration instead uses up to half the inspection budget and distinguishes actual
+For Quality, exploration instead uses up to half the inspection budget and distinguishes actual
 family/size pairs within a broad size class. A 16B inspection no longer represents every
-model between 14B and 32B. Plausible larger sizes are explored first, subject to the same
-placement, task-relevance and score-gap gates. Balanced, Speed, Memory and constrained
-machines keep their existing exploration policy. This changes the comparison pool, not
+model between 14B and 32B. Sizes with fewer candidates already selected are explored first;
+among equally represented sizes, larger ones come first, then relevance. The same placement,
+task-relevance and score-gap gates still apply. Balanced, Speed and Memory keep their
+existing exploration policy. This changes the comparison pool, not
 the final ranking or the requirement that an inspected model must actually fit.
+
+An inspected GGUF with no complete, unambiguous representation can recover an inspection
+slot in the existing bounded replacement round. A valid model that does not fit in memory
+does not trigger this replacement: its inspection established a useful result.
 
 Quality exploration may also inspect plausible coarse GPU-offload alternatives while
 GPU-resident candidates remain. Coarse placement is not a measured rejection; detailed

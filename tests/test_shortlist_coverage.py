@@ -217,6 +217,29 @@ def test_quality_compares_a_range_of_large_models_despite_popular_small_candidat
     assert len(picked) == 12
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("family", ["Qwen2.5-Coder", "Other-Coder"])
+def test_quality_explores_distinct_sizes_before_repeating_nine_billion(reverse, family):
+    req = _requirements(UseCase.CODING).model_copy(update={
+        "priority": RecommendationPriority.QUALITY,
+    })
+    pool = [
+        candidate(f"org/{family}-{size}B-Instruct-GGUF", tags=["gguf", "instruct"],
+                  downloads=500_000, likes=100)
+        for size in (0.5, 1.5, 3, 7, 8, 14)
+    ]
+    pool += [
+        candidate(f"other{i}/Assistant-9B-Instruct-GGUF", tags=["gguf", "instruct"],
+                  downloads=1_000_000, likes=200)
+        for i in range(12)
+    ]
+    picked = shortlist(list(reversed(pool)) if reverse else pool, req, 12,
+                       hardware=hardware(vram_gib=6, ram_gib=8))
+    ids = {item.repo_id for item in picked}
+    assert {f"org/{family}-{size}B-Instruct-GGUF" for size in (7, 8, 14)} <= ids
+    assert len(picked) <= 12
+
+
 def test_generic_gguf_precision_tags_do_not_force_one_published_variant():
     req = _requirements(UseCase.GENERAL_CHAT)
     profile = hardware(vram_gib=24, ram_gib=14)

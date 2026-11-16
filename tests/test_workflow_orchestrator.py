@@ -129,7 +129,8 @@ def test_full_successful_run() -> None:
     assert len(state.recommendations) <= policies.MAX_RECOMMENDATIONS
 
 
-def test_drafter_inspection_slot_is_replaced_once_and_reported(monkeypatch) -> None:
+@pytest.mark.parametrize("kind", ["drafter", "missing", "incomplete", "ambiguous", "too_large"])
+def test_unusable_inspection_slot_is_replaced_once_and_reported(monkeypatch, kind) -> None:
     from jaull.domain.model import ModelConfig
 
     draft = "org/Drafter-7B-GGUF"
@@ -140,6 +141,26 @@ def test_drafter_inspection_slot_is_replaced_once_and_reported(monkeypatch) -> N
         }),
         target: gguf_analysis(repo_id=target),
     }
+    if kind != "drafter":
+        analysis = gguf_analysis(repo_id=draft, quantizations=("Q4_K_M",))
+        variants = analysis.classification.gguf_variants
+        if kind == "missing":
+            variants = []
+        elif kind == "incomplete":
+            variants = [variants[0].model_copy(update={"is_complete": False})]
+        elif kind == "ambiguous":
+            variants = [variants[0], variants[0].model_copy(update={
+                "files": [variants[0].files[0].model_copy(update={"path": "other-Q4_K_M.gguf"})],
+            })]
+        if kind == "too_large":
+            analysis = gguf_analysis(repo_id=draft, base_bytes=40 * GIB)
+        else:
+            analysis = analysis.model_copy(update={
+                "classification": analysis.classification.model_copy(update={
+                    "gguf_variants": variants,
+                }),
+            })
+        analyses[draft] = analysis
     calls = []
 
     def choose(pool, requirements, limit, **kwargs):
@@ -150,6 +171,10 @@ def test_drafter_inspection_slot_is_replaced_once_and_reported(monkeypatch) -> N
     state = orchestrator.run_workflow(
         answers(), hardware(), _container(_search_with(draft, target), analyses),
     )
+    if kind == "too_large":
+        assert len(calls) == 1
+        assert target not in (state.inspection_shortlist or [])
+        return
     assert len(calls) == 2
     assert calls[1] == [target]
     assert target in (state.inspection_shortlist or [])

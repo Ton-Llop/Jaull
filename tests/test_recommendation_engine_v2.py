@@ -2213,8 +2213,9 @@ def test_plans_that_tie_on_every_axis_go_to_the_most_downloaded_repository(
 @pytest.mark.parametrize(
     "priority", [RecommendationPriority.QUALITY, RecommendationPriority.BALANCED],
 )
+@pytest.mark.parametrize("extreme_quant", ["IQ1_M", "Q2_K_S"])
 def test_an_aggressive_quantization_never_beats_one_that_fits(
-    priority: RecommendationPriority,
+    priority: RecommendationPriority, extreme_quant: str,
 ) -> None:
     """Regression found on a B60 box: a 30B model at 1 bit (`IQ1_M`, comfortable) took a slot ahead
     of a 4-bit model (`Q4_K_M`, merely compatible) because headroom was compared before
@@ -2230,13 +2231,13 @@ def test_an_aggressive_quantization_never_beats_one_that_fits(
 
     both = _evaluated_gguf(
         "org/Big-30B-Instruct-GGUF", priority=priority,
-        quantizations=("IQ1_M", "Q4_K_M"), base_bytes=10 * GIB,
+        quantizations=(extreme_quant, "Q4_K_M"), base_bytes=10 * GIB,
     )
     assert quantization_chosen(both) == "Q4_K_M"
 
     aggressive_only = _evaluated_gguf(
         "org/Big-30B-Instruct-GGUF", priority=priority,
-        quantizations=("IQ1_M",), base_bytes=10 * GIB,
+        quantizations=(extreme_quant,), base_bytes=10 * GIB,
     )
     fits = _evaluated_gguf(
         "org/Small-7B-Instruct-GGUF", priority=priority,
