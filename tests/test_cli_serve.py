@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,9 +23,19 @@ from jaull.domain.estimation import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+from jaull.execution.server_certificate import ServerCertificate
 from jaull.execution.server_process import ServerProcessError, ServerState, ServerStatus
 
 GiB = 1024**3
+
+CERTIFICATE = ServerCertificate(
+    cert_path=Path("/data/serve/tls/server-cert.pem"),
+    key_path=Path("/data/serve/tls/server-key.pem"),
+    names=("192.168.1.107", "127.0.0.1", "monk-e", "localhost"),
+    expires=datetime(2027, 11, 16, 12, 0, tzinfo=UTC),
+    created=True,
+    missing=(),
+)
 
 ARTIFACT = ModelArtifact(
     repo_id="unsloth/Qwen3.6-35B-A3B-GGUF", revision="abc", filename="q.gguf", format="gguf",
@@ -62,6 +73,7 @@ class FakeAdvisor:
         self.sizing_error = sizing_error
         self.plan_calls: list[dict[str, Any]] = []
         self.start_calls: list[dict[str, Any]] = []
+        self.certificate_calls: list[bool] = []
         self.stopped = False
 
     def prepare_serve_artifact(self, repo_id: str, **_: object) -> ModelArtifact:
@@ -88,6 +100,13 @@ class FakeAdvisor:
     def stop_server(self) -> bool:
         self.stopped = True
         return True
+
+    def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
+        self.certificate_calls.append(renew)
+        return CERTIFICATE
+
+    def detected_server_certificate(self) -> ServerCertificate | None:
+        return None
 
     def server_status(self) -> ServerStatus:
         return ServerStatus(state=STATE, running=True, healthy=True)
@@ -336,9 +355,116 @@ def test_start_says_where_the_opencode_config_is() -> None:
     started = FakeAdvisor().start_server(_plan())
     shared = "\n".join(start_lines(replace(started,
                                             client_config=Path("/data/serve/opencode.json"))))
-    assert "opencode config (it contains the API key): /data/serve/opencode.json" in shared
+    assert ("opencode config (it contains the API key): "
+            f"{Path('/data/serve/opencode.json')}") in shared
     assert "only works on this PC" not in shared  # the fake start is shared on the LAN
 
     local = "\n".join(start_lines(replace(started, lan_url=None, firewall_rule=None,
                                            client_config=Path("/data/serve/opencode.json"))))
     assert "only works on this PC" in local
+
+
+def test_cert_creates_a_certificate_and_says_how_to_use_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from jaull.cli.serve import run_serve_cert
+
+    advisor = FakeAdvisor()
+
+    assert run_serve_cert(renew=False, advisor=advisor) == 0  # type: ignore[arg-type]
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert advisor.certificate_calls == [False]
+    assert "Created a self-signed certificate" in out
+    assert str(CERTIFICATE.cert_path) in out and str(CERTIFICATE.key_path) in out
+    assert "192.168.1.107, 127.0.0.1, monk-e, localhost" in out
+    assert "valid until 2027-11-16" in out
+    assert f"--lan --tls-cert {CERTIFICATE.cert_path} --tls-key {CERTIFICATE.key_path}" in out
+    # What a self-signed certificate does and does not give.
+    assert "browsers and programs do not trust it" in out
+
+
+def test_cert_that_already_exists_is_kept_and_a_new_address_is_pointed_out(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from dataclasses import replace
+
+    from jaull.cli.serve import run_serve_cert
+
+    class Existing(FakeAdvisor):
+        def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
+            self.certificate_calls.append(renew)
+            return replace(CERTIFICATE, created=False, missing=("192.168.1.50",))
+
+    assert run_serve_cert(renew=False, advisor=Existing()) == 0  # type: ignore[arg-type]
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Already exists" in out and "--renew" in out
+    assert "does not cover 192.168.1.50" in out
+
+
+def test_cert_errors_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
+    from jaull.cli.serve import run_serve_cert
+
+    class Broken(FakeAdvisor):
+        def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
+            raise ServerProcessError("The certificate cannot be read. Use --renew.")
+
+    assert run_serve_cert(renew=False, advisor=Broken()) == 2  # type: ignore[arg-type]
+    assert "--renew" in capsys.readouterr().out
+
+
+def test_cert_command_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[bool] = []
+    monkeypatch.setattr("jaull.cli.app.run_serve_cert", lambda *, renew: seen.append(renew) or 0)
+    runner = CliRunner()
+
+    assert runner.invoke(app, ["serve", "cert"]).exit_code == 0
+    assert runner.invoke(app, ["serve", "cert", "--renew"]).exit_code == 0
+    assert seen == [False, True]
+
+
+class WithCertificate(FakeAdvisor):
+    """A machine where `jaull serve cert` was run before."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.detected_calls = 0
+
+    def detected_server_certificate(self) -> ServerCertificate | None:
+        self.detected_calls += 1
+        return CERTIFICATE
+
+
+def test_a_shared_start_uses_the_certificate_jaull_already_made(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    advisor = WithCertificate()
+
+    assert run_serve_start("a/b", ServeOptions(quantization=None, lan=True), advisor) == 0  # type: ignore[arg-type]
+
+    start = advisor.start_calls[0]
+    assert (start["tls_cert"], start["tls_key"]) == (CERTIFICATE.cert_path, CERTIFICATE.key_path)
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Using the certificate from `jaull serve cert`, valid until 2027-11-16" in out
+
+
+def test_the_certificate_is_not_used_when_only_this_pc_listens_or_files_are_given() -> None:
+    local = WithCertificate()
+    run_serve_start("a/b", ServeOptions(quantization=None, lan=False), local)  # type: ignore[arg-type]
+    assert local.start_calls[0]["tls_cert"] is None
+
+    explicit = WithCertificate()
+    cert, key = Path("/my/cert.pem"), Path("/my/key.pem")
+    run_serve_start("a/b", ServeOptions(quantization=None, lan=True, tls_cert=cert,  # type: ignore[arg-type]
+                                        tls_key=key), explicit)
+    assert (explicit.start_calls[0]["tls_cert"], explicit.start_calls[0]["tls_key"]) == (cert, key)
+    assert explicit.detected_calls == 0
+
+
+def test_without_a_certificate_a_shared_start_stays_plain_http() -> None:
+    advisor = FakeAdvisor()  # detected_server_certificate finds nothing
+
+    run_serve_start("a/b", ServeOptions(quantization=None, lan=True), advisor)  # type: ignore[arg-type]
+
+    assert advisor.start_calls[0]["tls_cert"] is None

@@ -218,9 +218,10 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    **Enable the chat page** (off by default) also serves
    llama.cpp's own chat page at the server URL, which asks for the API key. **Share the
    context** keeps one pool of the given context for everyone (`--shared-context`).
-   Sharing on the network shows two fields for an HTTPS certificate and key. Without them
-   the note under the choice turns into a warning: traffic crosses the network
-   unencrypted. It also says that slots are parallel lanes, not separate users.
+   Sharing on the network shows two fields for an HTTPS certificate and key, and a
+   **Generate certificate** button that makes a self-signed one and fills them in (a browser
+   shows a warning to accept once). Without them the note under the choice turns into a
+   warning: traffic crosses the network unencrypted. It also says that slots are parallel lanes, not separate users.
    **Cache conversations between turns** (on by default) shows what it costs either way:
    faster replies but content kept in memory, or nothing kept but long chats much slower.
 4. **Model.** A downloaded model from the list, or a repository and quantization to

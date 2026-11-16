@@ -29,7 +29,13 @@ from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setu
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.runtime import run_runtime_install
 from jaull.cli.scan import run_scan
-from jaull.cli.serve import ServeOptions, run_serve_start, run_serve_status, run_serve_stop
+from jaull.cli.serve import (
+    ServeOptions,
+    run_serve_cert,
+    run_serve_start,
+    run_serve_status,
+    run_serve_stop,
+)
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.estimator.policies import (
@@ -506,6 +512,19 @@ def serve_start_command(
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
         prompt_cache=not no_prompt_cache,
     )))
+
+
+@serve_app.command(
+    "cert",
+    help="Make a self-signed certificate to serve over HTTPS on the local network.",
+)
+def serve_cert_command(
+    renew: bool = typer.Option(
+        False, "--renew",
+        help="Replace the existing certificate (clients must trust the new one).",
+    ),
+) -> None:
+    raise typer.Exit(code=run_serve_cert(renew=renew))
 
 
 @serve_app.command("stop", help="Stop the server started by `jaull serve start`.")

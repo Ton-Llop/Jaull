@@ -18,7 +18,7 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError, JaullError, QuantizationNotFoundError
 from jaull.execution.server_process import ServerProcessError
 from jaull.presentation.console import make_console
-from jaull.presentation.serving import plan_lines, start_lines, status_lines
+from jaull.presentation.serving import certificate_lines, plan_lines, start_lines, status_lines
 
 
 @dataclass(frozen=True)
@@ -67,9 +67,18 @@ def run_serve_start(
             shared_context=options.shared_context,
         )
         _print_plan(console, plan)
+        tls_cert, tls_key = options.tls_cert, options.tls_key
+        if options.lan and tls_cert is None:
+            detected = resolved.detected_server_certificate()
+            if detected is not None:
+                tls_cert, tls_key = detected.cert_path, detected.key_path
+                console.print(
+                    "Using the certificate from `jaull serve cert`, valid until "
+                    f"{detected.expires:%Y-%m-%d}.", highlight=False, markup=False,
+                )
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
-            tls_cert=options.tls_cert, tls_key=options.tls_key, web_ui=options.web_ui,
+            tls_cert=tls_cert, tls_key=tls_key, web_ui=options.web_ui,
             prompt_cache=options.prompt_cache,
         )
     except InvalidModelReferenceError as exc:
@@ -107,6 +116,19 @@ def run_serve_stop(advisor: AdvisorService | None = None) -> int:
     return 0
 
 
+def run_serve_cert(*, renew: bool, advisor: AdvisorService | None = None) -> int:
+    console = make_console()
+    resolved = advisor or AdvisorService.default()
+    try:
+        certificate = resolved.create_server_certificate(renew=renew)
+    except ServerProcessError as exc:
+        _error(console, str(exc))
+        return 2
+    for line in certificate_lines(certificate):
+        console.print(line, highlight=False, markup=False)
+    return 0
+
+
 def run_serve_status(advisor: AdvisorService | None = None) -> int:
     console = make_console()
     resolved = advisor or AdvisorService.default()
@@ -138,4 +160,6 @@ def _error(console: Console, message: str) -> None:
     console.print(message, style="red", highlight=False, markup=False)
 
 
-__all__ = ["ServeOptions", "run_serve_start", "run_serve_status", "run_serve_stop"]
+__all__ = [
+    "ServeOptions", "run_serve_cert", "run_serve_start", "run_serve_status", "run_serve_stop",
+]

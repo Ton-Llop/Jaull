@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from jaull.artifacts.storage import LocalModelFile
     from jaull.domain.hardware import HardwareProfile
     from jaull.domain.runtime import RuntimeBackendSelection
+    from jaull.execution.server_certificate import ServerCertificate
     from jaull.execution.server_process import ServerStatus
 
 _MODEL_HINT = (
@@ -202,6 +203,7 @@ class SetupScreen(Screen[None]):
                     yield Input(placeholder="HTTPS certificate (.pem), optional",
                                 id="setup-tls-cert")
                     yield Input(placeholder="HTTPS private key (.pem)", id="setup-tls-key")
+                    yield Button("Generate certificate", id="setup-cert", classes="chip")
                 yield Checkbox("Enable the chat page (it asks for the API key)",
                                id="setup-webui")
                 yield Checkbox(
@@ -404,6 +406,22 @@ class SetupScreen(Screen[None]):
                                       installation.version_text or "")
 
         self._run(install, f"Downloading and checking llama.cpp ({backend.value})...")
+
+    def _make_certificate(self) -> None:
+        def make(advisor: AdvisorService) -> None:
+            self._later(self._certificate_ready, advisor.create_server_certificate())
+
+        self._run(make, "Making a certificate...")
+
+    def _certificate_ready(self, certificate: ServerCertificate) -> None:
+        self.query_one("#setup-tls-cert", Input).value = str(certificate.cert_path)
+        self.query_one("#setup-tls-key", Input).value = str(certificate.key_path)
+        note = ("Certificate ready and filled in. It is self-signed: a browser shows a "
+                "warning to accept once.")
+        if certificate.missing:
+            note += (f" It does not cover {', '.join(certificate.missing)}: run "
+                     "`jaull serve cert --renew` to include it.")
+        self._note = note
 
     def _installed_now(self, backend: ComputeBackend, version: str) -> None:
         self._installed = {**self._installed, backend: version}
@@ -616,6 +634,8 @@ class SetupScreen(Screen[None]):
             backend = self._backend()
             if backend is not None:
                 self._install(backend)
+        elif event.button.id == "setup-cert":
+            self._make_certificate()
         elif event.button.id == "setup-monitor":
             self._open_monitor()
         elif event.button.id == "setup-stop":
@@ -817,8 +837,28 @@ class SetupScreen(Screen[None]):
 
     @on(RadioSet.Changed, "#setup-exposure")
     def _exposure_changed(self) -> None:
+        if self._lan():
+            self._use_existing_certificate()
         self._render_exposure()
         self._render_progress()
+
+    def _use_existing_certificate(self) -> None:
+        """Sharing on the network with a certificate `jaull serve cert` made: use it."""
+        cert = self.query_one("#setup-tls-cert", Input)
+        key = self.query_one("#setup-tls-key", Input)
+        if cert.value.strip() or key.value.strip():
+            return  # What the person typed wins.
+        try:
+            found = self._advisor().detected_server_certificate()
+        except RuntimeError as exc:  # An unreadable certificate; the facade names the fix.
+            self._error = str(exc)
+            self._refresh()
+            return
+        if found is not None:
+            cert.value, key.value = str(found.cert_path), str(found.key_path)
+            self._note = (f"Using the certificate from `jaull serve cert`, valid until "
+                          f"{found.expires:%Y-%m-%d}.")
+            self._refresh()
 
     def _preset(self, button_id: str) -> None:
         """A quick pick fills the context field; Max uses the largest that fits."""

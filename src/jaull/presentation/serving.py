@@ -5,9 +5,11 @@ from __future__ import annotations
 from jaull.application.serving.models import ServerPlan, ServerStart
 from jaull.application.serving.security import (
     LAN_WITHOUT_TLS_WARNING,
+    SELF_SIGNED_CERTIFICATE_NOTE,
     SHARED_POOL_OVERFLOW_WARNING,
     SLOTS_ARE_NOT_USERS,
 )
+from jaull.execution.server_certificate import ServerCertificate
 from jaull.execution.server_process import ServerStatus
 from jaull.presentation.console import format_bytes
 
@@ -54,6 +56,29 @@ def plan_lines(plan: ServerPlan) -> list[str]:
             f"  Predicted GPU memory: {format_bytes(physical)} "
             f"(serving limit {format_bytes(sizing.gpu_budget_bytes)})."
         )
+    return lines
+
+
+def certificate_lines(certificate: ServerCertificate) -> list[str]:
+    """What `jaull serve cert` reports: where the files are and how to use them."""
+    lines = [
+        "Created a self-signed certificate." if certificate.created
+        else "Already exists, kept as it is. Use --renew to replace it.",
+        f"Certificate: {certificate.cert_path}",
+        f"Private key: {certificate.key_path}",
+        f"It is valid until {certificate.expires:%Y-%m-%d} for: {', '.join(certificate.names)}",
+    ]
+    if certificate.missing:
+        lines.append(
+            f"It does not cover {', '.join(certificate.missing)}, this PC's address or name "
+            "now. Run `jaull serve cert --renew` to include it; clients will have to trust "
+            "the new certificate."
+        )
+    lines += [
+        f"Use it with: jaull serve start ... --lan --tls-cert {certificate.cert_path} "
+        f"--tls-key {certificate.key_path}",
+        SELF_SIGNED_CERTIFICATE_NOTE,
+    ]
     return lines
 
 

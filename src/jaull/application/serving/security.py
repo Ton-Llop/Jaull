@@ -20,6 +20,12 @@ SLOTS_ARE_NOT_USERS = (
     "request can take any free slot, and nothing keeps one person's conversations "
     "apart from another's."
 )
+# What a certificate Jaull makes itself does and does not give.
+SELF_SIGNED_CERTIFICATE_NOTE = (
+    "Self-signed: the traffic is encrypted, but browsers and programs do not trust it by "
+    "themselves. A browser shows a warning to accept once; to avoid it, make each client "
+    "trust the certificate file."
+)
 # Measured on the B60 (docs/TFG/concurrencia-b60.md): llama-server queues nothing when the
 # shared pool fills, it ends every running request with "Context size has been exceeded".
 SHARED_POOL_OVERFLOW_WARNING = (
@@ -66,6 +72,7 @@ def subnet_of(address: str, netmask: str) -> str:
 __all__ = [
     "LAN_WITHOUT_TLS_WARNING",
     "PROMPT_CACHE_NOTE",
+    "SELF_SIGNED_CERTIFICATE_NOTE",
     "SHARED_POOL_OVERFLOW_WARNING",
     "SLOTS_ARE_NOT_USERS",
     "firewall_rule",

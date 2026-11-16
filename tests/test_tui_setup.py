@@ -21,7 +21,7 @@ from jaull.domain.runtime import LlamaCppInstallation, RuntimeSource
 from jaull.execution.server_process import ServerStatus
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.setup import SetupScreen
-from tests.test_cli_serve import ARTIFACT, STATE, _plan
+from tests.test_cli_serve import ARTIFACT, CERTIFICATE, STATE, _plan
 
 
 async def _wait_until(pilot: Pilot[Any], condition: Callable[[], bool]) -> None:
@@ -113,6 +113,17 @@ class SetupAdvisor:
 
     def llama_cpp_update_notice(self) -> str | None:
         return None
+
+    def create_server_certificate(self, *, renew: bool = False) -> Any:
+        self.calls.append(("certificate", {"renew": renew}))
+        return CERTIFICATE
+
+    #: Set to CERTIFICATE to act as a machine where `jaull serve cert` was run before.
+    detected: Any = None
+
+    def detected_server_certificate(self) -> Any:
+        self.calls.append(("detected", {}))
+        return self.detected
 
     def stop_server(self) -> bool:
         self.calls.append(("stop", {}))
@@ -719,5 +730,80 @@ def test_turning_the_prompt_cache_off_explains_the_cost_and_reaches_the_server()
             screen.query_one("#setup-start", Button).press()
             await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
             assert advisor.called("start")[0]["prompt_cache"] is False
+
+    asyncio.run(scenario())
+
+
+def test_the_certificate_button_fills_the_https_fields() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            button = screen.query_one("#setup-cert", Button)
+            assert not screen.query_one("#setup-tls").display  # only when sharing on the network
+
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+            assert screen.query_one("#setup-tls").display and button.region.right <= 120
+            button.press()
+            await _wait_until(pilot, lambda: bool(advisor.called("certificate"))
+                              and not screen._busy)
+
+            assert advisor.called("certificate") == [{"renew": False}]
+            assert screen.query_one("#setup-tls-cert", Input).value == str(CERTIFICATE.cert_path)
+            assert screen.query_one("#setup-tls-key", Input).value == str(CERTIFICATE.key_path)
+            status = _text(screen, "#setup-status")
+            assert "self-signed" in status and "warning" in status
+
+    asyncio.run(scenario())
+
+
+def test_sharing_picks_up_the_certificate_jaull_already_made() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.detected = CERTIFICATE
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            assert screen.query_one("#setup-tls-cert", Input).value == ""
+
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+
+            assert screen.query_one("#setup-tls-cert", Input).value == str(CERTIFICATE.cert_path)
+            assert screen.query_one("#setup-tls-key", Input).value == str(CERTIFICATE.key_path)
+
+    asyncio.run(scenario())
+
+
+def test_a_typed_certificate_is_not_replaced_by_the_detected_one(tmp_path: Path) -> None:
+    mine = tmp_path / "mine.pem"
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        advisor.detected = CERTIFICATE
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-tls-cert", Input).value = str(mine)
+
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+
+            assert screen.query_one("#setup-tls-cert", Input).value == str(mine)
+            assert screen.query_one("#setup-tls-key", Input).value == ""
+
+    asyncio.run(scenario())
+
+
+def test_nothing_is_filled_in_when_there_is_no_certificate() -> None:
+    async def scenario() -> None:
+        app = JaullApp(advisor=SetupAdvisor())  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            screen.query_one("#setup-lan", RadioButton).value = True
+            await pilot.pause()
+            assert screen.query_one("#setup-tls-cert", Input).value == ""
 
     asyncio.run(scenario())

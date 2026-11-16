@@ -99,6 +99,14 @@ LLAMA_SERVER_HEALTH_POLL_SECONDS = 1.0
 LLAMA_SERVER_STOP_TIMEOUT_SECONDS = 15.0
 LLAMA_SERVER_LOG_TAIL_LINES = 20
 LLAMA_SERVER_API_KEY_BYTES = 32
+# The self-signed HTTPS certificate `jaull serve cert` makes. A year is a product decision.
+# A shorter life adds little: the key sits next to the API key, which never expires, and a
+# certificate that changes often teaches people to accept the browser warning, which is the
+# only sign of someone in the middle. `jaull serve cert --renew` replaces it when needed.
+LLAMA_SERVER_CERTIFICATE_DAYS = 365
+LLAMA_SERVER_CERTIFICATE_NAME = "Jaull server"
+# Valid from a day ago, so a client whose clock is a little behind still accepts it.
+LLAMA_SERVER_CERTIFICATE_BACKDATE_HOURS = 24
 # Builds whose /slots answer was checked to carry no conversation text (only token
 # counts and sampling settings), so it may be enabled for the server monitor. Checked
 # on b11889 (2026-11-16) with a marker in the prompt. Any other build keeps --no-slots.

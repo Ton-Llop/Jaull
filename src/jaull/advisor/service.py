@@ -127,6 +127,7 @@ if TYPE_CHECKING:
     from jaull.evaluation.quality_records import QualityEvidence
     from jaull.evaluation.quality_storage import QualityEvidenceStore
     from jaull.execution.ports import ExecutionBackendProtocol
+    from jaull.execution.server_certificate import ServerCertificate
     from jaull.execution.server_monitor import ServerMonitor
     from jaull.execution.server_process import ServerProcessManager, ServerStatus
     from jaull.experiments.runner import ExperimentRunner
@@ -923,6 +924,36 @@ class AdvisorService:
 
     def stop_server(self) -> bool:
         return self._server_manager().stop()
+
+    def create_server_certificate(self, *, renew: bool = False) -> ServerCertificate:
+        """A self-signed HTTPS certificate for this PC's network address and name."""
+        import socket
+
+        from jaull.execution.server_certificate import ensure_server_certificate
+        from jaull.execution.server_process import lan_ipv4
+
+        address = lan_ipv4()
+        return ensure_server_certificate(
+            self._certificate_directory(),
+            addresses=[address[0]] if address is not None else [],
+            hostnames=[socket.gethostname()],
+            renew=renew,
+        )
+
+    def detected_server_certificate(self) -> ServerCertificate | None:
+        """The certificate `jaull serve cert` made before, kept or renewed if it expired.
+
+        None when it was never made: a server is only given HTTPS without being asked when
+        the person already chose to have a certificate.
+        """
+        from jaull.execution.server_certificate import has_server_certificate
+
+        if not has_server_certificate(self._certificate_directory()):
+            return None
+        return self.create_server_certificate()
+
+    def _certificate_directory(self) -> Path:
+        return self._server_manager().directory / "tls"
 
     def server_status(self) -> ServerStatus:
         return self._server_manager().status()

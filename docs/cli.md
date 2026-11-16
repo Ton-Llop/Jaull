@@ -280,6 +280,7 @@ one, `scripts/llama_cpp_catalog.py <tag>` prints the catalog to paste into
 ```bash
 uv run jaull serve start <repo> -q Q4_K_M                         # this PC only, 1 user
 uv run jaull serve start <repo> -q Q4_K_M --users 8 --context 131072 --lan
+uv run jaull serve cert                                            # self-signed HTTPS certificate
 uv run jaull serve status
 uv run jaull serve stop
 ```
@@ -326,7 +327,26 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   them, `start` warns that prompts, answers and the API key cross the network
   unencrypted. Whenever the server is shared it also says that slots are parallel lanes,
   not separate users: everyone shares one key and nothing keeps one person's
-  conversations apart from another's.
+  conversations apart from another's. llama-server only reads a certificate, it does not
+  make one: `jaull serve cert` writes a self-signed one (`serve/tls/server-cert.pem` and
+  `server-key.pem`, the key mode 0600, valid for a year) for this PC's network address, its
+  name, `localhost` and `127.0.0.1`, and prints the flags to use it. Running it again keeps
+  the existing certificate, so clients that trust it keep working, and says if the PC's
+  address is no longer covered; `--renew` replaces it, and so does running it after it
+  expired. A self-signed certificate encrypts the traffic but nothing trusts it by itself: a
+  browser warns once, and a program needs the certificate file marked as trusted. Setup has
+  a **Generate certificate** button that fills in the two fields.
+
+  Once that certificate exists, `serve start --lan` uses it without any flag (renewed first
+  if it expired), and Setup fills the two fields when sharing on the network is chosen.
+  Files given by hand win, and deleting `serve/tls` goes back to plain HTTP. The year is
+  deliberate: a shorter life adds little, because the key sits next to the API key, which
+  never expires, and a certificate that keeps changing teaches people to accept the browser
+  warning, the only sign of someone in the middle. Use `--renew` if someone who had access
+  to the server leaves, or the key may have leaked (and change the API key too). Every
+  client must then trust the new file and the server must be restarted: llama-server reads
+  the certificate when it starts, so a server left running past the expiry keeps serving the
+  old one (not verified).
 - llama.cpp's prompt cache stays on (upstream default): the start of each conversation is
   reused on the next turn and idle conversations are kept in system RAM. Jaull sizes that
   RAM ceiling (`--cache-ram`) at start: the RAM free now, minus what the model itself puts
