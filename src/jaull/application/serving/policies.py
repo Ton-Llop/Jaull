@@ -37,6 +37,13 @@ SERVE_RAM_LEFT_FOR_SYSTEM_FRACTION = 0.20
 # The server monitor warns when free system RAM falls below this share of the total.
 SERVE_RAM_LOW_FRACTION = 0.10
 
+# A dedicated Intel GPU left idle for ~70 s had its VRAM copied into system RAM by Windows
+# or the driver, which froze a PC that could not hold it (B60, docs/TFG/DECISIONS-2.md).
+# Releasing the model after 45 s idle avoided it. Reported on a B50 and other Intel cards
+# in forums, not tested here. The cause was never confirmed, so this is a mitigation.
+# The cost is ~33 s on the first request after a pause (the model reloads).
+SERVE_INTEL_SLEEP_IDLE_SECONDS = 45
+
 # The opencode configuration written at start. With a shared pool, a client given the whole
 # pool can fill it alone and end every other chat (measured, docs/TFG/concurrencia-b60.md),
 # so it gets this share of the pool. HEURISTIC: half leaves room for a few web chats while an

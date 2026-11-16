@@ -480,3 +480,24 @@ def test_a_shared_start_inside_wsl_warns_instead_of_printing_a_useless_rule() ->
     out = "\n".join(start_lines(replace(started, wsl=True, firewall_rule=None)))
 
     assert WSL_NOT_REACHABLE_WARNING in out and "ufw" not in out
+
+
+def test_sleep_idle_flag_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[ServeOptions] = []
+    monkeypatch.setattr("jaull.cli.app.run_serve_start",
+                        lambda reference, options: seen.append(options) or 0)
+
+    assert CliRunner().invoke(app, ["serve", "start", "a/b", "--sleep-idle", "0"]).exit_code == 0
+    assert CliRunner().invoke(app, ["serve", "start", "a/b"]).exit_code == 0
+
+    assert [options.sleep_idle_seconds for options in seen] == [0, None]
+
+
+def test_the_plan_says_when_the_model_is_released_from_the_gpu() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import plan_lines
+
+    assert "sleep" not in "\n".join(plan_lines(_plan())).lower()
+    text = "\n".join(plan_lines(replace(_plan(), sleep_idle_seconds=45)))
+    assert "after 45 s without requests" in text

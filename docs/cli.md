@@ -356,6 +356,14 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   stays in memory after a request, and a faster reply can no longer show that someone sent
   the same beginning, but every turn reprocesses the whole conversation, which is much
   slower on long chats.
+- On a dedicated Intel GPU (Arc) the server gets `--sleep-idle-seconds 45`: after 45 s
+  without requests llama-server releases the model from the GPU. On the B60, an idle card
+  had its VRAM copied into system RAM after ~70 s, which froze a PC without the RAM for it;
+  releasing the model first avoided it (`docs/TFG/DECISIONS-2.md`). Reported on other
+  Intel cards in forums, not tested here, and the cause was never confirmed. The cost is
+  that the first request after a pause reloads the model (about 33 s with a 7,700-token
+  conversation on the B60). `--sleep-idle N` sets the seconds on any GPU, `--sleep-idle 0`
+  turns it off. Integrated Intel graphics and CPU servers do not get it.
 - Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
 
 `start` also writes `serve/start-server.sh` (`.bat` on Windows) with the same command,

@@ -616,6 +616,7 @@ class AdvisorService:
         backend: ComputeBackend | None = None,
         llama_server_path: Path | None = None,
         shared_context: bool = False,
+        sleep_idle_seconds: int | None = None,
     ) -> ServerPlan:
         """Size a llama-server for ``users`` and find the binary. Composes; no policy here."""
         from jaull.application.serving import (
@@ -624,6 +625,7 @@ class AdvisorService:
             prompt_cache_bytes,
             size_server,
         )
+        from jaull.application.serving import sleep_idle_seconds as idle_sleep_policy
         from jaull.application.serving.models import ServerPlan
         from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
         from jaull.runtime.llama_cpp_release import current_platform
@@ -687,6 +689,11 @@ class AdvisorService:
                 model_ram=model_ram_bytes(sizing.estimate),
             ),
             ram_available_bytes=hardware.memory.available_bytes,
+            sleep_idle_seconds=idle_sleep_policy(
+                accelerator=selection.selected_accelerator,
+                backend=selection.selected_backend,
+                requested=sleep_idle_seconds,
+            ),
         )
 
     def server_context_limit(
@@ -796,6 +803,7 @@ class AdvisorService:
                 plan.prompt_cache_bytes // 1024**2 if plan.prompt_cache_bytes is not None
                 else None
             ),
+            sleep_idle_seconds=plan.sleep_idle_seconds,
         ))
         os_name, _ = current_platform()
         script = manager.write_start_script(argv, windows=os_name == "windows")

@@ -152,3 +152,9 @@ def test_the_prompt_cache_gets_the_ceiling_jaull_sized() -> None:
     assert sized[sized.index("--cache-ram") + 1] == "2867"
     off = server_argv(_launch(prompt_cache=False, cache_ram_mib=2867))
     assert "--no-cache-prompt" in off and off[off.index("--cache-ram") + 1] == "0"
+
+
+def test_an_idle_sleep_is_passed_only_when_asked_for() -> None:
+    assert "--sleep-idle-seconds" not in server_argv(_launch())
+    argv = server_argv(_launch(sleep_idle_seconds=45))
+    assert argv[argv.index("--sleep-idle-seconds") + 1] == "45"

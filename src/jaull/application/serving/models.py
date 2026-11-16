@@ -29,6 +29,8 @@ class ServerPlan:
     prompt_cache_bytes: int | None = None
     #: Free system RAM when the plan was made, to explain the ceiling.
     ram_available_bytes: int | None = None
+    #: Idle seconds after which llama-server releases the model from the GPU; None keeps it.
+    sleep_idle_seconds: int | None = None
 
 
 @dataclass(frozen=True)

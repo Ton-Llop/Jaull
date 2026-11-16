@@ -284,3 +284,39 @@ def test_model_ram_comes_from_the_placement_or_the_whole_cpu_estimate() -> None:
     cpu = SimpleNamespace(hardware_fit=None, total_bytes=3 * GiB)
     assert model_ram_bytes(gpu) == 515 * MiB  # type: ignore[arg-type]
     assert model_ram_bytes(cpu) == 3 * GiB  # type: ignore[arg-type]
+
+
+def _accelerator(vendor: str, kind: str) -> Any:
+    from jaull.domain.hardware import AcceleratorType, AcceleratorVendor
+    from jaull.domain.runtime import SelectedAcceleratorRef
+
+    return SelectedAcceleratorRef(
+        name="Arc Pro B60", vendor=AcceleratorVendor(vendor), type=AcceleratorType(kind),
+    )
+
+
+def test_a_dedicated_intel_gpu_sleeps_when_idle_by_default() -> None:
+    from jaull.application.serving.planner import sleep_idle_seconds
+    from jaull.domain.hardware import ComputeBackend
+
+    arc = _accelerator("intel", "dedicated")
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN) == 45
+    assert sleep_idle_seconds(accelerator=_accelerator("nvidia", "dedicated"),
+                              backend=ComputeBackend.CUDA) is None
+    # Integrated graphics share the PC's RAM: there is no VRAM to be copied away.
+    assert sleep_idle_seconds(accelerator=_accelerator("intel", "integrated"),
+                              backend=ComputeBackend.VULKAN) is None
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.CPU) is None
+    assert sleep_idle_seconds(accelerator=None, backend=ComputeBackend.VULKAN) is None
+
+
+def test_the_user_can_choose_the_idle_sleep_or_turn_it_off() -> None:
+    from jaull.application.serving.planner import sleep_idle_seconds
+    from jaull.domain.hardware import ComputeBackend
+
+    arc = _accelerator("intel", "dedicated")
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, requested=0) is None
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN,
+                              requested=90) == 90
+    assert sleep_idle_seconds(accelerator=_accelerator("nvidia", "dedicated"),
+                              backend=ComputeBackend.CUDA, requested=30) == 30

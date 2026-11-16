@@ -50,6 +50,12 @@ def plan_lines(plan: ServerPlan) -> list[str]:
             if plan.prompt_cache_bytes else
             f"  Prompt cache in RAM: off, not enough free RAM{free}."
         )
+    if plan.sleep_idle_seconds is not None:
+        lines.append(
+            f"  The model leaves the GPU after {plan.sleep_idle_seconds} s without requests "
+            "(the first one after a pause takes longer). Change it with --sleep-idle, 0 turns "
+            "it off."
+        )
     fit = sizing.estimate.hardware_fit
     physical = fit.gpu_physical_bytes if fit is not None else None
     if physical is not None and sizing.gpu_budget_bytes is not None:

@@ -40,6 +40,8 @@ class ServeOptions:
     shared_context: bool = False
     #: llama.cpp's prompt cache. Off: more private, much slower on long chats.
     prompt_cache: bool = True
+    #: Seconds idle before the model leaves the GPU; None = the default for this GPU, 0 = off.
+    sleep_idle_seconds: int | None = None
 
 
 def run_serve_start(
@@ -65,6 +67,7 @@ def run_serve_start(
             backend=options.backend,
             llama_server_path=options.llama_server_path,
             shared_context=options.shared_context,
+            sleep_idle_seconds=options.sleep_idle_seconds,
         )
         _print_plan(console, plan)
         tls_cert, tls_key = options.tls_cert, options.tls_key

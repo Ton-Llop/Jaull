@@ -17,7 +17,9 @@ from math import gcd
 
 from jaull.application.serving import policies
 from jaull.domain.estimation import HardwareFitMode, HardwareFitResult, MemoryEstimate
+from jaull.domain.hardware import AcceleratorType, AcceleratorVendor, ComputeBackend
 from jaull.domain.inference import InferenceConfiguration, TargetDevice
+from jaull.domain.runtime import SelectedAcceleratorRef
 
 EstimateFor = Callable[[InferenceConfiguration], MemoryEstimate]
 
@@ -129,6 +131,30 @@ def prompt_cache_bytes(*, ram_total: int, ram_available: int, model_ram: int) ->
     )
     budget = min(room, policies.SERVE_PROMPT_CACHE_MAX_BYTES)
     return budget if budget >= policies.SERVE_PROMPT_CACHE_MIN_BYTES else 0
+
+
+def sleep_idle_seconds(
+    *,
+    accelerator: SelectedAcceleratorRef | None,
+    backend: ComputeBackend,
+    requested: int | None = None,
+) -> int | None:
+    """Seconds without requests after which llama-server releases the model; None keeps it.
+
+    ``requested`` is the person's choice (0 turns it off). Otherwise a dedicated Intel GPU
+    gets the mitigation for its VRAM being copied to RAM when idle; integrated graphics
+    have no VRAM, and a CPU server has no GPU.
+    """
+    if requested is not None:
+        return requested or None
+    if (
+        accelerator is not None
+        and backend is not ComputeBackend.CPU
+        and accelerator.vendor is AcceleratorVendor.INTEL
+        and accelerator.type is AcceleratorType.DEDICATED
+    ):
+        return policies.SERVE_INTEL_SLEEP_IDLE_SECONDS
+    return None
 
 
 def model_ram_bytes(estimate: MemoryEstimate) -> int:
