@@ -230,8 +230,10 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
    [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). When it is
-   running, this step becomes a hand-over card (below); the plan, the start script and the
-   log are under **Technical details**, folded. Jaull never changes the firewall.
+   running, this step becomes a hand-over card (below); the plan, the start script, the log
+   and the exact `llama-server` command that was run are under **Technical details**,
+   folded (the command holds the path to the API key file, never the key). Jaull never
+   changes the firewall.
    **Stop server** stops it.
 
 If a server is already running when the screen opens, its status is shown and only Monitor

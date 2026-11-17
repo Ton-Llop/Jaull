@@ -578,7 +578,8 @@ def test_start_says_where_the_opencode_backup_is() -> None:
 
     text = "\n".join(start_lines(replace(started, opencode=installed)))
 
-    assert "The file as it was before: /c/opencode.json.jaull-backup" in text
+    # A Path prints with the separators of the OS the test runs on (backslashes on Windows).
+    assert f"The file as it was before: {installed.backup}" in text
 
 
 def test_with_the_chat_page_the_address_for_people_comes_first() -> None:
@@ -602,3 +603,25 @@ def test_with_the_chat_page_the_address_for_people_comes_first() -> None:
     without_page = start_lines(replace(started, web_ui=False, lan_url=None))
     assert without_page[0] == f"Ready at {local}  (OpenAI API: {local}/v1)"
     assert not any("Chat page" in line for line in without_page)
+
+
+def test_the_command_that_launched_the_server_is_shown_in_the_details() -> None:
+    import re
+    from dataclasses import replace
+
+    from jaull.execution.server_process import ServerStatus
+    from jaull.presentation.serving import start_lines, status_lines
+
+    argv = ["llama-server", "--model", "/m/a b.gguf", "--port", "8090",
+            "--api-key-file", "/data/serve/api-key"]
+    started = FakeAdvisor().start_server(_plan())
+    started = replace(started, state=STATE.model_copy(update={"argv": argv}))
+
+    text = "\n".join(start_lines(started))
+    assert "llama-server --model " in text and "--port 8090" in text
+    assert re.search(r"""['"]/m/a b\.gguf['"]""", text)  # an argument with a space is quoted
+    assert "--api-key-file /data/serve/api-key" in text  # the path to the key, never the key
+
+    running = "\n".join(status_lines(
+        ServerStatus(state=started.state, running=True, healthy=True)))
+    assert "--port 8090" in running

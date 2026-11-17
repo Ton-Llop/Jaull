@@ -196,7 +196,8 @@ Portàtil de l'autor, Jaull dins de WSL2, `LFM2.5-1.2B-Instruct-GGUF` amb 16384 
   client no va passar dels 16.384, així que mai no es va veure el límit de 32.768 del servidor.
 - Limitat: dos usuaris, un sol model petit, i no es va guardar el log del servidor d'aquesta prova. No s'ha provat
   què passa si un client ignora el límit que li dóna la configuració.
-- Una sola prova, amb un model de 1,2B. No s'ha repetit amb el Qwen3.6 de Biosfer ni amb diversos usuaris alhora.
+- Aquesta prova va ser amb un model de 1,2B. Es va repetir amb el Qwen3.6 de Biosfer a Windows natiu: vegeu «Prova
+  completa amb el Qwen3.6» més avall.
 - **UNVERIFIED**: que això protegeixi els altres usuaris d'una bossa compartida (`--shared-context`). Aquesta prova va
   ser amb un sol client.
 - El model de 1,2B va respondre que no podia llistar carpetes tot i tenir les eines: tria malament les eines. No és un
@@ -239,6 +240,44 @@ Jaull a Windows, sense `-lm dio` (Jaull encara no el passava). Mesurat amb `memw
 - Conseqüència: Jaull passa ara `-lm dio` per defecte a Windows natiu quan el model cap sencer a la GPU. **No s'ha
   tornat a mesurar amb Jaull ni la velocitat de generació**; queda per a la propera prova.
 - La prova del son (45 s) amb la RAM al límit no es va poder completar.
+
+## Prova completa amb el Qwen3.6 a Windows natiu (2026-11-17, 11:48 a 12:12)
+
+Qwen3.6-35B-A3B `IQ4_XS`, B60, Vulkan, servidor engegat des de la TUI de Jaull a Windows, `-lm dio` i
+`--sleep-idle-seconds 45` (els dos per defecte), 2 usuaris de 32768 en una bossa compartida, opencode a WSL2 per un
+túnel SSH invers (el 8081 de WSL cap al 8090 de Windows). Mesures amb `memwatch.ps1` (cada 6 s) i el `server.log`.
+
+- **VALIDATED** (una execució): amb `-lm dio` la càrrega no consumeix RAM. Residents 0,7 GB, RAM lliure 9,3-9,6 GB (10,2
+  abans), contra els 12,2 GB residents i 0,5 GB lliures de la mateixa càrrega sense el flag, uns minuts abans.
+- **VALIDATED**: el servidor es desperta del son sense tocar la RAM. Amb el servidor adormit (0,1 GB, VRAM a 0), el
+  primer missatge d'opencode va pujar la VRAM a 16,1 GB en uns 6 s i la RAM lliure va baixar només 0,8 GB.
+- **VALIDATED**: velocitat de generació amb `-lm dio` de **61 a 65 tokens/s** en set peticions seguides amb
+  contextos de fins a 14.859 tokens (63,59; 61,94; 63,07; 61,83; 61,92; 61,33; 64,93), i lectura del prompt de 820 a
+  1.000 tokens/s amb 7.600 tokens. Sense el flag, el 4 de novembre, es va mesurar 66,95 tokens/s amb una resposta de
+  142 tokens i gairebé sense context. **No és una comparació estricta** (contextos diferents): no hi ha senyal que el
+  flag frenï, però no s'ha mesurat amb el mateix prompt.
+- **VALIDATED**: opencode compacta sol amb aquest model. El context va arribar a 14.859 tokens i la petició següent ja
+  anava amb 4.175 (`n_tokens`); cap `truncated = 1` ni `Context size has been exceeded` al log. El límit que Jaull li
+  dóna (la meitat de la bossa, 16384) es va respectar.
+- **VALIDATED**: l'agent fa servir les eines: segons l'autor va crear i editar fitxers (un `app.py` amb Flask, 25
+  proves, un `CONTRIBUTING.md` i un `CHANGELOG.md`) i va integrar `calculo.py`. No es va comprovar que els proves
+  passin.
+- **VALIDATED**: el son funciona. A les 12:11:28 (22:58 del log) la VRAM del procés va passar de 17,0 GB a 0 i la RAM
+  lliure va pujar (7,4 a 8,1 GB), sense lag. Va entrar en repòs **69 s després de l'última petició, no 45**: el monitor
+  obert consulta `/slots` i això reinicia el comptador d'inactivitat (mesurat al portàtil: `/metrics`, `/health`,
+  `/props` i `/models` no el mantenen despert, `/slots` sí).
+- A les 11:50, amb el monitor obert i el servidor sense son, **la VRAM va passar a 0 i la RAM lliure a 0 GB** en uns
+  16 s, uns 67 s després de la càrrega (el comportament de X004). La RAM es va recuperar sola en uns 3 minuts, sense que
+  el PC es pengés. **No es va repetir** a les 12:10-12:11: 80 s sense feina amb la VRAM a 17,0 GB i la RAM estable.
+  **UNVERIFIED** què ho va provocar; l'autor sospita d'activitat d'un altre usuari del PC, i les dades no ho
+  descarten.
+- **La caché de prompts creix a la RAM.** El procés va passar d'1,3 a 5,6 GB residents i la RAM lliure del PC va baixar
+  fins a **3,7 GB** (13 %), a prop de l'avís del monitor (10 %). Adormit, el procés conserva 3,2 GB. El sostre de la
+  caché es calcula una sola vegada en engegar, amb la RAM lliure d'aquell moment, i no s'adapta si després altres
+  programes en gasten. **UNVERIFIED** que tot el creixement sigui la caché de prompts (no s'ha mirat el `--cache-ram`
+  de la línia de comandes).
+- Cal tenir en compte: dins de WSL2 amb Dozen el son per defecte no s'aplica (no va protegir), i `opencode.jsonc` amb
+  comentaris no es modifica; la configuració del servidor es va posar en una carpeta de prova com a `opencode.json`.
 
 ## Límits
 

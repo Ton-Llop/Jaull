@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import shlex
+import subprocess
+
 from jaull.application.serving.models import ServerPlan, ServerStart
 from jaull.application.serving.security import (
     LAN_WITHOUT_TLS_WARNING,
@@ -130,6 +134,15 @@ def _opencode_install_lines(started: ServerStart) -> list[str]:
     return lines + _certificate_trust_lines(started)
 
 
+def _command_lines(state: ServerState) -> list[str]:
+    """What was run, for whoever wants to see or repeat it. The key itself is never in it."""
+    if not state.argv:
+        return []
+    quoted = (subprocess.list2cmdline(state.argv) if os.name == "nt"
+              else shlex.join(state.argv))
+    return ["Command that was run:", f"  {quoted}"]
+
+
 def opencode_run_command(state: ServerState) -> str | None:
     """How to run opencode so it trusts this server's own certificate; None without HTTPS."""
     argv = state.argv
@@ -180,6 +193,7 @@ def start_lines(started: ServerStart) -> list[str]:
         )
     lines += _opencode_install_lines(started)
     lines += [f"Start script: {started.start_script}", "Stop it with: jaull serve stop"]
+    lines += _command_lines(state)
     if started.firewall_rule is not None:
         lines += [
             "",
@@ -200,6 +214,7 @@ def status_lines(status: ServerStatus) -> list[str]:
         f"  URL:     {state.url}",
         f"  PID:     {state.pid} (started {state.started_at})",
         f"  Log:     {state.log_path}",
+        *_command_lines(state),
     ]
 
 
