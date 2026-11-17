@@ -166,6 +166,21 @@ tot el context si les altres no el necessiten, però si la suma de les converses
 que estan en marxa**, no només la que s'ha passat. Amb slots fixos, una conversa massa llarga hauria de fallar
 només ella, però cada persona té menys context. **UNVERIFIED**: no s'ha provat.
 
+## Crides a eines i son d'inactivitat (2026-11-16)
+
+Servidor arrencat per Jaull amb `unsloth/Qwen3.6-35B-A3B-GGUF -q IQ4_XS --users 4 --context 65536 --shared-context
+--backend vulkan`, sense `--jinja` (Jaull no el passa). GPU prevista 18,3 GiB, límit de servei 20,2 GiB.
+
+- **VALIDATED**: una petició amb una eina (`scripts/concurrency-bench/tools_probe.py`) retorna una crida real:
+  `get_weather({"city":"Paris"})`, `finish_reason=tool_calls`, 2,6 s. El model de Biosfer pot, per tant, editar
+  fitxers des d'opencode amb aquest servidor. No s'ha provat opencode mateix.
+- **VALIDATED**: Jaull detecta la B60 com a Intel dedicada i passa `--sleep-idle-seconds 45` sense cap opció.
+  Després de més de 60 s sense peticions, l'estat continuava `ready` (procés viu, mateix PID) i la mateixa petició va
+  tardar 26,1 s, contra 2,6 s en calent: el cost de recarregar el model. Una sola mesura.
+- **UNVERIFIED**: la VRAM i la RAM lliure durant l'adormiment no es van registrar en aquesta prova; el que es va
+  veure és que el servidor responia bé. Que això eviti el problema de la RAM de la nota `DECISIONS-2.md` es va
+  mesurar el 2026-11-04, no ara.
+
 ## Límits
 
 - Prompts sintètics i iguals de llargs; un xat real té preguntes i respostes de mida diferent.
