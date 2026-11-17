@@ -42,6 +42,8 @@ SERVE_RAM_LOW_FRACTION = 0.10
 # Releasing the model after 45 s idle avoided it. Reported on a B50 and other Intel cards
 # in forums, not tested here. The cause was never confirmed, so this is a mitigation.
 # The cost is ~33 s on the first request after a pause (the model reloads).
+# Measured on native Windows only. Under WSL2 with Dozen it slept after ~93 s and the PC
+# lagged all the same, so it is not applied by default there.
 SERVE_INTEL_SLEEP_IDLE_SECONDS = 45
 
 # The opencode configuration written at start. With a shared pool, a client given the whole

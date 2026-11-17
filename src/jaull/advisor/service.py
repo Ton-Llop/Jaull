@@ -628,6 +628,7 @@ class AdvisorService:
         )
         from jaull.application.serving import sleep_idle_seconds as idle_sleep_policy
         from jaull.application.serving.models import ServerPlan
+        from jaull.execution.server_process import running_in_wsl
         from jaull.runtime.llama_cpp_install import managed_installation_for, managed_root
         from jaull.runtime.llama_cpp_release import current_platform
         from jaull.runtime.llama_server import server_binary_for
@@ -694,6 +695,7 @@ class AdvisorService:
                 accelerator=selection.selected_accelerator,
                 backend=selection.selected_backend,
                 requested=sleep_idle_seconds,
+                wsl=running_in_wsl(),
             ),
         )
 

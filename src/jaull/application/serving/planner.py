@@ -138,17 +138,20 @@ def sleep_idle_seconds(
     accelerator: SelectedAcceleratorRef | None,
     backend: ComputeBackend,
     requested: int | None = None,
+    wsl: bool = False,
 ) -> int | None:
     """Seconds without requests after which llama-server releases the model; None keeps it.
 
     ``requested`` is the person's choice (0 turns it off). Otherwise a dedicated Intel GPU
-    gets the mitigation for its VRAM being copied to RAM when idle; integrated graphics
-    have no VRAM, and a CPU server has no GPU.
+    on native Windows gets the mitigation for its VRAM being copied to RAM when idle;
+    integrated graphics have no VRAM, a CPU server has no GPU, and under WSL it was not
+    validated: with Dozen the model went to sleep after ~93 s and the PC still ran out of RAM.
     """
     if requested is not None:
         return requested or None
     if (
         accelerator is not None
+        and not wsl
         and backend is not ComputeBackend.CPU
         and accelerator.vendor is AcceleratorVendor.INTEL
         and accelerator.type is AcceleratorType.DEDICATED

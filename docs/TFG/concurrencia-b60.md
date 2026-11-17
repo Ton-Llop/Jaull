@@ -218,7 +218,12 @@ cada consulta (`/props` informa de `is_sleeping` sense despertar-lo).
 - Corregit: el monitor pregunta abans a `/props` i, si dorm, no demana `/slots`.
 - A WSL2 amb Dozen, recarregar un Qwen3-Coder-30B va trigar uns 2 minuts (la primera càrrega, 2 min 3 s). A Windows,
   el Qwen3.6 de 17 GiB va trigar uns 31 s més 48 s. El cost del son és molt més alt a WSL2.
-- **UNVERIFIED**: que el son sigui necessari ni segur amb Dozen a WSL2; només s'ha mesurat a Windows natiu.
+- **A WSL2 amb Dozen el son no va protegir** (Qwen3-Coder 30B, 2026-11-17, segons l'autor): el servidor va entrar en
+  repòs 93 s després d'acabar la càrrega (1:28 a 3:02), no als 45 s, i el PC va quedar amb la RAM plena i molt de lag; es va
+  haver de matar el procés. El 9B de la mateixa màquina havia dormit als 40 s sense lag. A Windows natiu va dormir als
+  40-46 s. Per això Jaull ja no el posa per defecte dins de WSL; `--sleep-idle N` continua disponible.
+- **UNVERIFIED**: quan va començar el lag respecte a l'entrada en repòs (abans o després) i per què el repòs va trigar
+  93 s; no es va registrar la RAM amb marques de temps. L'aturada a Windows nativa és la que es va mesurar.
 - **UNVERIFIED**: que el mateix passi amb altres builds de llama.cpp.
 
 ## Límits

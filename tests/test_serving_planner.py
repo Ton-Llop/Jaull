@@ -320,3 +320,16 @@ def test_the_user_can_choose_the_idle_sleep_or_turn_it_off() -> None:
                               requested=90) == 90
     assert sleep_idle_seconds(accelerator=_accelerator("nvidia", "dedicated"),
                               backend=ComputeBackend.CUDA, requested=30) == 30
+
+
+def test_inside_wsl_the_idle_sleep_is_only_what_the_person_asks_for() -> None:
+    # The mitigation was measured on native Windows (WDDM). Under WSL2 with Dozen it slept
+    # after ~93 s, past the 70 s window, and the PC still filled its RAM (2026-11-17).
+    from jaull.application.serving.planner import sleep_idle_seconds
+    from jaull.domain.hardware import ComputeBackend
+
+    arc = _accelerator("intel", "dedicated")
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, wsl=True) is None
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, wsl=True,
+                              requested=45) == 45
+    assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, wsl=False) == 45
