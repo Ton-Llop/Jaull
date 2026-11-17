@@ -23,6 +23,7 @@ from jaull.application.execution import (
     plan_execution,
     plan_launch,
 )
+from jaull.artifacts.ports import ArtifactHistoryProtocol
 from jaull.artifacts.service import ArtifactService
 from jaull.artifacts.storage import ArtifactStorage, LocalModelFile
 from jaull.bootstrap.container import (
@@ -2262,6 +2263,7 @@ class AdvisorService:
         fresh = ArtifactService(
             resolver=HuggingFaceArtifactResolver(self.services.hf_client),
             storage=ArtifactStorage(),
+            history=_artifact_history(),
         )
         object.__setattr__(self, "artifacts", fresh)
         return fresh
@@ -2559,6 +2561,7 @@ class AdvisorService:
         artifacts = ArtifactService(
             resolver=HuggingFaceArtifactResolver(services.hf_client),
             storage=ArtifactStorage(),
+            history=_artifact_history(),
         )
         return cls(
             services=services,
@@ -2796,6 +2799,17 @@ class _ServerSizingInputs:
     estimate: Callable[[InferenceConfiguration], MemoryEstimate]
     #: Same estimate without re-reading metadata or a runtime recommendation, for searches.
     quick_estimate: Callable[[InferenceConfiguration], MemoryEstimate]
+
+
+def _artifact_history() -> ArtifactHistoryProtocol:
+    """The Hugging Face history used to tell an older published file from an unknown one."""
+    import os
+
+    from huggingface_hub import HfApi
+
+    from jaull.huggingface.artifact_history import HuggingFaceArtifactHistory
+
+    return HuggingFaceArtifactHistory(HfApi(token=os.environ.get("HF_TOKEN")))
 
 
 def _selection_for_requested_backend(

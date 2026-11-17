@@ -501,3 +501,20 @@ def test_the_plan_says_when_the_model_is_released_from_the_gpu() -> None:
     assert "sleep" not in "\n".join(plan_lines(_plan())).lower()
     text = "\n".join(plan_lines(replace(_plan(), sleep_idle_seconds=45)))
     assert "after 45 s without requests" in text
+
+
+def test_the_plan_warns_when_the_file_is_an_older_published_version() -> None:
+    from dataclasses import replace
+    from datetime import UTC, datetime
+
+    from jaull.domain.artifacts import OutdatedVersion
+    from jaull.presentation.serving import plan_lines
+
+    assert "newer version" not in "\n".join(plan_lines(_plan()))
+    old = ARTIFACT.model_copy(update={"outdated": OutdatedVersion(
+        current_sha256="b" * 64, last_revision="abc",
+        still_published_on=datetime(2026, 10, 27, tzinfo=UTC),
+    )})
+    text = "\n".join(plan_lines(replace(_plan(), artifact=old)))
+    assert "Hugging Face has a newer version of this file" in text
+    assert "still current on 2026-10-27" in text

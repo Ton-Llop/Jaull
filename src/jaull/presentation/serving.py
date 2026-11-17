@@ -21,6 +21,13 @@ def plan_lines(plan: ServerPlan) -> list[str]:
         f"Serving {plan.alias} ({plan.artifact.filename}) with llama-server "
         f"({plan.backend.value}).",
     ]
+    outdated = plan.artifact.outdated
+    if outdated is not None:
+        lines.append(
+            "  Warning: Hugging Face has a newer version of this file. This copy is an older "
+            f"published one, still current on {outdated.still_published_on:%Y-%m-%d}. It is "
+            "intact, but it may not behave like the one downloaded today."
+        )
     if sizing.unified_kv and sizing.total_context == sizing.context_per_user:
         lines.append(
             f"  {sizing.parallel} users at once sharing one pool of {sizing.total_context} "

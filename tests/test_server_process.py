@@ -250,3 +250,73 @@ def test_running_inside_wsl_is_told_by_its_environment_or_kernel(
     with monkeypatch.context() as patch:
         patch.setattr(Path, "read_text", missing)
         assert not running_in_wsl()
+
+
+def _saved(manager: ServerProcessManager, **changes: object) -> ServerState:
+    state = ServerState.model_validate_json(manager.state_path.read_text(encoding="utf-8"))
+    changed = state.model_copy(update=changes)
+    manager.state_path.write_text(changed.model_dump_json(), encoding="utf-8")
+    return changed
+
+
+@posix_only
+def test_a_moved_start_time_does_not_hide_our_own_server(
+    manager: ServerProcessManager, fake_server: Path,
+) -> None:
+    # Under WSL2 the start time psutil derives can shift when the VM's clock is corrected.
+    port = _free_port()
+    state = manager.start([str(fake_server), "--port", str(port)], host="127.0.0.1",
+                          port=port, alias="qwen", health_timeout_seconds=30, poll_seconds=0.1)
+    try:
+        _saved(manager, create_time=state.create_time + 60)
+        assert manager.status().running is True
+        with pytest.raises(ServerProcessError, match="already running"):
+            manager.start([str(fake_server), "--port", str(_free_port())], host="127.0.0.1",
+                          port=_free_port(), alias="qwen")
+    finally:
+        assert manager.stop() is True
+    assert not manager.state_path.exists()
+
+
+@posix_only
+def test_a_moved_start_time_and_another_command_line_is_not_our_server(
+    manager: ServerProcessManager, fake_server: Path,
+) -> None:
+    port = _free_port()
+    state = manager.start([str(fake_server), "--port", str(port)], host="127.0.0.1",
+                          port=port, alias="qwen", health_timeout_seconds=30, poll_seconds=0.1)
+    try:
+        _saved(manager, create_time=state.create_time + 60, argv=["llama-server", "--other"])
+        assert manager.status().running is False
+        assert manager.stop() is False  # never signals a process that is not ours
+    finally:
+        import psutil
+
+        psutil.Process(state.pid).kill()
+
+
+@posix_only
+def test_a_failed_start_leaves_the_state_another_start_wrote(
+    manager: ServerProcessManager, fake_server: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_LLAMA_MODE", "hang")
+    foreign = ServerState(
+        pid=1, create_time=1.0, host="127.0.0.1", port=1, alias="other",
+        argv=["llama-server"], log_path="x", started_at="2026-11-17T00:00:00+00:00",
+    )
+    ticks = iter(range(100))
+    manager = ServerProcessManager(
+        manager.directory,
+        # Another start writes its own state while this one is still waiting.
+        sleep=lambda seconds: manager.state_path.write_text(
+            foreign.model_dump_json(), encoding="utf-8"),
+        clock=lambda: next(ticks) * 1.0,
+    )
+    port = _free_port()
+
+    with pytest.raises(ServerProcessError, match="did not become ready"):
+        manager.start([str(fake_server), "--port", str(port)], host="127.0.0.1", port=port,
+                      alias="qwen", health_timeout_seconds=3, poll_seconds=0.1)
+
+    assert ServerState.model_validate_json(
+        manager.state_path.read_text(encoding="utf-8")) == foreign

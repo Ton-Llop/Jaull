@@ -7,6 +7,8 @@ in ``jaull.huggingface.artifact_resolver.HuggingFaceArtifactResolver``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from jaull.domain.artifacts import ModelArtifact
@@ -22,4 +24,21 @@ class ArtifactResolverProtocol(Protocol):
     ) -> ModelArtifact: ...
 
 
-__all__ = ["ArtifactResolverProtocol"]
+@dataclass(frozen=True)
+class PublishedVersion:
+    """A digest a repository has published for one file, with the newest commit that had it."""
+
+    sha256: str
+    revision: str
+    date: datetime
+
+
+class ArtifactHistoryProtocol(Protocol):
+    def find_version(
+        self, repo_id: str, filename: str, sha256: str, *, limit: int,
+    ) -> PublishedVersion | None:
+        """The newest of the last ``limit`` commits whose copy of the file has ``sha256``."""
+        ...
+
+
+__all__ = ["ArtifactHistoryProtocol", "ArtifactResolverProtocol", "PublishedVersion"]

@@ -583,3 +583,103 @@ def test_model_artifact_roundtrip_json() -> None:
     assert parsed["quantization"] == "Q5_K_M"
     restored = ModelArtifact.model_validate_json(dumped)
     assert restored == artifact
+
+
+# ---------------------------------------------------------------------------
+# A local file that Hugging Face has since replaced
+# ---------------------------------------------------------------------------
+@dataclass
+class _FakeHistory:
+    """Published versions, newest first: (sha256, revision, date)."""
+
+    versions: list[tuple[str, str, str]] = field(default_factory=list)
+    error: Exception | None = None
+    asked: list[str] = field(default_factory=list)
+
+    def find_version(self, repo_id: str, filename: str, sha256: str, *, limit: int):
+        from datetime import datetime
+
+        from jaull.artifacts.ports import PublishedVersion
+
+        self.asked.append(sha256)
+        if self.error is not None:
+            raise self.error
+        for digest, revision, date in self.versions:
+            if digest == sha256:
+                return PublishedVersion(
+                    sha256=digest, revision=revision, date=datetime.fromisoformat(date),
+                )
+        return None
+
+
+def _outdated_service(tmp_path: Path, history: _FakeHistory | None):
+    """A service whose Hub now publishes a digest other than the local file's."""
+    payload = b"the version downloaded a month ago"
+    client = _gguf_repo([("m-q5_k_m.gguf", len(payload))])
+    service = ArtifactService(
+        resolver=HuggingFaceArtifactResolver(client),  # type: ignore[arg-type]
+        storage=ArtifactStorage(root=tmp_path),
+        history=history,  # type: ignore[arg-type]
+    )
+    published = "b" * 64
+    reference = service.resolver.resolve("owner/repo", quantization="Q5_K_M").model_copy(
+        update={"sha256": published},
+    )
+    service.resolver.resolve = lambda *args, **kwargs: reference  # type: ignore[method-assign]
+    path = service.storage.path_for(reference)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(payload)
+    local = hashlib.sha256(payload).hexdigest()
+    service.storage.save_sha256(path, local)
+    return service, local, published
+
+
+def test_a_file_that_was_once_published_is_used_with_a_warning(tmp_path: Path) -> None:
+    history = _FakeHistory()
+    service, local, published = _outdated_service(tmp_path, history)
+    history.versions = [(published, "new", "2026-11-12T10:00:00+00:00"),
+                        (local, "old", "2026-10-20T09:00:00+00:00")]
+
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+
+    assert artifact.is_downloaded and artifact.sha256 == local
+    assert artifact.outdated is not None
+    assert artifact.outdated.current_sha256 == published
+    assert artifact.outdated.last_revision == "old"
+    assert artifact.outdated.still_published_on.date().isoformat() == "2026-10-20"
+    assert service.verify(artifact).outdated == artifact.outdated  # still told when verified
+
+
+def test_a_file_no_published_version_matches_is_still_refused(tmp_path: Path) -> None:
+    history = _FakeHistory(versions=[("c" * 64, "other", "2026-10-01T00:00:00+00:00")])
+    service, local, _published = _outdated_service(tmp_path, history)
+
+    with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch") as error:
+        service.resolve("owner/repo", quantization="Q5_K_M")
+    assert "none of the" in str(error.value) and "published versions" in str(error.value)
+    assert history.asked == [local]
+
+
+@pytest.mark.parametrize("history", [None, "unreachable"])
+def test_without_a_history_to_check_a_changed_file_is_refused(
+    tmp_path: Path, history: str | None,
+) -> None:
+    fake = None if history is None else _FakeHistory(error=OSError("offline"))
+    service, _, _ = _outdated_service(tmp_path, fake)
+
+    with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch") as error:
+        service.resolve("owner/repo", quantization="Q5_K_M")
+    assert ("could not be checked" in str(error.value)) is (history is not None)
+
+
+def test_verify_also_tells_an_artifact_is_an_older_version(tmp_path: Path) -> None:
+    history = _FakeHistory()
+    service, local, published = _outdated_service(tmp_path, history)
+    history.versions = [(local, "old", "2026-10-20T09:00:00+00:00")]
+    reference = service.resolver.resolve("owner/repo", quantization="Q5_K_M")
+    path = service.storage.path_for(reference)
+
+    verified = service.verify(reference.model_copy(update={"local_path": path}))
+
+    assert verified.is_verified and verified.outdated is not None
+    assert verified.outdated.current_sha256 == published

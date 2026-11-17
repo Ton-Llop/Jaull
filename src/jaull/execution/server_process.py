@@ -223,7 +223,7 @@ class ServerProcessManager:
         try:
             self._wait_healthy(process, state, health_timeout_seconds, poll_seconds)
         except ServerProcessError:
-            self.state_path.unlink(missing_ok=True)
+            self._forget(state)
             raise
         return state
 
@@ -285,6 +285,19 @@ class ServerProcessManager:
                     f"stopped. Last log lines:\n{self.log_tail()}"
                 )
             self._sleep(poll_seconds)
+
+    def _forget(self, state: ServerState) -> None:
+        """Remove the saved state, but only if it is still the one ``state`` wrote.
+
+        A start that fails late must not take away the record of a server that another
+        start saved in the meantime.
+        """
+        try:
+            saved = self._load()
+        except ServerProcessError:
+            return
+        if saved is not None and (saved.pid, saved.create_time) == (state.pid, state.create_time):
+            self.state_path.unlink(missing_ok=True)
 
     def _load(self) -> ServerState | None:
         if not self.state_path.is_file():
@@ -384,11 +397,20 @@ def _create_time(pid: int) -> float:
 def _verified_process(state: ServerState) -> psutil.Process | None:
     try:
         process = psutil.Process(state.pid)
-        if abs(process.create_time() - state.create_time) > _CREATE_TIME_TOLERANCE_SECONDS:
-            return None
         if process.status() == psutil.STATUS_ZOMBIE:
             return None
-        names = [process.name(), *process.cmdline()[:2]]
+        command_line = process.cmdline()
+        # The start time psutil reports can move (under WSL2 it derives from the VM's boot
+        # time, which shifts when the clock is corrected). The same PID running the very
+        # command Jaull launched is ours all the same; a reused PID would not match both.
+        # (A script run through its shebang shows the interpreter before the command.)
+        same_command = bool(state.argv) and command_line[-len(state.argv):] == state.argv
+        if (
+            abs(process.create_time() - state.create_time) > _CREATE_TIME_TOLERANCE_SECONDS
+            and not same_command
+        ):
+            return None
+        names = [process.name(), *command_line[:2]]
     except psutil.Error:
         return None
     if not any(Path(name).name.casefold().startswith("llama-server") for name in names):

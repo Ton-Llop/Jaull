@@ -8,10 +8,23 @@ lives in ``domain/`` to satisfy the layering rule established in Fase 6.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict
+
+
+class OutdatedVersion(BaseModel):
+    """A local file that was published once and that Hugging Face has since replaced."""
+
+    model_config = ConfigDict(frozen=True)
+
+    #: What the repository publishes for this file today.
+    current_sha256: str
+    #: The newest commit in which the local file was still the published one.
+    last_revision: str
+    still_published_on: datetime
 
 
 class ModelArtifact(BaseModel):
@@ -27,6 +40,8 @@ class ModelArtifact(BaseModel):
     sha256: str | None = None
     is_downloaded: bool = False
     is_verified: bool = False
+    #: Set when the local file is an older published version, not the current one.
+    outdated: OutdatedVersion | None = None
 
 
 class ArtifactIdentity(BaseModel):

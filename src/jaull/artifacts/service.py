@@ -25,14 +25,15 @@ from huggingface_hub.errors import (
     RepositoryNotFoundError,
 )
 
+from jaull.artifacts import policies
 from jaull.artifacts.errors import (
     ArtifactDownloadError,
     ArtifactNotFoundError,
     ArtifactVerificationError,
 )
-from jaull.artifacts.ports import ArtifactResolverProtocol
+from jaull.artifacts.ports import ArtifactHistoryProtocol, ArtifactResolverProtocol
 from jaull.artifacts.storage import ArtifactStorage
-from jaull.domain.artifacts import ModelArtifact
+from jaull.domain.artifacts import ModelArtifact, OutdatedVersion
 from jaull.exceptions import JaullError
 
 DownloaderFn = Callable[..., str]
@@ -47,6 +48,8 @@ class ArtifactService:
     resolver: ArtifactResolverProtocol
     storage: ArtifactStorage
     downloader: DownloaderFn = field(default=hf_hub_download)
+    #: Tells an older published version of a file from bytes nobody published.
+    history: ArtifactHistoryProtocol | None = None
 
     def resolve(
         self,
@@ -148,11 +151,9 @@ class ArtifactService:
             raise ArtifactVerificationError(
                 f"Missing SHA-256 sidecar for {artifact.filename}."
             )
+        outdated = artifact.outdated
         if artifact.sha256 is not None and stored_hex != artifact.sha256.lower():
-            raise ArtifactVerificationError(
-                f"SHA-256 mismatch for {artifact.filename}: "
-                f"expected {artifact.sha256}, sidecar {stored_hex}."
-            )
+            outdated = self._older_version(artifact, stored_hex)
 
         if full:
             try:
@@ -171,6 +172,7 @@ class ArtifactService:
                 "sha256": stored_hex,
                 "is_downloaded": True,
                 "is_verified": True,
+                "outdated": outdated,
             }
         )
 
@@ -185,12 +187,41 @@ class ArtifactService:
         stored = self.storage.load_sha256(path)
         if stored is not None:
             if artifact.sha256 is not None and stored != artifact.sha256.lower():
-                raise ArtifactVerificationError(
-                    f"SHA-256 mismatch for {artifact.filename}: "
-                    f"expected {artifact.sha256}, sidecar {stored}."
-                )
+                update["outdated"] = self._older_version(artifact, stored)
             update["sha256"] = stored
         return artifact.model_copy(update=update)
+
+    def _older_version(self, artifact: ModelArtifact, local_sha256: str) -> OutdatedVersion:
+        """The local file differs from what is published now: say whether it was published.
+
+        A digest that some recent commit of the repository still had is a genuine older
+        version, so it may be used (and the person is told). Anything else, or a history
+        that cannot be read, is refused as before.
+        """
+        assert artifact.sha256 is not None
+        mismatch = (
+            f"SHA-256 mismatch for {artifact.filename}: "
+            f"expected {artifact.sha256}, sidecar {local_sha256}."
+        )
+        if self.history is None:
+            raise ArtifactVerificationError(mismatch)
+        limit = policies.ARTIFACT_HISTORY_COMMIT_LIMIT
+        try:
+            found = self.history.find_version(
+                artifact.repo_id, artifact.filename, local_sha256, limit=limit,
+            )
+        except (HfHubHTTPError, OSError, JaullError) as exc:
+            raise ArtifactVerificationError(
+                f"{mismatch} The published versions could not be checked."
+            ) from exc
+        if found is None:
+            raise ArtifactVerificationError(
+                f"{mismatch} It matches none of the last {limit} published versions."
+            )
+        return OutdatedVersion(
+            current_sha256=artifact.sha256, last_revision=found.revision,
+            still_published_on=found.date,
+        )
 
 
 def _byte_progress_class(callback: ProgressCallback) -> type:
