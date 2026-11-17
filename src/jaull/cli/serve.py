@@ -44,6 +44,8 @@ class ServeOptions:
     sleep_idle_seconds: int | None = None
     #: Add the server to the opencode on this PC (keeping what it has).
     opencode_config: bool = True
+    #: How llama-server reads the model (-lm); None = decided by Jaull, "default" = llama.cpp's.
+    load_mode: str | None = None
 
 
 def run_serve_start(
@@ -70,6 +72,7 @@ def run_serve_start(
             llama_server_path=options.llama_server_path,
             shared_context=options.shared_context,
             sleep_idle_seconds=options.sleep_idle_seconds,
+            load_mode=options.load_mode,
         )
         _print_plan(console, plan)
         tls_cert, tls_key = options.tls_cert, options.tls_key

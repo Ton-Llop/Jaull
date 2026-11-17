@@ -226,6 +226,20 @@ cada consulta (`/props` informa de `is_sleeping` sense despertar-lo).
   93 s; no es va registrar la RAM amb marques de temps. L'aturada a Windows nativa és la que es va mesurar.
 - **UNVERIFIED**: que el mateix passi amb altres builds de llama.cpp.
 
+## La RAM en carregar amb Jaull a Windows natiu (2026-11-17)
+
+Qwen3.6-35B-A3B `IQ4_XS` (17,7 GB), B60, Vulkan, PC de 27,9 GB, 2 usuaris de 32768, servidor engegat des de la TUI de
+Jaull a Windows, sense `-lm dio` (Jaull encara no el passava). Mesurat amb `memwatch.ps1` cada 6 s.
+
+- **VALIDATED** (una execució): abans de carregar hi havia 8,5 GB de RAM lliure. En carregar, el procés va passar a
+  12,2 GB residents i 17,7 GB de memòria privada, i la RAM lliure va baixar a **0,5 GB**, amb 16,9 GB a la VRAM de la
+  B60. El monitor de Jaull va avisar «System RAM is running low». L'autor va aturar el servidor per això.
+- Coincideix amb el que ja es va mesurar a X004: el mode per defecte (mmap) porta el GGUF a la RAM encara que les capes
+  acabin a la targeta. Amb `-lm dio` no ho feia (0,3-0,4 GB residents, 8 execucions).
+- Conseqüència: Jaull passa ara `-lm dio` per defecte a Windows natiu quan el model cap sencer a la GPU. **No s'ha
+  tornat a mesurar amb Jaull ni la velocitat de generació**; queda per a la propera prova.
+- La prova del son (45 s) amb la RAM al límit no es va poder completar.
+
 ## Límits
 
 - Prompts sintètics i iguals de llargs; un xat real té preguntes i respostes de mida diferent.

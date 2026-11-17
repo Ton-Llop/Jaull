@@ -543,3 +543,24 @@ def test_start_tells_how_to_make_opencode_trust_the_servers_certificate() -> Non
     assert "NODE_EXTRA_CA_CERTS" not in "\n".join(start_lines(replace(secure, opencode=None)))
     unchanged = replace(secure, opencode=replace(installed, outcome="unchanged"))
     assert "NODE_EXTRA_CA_CERTS=/data/tls/server-cert.pem" in "\n".join(start_lines(unchanged))
+
+
+def test_load_mode_flag_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[ServeOptions] = []
+    monkeypatch.setattr("jaull.cli.app.run_serve_start",
+                        lambda reference, options: seen.append(options) or 0)
+
+    assert CliRunner().invoke(app, ["serve", "start", "a/b", "--load-mode", "mmap"]).exit_code == 0
+    assert CliRunner().invoke(app, ["serve", "start", "a/b"]).exit_code == 0
+
+    assert [options.load_mode for options in seen] == ["mmap", None]
+
+
+def test_the_plan_says_the_model_is_not_copied_into_ram() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import plan_lines
+
+    assert "-lm" not in "\n".join(plan_lines(_plan()))
+    text = "\n".join(plan_lines(replace(_plan(), load_mode="dio")))
+    assert "-lm dio" in text and "RAM" in text

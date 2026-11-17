@@ -333,3 +333,29 @@ def test_inside_wsl_the_idle_sleep_is_only_what_the_person_asks_for() -> None:
     assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, wsl=True,
                               requested=45) == 45
     assert sleep_idle_seconds(accelerator=arc, backend=ComputeBackend.VULKAN, wsl=False) == 45
+
+
+def test_a_model_fully_on_the_gpu_is_read_from_disk_without_filling_ram_on_windows() -> None:
+    # With the default (mmap) the 17.5 GB GGUF is also copied to RAM although every layer ends
+    # on the B60: free RAM went from 13 to 0.1 GB. -lm dio kept it at ~0.4 GB (8 runs, native
+    # Windows, docs/TFG/DECISIONS-2.md). Only measured there, so only applied there.
+    from jaull.application.serving.planner import load_mode
+    from jaull.domain.hardware import ComputeBackend
+
+    assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=True) == "dio"
+    assert load_mode(backend=ComputeBackend.CUDA, windows=True, resident=True) == "dio"
+    assert load_mode(backend=ComputeBackend.VULKAN, windows=False, resident=True) is None
+    assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=False) is None
+    assert load_mode(backend=ComputeBackend.CPU, windows=True, resident=True) is None
+
+
+def test_the_person_can_choose_the_load_mode_or_get_llama_cpps_default_back() -> None:
+    from jaull.application.serving.planner import load_mode
+    from jaull.domain.hardware import ComputeBackend
+
+    assert load_mode(backend=ComputeBackend.CPU, windows=False, resident=False,
+                     requested="dio") == "dio"
+    assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=True,
+                     requested="mmap") == "mmap"
+    assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=True,
+                     requested="default") is None

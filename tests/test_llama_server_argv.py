@@ -158,3 +158,9 @@ def test_an_idle_sleep_is_passed_only_when_asked_for() -> None:
     assert "--sleep-idle-seconds" not in server_argv(_launch())
     argv = server_argv(_launch(sleep_idle_seconds=45))
     assert argv[argv.index("--sleep-idle-seconds") + 1] == "45"
+
+
+def test_a_load_mode_is_passed_only_when_chosen() -> None:
+    assert "-lm" not in server_argv(_launch())
+    argv = server_argv(_launch(load_mode="dio"))
+    assert argv[argv.index("-lm") + 1] == "dio"

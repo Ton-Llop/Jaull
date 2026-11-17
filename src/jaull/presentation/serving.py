@@ -57,6 +57,11 @@ def plan_lines(plan: ServerPlan) -> list[str]:
             if plan.prompt_cache_bytes else
             f"  Prompt cache in RAM: off, not enough free RAM{free}."
         )
+    if plan.load_mode is not None:
+        lines.append(
+            f"  The model file is read with -lm {plan.load_mode}"
+            + (": it is not also copied into system RAM." if plan.load_mode == "dio" else ".")
+        )
     if plan.sleep_idle_seconds is not None:
         lines.append(
             f"  The model leaves the GPU after {plan.sleep_idle_seconds} s without requests "

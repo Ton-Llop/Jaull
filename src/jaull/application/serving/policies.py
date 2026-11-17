@@ -46,6 +46,15 @@ SERVE_RAM_LOW_FRACTION = 0.10
 # lagged all the same, so it is not applied by default there.
 SERVE_INTEL_SLEEP_IDLE_SECONDS = 45
 
+# llama.cpp loads a GGUF with mmap, which also puts the whole file in system RAM although every
+# layer ends on the GPU: on the B60 free RAM went from 13 to 0.1 GB in 10 s. Reading it with
+# direct I/O (-lm dio) kept the server at ~0.4 GB resident in 8 runs. Measured on native
+# Windows only (docs/TFG/DECISIONS-2.md), so applied there, for a model fully on the GPU.
+# What it does to generation speed was not compared.
+SERVE_DIRECT_IO_LOAD_MODE = "dio"
+# What the person types to get llama.cpp's own default back.
+SERVE_LOAD_MODE_DEFAULT = "default"
+
 # The opencode configuration written at start. With a shared pool, a client given the whole
 # pool can fill it alone and end every other chat (measured, docs/TFG/concurrencia-b60.md),
 # so it gets this share of the pool. HEURISTIC: half leaves room for a few web chats while an

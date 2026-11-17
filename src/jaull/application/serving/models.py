@@ -32,6 +32,8 @@ class ServerPlan:
     ram_available_bytes: int | None = None
     #: Idle seconds after which llama-server releases the model from the GPU; None keeps it.
     sleep_idle_seconds: int | None = None
+    #: How llama-server reads the model file (``-lm``); None leaves llama.cpp's default.
+    load_mode: str | None = None
 
 
 @dataclass(frozen=True)

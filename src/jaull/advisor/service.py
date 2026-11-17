@@ -618,14 +618,17 @@ class AdvisorService:
         llama_server_path: Path | None = None,
         shared_context: bool = False,
         sleep_idle_seconds: int | None = None,
+        load_mode: str | None = None,
     ) -> ServerPlan:
         """Size a llama-server for ``users`` and find the binary. Composes; no policy here."""
         from jaull.application.serving import (
             context_limit,
+            fully_on_gpu,
             model_ram_bytes,
             prompt_cache_bytes,
             size_server,
         )
+        from jaull.application.serving import load_mode as load_mode_policy
         from jaull.application.serving import sleep_idle_seconds as idle_sleep_policy
         from jaull.application.serving.models import ServerPlan
         from jaull.execution.server_process import running_in_wsl
@@ -696,6 +699,12 @@ class AdvisorService:
                 backend=selection.selected_backend,
                 requested=sleep_idle_seconds,
                 wsl=running_in_wsl(),
+            ),
+            load_mode=load_mode_policy(
+                backend=selection.selected_backend,
+                windows=current_platform()[0] == "windows",
+                resident=fully_on_gpu(sizing.estimate),
+                requested=load_mode,
             ),
         )
 
@@ -809,6 +818,7 @@ class AdvisorService:
                 else None
             ),
             sleep_idle_seconds=plan.sleep_idle_seconds,
+            load_mode=plan.load_mode,
         ))
         os_name, _ = current_platform()
         script = manager.write_start_script(argv, windows=os_name == "windows")

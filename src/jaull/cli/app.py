@@ -510,6 +510,12 @@ def serve_start_command(
         help="Seconds without requests before the model leaves the GPU, 0 for never. "
         "Default: 45 on a dedicated Intel GPU, never elsewhere.",
     ),
+    load_mode: str | None = typer.Option(
+        None, "--load-mode",
+        help="How llama-server reads the model (-lm): dio, mmap... or default for llama.cpp's "
+        "own. Default: dio on Windows when the model fits entirely on the GPU, so it is not "
+        "also copied into RAM.",
+    ),
     no_opencode_config: bool = typer.Option(
         False, "--no-opencode-config",
         help="Do not add the server to the opencode on this PC (it is added by default, "
@@ -521,7 +527,7 @@ def serve_start_command(
         backend=backend, revision=revision, llama_server_path=llama_server,
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
         prompt_cache=not no_prompt_cache, sleep_idle_seconds=sleep_idle,
-        opencode_config=not no_opencode_config,
+        opencode_config=not no_opencode_config, load_mode=load_mode,
     )))
 
 

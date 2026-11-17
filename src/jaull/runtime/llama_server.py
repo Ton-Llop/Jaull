@@ -50,6 +50,8 @@ class ServerLaunch:
     cache_ram_mib: int | None = None
     #: Seconds idle before the model is released from the GPU (``--sleep-idle-seconds``).
     sleep_idle_seconds: int | None = None
+    #: How the model file is read (``-lm``): ``dio`` keeps it out of system RAM.
+    load_mode: str | None = None
 
     def __post_init__(self) -> None:
         if (self.tls_cert is None) != (self.tls_key is None):
@@ -83,6 +85,8 @@ def server_argv(launch: ServerLaunch) -> list[str]:
         argv += ["--no-cache-prompt", "--cache-ram", "0"]
     elif launch.cache_ram_mib is not None:
         argv += ["--cache-ram", str(launch.cache_ram_mib)]
+    if launch.load_mode is not None:
+        argv += ["-lm", launch.load_mode]
     if launch.sleep_idle_seconds is not None:
         argv += ["--sleep-idle-seconds", str(launch.sleep_idle_seconds)]
     if launch.tls_cert is not None and launch.tls_key is not None:

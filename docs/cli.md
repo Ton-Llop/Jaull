@@ -368,6 +368,13 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   Dozen (Qwen3-Coder 30B on the B60) the model went to sleep after about 93 s, not 45, and
   the PC still filled its RAM and lagged; `--sleep-idle N` is still available there if you
   want to try it.
+- On native Windows, when the whole model fits on the GPU, the server reads the file with
+  `-lm dio` (direct I/O). By default llama.cpp maps the GGUF into system RAM even though every
+  layer ends on the card: on the B60 free RAM went from 13 to 0.1 GB in 10 s, and with
+  `-lm dio` the server stayed at about 0.4 GB resident (8 runs, `docs/TFG/DECISIONS-2.md`).
+  It was not compared for generation speed. `--load-mode` chooses another mode (`mmap`, ...)
+  and `--load-mode default` gives llama.cpp's own back. Linux, WSL, CPU servers and models
+  that do not fit on the GPU do not get it: it was not measured there.
 - Port 8090 (`--port` to change it). A busy port is refused with a free one suggested.
 
 `start` also writes `serve/start-server.sh` (`.bat` on Windows) with the same command,

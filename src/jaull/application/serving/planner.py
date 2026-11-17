@@ -160,6 +160,32 @@ def sleep_idle_seconds(
     return None
 
 
+def fully_on_gpu(estimate: MemoryEstimate) -> bool:
+    """Every layer of the model fits on the GPU, so the file is not needed in system RAM."""
+    fit = estimate.hardware_fit
+    return fit is not None and fit.mode is HardwareFitMode.GPU_RESIDENT
+
+
+def load_mode(
+    *,
+    backend: ComputeBackend,
+    windows: bool,
+    resident: bool,
+    requested: str | None = None,
+) -> str | None:
+    """How llama-server reads the model file (``-lm``); None leaves llama.cpp's default.
+
+    ``requested`` is the person's choice ("default" gives llama.cpp's own back). Otherwise
+    direct I/O, so the file is not also copied into system RAM, for a model that lives
+    entirely on a GPU on native Windows, which is where it was measured.
+    """
+    if requested is not None:
+        return None if requested == policies.SERVE_LOAD_MODE_DEFAULT else requested
+    if windows and resident and backend is not ComputeBackend.CPU:
+        return policies.SERVE_DIRECT_IO_LOAD_MODE
+    return None
+
+
 def model_ram_bytes(estimate: MemoryEstimate) -> int:
     """System RAM the served model itself takes, from the estimate the server was sized on."""
     fit = estimate.hardware_fit
