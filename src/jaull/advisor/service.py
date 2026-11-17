@@ -14,6 +14,7 @@ import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from hashlib import file_digest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -649,11 +650,6 @@ class AdvisorService:
             shared_context=shared_context,
             native_limit=inputs.native,
         )
-        launch = self.plan_launch(
-            runtime=RuntimeName.LLAMA_CPP, estimate=sizing.estimate, hardware=hardware,
-            local_artifact=artifact, backend_selection=selection,
-            overrides=ExecutionOverrides(n_gpu_layers=0) if cpu else None,
-        )
         binary = llama_server_path
         build: str | None = None
         if binary is None:
@@ -679,6 +675,14 @@ class AdvisorService:
                 "llama-server was not found. Install it with "
                 f"`jaull runtime install --backend {selection.selected_backend.value}`."
             )
+        readiness = self._server_readiness(binary, selection)
+        server_sha256 = _server_binary_sha256(binary)
+        launch = self.plan_launch(
+            runtime=RuntimeName.LLAMA_CPP, estimate=sizing.estimate, hardware=hardware,
+            local_artifact=artifact, backend_selection=selection,
+            runtime_capability=readiness.runtime_capability, execution_readiness=readiness,
+            overrides=ExecutionOverrides(n_gpu_layers=0) if cpu else None,
+        )
         return ServerPlan(
             artifact=artifact,
             alias=repo_id.split("/")[-1],
@@ -686,6 +690,8 @@ class AdvisorService:
             sizing=sizing,
             launch=launch,
             server_binary=binary,
+            backend_selection=selection,
+            server_sha256=server_sha256,
             context_limit=limit,
             build=build,
             prompt_cache_bytes=prompt_cache_bytes(
@@ -785,12 +791,44 @@ class AdvisorService:
             opencode_config,
         )
         from jaull.application.serving.models import ServerStart
+        from jaull.domain.runtime import LlamaCppBackendCapability
         from jaull.execution.opencode_install import install_opencode_config
         from jaull.execution.server_process import running_in_wsl
         from jaull.runtime import policies as runtime_policies
+        from jaull.runtime.device_matching import match_runtime_device, names_agree
         from jaull.runtime.llama_cpp_release import current_platform
         from jaull.runtime.llama_server import ServerLaunch, server_argv, slots_allowed
 
+        if _server_binary_sha256(plan.server_binary) != plan.server_sha256:
+            raise ExecutionPlanningError(
+                "llama-server has changed since preparation. "
+                "Prepare the server again. No model was launched."
+            )
+        readiness = self._server_readiness(plan.server_binary, plan.backend_selection)
+        if _server_binary_sha256(plan.server_binary) != plan.server_sha256:
+            raise ExecutionPlanningError(
+                "llama-server changed during preflight. "
+                "Prepare the server again. No model was launched."
+            )
+        devices = [flag.value for flag in plan.launch.flags if flag.name == "--device"]
+        layers = [flag.value for flag in plan.launch.flags if flag.name == "--n-gpu-layers"]
+        if plan.backend is ComputeBackend.CPU:
+            matches = layers == ["0"] and not devices
+        else:
+            capability = readiness.selected_backend_capability
+            device = (match_runtime_device(plan.backend_selection, capability).device
+                      if isinstance(capability, LlamaCppBackendCapability) else None)
+            accelerator = plan.backend_selection.selected_accelerator
+            # An unchanged index alone cannot confirm a prepared server's physical GPU.
+            matches = (device is not None and accelerator is not None and device.name is not None
+                       and names_agree(device.name, accelerator.name)
+                       and devices == [device.runtime_id]
+                       and len(layers) == 1 and layers[0] != "0")
+        if plan.backend is not plan.backend_selection.selected_backend or not matches:
+            raise ExecutionPlanningError(
+                "The prepared server backend/device no longer matches the confirmed runtime. "
+                "Prepare the server again. No model was launched."
+            )
         manager = self._server_manager()
         slots = slots_allowed(plan.build)
         api_key_path, new_key = manager.ensure_api_key()
@@ -846,6 +884,28 @@ class AdvisorService:
             start_script=script, firewall_rule=rule, lan_url=lan_url, web_ui=web_ui,
             client_config=client_config, wsl=wsl, opencode=installed,
         )
+
+    def _server_readiness(
+        self, binary: Path, selection: RuntimeBackendSelection,
+    ) -> ExecutionReadiness:
+        from jaull.execution.host import HostExecutionBackend
+        from jaull.runtime.llama_cpp_capability import (
+            evaluate_execution_readiness,
+            inspect_llama_cpp_runtime,
+        )
+
+        # Probe the executable we will start, not a sibling CLI or another discovered build.
+        capability = inspect_llama_cpp_runtime(
+            backend=HostExecutionBackend(), llama_cli_path=binary,
+            timeout_seconds=self.llama_cli_timeout_seconds,
+        )
+        readiness = evaluate_execution_readiness(selection=selection, runtime_capability=capability)
+        if readiness.status is not ExecutionReadinessStatus.READY:
+            raise ExecutionPlanningError(
+                f"llama-server preflight failed for {binary}: "
+                f"{readiness.message or readiness.reason.value}. No model was launched."
+            )
+        return readiness
 
     def prepare_serve_artifact(
         self,
@@ -2948,6 +3008,16 @@ def _precision(value: str | None) -> WeightPrecision | None:
         return WeightPrecision(value)
     except ValueError:
         return None
+
+
+def _server_binary_sha256(binary: Path) -> str:
+    try:
+        with binary.open("rb") as stream:
+            return file_digest(stream, "sha256").hexdigest()
+    except OSError as exc:
+        raise ExecutionPlanningError(
+            f"Cannot verify llama-server at {binary}: {exc}. No model was launched."
+        ) from exc
 
 
 __all__ = ["AdvisorService", "CancelCheck", "DiagnosticsFn"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,8 +22,16 @@ from jaull.domain.estimation import (
     HardwareFitResult,
     HardwareMemoryTopology,
 )
-from jaull.domain.hardware import ComputeBackend
-from jaull.domain.runtime import RuntimeName, RuntimeRecommendation
+from jaull.domain.hardware import AcceleratorType, AcceleratorVendor, ComputeBackend
+from jaull.domain.runtime import (
+    RuntimeBackendSelection,
+    RuntimeBackendSelectionReason,
+    RuntimeFlag,
+    RuntimeFlagSource,
+    RuntimeName,
+    RuntimeRecommendation,
+    SelectedAcceleratorRef,
+)
 from jaull.execution.server_certificate import ServerCertificate
 from jaull.execution.server_process import ServerProcessError, ServerState, ServerStatus
 
@@ -63,8 +72,21 @@ def _plan(parallel: int = 8) -> ServerPlan:
         artifact=ARTIFACT, alias="Qwen3.6-35B-A3B-GGUF", backend=ComputeBackend.VULKAN,
         sizing=sizing, launch=RuntimeRecommendation(
             runtime=RuntimeName.LLAMA_CPP, confidence=EstimationConfidence.HIGH,
+            flags=[RuntimeFlag(name=name, value=value, source=RuntimeFlagSource.POLICY,
+                               explanation="test") for name, value in (
+                ("--device", "Vulkan0"), ("--n-gpu-layers", "-1"),
+            )],
         ),
         server_binary=Path("/opt/llama/llama-server"),
+        server_sha256=sha256(b"fake server").hexdigest(),
+        backend_selection=RuntimeBackendSelection(
+            selected_backend=ComputeBackend.VULKAN,
+            selected_accelerator=SelectedAcceleratorRef(
+                name="Intel Arc Pro B60", vendor=AcceleratorVendor.INTEL,
+                type=AcceleratorType.DEDICATED,
+            ),
+            reason=RuntimeBackendSelectionReason.VULKAN_BACKEND_AVAILABLE,
+        ),
     )
 
 

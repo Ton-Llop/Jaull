@@ -82,6 +82,11 @@ The server speaks the OpenAI API, so any client that lets you set a base URL can
 API key is shown once. Jaull never touches your firewall: with `--lan` it prints the rule an
 administrator can run.
 
+Setup probes the selected `llama-server` itself, then checks its SHA-256 and device
+binding again before starting. A changed binary or device requires preparing the server
+again. A live process is only shown as ready when its health check succeeds.
+Generated start scripts launch directly; use `jaull serve start` to repeat these checks.
+
 ### Full setup
 
 For quality evaluation you also need Docker. `make setup` prepares everything at once:

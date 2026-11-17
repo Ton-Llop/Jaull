@@ -889,6 +889,8 @@ class _SetupAdvisor:
             launch=RuntimeRecommendation(runtime=RuntimeName.LLAMA_CPP,
                                          confidence=EstimationConfidence.HIGH),
             server_binary=Path("/x/llama-server"),
+            backend_selection=self.select_runtime_backend(None),  # type: ignore[arg-type]
+            server_sha256="0" * 64,
         )
 
     def start_server(self, plan: object, **kwargs: object) -> object:

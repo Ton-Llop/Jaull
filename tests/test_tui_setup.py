@@ -841,6 +841,36 @@ def test_nothing_is_filled_in_when_there_is_no_certificate() -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("size", [(80, 24), (160, 50)])
+def test_a_live_process_is_not_shown_as_ready_until_healthy(size: tuple[int, int]) -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=size) as pilot:
+            screen = await _open(pilot, app)
+            advisor.running = True
+            screen._show_server(ServerStatus(state=STATE, running=True, healthy=False))
+            await pilot.pause()
+            assert "loading or not responding" in _text(screen, "#setup-status")
+            assert screen._step_states()[-1] == ("warn", "not ready")
+            assert not screen.query_one("#setup-stop", Button).disabled
+            assert not screen.query_one("#setup-monitor", Button).disabled
+
+            screen._show_server(advisor.server_status())
+            await pilot.pause()
+            assert "ready" in _text(screen, "#setup-status")
+            assert screen._step_states()[-1] == ("done", "ready")
+
+            advisor.running = False
+            screen._show_server(advisor.server_status())
+            await pilot.pause()
+            assert screen.query_one("#setup-stop", Button).disabled
+            assert screen.query_one("#setup-monitor", Button).disabled
+            assert "A Jaull server is ready" not in _text(screen, "#setup-status")
+
+    asyncio.run(scenario())
+
+
 def test_the_copy_button_sits_next_to_the_key_and_copies_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -8,7 +8,7 @@ from pathlib import Path
 from jaull.application.serving.planner import ContextLimit, ServerSizing
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
-from jaull.domain.runtime import RuntimeRecommendation
+from jaull.domain.runtime import RuntimeBackendSelection, RuntimeRecommendation
 from jaull.execution.opencode_install import OpencodeInstall
 from jaull.execution.server_process import ServerState
 
@@ -22,6 +22,8 @@ class ServerPlan:
     #: Placement from the launch planner (--n-gpu-layers, --device, ...).
     launch: RuntimeRecommendation
     server_binary: Path
+    backend_selection: RuntimeBackendSelection
+    server_sha256: str
     #: The largest context per person this machine can serve with this model.
     context_limit: ContextLimit | None = None
     #: The llama.cpp build of ``server_binary`` when known (``b11889``).

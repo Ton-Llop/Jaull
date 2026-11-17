@@ -178,6 +178,7 @@ class SetupScreen(Screen[None]):
         # A long action (a download) froze the form until it ends.
         self._locked = False
         self._running = False
+        self._healthy = False
         # Where the running server can be reached, and whether the key is shown as a QR.
         self._share: ServerShare | None = None
         # How to run opencode with the server's certificate, and whether Jaull already added
@@ -639,6 +640,7 @@ class SetupScreen(Screen[None]):
 
     def _show_server(self, status: ServerStatus, *, describe: bool = True) -> None:
         self._running = status.running
+        self._healthy = status.running and status.healthy
         self._share = (self._advisor().server_share(status.state)
                        if status.running and status.state is not None else None)
         self._run_command = (opencode_run_command(status.state)
@@ -663,10 +665,12 @@ class SetupScreen(Screen[None]):
         self.query_one("#setup-result").set_class(running, "-running")
         choice = self._choice()
         idle = choice if isinstance(choice, str) else "Ready. Press Start server."
-        text = status or ("A Jaull server is running." if running
+        server_status = ("A Jaull server is ready." if self._healthy
+                         else "Server process is running: loading or not responding.")
+        text = status or (server_status if running
                           else self._error or self._note or idle)
         mark = (f"[{palette.ACCENT}]●[/] " if self._busy
-                else f"[{palette.OK}]●[/] " if running else "")
+                else f"[{palette.OK if self._healthy else palette.WARN}]●[/] " if running else "")
         self.query_one("#setup-status", Static).update(mark + escape(text))
         self._render_progress()
 
@@ -714,7 +718,7 @@ class SetupScreen(Screen[None]):
             else (_DONE, model[0].split("/")[-1]),
         ]
         if self._running:
-            states.append((_DONE, "running"))
+            states.append((_DONE, "ready") if self._healthy else (_WARN, "not ready"))
         elif self._busy:
             states.append((_ACTIVE, "working"))
         elif all(state == _DONE for state, _ in states):

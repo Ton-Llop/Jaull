@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -102,6 +103,7 @@ class _Manager:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
         self.started: dict[str, Any] = {}
+        self.argv: list[str] = []
         self.client_config: dict[str, Any] = {}
 
     def ensure_api_key(self) -> tuple[Path, str | None]:
@@ -112,6 +114,7 @@ class _Manager:
 
     def start(self, argv: list[str], **kwargs: Any) -> Any:
         self.started = kwargs
+        self.argv = argv
         return STATE.model_copy(update={
             "host": kwargs["host"], "port": kwargs["port"], "web_ui": kwargs["web_ui"]})
 
@@ -125,6 +128,15 @@ def test_starting_a_server_reports_how_to_reach_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, lan: bool, wsl: bool,
 ) -> None:
     manager = _Manager(tmp_path)
+    binary = tmp_path / "llama-server"
+    binary.write_text("fake server", encoding="utf-8")
+    binary.chmod(0o755)
+    from tests.test_llama_cpp_capability import _FakeExecutionBackend
+
+    host = _FakeExecutionBackend({
+        (str(binary), "--list-devices"): "Vulkan0: Intel Arc Pro B60\n",
+    })
+    monkeypatch.setattr("jaull.execution.host.HostExecutionBackend", lambda: host)
     monkeypatch.setattr(AdvisorService, "_server_manager", lambda self: manager)
     monkeypatch.setattr(AdvisorService, "_lan_share",
                         lambda self, port, tls: ("http://192.168.1.107:8090", "RULE"))
@@ -133,7 +145,8 @@ def test_starting_a_server_reports_how_to_reach_it(
     opencode_home = Path(os.environ["XDG_CONFIG_HOME"]) / "opencode"
     opencode_home.mkdir(parents=True)  # this PC has opencode
 
-    started = advisor.start_server(_plan(), lan=lan, web_ui=True)
+    plan = replace(_plan(), server_binary=binary)
+    started = advisor.start_server(plan, lan=lan, web_ui=True)
 
     # opencode on this PC reaches the server on this PC's own address, shared or not.
     assert started.opencode is not None and started.opencode.outcome == "created"
@@ -148,7 +161,7 @@ def test_starting_a_server_reports_how_to_reach_it(
     assert (started.lan_url is not None) is lan
     assert started.wsl is (lan and wsl)
     assert started.firewall_rule == ("RULE" if lan and not wsl else None)
-    assert advisor.start_server(_plan(), opencode=False).opencode is None  # asked not to
+    assert advisor.start_server(plan, opencode=False).opencode is None  # asked not to
 
 
 def test_the_monitor_knows_whether_the_server_sleeps_when_idle(
