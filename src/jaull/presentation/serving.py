@@ -11,7 +11,7 @@ from jaull.application.serving.security import (
     WSL_NOT_REACHABLE_WARNING,
 )
 from jaull.execution.server_certificate import ServerCertificate
-from jaull.execution.server_process import ServerStatus
+from jaull.execution.server_process import ServerState, ServerStatus
 from jaull.presentation.console import format_bytes
 
 
@@ -96,6 +96,51 @@ def certificate_lines(certificate: ServerCertificate) -> list[str]:
     return lines
 
 
+def _opencode_install_lines(started: ServerStart) -> list[str]:
+    """What was done to the opencode on this PC, so nothing changes without being said."""
+    install = started.opencode
+    if install is None:
+        return []
+    if install.outcome == "unreadable":
+        return [
+            f"opencode: {install.path} was left as it is (it has comments or a shape Jaull "
+            "does not edit). Add the config above to it yourself.",
+        ]
+    if install.outcome == "unchanged":
+        return [
+            f"opencode: {install.path} already has this server.",
+            *_certificate_trust_lines(started),
+        ]
+    verb = {"created": "Created", "added": "Added the jaull provider to",
+            "updated": "Updated the jaull provider in"}[install.outcome]
+    lines = [
+        f"opencode: {verb} {install.path}. Your other providers and settings are as they were."
+    ]
+    if install.backup is not None:
+        lines.append(f"  The file as it was before: {install.backup}")
+    lines.append(
+        "  It is your default model now." if install.selected else
+        "  Your default model is unchanged: pick the server with /models in opencode."
+    )
+    return lines + _certificate_trust_lines(started)
+
+
+def opencode_run_command(state: ServerState) -> str | None:
+    """How to run opencode so it trusts this server's own certificate; None without HTTPS."""
+    argv = state.argv
+    if not state.tls or "--ssl-cert-file" not in argv:
+        return None
+    return f"NODE_EXTRA_CA_CERTS={argv[argv.index('--ssl-cert-file') + 1]} opencode"
+
+
+def _certificate_trust_lines(started: ServerStart) -> list[str]:
+    command = opencode_run_command(started.state)
+    if command is None:
+        return []
+    return ["  Run opencode with this command, so it trusts the server's certificate:",
+            f"    {command}"]
+
+
 def start_lines(started: ServerStart) -> list[str]:
     """Everything the person needs after a start. The API key appears only when new."""
     state = started.state
@@ -124,6 +169,7 @@ def start_lines(started: ServerStart) -> list[str]:
             "  The server listens only on this PC, so it only works on this PC. Start with "
             "--lan to use it from another one."
         )
+    lines += _opencode_install_lines(started)
     lines += [f"Start script: {started.start_script}", "Stop it with: jaull serve stop"]
     if started.firewall_rule is not None:
         lines += [
@@ -148,4 +194,4 @@ def status_lines(status: ServerStatus) -> list[str]:
     ]
 
 
-__all__ = ["plan_lines", "start_lines", "status_lines"]
+__all__ = ["opencode_run_command", "plan_lines", "start_lines", "status_lines"]

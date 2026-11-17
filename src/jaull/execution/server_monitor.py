@@ -28,6 +28,10 @@ from jaull.hardware.nvidia import NvidiaProcessMemorySampler
 _TEXT_FIELDS = frozenset({"prompt", "prompts", "messages", "content", "text", "generated_text"})
 _METRIC_RE = re.compile(r"^llamacpp:([a-z_]+)\s+([-+0-9.eE]+|nan|inf)\s*$")
 _REQUEST_TIMEOUT_SECONDS = 2.0
+_ASLEEP_NOTE = (
+    "The model was released from the GPU while nobody used the server. It loads again with the "
+    "next request, which takes longer than usual."
+)
 
 HttpGet = Callable[[str, dict[str, str]], httpx.Response]
 
@@ -73,6 +77,8 @@ class ServerSnapshot:
     ram_total_bytes: int | None = None
     #: Device memory of the process; only NVIDIA (NVML) attributes it per process.
     process_vram_bytes: int | None = None
+    #: The server released its model after sitting idle; asking for its slots would load it.
+    asleep: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,7 +116,10 @@ class ServerMonitor:
         headers = {"Authorization": f"Bearer {self._key()}"}
         metrics = parse_metrics(self._fetch("/metrics", headers).text)
         slots = None
-        if self._slots:
+        # /metrics and /props leave an idle server asleep; /slots wakes it (llama.cpp b11889,
+        # measured 2026-11-17), which reloaded the model on every refresh.
+        asleep = self._is_asleep(headers)
+        if self._slots and not asleep:
             try:
                 slots = parse_slots(self._fetch("/slots", headers).json())
             except SlotsCarryTextError:
@@ -138,8 +147,21 @@ class ServerMonitor:
             predicted_tokens_total=metrics.get("tokens_predicted_total", 0.0),
             predicted_seconds_total=metrics.get("tokens_predicted_seconds_total", 0.0),
             slots=slots,
-            slots_note=None if slots is not None else self._slots_note,
+            slots_note=(
+                None if slots is not None else _ASLEEP_NOTE if asleep else self._slots_note
+            ),
+            asleep=asleep,
         )
+
+    def _is_asleep(self, headers: dict[str, str]) -> bool:
+        """Whether the server says it released its model. Not knowing counts as awake."""
+        try:
+            response = self._get(self._base + "/props", headers)
+            if response.status_code != 200:
+                return False
+            return response.json().get("is_sleeping") is True
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return False
 
     def _key(self) -> str:
         try:
@@ -150,6 +172,11 @@ class ServerMonitor:
     def _fetch(self, path: str, headers: dict[str, str]) -> httpx.Response:
         try:
             response = self._get(self._base + path, headers)
+        except httpx.TimeoutException as exc:
+            raise MonitorError(
+                f"The server did not answer: {exc}. If it was idle it may be loading the "
+                "model again, which can take a minute or two; do not stop it yet."
+            ) from exc
         except httpx.HTTPError as exc:
             raise MonitorError(f"The server did not answer: {exc}") from exc
         if response.status_code == 401:

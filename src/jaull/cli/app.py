@@ -510,12 +510,18 @@ def serve_start_command(
         help="Seconds without requests before the model leaves the GPU, 0 for never. "
         "Default: 45 on a dedicated Intel GPU, never elsewhere.",
     ),
+    no_opencode_config: bool = typer.Option(
+        False, "--no-opencode-config",
+        help="Do not add the server to the opencode on this PC (it is added by default, "
+        "keeping your other providers, with a backup).",
+    ),
 ) -> None:
     raise typer.Exit(code=run_serve_start(model_ref, ServeOptions(
         quantization=quantization, users=users, context_per_user=context, lan=lan, port=port,
         backend=backend, revision=revision, llama_server_path=llama_server,
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
         prompt_cache=not no_prompt_cache, sleep_idle_seconds=sleep_idle,
+        opencode_config=not no_opencode_config,
     )))
 
 

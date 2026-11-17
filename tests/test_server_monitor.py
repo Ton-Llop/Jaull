@@ -87,14 +87,18 @@ def _response(status: int, *, text: str = "", payload: Any = None) -> httpx.Resp
 
 
 def _monitor(tmp_path: Path, routes: dict[str, httpx.Response], *, slots: bool = True,
-             seen: list[dict[str, str]] | None = None) -> ServerMonitor:
+             seen: list[dict[str, str]] | None = None,
+             asked: list[str] | None = None) -> ServerMonitor:
     key = tmp_path / "api-key"
     key.write_text("the-key\n")
 
     def get(url: str, headers: dict[str, str]) -> httpx.Response:
         if seen is not None:
             seen.append(headers)
-        return routes[url.rsplit("/", 1)[1]]
+        name = url.rsplit("/", 1)[1]
+        if asked is not None:
+            asked.append(name)
+        return routes.get(name, _response(404))  # a build without /props answers 404
 
     return ServerMonitor("http://127.0.0.1:8090/", key, slots=slots, http_get=get,
                          clock=lambda: 10.0)
@@ -331,3 +335,50 @@ def test_the_panel_warns_when_system_ram_runs_low() -> None:
             assert "only readable on NVIDIA" in memory
 
     asyncio.run(scenario())
+
+
+def test_a_sleeping_server_is_not_woken_to_read_its_slots(tmp_path: Path) -> None:
+    # /slots (unlike /metrics and /props) wakes a llama-server that released its model,
+    # which made the monitor reload it on every refresh and then time out waiting.
+    asked: list[str] = []
+    routes = {"metrics": _response(200, text=METRICS),
+              "props": _response(200, payload={"is_sleeping": True}),
+              "slots": _response(200, payload=[SLOT_BUSY])}
+
+    snapshot = _monitor(tmp_path, routes, asked=asked).read()
+
+    assert "slots" not in asked and snapshot.slots is None
+    assert snapshot.slots_note is not None and "released" in snapshot.slots_note
+    assert snapshot.asleep is True
+
+
+@pytest.mark.parametrize("props", [
+    _response(200, payload={"is_sleeping": False}),
+    _response(200, payload={"total_slots": 2}),  # a build that does not say
+    _response(404),
+    _response(200, text="not json"),
+])
+def test_an_awake_or_unknown_server_gets_its_slots_read(
+    tmp_path: Path, props: httpx.Response,
+) -> None:
+    routes = {"metrics": _response(200, text=METRICS), "props": props,
+              "slots": _response(200, payload=[SLOT_BUSY, SLOT_IDLE])}
+
+    snapshot = _monitor(tmp_path, routes).read()
+
+    assert snapshot.slots is not None and len(snapshot.slots) == 2
+    assert snapshot.asleep is False
+
+
+def test_a_timeout_says_the_server_may_be_loading_its_model(tmp_path: Path) -> None:
+    key = tmp_path / "api-key"
+    key.write_text("k")
+
+    def get(url: str, headers: dict[str, str]) -> httpx.Response:
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    monitor = ServerMonitor("http://127.0.0.1:8090", key, slots=True, http_get=get)
+
+    with pytest.raises(MonitorError, match="loading the model") as error:
+        monitor.read()
+    assert "timed out" in str(error.value)

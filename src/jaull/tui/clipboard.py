@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,6 +29,11 @@ _SYSTEM_TOOLS = (
     ("pbcopy",),
 )
 _TOOL_TIMEOUT_SECONDS = 5
+# Inside WSL the Windows folders are often not on PATH, but clip.exe is always here.
+_WSL_CLIP = "/mnt/c/Windows/System32/clip.exe"
+# A Windows program started from a Linux folder fails ("Invalid argument"); /mnt/c is a
+# folder it understands.
+_WINDOWS_CWD = "/mnt/c"
 
 _NO_CONFIG = "There is no opencode config stored. Restart the server to create one."
 _NO_KEY = "There is no API key stored. Restart the server to create one."
@@ -39,15 +46,18 @@ def _system_copy(text: str) -> bool:
     """Copy with the system's clipboard tool. False when there is none or it failed."""
     for command in _SYSTEM_TOOLS:
         tool = shutil.which(command[0])
+        if tool is None and command[0] == "clip.exe" and Path(_WSL_CLIP).is_file():
+            tool = _WSL_CLIP
         if tool is None:
             continue
+        windows_program = tool.lower().endswith(".exe") and sys.platform != "win32"
         try:
             # The text goes through stdin, never the command line. Output is discarded, not
             # captured: xclip and wl-copy stay alive in the background holding the clipboard.
             subprocess.run(
                 [tool, *command[1:]], input=text.encode("utf-8"), check=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=_TOOL_TIMEOUT_SECONDS,
+                timeout=_TOOL_TIMEOUT_SECONDS, cwd=_WINDOWS_CWD if windows_program else None,
             )
         except (OSError, subprocess.SubprocessError):
             continue

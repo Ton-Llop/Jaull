@@ -24,6 +24,8 @@ def _isolated_user_dirs(tmp_path_factory: pytest.TempPathFactory,
     base = tmp_path_factory.mktemp("jaull-user")
     monkeypatch.setenv("XDG_DATA_HOME", str(base / "data"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(base / "cache"))
+    # Starting a server adds it to the developer's own opencode config otherwise.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(base / "config"))
     monkeypatch.setenv("LOCALAPPDATA", str(base / "local"))
 
 

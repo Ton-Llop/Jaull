@@ -20,6 +20,7 @@ from jaull.artifacts.storage import LocalModelFile
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import LlamaCppInstallation, RuntimeSource
+from jaull.execution.opencode_install import OpencodeInstall
 from jaull.execution.server_process import ServerStatus
 from jaull.tui.app import JaullApp
 from jaull.tui.screens.setup import SetupScreen
@@ -999,6 +1000,35 @@ def test_the_ready_card_has_a_row_and_a_copy_for_each_thing_to_hand_over(
             screen.query_one("#setup-copy-firewall", Button).press()
             await pilot.pause()
             assert copied == ["https://192.168.1.107:8090/", advisor.share.firewall_rule]
+
+            # With HTTPS, opencode needs the certificate: its command is a row of its own,
+            # above the config, and the config says when it is already in their opencode.
+            assert not screen.query_one("#setup-run-row").display  # this server has no HTTPS
+            command = "NODE_EXTRA_CA_CERTS=/data/tls/server-cert.pem opencode"
+            secure = ServerStatus(
+                state=STATE.model_copy(update={"tls": True, "argv": [
+                    "llama-server", "--ssl-cert-file", "/data/tls/server-cert.pem"]}),
+                running=True, healthy=True,
+            )
+            screen._show_server(secure, describe=False)
+            await pilot.pause()
+            assert screen.query_one("#setup-run-row").display
+            assert command in _text(screen, "#setup-run")
+            assert screen.query_one("#setup-run-row").region.y < (
+                screen.query_one("#setup-opencode-row").region.y)
+            screen.query_one("#setup-copy-run", Button).press()
+            await pilot.pause()
+            assert copied[-1] == command
+            assert "ready to paste" in _text(screen, "#setup-opencode-label")
+            screen._opencode_added(OpencodeInstall(Path("/x/opencode.json"), "added"))
+            await pilot.pause()
+            assert "already added" in _text(screen, "#setup-opencode-label")
+            screen._opencode_added(OpencodeInstall(Path("/x/opencode.json"), "unreadable"))
+            await pilot.pause()
+            assert "ready to paste" in _text(screen, "#setup-opencode-label")
+            screen._show_server(advisor.server_status(), describe=False)
+            await pilot.pause()
+            assert not screen.query_one("#setup-run-row").display  # back to a server without it
 
             # The key as a QR only while asked for, and never as text.
             hide_timers: list[Any] = []

@@ -48,7 +48,12 @@ from jaull.application.serving.security import (
 from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError
 from jaull.presentation.qr import qr_lines
-from jaull.presentation.serving import plan_lines, start_lines, status_lines
+from jaull.presentation.serving import (
+    opencode_run_command,
+    plan_lines,
+    start_lines,
+    status_lines,
+)
 from jaull.runtime import policies as runtime_policies
 from jaull.tui import palette
 from jaull.tui.clipboard import copy_api_key, copy_opencode_config, copy_text
@@ -63,6 +68,7 @@ if TYPE_CHECKING:
     from jaull.artifacts.storage import LocalModelFile
     from jaull.domain.hardware import HardwareProfile
     from jaull.domain.runtime import RuntimeBackendSelection
+    from jaull.execution.opencode_install import OpencodeInstall
     from jaull.execution.server_certificate import ServerCertificate
     from jaull.execution.server_process import ServerStatus
 
@@ -174,6 +180,10 @@ class SetupScreen(Screen[None]):
         self._running = False
         # Where the running server can be reached, and whether the key is shown as a QR.
         self._share: ServerShare | None = None
+        # How to run opencode with the server's certificate, and whether Jaull already added
+        # the server to the opencode on this PC.
+        self._run_command: str | None = None
+        self._opencode_done = False
         self._key_qr = False
         self._key_qr_timer: Timer | None = None
         self._qr_plain = False
@@ -273,8 +283,12 @@ class SetupScreen(Screen[None]):
                     yield ActionButton("Show as QR", id="setup-key-qr-toggle")
                     yield ActionButton("Copy", id="setup-copy-key")
                 yield Static("", id="setup-key-qr", classes="setup-qr")
+                # With HTTPS opencode must be run with the certificate: the command, ready to copy.
+                with Horizontal(id="setup-run-row", classes="setup-copy-row"):
+                    yield Static("", id="setup-run", classes="setup-copy-label")
+                    yield ActionButton("Copy", id="setup-copy-run")
                 with Horizontal(id="setup-opencode-row", classes="setup-copy-row"):
-                    yield Static("opencode config   ready to paste", classes="setup-copy-label")
+                    yield Static("", id="setup-opencode-label", classes="setup-copy-label")
                     yield ActionButton("Copy", id="setup-copy-opencode")
                 with Horizontal(id="setup-firewall-row", classes="setup-copy-row"):
                     yield Static("Firewall   an administrator has to run one command",
@@ -504,6 +518,7 @@ class SetupScreen(Screen[None]):
                 tls_cert=choice.tls_cert, tls_key=choice.tls_key,
                 prompt_cache=choice.prompt_cache,
             )
+            self._later(self._opencode_added, started.opencode)
             lines += ["", *start_lines(started)]
             notice = advisor.llama_cpp_update_notice()
             if notice is not None:
@@ -546,11 +561,22 @@ class SetupScreen(Screen[None]):
             # The result holds what to hand over: bring it into view.
             self.call_after_refresh(self.query_one("#setup-result").scroll_visible)
 
+    def _opencode_added(self, install: OpencodeInstall | None) -> None:
+        """Jaull put the server in the opencode on this PC (or could not): say which."""
+        self._opencode_done = install is not None and install.outcome != "unreadable"
+        self._render_share(self._running)
+
     def _render_share(self, running: bool) -> None:
-        """The hand-over rows: address, key, opencode config, firewall command and QR."""
+        """The hand-over rows: address, key, opencode, firewall command and QR."""
         share = self._share if running else None
         for row in self.query(".setup-copy-row"):
             row.display = running  # the key and its config only exist with a server
+        self.query_one("#setup-run-row").display = bool(running and self._run_command)
+        self.query_one("#setup-run", Static).update(
+            f"Run opencode with this command   [b]{escape(self._run_command or '')}[/]")
+        self.query_one("#setup-opencode-label", Static).update(
+            "opencode config   "
+            + ("already added to your opencode" if self._opencode_done else "ready to paste"))
         self.query_one("#setup-firewall-row").display = bool(share and share.firewall_rule)
         if not running:
             self._key_qr = False
@@ -615,6 +641,10 @@ class SetupScreen(Screen[None]):
         self._running = status.running
         self._share = (self._advisor().server_share(status.state)
                        if status.running and status.state is not None else None)
+        self._run_command = (opencode_run_command(status.state)
+                             if status.running and status.state is not None else None)
+        if not status.running:
+            self._opencode_done = False
         if status.running and describe:
             self._output(status_lines(status))
         self._refresh()
@@ -776,6 +806,9 @@ class SetupScreen(Screen[None]):
             self._open_monitor()
         elif event.button.id == "setup-copy-key":
             self._copy_api_key()
+        elif event.button.id == "setup-copy-run" and self._run_command is not None:
+            self._note = copy_text(self.app, self._run_command, "Command")
+            self._refresh(self._note)
         elif event.button.id == "setup-copy-opencode":
             self._note = copy_opencode_config(self.app, self._advisor())
             self._refresh(self._note)

@@ -181,6 +181,46 @@ Servidor arrencat per Jaull amb `unsloth/Qwen3.6-35B-A3B-GGUF -q IQ4_XS --users 
   veure és que el servidor responia bé. Que això eviti el problema de la RAM de la nota `DECISIONS-2.md` es va
   mesurar el 2026-11-04, no ara.
 
+## opencode contra el servidor de Jaull (2026-11-17)
+
+Portàtil de l'autor, Jaull dins de WSL2, `LFM2.5-1.2B-Instruct-GGUF` amb 16384 tokens de context, i opencode amb el
+`opencode.json` que Jaull va afegir a la configuració que l'autor ja tenia.
+
+- **VALIDATED**: la fusió va deixar intacte l'altre proveïdor, el tema i el model per defecte de l'autor, va afegir el
+  proveïdor `jaull`, va crear la còpia `opencode.json.jaull-backup` i el fitxer va quedar amb mode 0600.
+- **VALIDATED**: opencode compacta sol abans d'arribar al límit que Jaull li dóna. Amb dos usuaris i una bossa
+  compartida de 32.768 tokens, Jaull escriu `limit.context = 16384` (la meitat de la bossa, `SERVE_CLIENT_POOL_SHARE`),
+  de manera que cap client pot omplir-la sol. En un prompt llarg que feia escriure 24 capítols amb eines, opencode va
+  mostrar la línia «Compaction» amb 12.834 tokens (78 % de 16.384), i el monitor de Jaull va mostrar aquella
+  conversa amb 1.875 tokens just després i 10.162 poc més tard, amb la bossa al 31 % i l'altra conversa en repòs. El
+  client no va passar dels 16.384, així que mai no es va veure el límit de 32.768 del servidor.
+- Limitat: dos usuaris, un sol model petit, i no es va guardar el log del servidor d'aquesta prova. No s'ha provat
+  què passa si un client ignora el límit que li dóna la configuració.
+- Una sola prova, amb un model de 1,2B. No s'ha repetit amb el Qwen3.6 de Biosfer ni amb diversos usuaris alhora.
+- **UNVERIFIED**: que això protegeixi els altres usuaris d'una bossa compartida (`--shared-context`). Aquesta prova va
+  ser amb un sol client.
+- El model de 1,2B va respondre que no podia llistar carpetes tot i tenir les eines: tria malament les eines. No és un
+  problema del servidor, però vol dir que aquesta prova valida la compactació i no la utilitat de l'agent.
+- Només opencode mateix gasta uns 8.700 tokens (sistema i eines) abans de la primera pregunta: amb 16384 de context
+  queda poc marge. Es recomana 32768 o més.
+- Amb HTTPS i el certificat propi de Jaull, opencode no es refia del certificat i cal llançar-lo amb
+  `NODE_EXTRA_CA_CERTS=<certificat> opencode`. Amb aquesta variable va funcionar.
+
+## El son d'inactivitat i el monitor (2026-11-17)
+
+Prova al portàtil, CPU, llama.cpp b11889, Qwen2.5-1.5B amb `--sleep-idle-seconds 10`, amb el servidor adormit abans de
+cada consulta (`/props` informa de `is_sleeping` sense despertar-lo).
+
+- **VALIDATED**: `/health`, `/models`, `/props` i `/metrics` no el desperten; `/slots` sí. El monitor de Jaull demanava
+  `/slots` a cada refresc, de manera que reactivava el model sempre i, com que la recàrrega triga, vencia el temps
+  d'espera de 2 s i mostrava «Not answering». A la B60, un servidor sa es va aturar per aquest motiu (l'autor va prémer
+  Stop a les 10:58:05, sense cap fallada: no hi ha rastre a `dmesg`).
+- Corregit: el monitor pregunta abans a `/props` i, si dorm, no demana `/slots`.
+- A WSL2 amb Dozen, recarregar un Qwen3-Coder-30B va trigar uns 2 minuts (la primera càrrega, 2 min 3 s). A Windows,
+  el Qwen3.6 de 17 GiB va trigar uns 31 s més 48 s. El cost del son és molt més alt a WSL2.
+- **UNVERIFIED**: que el son sigui necessari ni segur amb Dozen a WSL2; només s'ha mesurat a Windows natiu.
+- **UNVERIFIED**: que el mateix passi amb altres builds de llama.cpp.
+
 ## Límits
 
 - Prompts sintètics i iguals de llargs; un xat real té preguntes i respostes de mida diferent.

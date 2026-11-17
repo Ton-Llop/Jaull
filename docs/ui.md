@@ -244,7 +244,14 @@ While a server runs, step 5 is a card with one row for each thing to hand over, 
 - **API key**, hidden, with **Show as QR**. The QR holds only the key, so a phone's camera
   offers to copy it; it is never put in a URL, hides itself after 30 seconds and when you
   leave Setup, and anyone who sees the screen while it shows could scan it.
-- **opencode config**: the ready-made `opencode.json`.
+- **Run opencode with this command**, only when the server uses HTTPS: opencode does not
+  trust Jaull's own certificate, so this is the command that starts it with
+  `NODE_EXTRA_CA_CERTS` pointing at it.
+- **opencode config**: the ready-made `opencode.json`. It says *already added to your
+  opencode* when Jaull put the server in the opencode on this PC at start (see `serve
+  start` in the CLI reference); otherwise it is ready to paste. The note only knows about
+  a start made from this screen: with a server that was already running it says *ready to
+  paste*.
 - **Firewall**, when shared: the command an administrator has to run.
 - A **QR code of the chat page** when the server is shared and serves it, to open it on a
   phone without typing the address. It is drawn inverted, in the text colour on the
@@ -282,6 +289,14 @@ every second from the server itself, it shows:
 The per-conversation figures need llama-server's `/slots`, which Jaull turns on only for a
 build checked to expose no conversation text (b11889). With another build the monitor
 shows the aggregate figures and says why. **Stop server** stops it from here too.
+
+A server that released its model after sitting idle (`--sleep-idle-seconds`, on by default
+for a dedicated Intel GPU) must not be woken by the monitor. On llama.cpp b11889 `/slots`
+wakes it and `/metrics`, `/props`, `/health` and `/models` do not (measured 2026-11-17 on
+the CPU build), so the monitor asks `/props` first and, if the server says it is asleep,
+skips `/slots` and shows a note instead of the per-conversation figures. If a request does
+time out, the message says the model may be loading again and not to stop the server yet.
+Reloading a 30B model through Dozen on WSL2 took about two minutes.
 
 ## Advanced tools
 

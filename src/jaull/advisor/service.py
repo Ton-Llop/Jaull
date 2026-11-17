@@ -765,6 +765,7 @@ class AdvisorService:
         tls_key: Path | None = None,
         web_ui: bool = False,
         prompt_cache: bool = True,
+        opencode: bool = True,
     ) -> ServerStart:
         """Start ``plan`` detached with the security defaults. Composes; no policy here."""
         from jaull.application.serving.client_config import (
@@ -773,6 +774,7 @@ class AdvisorService:
             opencode_config,
         )
         from jaull.application.serving.models import ServerStart
+        from jaull.execution.opencode_install import install_opencode_config
         from jaull.execution.server_process import running_in_wsl
         from jaull.runtime import policies as runtime_policies
         from jaull.runtime.llama_cpp_release import current_platform
@@ -818,14 +820,19 @@ class AdvisorService:
         if wsl:
             rule = None  # a Linux rule for WSL's internal network helps nobody
         key = new_key or api_key_path.read_text(encoding="utf-8").strip()
+        context = client_context_limit(plan.sizing)
         client_config = manager.write_client_config(OPENCODE_CONFIG_FILENAME, opencode_config(
             base_url=f"{lan_url or state.url}/v1", api_key=key, alias=plan.alias,
-            context_limit=client_context_limit(plan.sizing),
+            context_limit=context,
         ))
+        # The opencode on this PC reaches the server on this PC's own address.
+        installed = install_opencode_config(opencode_config(
+            base_url=f"{state.url}/v1", api_key=key, alias=plan.alias, context_limit=context,
+        )) if opencode else None
         return ServerStart(
             state=state, api_key_path=api_key_path, new_api_key=new_key,
             start_script=script, firewall_rule=rule, lan_url=lan_url, web_ui=web_ui,
-            client_config=client_config, wsl=wsl,
+            client_config=client_config, wsl=wsl, opencode=installed,
         )
 
     def prepare_serve_artifact(

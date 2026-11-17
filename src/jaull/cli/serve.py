@@ -42,6 +42,8 @@ class ServeOptions:
     prompt_cache: bool = True
     #: Seconds idle before the model leaves the GPU; None = the default for this GPU, 0 = off.
     sleep_idle_seconds: int | None = None
+    #: Add the server to the opencode on this PC (keeping what it has).
+    opencode_config: bool = True
 
 
 def run_serve_start(
@@ -82,7 +84,7 @@ def run_serve_start(
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
             tls_cert=tls_cert, tls_key=tls_key, web_ui=options.web_ui,
-            prompt_cache=options.prompt_cache,
+            prompt_cache=options.prompt_cache, opencode=options.opencode_config,
         )
     except InvalidModelReferenceError as exc:
         _error(console, str(exc))

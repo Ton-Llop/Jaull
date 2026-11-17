@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -129,9 +130,15 @@ def test_starting_a_server_reports_how_to_reach_it(
                         lambda self, port, tls: ("http://192.168.1.107:8090", "RULE"))
     monkeypatch.setattr("jaull.execution.server_process.running_in_wsl", lambda: wsl)
     advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
+    opencode_home = Path(os.environ["XDG_CONFIG_HOME"]) / "opencode"
+    opencode_home.mkdir(parents=True)  # this PC has opencode
 
     started = advisor.start_server(_plan(), lan=lan, web_ui=True)
 
+    # opencode on this PC reaches the server on this PC's own address, shared or not.
+    assert started.opencode is not None and started.opencode.outcome == "created"
+    local = json.loads((opencode_home / "opencode.json").read_text(encoding="utf-8"))
+    assert local["provider"]["jaull"]["options"]["baseURL"] == f"{started.state.url}/v1"
     assert manager.started["web_ui"] is True
     assert started.new_api_key == "NEWKEY" and started.web_ui
     assert started.client_config == tmp_path / OPENCODE_CONFIG_FILENAME
@@ -141,3 +148,4 @@ def test_starting_a_server_reports_how_to_reach_it(
     assert (started.lan_url is not None) is lan
     assert started.wsl is (lan and wsl)
     assert started.firewall_rule == ("RULE" if lan and not wsl else None)
+    assert advisor.start_server(_plan(), opencode=False).opencode is None  # asked not to

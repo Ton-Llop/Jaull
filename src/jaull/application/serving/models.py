@@ -9,6 +9,7 @@ from jaull.application.serving.planner import ContextLimit, ServerSizing
 from jaull.domain.artifacts import ModelArtifact
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.runtime import RuntimeRecommendation
+from jaull.execution.opencode_install import OpencodeInstall
 from jaull.execution.server_process import ServerState
 
 
@@ -59,6 +60,8 @@ class ServerStart:
     client_config: Path | None = None
     #: Shared from inside WSL: nothing else on the network can reach it.
     wsl: bool = False
+    #: What was done to the opencode on this PC; None when it has none or was not asked.
+    opencode: OpencodeInstall | None = None
 
 
 @dataclass(frozen=True)

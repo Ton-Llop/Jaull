@@ -379,8 +379,22 @@ comes from the managed build of that backend, or from the located llama.cpp. Whe
 pinned llama.cpp build is more than 30 days older than upstream's newest, `start` prints a
 note (GitHub is asked at most once a day; without network there is no note).
 
-`stop` checks that the saved PID is still the `llama-server` Jaull started (same start
-time and executable) before stopping it. `status` exits 0 when the server is running and
+If this PC has opencode (the `opencode` command, or its config folder
+`~/.config/opencode`, or `$XDG_CONFIG_HOME/opencode`), `start` also adds the server to it,
+pointing at this PC's own address. Only the `jaull` provider is written: your other
+providers and settings are untouched and your default `model` is kept (a config without
+one gets the server's; otherwise pick it with `/models`). Before the first change the file
+is copied to `opencode.json.jaull-backup`, and the result is mode 0600 because it now
+holds the API key. A file that cannot be edited safely (it has comments, an
+`opencode.jsonc` exists, or an unexpected shape) is left alone and `start` says so; copy
+`serve/opencode.json` into it yourself. `--no-opencode-config` skips all of this. The
+location is the one opencode documents for its global config; it was not checked against
+a running opencode here. With HTTPS and a self-signed certificate, opencode needs the
+certificate to be trusted (for example `NODE_EXTRA_CA_CERTS`), which Jaull does not set.
+
+`stop` checks that the saved PID is still the `llama-server` Jaull started (same
+executable, and same start time or same command line, because under WSL2 the start time
+can move when the clock is corrected) before stopping it. `status` exits 0 when the server is running and
 ready, 1 otherwise. Exit codes of `start`: 2 invalid reference or TLS options, 3 unknown
 quantization, 4 artifact error, 5 the server did not start (busy port, already running,
 early exit or no `/health` in time, with the last log lines), 6 it does not fit or could

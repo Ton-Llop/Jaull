@@ -518,3 +518,28 @@ def test_the_plan_warns_when_the_file_is_an_older_published_version() -> None:
     text = "\n".join(plan_lines(replace(_plan(), artifact=old)))
     assert "Hugging Face has a newer version of this file" in text
     assert "still current on 2026-10-27" in text
+
+
+def test_start_tells_how_to_make_opencode_trust_the_servers_certificate() -> None:
+    from dataclasses import replace
+
+    from jaull.execution.opencode_install import OpencodeInstall
+    from jaull.presentation.serving import start_lines
+
+    started = FakeAdvisor().start_server(_plan())
+    installed =OpencodeInstall(path=Path("/home/me/.config/opencode/opencode.json"),
+                                outcome="added")
+    plain = replace(started, opencode=installed)
+    assert "NODE_EXTRA_CA_CERTS" not in "\n".join(start_lines(plain))  # no HTTPS, nothing to trust
+
+    argv = ["llama-server", "--ssl-cert-file", "/data/tls/server-cert.pem",
+            "--ssl-key-file", "/data/tls/server-key.pem"]
+    secure = replace(plain, state=STATE.model_copy(update={"tls": True, "argv": argv}))
+    text = "\n".join(start_lines(secure))
+    assert "NODE_EXTRA_CA_CERTS=/data/tls/server-cert.pem opencode" in text
+
+    left_alone = replace(secure, opencode=replace(installed, outcome="unreadable"))
+    assert "NODE_EXTRA_CA_CERTS" not in "\n".join(start_lines(left_alone))
+    assert "NODE_EXTRA_CA_CERTS" not in "\n".join(start_lines(replace(secure, opencode=None)))
+    unchanged = replace(secure, opencode=replace(installed, outcome="unchanged"))
+    assert "NODE_EXTRA_CA_CERTS=/data/tls/server-cert.pem" in "\n".join(start_lines(unchanged))
