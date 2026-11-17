@@ -952,8 +952,10 @@ class AdvisorService:
         status = manager.status()
         if not status.running or status.state is None:
             return None
-        return ServerMonitor(status.state.url, manager.api_key_path,
-                             slots=status.state.slots, pid=status.state.pid)
+        return ServerMonitor(
+            status.state.url, manager.api_key_path, slots=status.state.slots,
+            pid=status.state.pid, sleeps="--sleep-idle-seconds" in status.state.argv,
+        )
 
     def stop_server(self) -> bool:
         return self._server_manager().stop()

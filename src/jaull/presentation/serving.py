@@ -149,17 +149,21 @@ def _certificate_trust_lines(started: ServerStart) -> list[str]:
 def start_lines(started: ServerStart) -> list[str]:
     """Everything the person needs after a start. The API key appears only when new."""
     state = started.state
-    lines = [f"Ready at {state.url}  (OpenAI API: {state.url}/v1)"]
+    reach = started.lan_url or state.url
+    if started.web_ui:
+        # The page is what people are given; the API is for other tools, so it comes second.
+        lines = [f"Ready. Chat page: {reach}/  (enter the API key in its settings)",
+                 f"API for other tools: {reach}/v1"]
+    else:
+        lines = [f"Ready at {state.url}  (OpenAI API: {state.url}/v1)"]
+        if started.lan_url is not None:
+            lines.append(f"On the local network: {started.lan_url}/v1")
     if started.lan_url is not None:
-        lines.append(f"On the local network: {started.lan_url}/v1")
         if not state.tls:
             lines.append(f"Warning: {LAN_WITHOUT_TLS_WARNING}")
         lines.append(f"Note: {SLOTS_ARE_NOT_USERS}")
     if started.wsl:
         lines.append(f"Warning: {WSL_NOT_REACHABLE_WARNING}")
-    if started.web_ui:
-        page = started.lan_url or state.url
-        lines.append(f"Chat page: {page}/  (enter the API key in its settings)")
     if started.new_api_key is not None:
         lines += [f"API key (shown once, stored in {started.api_key_path}):",
                   f"  {started.new_api_key}"]

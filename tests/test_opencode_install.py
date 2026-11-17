@@ -113,3 +113,33 @@ def test_with_opencode_installed_a_missing_config_is_created(
     result = install_opencode_config(OURS)
     assert result is not None and result.outcome == "created" and result.backup is None
     assert json.loads((opencode_home / "opencode.json").read_text()) == OURS
+
+
+def test_a_config_that_is_not_text_is_left_alone(opencode_home: Path) -> None:
+    opencode_home.mkdir()
+    target = opencode_home / "opencode.json"
+    target.write_bytes(b"\xff\xfe\x00 not utf-8")
+
+    result = install_opencode_config(OURS)
+
+    assert result is not None and result.outcome == "unreadable"
+    assert target.read_bytes() == b"\xff\xfe\x00 not utf-8"
+
+
+def test_a_failed_write_keeps_the_original_and_leaves_no_copy_of_the_key(
+    opencode_home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opencode_home.mkdir()
+    target = opencode_home / "opencode.json"
+    target.write_text(json.dumps(THEIRS), encoding="utf-8")
+
+    def disk_full(source: object, destination: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("jaull.execution.opencode_install.os.replace", disk_full)
+
+    result = install_opencode_config(OURS)
+
+    assert result is not None and result.outcome == "unreadable"
+    assert json.loads(target.read_text(encoding="utf-8")) == THEIRS
+    assert not (opencode_home / "opencode.json.tmp").exists()

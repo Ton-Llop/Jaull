@@ -359,3 +359,16 @@ def test_the_person_can_choose_the_load_mode_or_get_llama_cpps_default_back() ->
                      requested="mmap") == "mmap"
     assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=True,
                      requested="default") is None
+
+
+def test_only_a_model_resident_on_the_gpu_counts_as_fully_on_it() -> None:
+    from jaull.application.serving.planner import fully_on_gpu
+
+    def estimate(mode: HardwareFitMode | None) -> Any:
+        fit = None if mode is None else SimpleNamespace(mode=mode)
+        return SimpleNamespace(hardware_fit=fit)
+
+    assert fully_on_gpu(estimate(HardwareFitMode.GPU_RESIDENT))
+    assert not fully_on_gpu(estimate(HardwareFitMode.GPU_OFFLOAD))
+    assert not fully_on_gpu(estimate(HardwareFitMode.CPU_RAM))
+    assert not fully_on_gpu(estimate(None))  # a CPU server has no placement

@@ -100,8 +100,14 @@ class ServerMonitor:
         http_get: HttpGet | None = None,
         clock: Callable[[], float] = time.monotonic,
         memory: MemoryReader | None = None,
+        sleeps: bool = False,
     ) -> None:
         self._base = base_url.rstrip("/")
+        #: The server releases its model when idle, and any /slots request counts as activity:
+        #: read it only while something happens, not on every refresh.
+        self._sleeps = sleeps
+        self._last_slots: tuple[SlotUsage, ...] | None = None
+        self._last_counters: tuple[float, float] | None = None
         self._key_path = api_key_path
         self._slots = slots
         self._slots_note: str | None = (
@@ -119,9 +125,16 @@ class ServerMonitor:
         # /metrics and /props leave an idle server asleep; /slots wakes it (llama.cpp b11889,
         # measured 2026-11-17), which reloaded the model on every refresh.
         asleep = self._is_asleep(headers)
-        if self._slots and not asleep:
+        counters = (metrics.get("prompt_tokens_total", 0.0),
+                    metrics.get("tokens_predicted_total", 0.0))
+        worked = int(metrics.get("requests_processing", 0)) > 0 or counters != self._last_counters
+        self._last_counters = counters
+        if self._slots and not asleep and self._sleeps and not worked and self._last_slots:
+            slots = self._last_slots  # nothing has changed: the last figures still hold
+        elif self._slots and not asleep:
             try:
                 slots = parse_slots(self._fetch("/slots", headers).json())
+                self._last_slots = slots
             except SlotsCarryTextError:
                 self._slots = False
                 self._slots_note = (

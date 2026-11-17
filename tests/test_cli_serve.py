@@ -564,3 +564,41 @@ def test_the_plan_says_the_model_is_not_copied_into_ram() -> None:
     assert "-lm" not in "\n".join(plan_lines(_plan()))
     text = "\n".join(plan_lines(replace(_plan(), load_mode="dio")))
     assert "-lm dio" in text and "RAM" in text
+
+
+def test_start_says_where_the_opencode_backup_is() -> None:
+    from dataclasses import replace
+
+    from jaull.execution.opencode_install import OpencodeInstall
+    from jaull.presentation.serving import start_lines
+
+    started = FakeAdvisor().start_server(_plan())
+    installed = OpencodeInstall(path=Path("/c/opencode.json"), outcome="added",
+                                backup=Path("/c/opencode.json.jaull-backup"))
+
+    text = "\n".join(start_lines(replace(started, opencode=installed)))
+
+    assert "The file as it was before: /c/opencode.json.jaull-backup" in text
+
+
+def test_with_the_chat_page_the_address_for_people_comes_first() -> None:
+    from dataclasses import replace
+
+    from jaull.presentation.serving import start_lines
+
+    started = FakeAdvisor().start_server(_plan())
+    local = f"{started.state.url}"
+
+    with_page = start_lines(replace(started, web_ui=True, lan_url=None))
+    assert with_page[0] == f"Ready. Chat page: {local}/  (enter the API key in its settings)"
+    assert with_page[1] == f"API for other tools: {local}/v1"
+    assert sum("Chat page" in line for line in with_page) == 1  # said once
+
+    shared = start_lines(replace(started, web_ui=True, lan_url="https://192.168.1.5:8090"))
+    assert shared[0].startswith("Ready. Chat page: https://192.168.1.5:8090/")
+    assert shared[1] == "API for other tools: https://192.168.1.5:8090/v1"
+    assert not any(line.startswith("On the local network") for line in shared)
+
+    without_page = start_lines(replace(started, web_ui=False, lan_url=None))
+    assert without_page[0] == f"Ready at {local}  (OpenAI API: {local}/v1)"
+    assert not any("Chat page" in line for line in without_page)

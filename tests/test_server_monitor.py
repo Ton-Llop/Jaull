@@ -88,7 +88,7 @@ def _response(status: int, *, text: str = "", payload: Any = None) -> httpx.Resp
 
 def _monitor(tmp_path: Path, routes: dict[str, httpx.Response], *, slots: bool = True,
              seen: list[dict[str, str]] | None = None,
-             asked: list[str] | None = None) -> ServerMonitor:
+             asked: list[str] | None = None, sleeps: bool = False) -> ServerMonitor:
     key = tmp_path / "api-key"
     key.write_text("the-key\n")
 
@@ -101,7 +101,7 @@ def _monitor(tmp_path: Path, routes: dict[str, httpx.Response], *, slots: bool =
         return routes.get(name, _response(404))  # a build without /props answers 404
 
     return ServerMonitor("http://127.0.0.1:8090/", key, slots=slots, http_get=get,
-                         clock=lambda: 10.0)
+                         clock=lambda: 10.0, sleeps=sleeps)
 
 
 def test_read_uses_the_stored_key_and_combines_both_endpoints(tmp_path: Path) -> None:
@@ -382,3 +382,56 @@ def test_a_timeout_says_the_server_may_be_loading_its_model(tmp_path: Path) -> N
     with pytest.raises(MonitorError, match="loading the model") as error:
         monitor.read()
     assert "timed out" in str(error.value)
+
+
+IDLE_METRICS = METRICS.replace("requests_processing 1", "requests_processing 0")
+
+
+def test_with_idle_sleep_an_idle_server_is_not_asked_for_its_slots_again(tmp_path: Path) -> None:
+    # Any /slots counts as activity for --sleep-idle-seconds, so reading it on every refresh
+    # kept the model loaded for as long as the monitor was open (measured 2026-11-17).
+    asked: list[str] = []
+    routes = {"metrics": _response(200, text=IDLE_METRICS),
+              "slots": _response(200, payload=[SLOT_BUSY, SLOT_IDLE])}
+    monitor = _monitor(tmp_path, routes, asked=asked, sleeps=True)
+
+    first = monitor.read()
+    second = monitor.read()
+    third = monitor.read()
+
+    assert asked.count("slots") == 1  # once, to have figures at all
+    assert first.slots is not None and second.slots == first.slots == third.slots
+
+
+def test_with_idle_sleep_slots_are_read_while_the_server_works_or_just_did(
+    tmp_path: Path,
+) -> None:
+    asked: list[str] = []
+    routes = {"metrics": _response(200, text=IDLE_METRICS),
+              "slots": _response(200, payload=[SLOT_IDLE])}
+    monitor = _monitor(tmp_path, routes, asked=asked, sleeps=True)
+    monitor.read()
+
+    routes["metrics"] = _response(200, text=METRICS)  # a request is running
+    monitor.read()
+    assert asked.count("slots") == 2
+
+    routes["metrics"] = _response(200, text=METRICS.replace(
+        "requests_processing 1", "requests_processing 0").replace(
+        "tokens_predicted_total 7", "tokens_predicted_total 40"))  # finished: counters moved
+    monitor.read()
+    assert asked.count("slots") == 3
+    monitor.read()
+    assert asked.count("slots") == 3  # and now quiet again
+
+
+def test_without_idle_sleep_slots_are_read_on_every_refresh(tmp_path: Path) -> None:
+    asked: list[str] = []
+    routes = {"metrics": _response(200, text=IDLE_METRICS),
+              "slots": _response(200, payload=[SLOT_IDLE])}
+    monitor = _monitor(tmp_path, routes, asked=asked)
+
+    monitor.read()
+    monitor.read()
+
+    assert asked.count("slots") == 2

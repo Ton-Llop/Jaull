@@ -149,3 +149,33 @@ def test_starting_a_server_reports_how_to_reach_it(
     assert started.wsl is (lan and wsl)
     assert started.firewall_rule == ("RULE" if lan and not wsl else None)
     assert advisor.start_server(_plan(), opencode=False).opencode is None  # asked not to
+
+
+def test_the_monitor_knows_whether_the_server_sleeps_when_idle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from jaull.execution.server_process import ServerStatus
+
+    state = STATE.model_copy(update={"argv": ["llama-server", "--sleep-idle-seconds", "45"]})
+    manager = SimpleNamespace(
+        status=lambda: ServerStatus(state=state, running=True, healthy=True),
+        api_key_path=tmp_path / "api-key",
+    )
+    monkeypatch.setattr(AdvisorService, "_server_manager", lambda self: manager)
+    advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
+
+    assert advisor.server_monitor()._sleeps is True  # type: ignore[union-attr]
+
+    manager.status = lambda: ServerStatus(  # type: ignore[method-assign]
+        state=state.model_copy(update={"argv": ["llama-server"]}), running=True, healthy=True)
+    assert advisor.server_monitor()._sleeps is False  # type: ignore[union-attr]
+
+    manager.status = lambda: ServerStatus(state=None, running=False, healthy=False)  # type: ignore[method-assign]
+    assert advisor.server_monitor() is None
+
+
+def test_the_artifact_history_is_the_hugging_face_one() -> None:
+    from jaull.advisor.service import _artifact_history
+    from jaull.huggingface.artifact_history import HuggingFaceArtifactHistory
+
+    assert isinstance(_artifact_history(), HuggingFaceArtifactHistory)

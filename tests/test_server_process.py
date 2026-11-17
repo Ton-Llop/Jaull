@@ -320,3 +320,23 @@ def test_a_failed_start_leaves_the_state_another_start_wrote(
 
     assert ServerState.model_validate_json(
         manager.state_path.read_text(encoding="utf-8")) == foreign
+
+
+@posix_only
+def test_a_failed_start_does_not_touch_a_state_file_it_cannot_read(
+    manager: ServerProcessManager, fake_server: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_LLAMA_MODE", "hang")
+    ticks = iter(range(100))
+    manager = ServerProcessManager(
+        manager.directory,
+        sleep=lambda seconds: manager.state_path.write_text("{}", encoding="utf-8"),
+        clock=lambda: next(ticks) * 1.0,
+    )
+    port = _free_port()
+
+    with pytest.raises(ServerProcessError, match="did not become ready"):
+        manager.start([str(fake_server), "--port", str(port)], host="127.0.0.1", port=port,
+                      alias="qwen", health_timeout_seconds=3, poll_seconds=0.1)
+
+    assert manager.state_path.read_text(encoding="utf-8") == "{}"  # not ours: left as it is

@@ -88,17 +88,18 @@ def install_opencode_config(ours: dict[str, Any]) -> OpencodeInstall | None:
         return OpencodeInstall(target, "unchanged", selected=merge.selected)
 
     backup: Path | None = None
+    staged = target.with_name(target.name + ".tmp")
     try:
         directory.mkdir(parents=True, exist_ok=True)
         if existing is not None:
             backup = target.with_name(target.name + _BACKUP_SUFFIX)
             if not backup.exists():  # the first one is the file as the person had it
                 shutil.copy2(target, backup)
-        staged = target.with_name(target.name + ".tmp")
         staged.write_text(json.dumps(merge.config, indent=2) + "\n", encoding="utf-8")
         staged.chmod(0o600)  # the file now holds the API key
         os.replace(staged, target)
     except OSError:
+        staged.unlink(missing_ok=True)  # never leave a half-written copy of the key behind
         return OpencodeInstall(target, "unreadable")
     return OpencodeInstall(target, merge.outcome, backup, merge.selected)
 
