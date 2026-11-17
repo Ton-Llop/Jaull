@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -145,6 +146,30 @@ def test_busy_port_is_refused_with_a_free_suggestion(manager: ServerProcessManag
         expected = rf"Port {port} is already in use\. Port \d+ is free"
         with pytest.raises(ServerProcessError, match=expected):
             manager.start(["llama-server"], host="127.0.0.1", port=port, alias="qwen")
+
+
+def test_failure_to_save_state_stops_only_the_new_process(
+    manager: ServerProcessManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child = Mock(spec=subprocess.Popen)
+    child.pid = 42
+    monkeypatch.setattr(subprocess, "Popen", Mock(return_value=child))
+    monkeypatch.setattr("jaull.execution.server_process._create_time", lambda pid: 1.0)
+    monkeypatch.setattr("jaull.execution.server_process.port_available", lambda host, port: True)
+    healthy = Mock()
+    monkeypatch.setattr(manager, "_wait_healthy", healthy)
+
+    def fail_replace(self: Path, target: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(ServerProcessError, match=r"could not save.*disk full"):
+        manager.start(["llama-server"], host="127.0.0.1", port=8090, alias="qwen")
+
+    child.terminate.assert_called_once()
+    child.wait.assert_called_once()
+    healthy.assert_not_called()
+    assert list(manager.directory.iterdir()) == [manager.log_path]
 
 
 def test_stop_refuses_a_pid_that_is_not_our_server(manager: ServerProcessManager) -> None:

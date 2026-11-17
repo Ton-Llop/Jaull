@@ -683,3 +683,26 @@ def test_verify_also_tells_an_artifact_is_an_older_version(tmp_path: Path) -> No
 
     assert verified.is_verified and verified.outdated is not None
     assert verified.outdated.current_sha256 == published
+
+
+@pytest.mark.parametrize("altered", [False, True])
+def test_serve_rehashes_a_previously_published_local_gguf(tmp_path: Path, altered: bool) -> None:
+    from types import SimpleNamespace
+
+    from jaull.advisor.service import AdvisorService
+
+    history = _FakeHistory()
+    service, local, published = _outdated_service(tmp_path, history)
+    history.versions = [(local, "old", "2026-10-20T09:00:00+00:00")]
+    artifact = service.resolve("owner/repo", quantization="Q5_K_M")
+    assert artifact.local_path is not None
+    advisor = AdvisorService(services=SimpleNamespace(), artifacts=service)  # type: ignore[arg-type]
+    if altered:
+        data = artifact.local_path.read_bytes()
+        artifact.local_path.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+        with pytest.raises(ArtifactVerificationError, match="SHA-256 mismatch"):
+            advisor.prepare_serve_artifact("owner/repo", quantization="Q5_K_M")
+    else:
+        verified = advisor.prepare_serve_artifact("owner/repo", quantization="Q5_K_M")
+        assert verified.is_verified and verified.sha256 == local
+        assert verified.outdated is not None and verified.outdated.current_sha256 == published

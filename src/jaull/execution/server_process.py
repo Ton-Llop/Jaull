@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import httpx
@@ -219,13 +220,33 @@ class ServerProcessManager:
             slots=slots,
             web_ui=web_ui,
         )
-        self.state_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+        try:
+            self._save_state(state)
+        except OSError as exc:
+            _terminate(process)
+            raise ServerProcessError(
+                f"llama-server was stopped because Jaull could not save "
+                f"{self.state_path}: {exc}"
+            ) from exc
         try:
             self._wait_healthy(process, state, health_timeout_seconds, poll_seconds)
         except ServerProcessError:
             self._forget(state)
             raise
         return state
+
+    def _save_state(self, state: ServerState) -> None:
+        staged: Path | None = None
+        try:
+            with NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.directory, prefix=".server-", delete=False,
+            ) as stream:
+                staged = Path(stream.name)
+                stream.write(state.model_dump_json(indent=2))
+            staged.replace(self.state_path)
+        finally:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
 
     def stop(self, *, timeout_seconds: float = policies.LLAMA_SERVER_STOP_TIMEOUT_SECONDS) -> bool:
         """Stop the saved server. ``False`` when there was none running."""

@@ -1,6 +1,6 @@
 # Status
 
-Updated 2026-10-11. Code checkpoint: `330bf0f` on `master`; CI passes.
+Updated 2026-11-17. Last verified remote CI checkpoint: [`ba5b5da`](https://github.com/Ton-Llop/Jaull/actions/runs/44152938519).
 
 ## What works
 
@@ -15,6 +15,10 @@ and compares predictions with measurements when the evidence allows it.
   throughput/TTFT targets can be recorded; they are not measured results.
 - Artifact verification rejects incorrect downloads and removes stale SHA
   sidecars before replacing files.
+- **Serve** sizes context and slots, starts a local `llama-server` without Docker,
+  and distinguishes a live process from one that responds to its health check.
+  It checks the server binary and device before launch and rehashes cached models.
+  Older published GGUFs are still accepted when the bytes match their accepted SHA.
 - **Measured ranking policies are active.** After the base order, stored
   measurements may reorder plans:
   - Quality reads a complete audited IFEval run of the plan's exact GGUF.
@@ -40,8 +44,14 @@ and compares predictions with measurements when the evidence allows it.
 
 ## Checks and evidence
 
-- CI passes on `330bf0f`, including ruff, mypy, the full test suite and the
-  architecture checks.
+- The CI checkpoint includes Linux and Windows tests, static checks, and packaging.
+  It does not substitute for GPU tests.
+- On Intel Arc Pro B60, the KV and recurrent-state buffer predictions agreed with
+  llama.cpp's reported allocations in the tested 1/2/4-slot configuration.
+  A separate native Windows/Vulkan run exercised Serve, idle sleep and wake-up.
+  These results are specific to the tested model, build and workload; they do not
+  validate general VRAM availability or sustainable concurrency.
+  See [the B60 experiments](docs/TFG/concurrencia-b60.md).
 - RTX 2060 campaigns (2026-10-10/11), all three plans ranking-ready, tg128
   median over all stored calls: Qwen2.5-0.5B Q5_K_M 246.1 tok/s (6 calls),
   IFEval 25.9 %; Qwen2.5-1.5B 150.7 tok/s (4), 41.0 %; LFM2.5-1.2B 230.5 tok/s
@@ -75,15 +85,17 @@ and compares predictions with measurements when the evidence allows it.
   indefinitely; a robust range is a later improvement.
 - Capability estimation without measurements still uses a scale prior.
   Published catalog results are references only.
-- No qualification verdict yet. The 1/2/4 concurrent-user experiment is measured
-  under `validation/2060-1vs2vs4-users/` and is deliberately not a priority.
+- No automated qualification verdict or sustainable capacity estimate. The
+  concurrency experiments on the RTX 2060 and B60 are evidence, not a product gate.
 - NVML process VRAM is unavailable on the measured WDDM machines.
 - Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
 - Memory overhead, reserve and headroom are not calibrated from these runs.
 
 ## Next steps
 
-1. Measure more plans on the RTX 2060 to strengthen the TFG evidence.
-2. Broaden the catalog cautiously, with primary sources and exact provenance.
+1. Repeat the native Windows B60 Serve run and compare prompt cache on/off with the
+   same workload, recording effective flags and minimum free system RAM.
+2. Consolidate the TFG evidence by separating tested code, physical measurements,
+   and unsupported or unvalidated configurations.
 
 Historical audits remain in [`docs/history/`](docs/history/).

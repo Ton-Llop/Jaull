@@ -264,7 +264,7 @@ def test_plan_server_refuses_a_found_build_that_does_not_run_the_backend(
         advisor.plan_server(repo_id="a/b", artifact=ARTIFACT, users=1, context_per_user=8192)
 
 
-def test_a_cli_only_build_does_not_hide_a_complete_one_found_later(
+def test_discovery_skips_cli_only_builds_and_incompatible_servers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     # Audit: selection by llama-cli picked a build without llama-server, then found no server.
@@ -284,19 +284,24 @@ def test_a_cli_only_build_does_not_hide_a_complete_one_found_later(
         return LlamaCppInstallation(root=str(folder), llama_cli=str(folder / "llama-cli"),
                                     source=RuntimeSource.DISCOVERED)
 
-    builds = [build("cli-only", server=False), build("complete", server=True)]
+    builds = [build("cli-only", server=False), build("incompatible", server=True),
+              build("complete", server=True)]
     monkeypatch.setattr(AdvisorService, "_runtime_locator",
                         lambda self: SimpleNamespace(discover_llama_cpp=lambda: builds))
     probed: list[str] = []
 
-    def inspect(*, backend: Any, llama_cli_path: str, timeout_seconds: float) -> str:
-        probed.append(llama_cli_path)
-        return llama_cli_path
+    def inspect(*, backend: Any, llama_cli_path: str | Path, timeout_seconds: float) -> str:
+        probed.append(str(llama_cli_path))
+        return str(llama_cli_path)
+
+    def readiness(*, selection: Any, runtime_capability: str) -> object:
+        incompatible = runtime_capability == str(tmp_path / "incompatible" / "llama-server")
+        return SimpleNamespace(status=ExecutionReadinessStatus.NOT_READY if incompatible
+                               else ExecutionReadinessStatus.READY)
 
     monkeypatch.setattr("jaull.runtime.llama_cpp_capability.inspect_llama_cpp_runtime", inspect)
     monkeypatch.setattr(
-        "jaull.runtime.llama_cpp_capability.evaluate_execution_readiness",
-        lambda **kwargs: SimpleNamespace(status=ExecutionReadinessStatus.READY),
+        "jaull.runtime.llama_cpp_capability.evaluate_execution_readiness", readiness,
     )
     advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
     selection = SimpleNamespace(selected_backend=ComputeBackend.CPU, alternatives=[])
@@ -305,7 +310,8 @@ def test_a_cli_only_build_does_not_hide_a_complete_one_found_later(
 
     assert found is not None and found.supports_backend
     assert found.path == tmp_path / "complete" / "llama-server"
-    assert probed == [str(tmp_path / "complete" / "llama-cli")]
+    assert probed == [str(tmp_path / name / "llama-server")
+                      for name in ("incompatible", "complete")]
 
 
 def test_lan_without_tls_warns_and_slots_are_explained() -> None:

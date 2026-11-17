@@ -247,10 +247,10 @@ Qwen3.6-35B-A3B `IQ4_XS`, B60, Vulkan, servidor engegat des de la TUI de Jaull a
 `--sleep-idle-seconds 45` (els dos per defecte), 2 usuaris de 32768 en una bossa compartida, opencode a WSL2 per un
 túnel SSH invers (el 8081 de WSL cap al 8090 de Windows). Mesures amb `memwatch.ps1` (cada 6 s) i el `server.log`.
 
-- **VALIDATED** (una execució): amb `-lm dio` la càrrega no consumeix RAM. Residents 0,7 GB, RAM lliure 9,3-9,6 GB (10,2
-  abans), contra els 12,2 GB residents i 0,5 GB lliures de la mateixa càrrega sense el flag, uns minuts abans.
-- **VALIDATED**: el servidor es desperta del son sense tocar la RAM. Amb el servidor adormit (0,1 GB, VRAM a 0), el
-  primer missatge d'opencode va pujar la VRAM a 16,1 GB en uns 6 s i la RAM lliure va baixar només 0,8 GB.
+- **VALIDATED** (una execució): amb `-lm dio` la càrrega va consumir molta menys RAM. Residents 0,7 GB, RAM lliure 9,3-9,6 GB
+  (10,2 abans), contra els 12,2 GB residents i 0,5 GB lliures de la mateixa càrrega sense el flag, uns minuts abans.
+- **VALIDATED**: amb el servidor adormit (0,1 GB, VRAM a 0), el primer missatge d'opencode el va despertar.
+  La VRAM va pujar a 16,1 GB en uns 6 s i la RAM lliure va baixar 0,8 GB.
 - **VALIDATED**: velocitat de generació amb `-lm dio` de **61 a 65 tokens/s** en set peticions seguides amb
   contextos de fins a 14.859 tokens (63,59; 61,94; 63,07; 61,83; 61,92; 61,33; 64,93), i lectura del prompt de 820 a
   1.000 tokens/s amb 7.600 tokens. Sense el flag, el 4 de novembre, es va mesurar 66,95 tokens/s amb una resposta de

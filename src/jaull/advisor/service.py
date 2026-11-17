@@ -663,8 +663,9 @@ class AdvisorService:
                 installation, ready = self._found_llama_cpp_for(selection)
                 if installation is not None and not ready:
                     raise ExecutionPlanningError(
-                        f"The llama.cpp found on this PC ({installation.llama_cli}) does not "
-                        f"run {selection.selected_backend.value}. Install the pinned build with "
+                        f"The llama-server found on this PC ({server_binary_for(installation)}) "
+                        f"does not run {selection.selected_backend.value}. "
+                        "Install the pinned build with "
                         f"`jaull runtime install --backend {selection.selected_backend.value}`, "
                         "or choose another backend."
                     )
@@ -922,14 +923,15 @@ class AdvisorService:
 
         report(f"Resolving {repo_id}" + (f" ({quantization})" if quantization else ""))
         artifact = self.resolve_artifact(repo_id, quantization=quantization, revision=revision)
-        if not artifact.is_downloaded:
+        reused = artifact.is_downloaded
+        if not reused:
             report(f"Downloading {artifact.filename}")
             artifact = self.download_artifact(
                 artifact,
                 DownloadProgressReporter(report) if on_progress is not None else None,
             )
         report(f"Verifying {artifact.filename}")
-        return self.verify_artifact(artifact)
+        return self.verify_artifact(artifact, full=reused)
 
     def gguf_quantization(self, filename: str) -> str | None:
         """The quantization a downloaded GGUF's file name declares, to resolve it again."""
@@ -988,13 +990,14 @@ class AdvisorService:
         host = HostExecutionBackend()
         first: LlamaCppInstallation | None = None
         for installation in self._runtime_locator().discover_llama_cpp():
-            if (installation.status is not RuntimeResolutionStatus.FOUND
-                    or installation.llama_cli is None
-                    or server_binary_for(installation) is None):
+            if installation.status is not RuntimeResolutionStatus.FOUND:
+                continue
+            binary = server_binary_for(installation)
+            if binary is None:
                 continue
             first = first or installation
             capability = inspect_llama_cpp_runtime(
-                backend=host, llama_cli_path=installation.llama_cli,
+                backend=host, llama_cli_path=binary,
                 timeout_seconds=self.llama_cli_timeout_seconds,
             )
             readiness = evaluate_execution_readiness(
