@@ -49,7 +49,7 @@ class AdvancedToolsScreen(Screen[None]):
             "Advanced tools",
             "Direct access to hardware scan, model inspection and memory estimation.",
         )
-        with VerticalScroll(), Vertical():
+        with VerticalScroll(can_focus=False), Vertical():
             summary = self._hardware_summary()
             if summary:
                 yield SummaryCard("System summary", summary)

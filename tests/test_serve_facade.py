@@ -192,3 +192,56 @@ def test_the_artifact_history_is_the_hugging_face_one() -> None:
     from jaull.huggingface.artifact_history import HuggingFaceArtifactHistory
 
     assert isinstance(_artifact_history(), HuggingFaceArtifactHistory)
+
+
+def _start_with_flags(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[tuple[str, str]],
+    *, devices: str = "Vulkan0: Intel Arc Pro B60\n",
+) -> Any:
+    """Start a Vulkan plan whose launch flags are ``flags``, on a machine that lists ``devices``."""
+    from jaull.domain.runtime import RuntimeFlag, RuntimeFlagSource
+    from tests.test_llama_cpp_capability import _FakeExecutionBackend
+
+    binary = tmp_path / "llama-server"
+    binary.write_text("fake server", encoding="utf-8")
+    binary.chmod(0o755)
+    host = _FakeExecutionBackend({(str(binary), "--list-devices"): devices})
+    monkeypatch.setattr("jaull.execution.host.HostExecutionBackend", lambda: host)
+    monkeypatch.setattr(AdvisorService, "_server_manager", lambda self: _Manager(tmp_path))
+    advisor = AdvisorService(services=SimpleNamespace())  # type: ignore[arg-type]
+    base = _plan()
+    launch = base.launch.model_copy(update={"flags": [
+        RuntimeFlag(name=name, value=value, source=RuntimeFlagSource.POLICY, explanation="test")
+        for name, value in flags]})
+    return advisor.start_server(replace(base, server_binary=binary, launch=launch),
+                                opencode=False)
+
+
+@pytest.mark.parametrize("flags", [
+    # What the launch planner writes for a model placed on the CPU while the backend is
+    # still Vulkan (an integrated GPU shares the PC's RAM): the confirmed card is pinned,
+    # but no layer goes to it.
+    [("--device", "Vulkan0"), ("--n-gpu-layers", "0")],
+    [("--n-gpu-layers", "0")],
+])
+def test_a_vulkan_plan_that_runs_on_the_cpu_is_not_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[tuple[str, str]],
+) -> None:
+    started = _start_with_flags(monkeypatch, tmp_path, flags)
+
+    assert started.state is not None
+
+
+@pytest.mark.parametrize("flags", [
+    [("--device", "Vulkan1"), ("--n-gpu-layers", "0")],  # pinned to a card that is not the one
+    [("--n-gpu-layers", "-1")],  # layers on a GPU with no device to say which
+    [("--device", "Vulkan1"), ("--n-gpu-layers", "-1")],  # not the device that was confirmed
+    [("--device", "Vulkan0")],  # a card with no word on how much goes to it
+])
+def test_a_plan_that_does_not_match_the_confirmed_device_is_still_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[tuple[str, str]],
+) -> None:
+    from jaull.application.execution.planner import ExecutionPlanningError
+
+    with pytest.raises(ExecutionPlanningError, match="no longer matches the confirmed runtime"):
+        _start_with_flags(monkeypatch, tmp_path, flags)

@@ -47,6 +47,9 @@ class JaullApp(App[None]):
     # flow a footer advertising Scan/Inspect/Estimate/Doctor/Home is noise
     # about a mode the user is not in; AdvancedToolsScreen shows them again.
     BINDINGS = [
+        # Fall back to tab order without overriding widget or screen bindings.
+        Binding("up,left", "focus_previous", "Previous control", show=False),
+        Binding("down,right", "focus_next", "Next control", show=False),
         Binding("q", "quit", "Quit"),
         Binding("escape", "back", "Back"),
         Binding("s", "goto_scan", "Scan", show=False),

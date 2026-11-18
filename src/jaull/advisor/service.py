@@ -821,10 +821,16 @@ class AdvisorService:
                       if isinstance(capability, LlamaCppBackendCapability) else None)
             accelerator = plan.backend_selection.selected_accelerator
             # An unchanged index alone cannot confirm a prepared server's physical GPU.
-            matches = (device is not None and accelerator is not None and device.name is not None
-                       and names_agree(device.name, accelerator.name)
-                       and devices == [device.runtime_id]
-                       and len(layers) == 1 and layers[0] != "0")
+            confirmed = (device is not None and accelerator is not None
+                         and device.name is not None
+                         and names_agree(device.name, accelerator.name))
+            pinned = confirmed and devices == [device.runtime_id]  # type: ignore[union-attr]
+            # The model placed on the CPU keeps the confirmed card pinned (an integrated GPU
+            # shares the PC's RAM and is not counted as VRAM): no layer goes to it, so the
+            # card only has to be the confirmed one, or none.
+            on_cpu = layers == ["0"] and (not devices or pinned)
+            on_gpu = pinned and len(layers) == 1 and layers[0] != "0"
+            matches = on_cpu or on_gpu
         if plan.backend is not plan.backend_selection.selected_backend or not matches:
             raise ExecutionPlanningError(
                 "The prepared server backend/device no longer matches the confirmed runtime. "

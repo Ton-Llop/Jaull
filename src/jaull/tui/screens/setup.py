@@ -2,8 +2,8 @@
 
 1. Machine and backend: detected, and changeable when there is more than one.
 2. llama.cpp: the build Jaull installed for that backend, or a button to install it.
-3. Model: one already downloaded, or a repository and quantization to download.
-4. Server: this PC only or the local network, how many people at once, context, port.
+3. Server: this PC only or the local network, how many people at once, context, port.
+4. Model: one already downloaded, or a repository and quantization to download.
 5. Start: the same composition as ``jaull serve start``, through ``AdvisorService``.
 
 Everything slow runs in a worker thread; the screen only collects choices and
@@ -55,6 +55,7 @@ from jaull.presentation.serving import (
     plan_lines,
     start_lines,
     status_lines,
+    wsl_run_command,
 )
 from jaull.runtime import policies as runtime_policies
 from jaull.tui import palette
@@ -79,8 +80,8 @@ _MODEL_HINT = (
     "comes back to this screen."
 )
 
-_STEPS = ("Machine", "llama.cpp", "Model", "Server", "Start")
-_TITLES = ("Machine and backend", "llama.cpp", "Model", "Server", "Start")
+_STEPS = ("Machine", "llama.cpp", "Server", "Model", "Start")
+_TITLES = ("Machine and backend", "llama.cpp", "Server", "Model", "Start")
 
 _EXPOSURE_NOTE = {
     False: "Only programs on this PC can connect.",
@@ -206,6 +207,7 @@ class SetupScreen(Screen[None]):
         # the server to the opencode on this PC.
         self._run_command: str | None = None
         self._full_command: str | None = None
+        self._wsl_command: str | None = None
         self._opencode_done = False
         self._key_qr = False
         self._key_qr_timer: Timer | None = None
@@ -245,23 +247,12 @@ class SetupScreen(Screen[None]):
                 yield ActionButton("Install llama.cpp", id="setup-install", disabled=True)
             with Vertical(classes="setup-section"):
                 yield from self._heading(3)
-                yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
-                                  allow_blank=True)
-                yield Button("Use another model instead", id="setup-other", classes="chip")
-                with Vertical(id="setup-download"):
-                    yield Static("or download one", classes="setup-or")
-                    with Horizontal(id="setup-model-inputs"):
-                        yield Input(placeholder="Hugging Face repo id", id="setup-repo")
-                        yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
-                yield Static(_MODEL_HINT, classes="setup-note", markup=False)
-                yield ActionButton("Find a model", id="setup-find")
-            with Vertical(classes="setup-section"):
-                yield from self._heading(4)
                 with RadioSet(id="setup-exposure"):
                     yield RadioButton("Only this PC", value=True, id="setup-local")
                     yield RadioButton("Share on the local network", id="setup-lan")
                 yield Static(_EXPOSURE_NOTE[False], id="setup-exposure-note",
                              classes="setup-note", markup=False)
+                yield Checkbox("Encrypt the connection (HTTPS)", id="setup-https")
                 with Horizontal(id="setup-tls"):
                     yield Input(placeholder="HTTPS certificate (.pem), optional",
                                 id="setup-tls-cert")
@@ -295,6 +286,18 @@ class SetupScreen(Screen[None]):
                 yield Static("", id="setup-capacity", classes="setup-capacity")
                 yield Static("Choose a model to see the largest context this machine can serve.",
                              id="setup-limit", classes="setup-note", markup=False)
+            with Vertical(classes="setup-section"):
+                yield from self._heading(4)
+                yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
+                                  allow_blank=True)
+                yield Button("Use another model instead", id="setup-other", classes="chip")
+                with Vertical(id="setup-download"):
+                    yield Static("or download one", classes="setup-or")
+                    with Horizontal(id="setup-model-inputs"):
+                        yield Input(placeholder="Hugging Face repo id", id="setup-repo")
+                        yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
+                yield Static(_MODEL_HINT, classes="setup-note", markup=False)
+                yield ActionButton("Find a model", id="setup-find")
             with Vertical(classes="setup-section -last", id="setup-result"):
                 yield from self._heading(5)
                 # What to hand over once the server runs: a row and a Copy for each thing.
@@ -310,6 +313,10 @@ class SetupScreen(Screen[None]):
                 with Horizontal(id="setup-run-row", classes="setup-copy-row"):
                     yield Static("", id="setup-run", classes="setup-copy-label")
                     yield ActionButton("Copy", id="setup-copy-run")
+                # opencode inside WSL reads the certificate by its Linux path.
+                with Horizontal(id="setup-run-wsl-row", classes="setup-copy-row"):
+                    yield Static("", id="setup-run-wsl", classes="setup-copy-label")
+                    yield ActionButton("Copy", id="setup-copy-run-wsl")
                 with Horizontal(id="setup-opencode-row", classes="setup-copy-row"):
                     yield Static("", id="setup-opencode-label", classes="setup-copy-label")
                     yield ActionButton("Copy", id="setup-copy-opencode")
@@ -536,10 +543,15 @@ class SetupScreen(Screen[None]):
             )
             lines = plan_lines(plan)
             self._later(self._output, lines)
+            tls_cert, tls_key = choice.tls_cert, choice.tls_key
+            if choice.https and tls_cert is None:
+                progress("Preparing the HTTPS certificate...")
+                certificate = advisor.create_server_certificate()
+                tls_cert, tls_key = certificate.cert_path, certificate.key_path
             progress("Starting llama-server and waiting until it is ready...")
             started = advisor.start_server(
                 plan, lan=choice.lan, port=choice.port, web_ui=choice.web_ui,
-                tls_cert=choice.tls_cert, tls_key=choice.tls_key,
+                tls_cert=tls_cert, tls_key=tls_key,
                 prompt_cache=choice.prompt_cache,
             )
             self._later(self._opencode_added, started.opencode)
@@ -596,6 +608,9 @@ class SetupScreen(Screen[None]):
         for row in self.query(".setup-copy-row"):
             row.display = running  # the key and its config only exist with a server
         self.query_one("#setup-run-row").display = bool(running and self._run_command)
+        self.query_one("#setup-run-wsl-row").display = bool(running and self._wsl_command)
+        self.query_one("#setup-run-wsl", Static).update(
+            f"opencode in WSL, run it like this   [b]{escape(self._wsl_command or '')}[/]")
         self.query_one("#setup-copy-command").display = bool(running and self._full_command)
         self.query_one("#setup-run", Static).update(
             f"Run opencode with this command   [b]{escape(self._run_command or '')}[/]")
@@ -671,6 +686,8 @@ class SetupScreen(Screen[None]):
                              if status.running and status.state is not None else None)
         self._full_command = (full_command(status.state)
                               if status.running and status.state is not None else None)
+        self._wsl_command = (wsl_run_command(status.state)
+                             if status.running and status.state is not None else None)
         if not status.running:
             self._opencode_done = False
         if status.running and describe:
@@ -733,15 +750,15 @@ class SetupScreen(Screen[None]):
             else (_DONE, "found on this PC") if local is not None and local.supports_backend
             else (_WARN, f"no {backend.value if backend else ''} build") if local is not None
             else (_WARN, "not installed"),
+            (_WARN, numbers) if isinstance(numbers, str)
+            else (_WARN, "context too large") if over
+            else (_DONE, "this PC" if not self._lan() else "local network"),
             (_PENDING, "choose one") if isinstance(model, str)
             else (_PENDING, "context not checked") if limit is None
             # The check found no context at all that fits: nothing to start.
             else (_WARN, "does not fit here")
             if limit is not None and limit.largest_per_user is None
             else (_DONE, model[0].split("/")[-1]),
-            (_WARN, numbers) if isinstance(numbers, str)
-            else (_WARN, "context too large") if over
-            else (_DONE, "this PC" if not self._lan() else "local network"),
         ]
         if self._running:
             states.append((_DONE, "ready") if self._healthy else (_WARN, "not ready"))
@@ -839,6 +856,9 @@ class SetupScreen(Screen[None]):
         elif event.button.id == "setup-copy-command" and self._full_command is not None:
             self._note = copy_text(self.app, self._full_command, "Command")
             self._refresh(self._note)
+        elif event.button.id == "setup-copy-run-wsl" and self._wsl_command is not None:
+            self._note = copy_text(self.app, self._wsl_command, "Command")
+            self._refresh(self._note)
         elif event.button.id == "setup-copy-run" and self._run_command is not None:
             self._note = copy_text(self.app, self._run_command, "Command")
             self._refresh(self._note)
@@ -885,6 +905,9 @@ class SetupScreen(Screen[None]):
     def _lan(self) -> bool:
         return self.query_one("#setup-lan", RadioButton).value
 
+    def _https(self) -> bool:
+        return self.query_one("#setup-https", Checkbox).value
+
     def _choice(self) -> _Choice | str:
         """The choices from the form, or what is missing."""
         numbers = self._numbers()
@@ -915,7 +938,7 @@ class SetupScreen(Screen[None]):
             return tls
         return _Choice(
             repo_id=repo_id, quantization=quantization, backend=backend,
-            lan=self._lan(), tls_cert=tls[0], tls_key=tls[1],
+            lan=self._lan(), https=self._https(), tls_cert=tls[0], tls_key=tls[1],
             prompt_cache=self.query_one("#setup-cache", Checkbox).value,
             users=numbers["users"], context=numbers["context"], port=numbers["port"],
             web_ui=self.query_one("#setup-webui", Checkbox).value,
@@ -923,8 +946,9 @@ class SetupScreen(Screen[None]):
         )
 
     def _tls_files(self) -> tuple[Path | None, Path | None] | str:
-        """Certificate and key for HTTPS when sharing, or what is wrong with them."""
-        if not self._lan():
+        """Certificate and key for HTTPS, or what is wrong with them. Both empty with HTTPS
+        on means Jaull makes its own when the server starts."""
+        if not self._https():
             return None, None
         cert = self.query_one("#setup-tls-cert", Input).value.strip()
         key = self.query_one("#setup-tls-key", Input).value.strip()
@@ -940,9 +964,8 @@ class SetupScreen(Screen[None]):
     def _exposure_text(self) -> tuple[str, bool]:
         """The note under the exposure choice, and whether it is a warning."""
         if not self._lan():
-            return _EXPOSURE_NOTE[False], False
-        tls = self._tls_files()
-        if isinstance(tls, tuple) and tls[0] is not None:
+            return _EXPOSURE_NOTE[False] + (" Served over HTTPS." if self._https() else ""), False
+        if self._https():
             return f"{_EXPOSURE_NOTE[True]} Served over HTTPS. {SLOTS_ARE_NOT_USERS}", False
         return f"{LAN_WITHOUT_TLS_WARNING} {SLOTS_ARE_NOT_USERS}", True
 
@@ -951,7 +974,7 @@ class SetupScreen(Screen[None]):
         note = self.query_one("#setup-exposure-note", Static)
         note.update(text)
         note.set_class(warning, "-warn")
-        self.query_one("#setup-tls").display = self._lan()
+        self.query_one("#setup-tls").display = self._https()
 
     def _model_reference(self) -> tuple[str, str | None] | str:
         """(repo id, quantization) of the chosen model, or what is missing."""
@@ -1056,6 +1079,9 @@ class SetupScreen(Screen[None]):
 
     @on(RadioSet.Changed, "#setup-exposure")
     def _exposure_changed(self) -> None:
+        # Sharing on the network is encrypted unless the person says otherwise; this PC alone
+        # is not, since nothing leaves it. Either can be changed after choosing.
+        self.query_one("#setup-https", Checkbox).value = self._lan()
         if self._lan():
             self._use_existing_certificate()
         self._render_exposure()
@@ -1159,6 +1185,7 @@ class _Choice:
     port: int
     web_ui: bool
     shared_context: bool
+    https: bool = False
     tls_cert: Path | None = None
     tls_key: Path | None = None
     prompt_cache: bool = True

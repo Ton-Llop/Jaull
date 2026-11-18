@@ -452,50 +452,63 @@ def test_cert_command_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
     assert seen == [False, True]
 
 
-class WithCertificate(FakeAdvisor):
-    """A machine where `jaull serve cert` was run before."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.detected_calls = 0
-
-    def detected_server_certificate(self) -> ServerCertificate | None:
-        self.detected_calls += 1
-        return CERTIFICATE
-
-
-def test_a_shared_start_uses_the_certificate_jaull_already_made(
+def test_sharing_on_the_network_uses_https_by_default(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    advisor = WithCertificate()
+    advisor = FakeAdvisor()
 
     assert run_serve_start("a/b", ServeOptions(quantization=None, lan=True), advisor) == 0  # type: ignore[arg-type]
 
     start = advisor.start_calls[0]
     assert (start["tls_cert"], start["tls_key"]) == (CERTIFICATE.cert_path, CERTIFICATE.key_path)
+    assert advisor.certificate_calls == [False]  # made or kept, never renewed
     out = " ".join(capsys.readouterr().out.split())
-    assert "Using the certificate from `jaull serve cert`, valid until 2027-11-16" in out
+    assert "valid until 2027-11-16" in out
 
 
-def test_the_certificate_is_not_used_when_only_this_pc_listens_or_files_are_given() -> None:
-    local = WithCertificate()
-    run_serve_start("a/b", ServeOptions(quantization=None, lan=False), local)  # type: ignore[arg-type]
-    assert local.start_calls[0]["tls_cert"] is None
+def test_https_is_a_choice_it_can_be_asked_for_or_refused() -> None:
+    local = FakeAdvisor()
+    run_serve_start("a/b", ServeOptions(quantization=None), local)  # type: ignore[arg-type]
+    assert local.start_calls[0]["tls_cert"] is None  # only this PC: no certificate by default
+    assert local.certificate_calls == []
 
-    explicit = WithCertificate()
+    asked = FakeAdvisor()
+    run_serve_start("a/b", ServeOptions(quantization=None, https=True), asked)  # type: ignore[arg-type]
+    assert asked.start_calls[0]["tls_cert"] == CERTIFICATE.cert_path  # even for this PC alone
+
+    refused = FakeAdvisor()
+    run_serve_start("a/b", ServeOptions(quantization=None, lan=True, https=False), refused)  # type: ignore[arg-type]
+    assert refused.start_calls[0]["tls_cert"] is None  # shared, plain HTTP, with its warning
+    assert refused.certificate_calls == []
+
+
+def test_files_given_by_hand_win_and_cannot_be_refused_at_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    explicit = FakeAdvisor()
     cert, key = Path("/my/cert.pem"), Path("/my/key.pem")
     run_serve_start("a/b", ServeOptions(quantization=None, lan=True, tls_cert=cert,  # type: ignore[arg-type]
                                         tls_key=key), explicit)
     assert (explicit.start_calls[0]["tls_cert"], explicit.start_calls[0]["tls_key"]) == (cert, key)
-    assert explicit.detected_calls == 0
+    assert explicit.certificate_calls == []
+    capsys.readouterr()  # what the first start printed is not what is checked below
+
+    contradictory = FakeAdvisor()
+    code = run_serve_start("a/b", ServeOptions(quantization=None, https=False, tls_cert=cert,  # type: ignore[arg-type]
+                                               tls_key=key), contradictory)
+    assert code == 2 and not contradictory.start_calls
+    assert "--no-https cannot be combined with --tls-cert" in capsys.readouterr().out
 
 
-def test_without_a_certificate_a_shared_start_stays_plain_http() -> None:
-    advisor = FakeAdvisor()  # detected_server_certificate finds nothing
+def test_https_flags_are_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[ServeOptions] = []
+    monkeypatch.setattr("jaull.cli.app.run_serve_start",
+                        lambda reference, options: seen.append(options) or 0)
 
-    run_serve_start("a/b", ServeOptions(quantization=None, lan=True), advisor)  # type: ignore[arg-type]
+    for flags in ([], ["--https"], ["--no-https"]):
+        assert CliRunner().invoke(app, ["serve", "start", "a/b", *flags]).exit_code == 0
 
-    assert advisor.start_calls[0]["tls_cert"] is None
+    assert [options.https for options in seen] == [None, True, False]
 
 
 def test_a_shared_start_inside_wsl_warns_instead_of_printing_a_useless_rule() -> None:
@@ -697,3 +710,21 @@ def test_the_breakdown_shortens_paths_and_pairs_each_flag_with_its_meaning() -> 
     assert any(line.lstrip().startswith("--n-gpu-layers -1") and "graphics card" in line
                for line in lines)  # "-1" is the flag's value, not another flag
     assert any(line.strip() == "--future-flag 7" for line in lines)  # unknown: shown, no text
+
+
+def test_a_windows_server_also_gives_opencode_in_wsl_the_path_linux_sees() -> None:
+    from jaull.presentation.serving import wsl_run_command
+
+    certificate = r"C:\Users\someone\AppData\Local\jaull\serve\tls\server-cert.pem"
+    argv = ["llama-server", "--ssl-cert-file", certificate]
+    shared = STATE.model_copy(update={"tls": True, "host": "0.0.0.0", "argv": argv})
+
+    assert wsl_run_command(shared, windows=True) == (
+        "NODE_EXTRA_CA_CERTS=/mnt/c/Users/someone/AppData/Local/jaull/serve/tls/server-cert.pem"
+        " opencode")
+    # Only a Windows server that other systems can reach, and only with HTTPS and a drive path.
+    assert wsl_run_command(shared, windows=False) is None
+    assert wsl_run_command(shared.model_copy(update={"host": "127.0.0.1"}), windows=True) is None
+    assert wsl_run_command(shared.model_copy(update={"tls": False}), windows=True) is None
+    assert wsl_run_command(shared.model_copy(update={"argv": [
+        "llama-server", "--ssl-cert-file", "/data/tls/server-cert.pem"]}), windows=True) is None

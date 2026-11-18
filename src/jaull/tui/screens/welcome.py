@@ -53,7 +53,7 @@ class WelcomeScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        with VerticalScroll():
+        with VerticalScroll(can_focus=False):
             yield Logo()
             with Vertical(id="welcome-body"):
                 yield Static(

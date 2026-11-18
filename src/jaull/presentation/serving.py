@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 
@@ -17,6 +18,7 @@ from jaull.application.serving.security import (
 from jaull.execution.server_certificate import ServerCertificate
 from jaull.execution.server_process import ServerState, ServerStatus
 from jaull.presentation.console import format_bytes
+from jaull.runtime.policies import LLAMA_SERVER_LAN_HOST
 
 
 def plan_lines(plan: ServerPlan) -> list[str]:
@@ -219,12 +221,39 @@ def opencode_run_command(state: ServerState) -> str | None:
     return f"NODE_EXTRA_CA_CERTS={argv[argv.index('--ssl-cert-file') + 1]} opencode"
 
 
+def _running_on_windows() -> bool:
+    return os.name == "nt"
+
+
+def wsl_run_command(state: ServerState, *, windows: bool | None = None) -> str | None:
+    """The same command for opencode inside WSL, where the certificate is at /mnt/<drive>/...
+
+    Only for a Windows server that other systems can reach with HTTPS: WSL does not see the
+    PC's 127.0.0.1, and a drive-letter path means nothing to a Linux program.
+    """
+    on_windows = _running_on_windows() if windows is None else windows
+    argv = state.argv
+    if (not on_windows or not state.tls or state.host != LLAMA_SERVER_LAN_HOST
+            or "--ssl-cert-file" not in argv):
+        return None
+    drive = re.match(r"^([A-Za-z]):[\\/](.*)$", argv[argv.index("--ssl-cert-file") + 1])
+    if drive is None:
+        return None
+    path = drive.group(2).replace("\\", "/")
+    return f"NODE_EXTRA_CA_CERTS=/mnt/{drive.group(1).lower()}/{path} opencode"
+
+
 def _certificate_trust_lines(started: ServerStart) -> list[str]:
     command = opencode_run_command(started.state)
     if command is None:
         return []
-    return ["  Run opencode with this command, so it trusts the server's certificate:",
-            f"    {command}"]
+    lines = ["  Run opencode with this command, so it trusts the server's certificate:",
+             f"    {command}"]
+    wsl = wsl_run_command(started.state)
+    if wsl is not None:
+        lines += ["  From inside WSL, where that path means nothing, use this one:",
+                  f"    {wsl}"]
+    return lines
 
 
 def start_lines(started: ServerStart, *, explained: bool = False) -> list[str]:
@@ -294,4 +323,5 @@ __all__ = [
     "plan_lines",
     "start_lines",
     "status_lines",
+    "wsl_run_command",
 ]

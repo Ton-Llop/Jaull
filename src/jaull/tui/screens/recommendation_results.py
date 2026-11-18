@@ -1036,7 +1036,12 @@ class RecommendationDetailsScreen(Screen[None]):
 
 
 class ExportReportModal(ModalScreen[None]):
-    BINDINGS = [("escape", "app.pop_screen", "Cancel")]
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Cancel"),
+        # Modal screens do not inherit the app's fallback bindings.
+        Binding("up,left", "app.focus_previous", "Previous control", show=False),
+        Binding("down,right", "app.focus_next", "Next control", show=False),
+    ]
 
     def __init__(self, state: RecommendationWorkflowState) -> None:
         super().__init__()

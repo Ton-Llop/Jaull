@@ -516,6 +516,11 @@ def serve_start_command(
         "own. Default: dio on Windows when the model fits entirely on the GPU, so it is not "
         "also copied into RAM.",
     ),
+    https: bool | None = typer.Option(
+        None, "--https/--no-https",
+        help="Encrypt the connection. Default: on when sharing on the network (--lan, with a "
+        "self-signed certificate made for you), off for this PC alone.",
+    ),
     no_opencode_config: bool = typer.Option(
         False, "--no-opencode-config",
         help="Do not add the server to the opencode on this PC (it is added by default, "
@@ -527,7 +532,7 @@ def serve_start_command(
         backend=backend, revision=revision, llama_server_path=llama_server,
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
         prompt_cache=not no_prompt_cache, sleep_idle_seconds=sleep_idle,
-        opencode_config=not no_opencode_config, load_mode=load_mode,
+        opencode_config=not no_opencode_config, load_mode=load_mode, https=https,
     )))
 
 

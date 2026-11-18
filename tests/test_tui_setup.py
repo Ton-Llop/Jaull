@@ -240,10 +240,13 @@ def test_setup_uses_a_typed_repository_and_the_local_network() -> None:
 
             assert advisor.called("prepare")[0]["repo_id"] == "org/Other-GGUF"
             assert advisor.called("prepare")[0]["quantization"] == "IQ4_XS"
+            # Shared on the network means HTTPS, and Jaull made its own certificate for it.
             assert advisor.called("start")[0] == {
                 "lan": True, "port": 8095, "web_ui": True,
-                "tls_cert": None, "tls_key": None, "prompt_cache": True,
+                "tls_cert": CERTIFICATE.cert_path, "tls_key": CERTIFICATE.key_path,
+                "prompt_cache": True,
             }
+            assert len(advisor.called("certificate")) == 1
             assert advisor.called("plan")[0]["shared_context"] is True
 
     asyncio.run(scenario())
@@ -420,8 +423,11 @@ def test_find_a_model_opens_the_search_and_a_chosen_plan_comes_back() -> None:
             assert not isinstance(app.screen, SetupScreen)  # Only GGUF can be served.
 
             app.run_recommendation(_recommendation("gguf"))
-            await _wait_until(pilot, lambda: isinstance(app.screen, SetupScreen))
-            await pilot.pause()
+            await _wait_until(
+                pilot,
+                lambda: app.screen is screen and not screen._busy
+                and screen._current_limit() is not None,
+            )
             assert screen.query_one("#setup-repo", Input).value == "org/Found-GGUF"
             assert screen.query_one("#setup-quant", Input).value == "Q4_K_M"
             assert "Model from the guided search: org/Found-GGUF (Q4_K_M)" in _text(
@@ -568,7 +574,7 @@ def test_a_model_that_does_not_fit_is_not_ready_to_start() -> None:
             await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
             await pilot.pause()
             states = screen._step_states()
-            assert states[2] == ("warn", "does not fit here")
+            assert states[3] == ("warn", "does not fit here")
             assert states[4][1] != "ready to start"
             assert "does not fit" in _text(screen, "#setup-limit")
             assert screen.query_one("#setup-start", Button).disabled
@@ -703,11 +709,19 @@ def test_sharing_without_https_warns_and_https_files_reach_the_server(tmp_path: 
 
             screen.query_one("#setup-lan", RadioButton).value = True
             await pilot.pause()
-            assert screen.query_one("#setup-tls").display
-            assert note.has_class("-warn")
+            # Sharing on the network is encrypted unless the person says otherwise.
+            assert screen.query_one("#setup-https", Checkbox).value
+            assert screen.query_one("#setup-tls").display and not note.has_class("-warn")
+            assert "Served over HTTPS" in _text(screen, "#setup-exposure-note")
+
+            screen.query_one("#setup-https", Checkbox).value = False
+            await pilot.pause()
+            assert note.has_class("-warn") and not screen.query_one("#setup-tls").display
             assert "without HTTPS" in _text(screen, "#setup-exposure-note")
             assert "not separate users" in _text(screen, "#setup-exposure-note")
 
+            screen.query_one("#setup-https", Checkbox).value = True
+            await pilot.pause()
             screen.query_one("#setup-tls-cert", Input).value = str(cert)
             await pilot.pause()
             assert screen._tls_files() == "HTTPS needs both a certificate and a private key file."
@@ -1158,5 +1172,60 @@ def test_a_certificate_that_misses_this_pcs_address_says_so() -> None:
             await _wait_until(pilot, lambda: not screen._busy
                               and bool(screen.query_one("#setup-tls-cert", Input).value))
             assert "192.168.1.50" in _text(screen, "#setup-status")
+
+    asyncio.run(scenario())
+
+
+def test_this_pc_alone_is_not_encrypted_unless_asked_and_then_gets_a_certificate() -> None:
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(pilot, app)
+            https = screen.query_one("#setup-https", Checkbox)
+            assert not https.value  # nothing leaves the PC, so no certificate to trust
+
+            https.value = True
+            screen.query_one("#setup-model", Select).value = 0
+            await _wait_until(pilot, lambda: not screen.query_one("#setup-start", Button).disabled)
+            screen.query_one("#setup-start", Button).press()
+            await _wait_until(pilot, lambda: bool(advisor.called("start")) and not screen._busy)
+
+            started = advisor.called("start")[0]
+            assert started["lan"] is False
+            assert (started["tls_cert"], started["tls_key"]) == (
+                CERTIFICATE.cert_path, CERTIFICATE.key_path)
+
+    asyncio.run(scenario())
+
+
+def test_on_windows_the_card_also_offers_the_command_for_opencode_in_wsl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("jaull.presentation.serving._running_on_windows", lambda: True)
+    argv = ["llama-server", "--ssl-cert-file", r"C:\Users\p\AppData\Local\jaull\serve\tls\c.pem"]
+    shared = ServerStatus(
+        state=STATE.model_copy(update={"tls": True, "host": "0.0.0.0", "argv": argv}),
+        running=True, healthy=True,
+    )
+
+    async def scenario() -> None:
+        advisor = SetupAdvisor()
+        app = JaullApp(advisor=advisor)  # type: ignore[arg-type]
+        copied: list[str] = []
+        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+        monkeypatch.setattr("jaull.tui.clipboard._system_copy", lambda text: False)
+        async with app.run_test(size=(120, 50)) as pilot:
+            screen = await _open(pilot, app)
+            assert not screen.query_one("#setup-run-wsl-row").display
+            advisor.running = True
+            screen._show_server(shared, describe=False)
+            await pilot.pause()
+            assert screen.query_one("#setup-run-wsl-row").display
+            assert "/mnt/c/Users/p/AppData/Local/jaull/serve/tls/c.pem" in _text(
+                screen, "#setup-run-wsl")
+            screen.query_one("#setup-copy-run-wsl", Button).press()
+            await pilot.pause()
+            assert copied[-1].startswith("NODE_EXTRA_CA_CERTS=/mnt/c/Users/p/")
 
     asyncio.run(scenario())

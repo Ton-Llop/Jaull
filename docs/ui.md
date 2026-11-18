@@ -21,6 +21,14 @@ The TUI opens on a choice between a guided analysis and the individual tools.
 
 ![Welcome screen](assets/tui-welcome.svg)
 
+## Keyboard navigation
+
+Use the arrow keys to move through menus, and Enter to open the selected item or
+activate a focused button. Where the focused control or screen does not use an arrow
+key, Down/Right move to the next control in tab order and Up/Left move to the previous
+one. Text editing, option selection and scrolling keep their own arrow keys. Use
+Tab or Shift+Tab to leave those controls without changing their value.
+
 ## Hardware analysis
 
 Each checklist line turns green when its probe actually returns — there is no fake
@@ -211,24 +219,26 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    recommended.
 2. **llama.cpp.** The build Jaull installed for that backend, or **Install llama.cpp**,
    which downloads the pinned official build and checks its SHA-256.
-3. **Model.** A downloaded model from the list, or a repository and quantization to
-   download, or **Find a model**, which opens the guided search. There the Run buttons
-   read **Use for server**, and the chosen GGUF plan fills in the repository and
-   quantization back in Setup. It comes before the server settings because the context
-   and the people it can serve depend on the model.
-4. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
+3. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
    context per person and port. Once a model is chosen, a line below shows the largest
    context per person this machine can serve with it, never above what the model was
    trained for. It is recomputed when the model, the people or the backend change.
    **Enable the chat page** (off by default) also serves
    llama.cpp's own chat page at the server URL, which asks for the API key. **Share the
    context** keeps one pool of the given context for everyone (`--shared-context`).
-   Sharing on the network shows two fields for an HTTPS certificate and key, and a
-   **Generate certificate** button that makes a self-signed one and fills them in (a browser
-   shows a warning to accept once). Without them the note under the choice turns into a
+   **Encrypt the connection (HTTPS)** is on by default when sharing on the network and off
+   for this PC alone, where nothing leaves the machine; either can be changed. With it on,
+   Jaull makes a self-signed certificate when the server starts (a browser shows a warning
+   to accept once, and opencode needs it marked as trusted: Setup shows the command). The
+   two fields below, for a certificate and key of your own, and the **Generate certificate**
+   button are optional. Sharing with HTTPS off turns the note under the choice into a
    warning: traffic crosses the network unencrypted. It also says that slots are parallel lanes, not separate users.
    **Cache conversations between turns** (on by default) shows what it costs either way:
    faster replies but content kept in memory, or nothing kept but long chats much slower.
+4. **Model.** A downloaded model from the list, or a repository and quantization to
+   download, or **Find a model**, which opens the guided search. There the Run buttons
+   read **Use for server**, and the chosen GGUF plan fills in the repository and
+   quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
    [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). When it is
    running, this step becomes a hand-over card (below); the plan, the start script, the log

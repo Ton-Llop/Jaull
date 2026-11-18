@@ -323,9 +323,12 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   (`LLAMA_SERVER_SLOTS_VERIFIED_BUILDS`, today b11889). Both need the API key. Any other
   build runs with `--no-slots`. They feed the server monitor in the TUI, which also stops
   reading `/slots` if an answer ever carries text.
-- HTTPS when both `--tls-cert` and `--tls-key` are given. Shared with `--lan` but without
-  them, `start` warns that prompts, answers and the API key cross the network
-  unencrypted. Whenever the server is shared it also says that slots are parallel lanes,
+- HTTPS is on by default when sharing with `--lan`, and off for this PC alone, where
+  nothing leaves the machine. `--https` and `--no-https` choose it either way. With no files
+  given, `start` makes the self-signed certificate (or keeps the one `jaull serve cert`
+  made, renewed first if it expired); `--tls-cert` and `--tls-key` give files of your own
+  and win, and cannot be combined with `--no-https`. Shared with `--lan --no-https`,
+  `start` warns that prompts, answers and the API key cross the network unencrypted. Whenever the server is shared it also says that slots are parallel lanes,
   not separate users: everyone shares one key and nothing keeps one person's
   conversations apart from another's. llama-server only reads a certificate, it does not
   make one: `jaull serve cert` writes a self-signed one (`serve/tls/server-cert.pem` and
@@ -335,11 +338,19 @@ The server starts detached, and `start` waits until `/health` answers. Defaults:
   address is no longer covered; `--renew` replaces it, and so does running it after it
   expired. A self-signed certificate encrypts the traffic but nothing trusts it by itself: a
   browser warns once, and a program needs the certificate file marked as trusted. Setup has
-  a **Generate certificate** button that fills in the two fields.
+  an **Encrypt the connection (HTTPS)** checkbox that does the same.
 
-  Once that certificate exists, `serve start --lan` uses it without any flag (renewed first
-  if it expired), and Setup fills the two fields when sharing on the network is chosen.
-  Files given by hand win, and deleting `serve/tls` goes back to plain HTTP. The year is
+  A client must also use one of the addresses the certificate covers. From WSL, opencode
+  must connect to the PC's network address (`192.168.x.x`, which the `opencode.json` that
+  Jaull writes already uses), not to the address WSL reports for Windows (`172.x`, the
+  gateway): that one is not in the certificate and curl fails with "no alternative
+  certificate subject name matches target host name", even with the certificate trusted.
+  Windows trusting the file does not make WSL trust it: pass it with
+  `NODE_EXTRA_CA_CERTS` using the `/mnt/c/...` path. If the router gives the PC another
+  address, the certificate no longer covers it: `jaull serve cert --renew`.
+
+  Once that certificate exists, `serve start` reuses it (renewed first if it expired).
+  Files given by hand win, and deleting `serve/tls` makes a new one the next time HTTPS is on. The year is
   deliberate: a shorter life adds little, because the key sits next to the API key, which
   never expires, and a certificate that keeps changing teaches people to accept the browser
   warning, the only sign of someone in the middle. Use `--renew` if someone who had access

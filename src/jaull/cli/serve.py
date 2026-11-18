@@ -46,6 +46,8 @@ class ServeOptions:
     opencode_config: bool = True
     #: How llama-server reads the model (-lm); None = decided by Jaull, "default" = llama.cpp's.
     load_mode: str | None = None
+    #: Encrypt with HTTPS. None: yes when sharing on the network, no for this PC alone.
+    https: bool | None = None
 
 
 def run_serve_start(
@@ -56,6 +58,9 @@ def run_serve_start(
     console = make_console()
     if (options.tls_cert is None) != (options.tls_key is None):
         _error(console, "TLS needs both --tls-cert and --tls-key.")
+        return 2
+    if options.https is False and options.tls_cert is not None:
+        _error(console, "--no-https cannot be combined with --tls-cert and --tls-key.")
         return 2
     resolved = advisor or AdvisorService.default()
     try:
@@ -76,14 +81,14 @@ def run_serve_start(
         )
         _print_plan(console, plan)
         tls_cert, tls_key = options.tls_cert, options.tls_key
-        if options.lan and tls_cert is None:
-            detected = resolved.detected_server_certificate()
-            if detected is not None:
-                tls_cert, tls_key = detected.cert_path, detected.key_path
-                console.print(
-                    "Using the certificate from `jaull serve cert`, valid until "
-                    f"{detected.expires:%Y-%m-%d}.", highlight=False, markup=False,
-                )
+        https = options.https if options.https is not None else options.lan
+        if https and tls_cert is None:
+            certificate = resolved.create_server_certificate()
+            tls_cert, tls_key = certificate.cert_path, certificate.key_path
+            made = "Created a self-signed certificate" if certificate.created else (
+                "Using the certificate from `jaull serve cert`")
+            console.print(f"{made}, valid until {certificate.expires:%Y-%m-%d}.",
+                          highlight=False, markup=False)
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
             tls_cert=tls_cert, tls_key=tls_key, web_ui=options.web_ui,
