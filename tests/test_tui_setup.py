@@ -568,7 +568,7 @@ def test_a_model_that_does_not_fit_is_not_ready_to_start() -> None:
             await _wait_until(pilot, lambda: bool(advisor.called("limit")) and not screen._busy)
             await pilot.pause()
             states = screen._step_states()
-            assert states[3] == ("warn", "does not fit here")
+            assert states[2] == ("warn", "does not fit here")
             assert states[4][1] != "ready to start"
             assert "does not fit" in _text(screen, "#setup-limit")
             assert screen.query_one("#setup-start", Button).disabled

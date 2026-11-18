@@ -653,3 +653,47 @@ def test_the_command_that_launched_the_server_is_shown_in_the_details() -> None:
     running = "\n".join(status_lines(
         ServerStatus(state=started.state, running=True, healthy=True)))
     assert "--port 8090" in running
+
+
+def test_every_flag_jaull_gives_llama_server_is_explained_in_plain_words() -> None:
+    # A flag added to the server command without a line in the glossary shows up bare in
+    # the details people read, so this fails until it is explained.
+    from jaull.domain.runtime import RuntimeFlag, RuntimeFlagSource
+    from jaull.presentation.serving import FLAG_MEANINGS
+    from jaull.runtime.llama_server import ServerLaunch, server_argv
+
+    launch = ServerLaunch(
+        binary=Path("/o/llama-server"), model=Path("/m/q.gguf"), parallel=2,
+        total_context=65536, context_per_user=32768, host="0.0.0.0", port=8090,
+        api_key_file=Path("/d/api-key"), alias="q",
+        launch_flags=(
+            RuntimeFlag(name="--n-gpu-layers", value="-1", source=RuntimeFlagSource.POLICY,
+                        explanation="x"),
+            RuntimeFlag(name="--device", value="Vulkan0", source=RuntimeFlagSource.POLICY,
+                        explanation="x"),
+            RuntimeFlag(name="--flash-attn", value="off", source=RuntimeFlagSource.POLICY,
+                        explanation="x"),
+        ),
+        tls_cert=Path("/t/c.pem"), tls_key=Path("/t/k.pem"), slots=True,
+        prompt_cache=False, cache_ram_mib=2048, sleep_idle_seconds=45, load_mode="dio",
+    )
+    flags = {token for token in server_argv(launch) if token.startswith("-")} - {"-1"}
+
+    assert flags - set(FLAG_MEANINGS) == set()
+
+
+def test_the_breakdown_shortens_paths_and_pairs_each_flag_with_its_meaning() -> None:
+    from jaull.presentation.serving import command_breakdown
+
+    long_model = r"C:\Users\someone\AppData\Local\jaull\models\org\repo\Model-Q4.gguf"
+    lines = command_breakdown([
+        r"C:\llama-win\llama-server.exe", "--model", long_model, "--n-gpu-layers", "-1",
+        "--kv-unified", "--future-flag", "7",
+    ])
+
+    text = "\n".join(lines)
+    assert "the program that runs the model" in lines[0]
+    assert "AppData" not in text and "Model-Q4.gguf" in text  # long paths are shortened
+    assert any(line.lstrip().startswith("--n-gpu-layers -1") and "graphics card" in line
+               for line in lines)  # "-1" is the flag's value, not another flag
+    assert any(line.strip() == "--future-flag 7" for line in lines)  # unknown: shown, no text

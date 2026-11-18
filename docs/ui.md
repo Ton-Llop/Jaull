@@ -211,7 +211,12 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    recommended.
 2. **llama.cpp.** The build Jaull installed for that backend, or **Install llama.cpp**,
    which downloads the pinned official build and checks its SHA-256.
-3. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
+3. **Model.** A downloaded model from the list, or a repository and quantization to
+   download, or **Find a model**, which opens the guided search. There the Run buttons
+   read **Use for server**, and the chosen GGUF plan fills in the repository and
+   quantization back in Setup. It comes before the server settings because the context
+   and the people it can serve depend on the model.
+4. **Server.** *Only this PC* (default) or *Share on the local network*, people at once,
    context per person and port. Once a model is chosen, a line below shows the largest
    context per person this machine can serve with it, never above what the model was
    trained for. It is recomputed when the model, the people or the backend change.
@@ -224,16 +229,13 @@ OpenAI-compatible `llama-server`, on one screen with five steps:
    warning: traffic crosses the network unencrypted. It also says that slots are parallel lanes, not separate users.
    **Cache conversations between turns** (on by default) shows what it costs either way:
    faster replies but content kept in memory, or nothing kept but long chats much slower.
-4. **Model.** A downloaded model from the list, or a repository and quantization to
-   download, or **Find a model**, which opens the guided search. There the Run buttons
-   read **Use for server**, and the chosen GGUF plan fills in the repository and
-   quantization back in Setup.
 5. **Start server.** The same sizing and security defaults as `jaull serve start` (see
    [`docs/cli.md`](cli.md#serve--a-model-as-a-local-openai-compatible-server)). When it is
    running, this step becomes a hand-over card (below); the plan, the start script, the log
-   and the exact `llama-server` command that was run are under **Technical details**,
-   folded (the command holds the path to the API key file, never the key). Jaull never
-   changes the firewall.
+   and the `llama-server` command are under **Technical details**, folded. The command is
+   shown one piece per line with what each flag means in plain words (long paths are
+   shortened there), and **Copy the full command** copies it whole. It holds the path to the
+   API key file, never the key. Jaull never changes the firewall.
    **Stop server** stops it.
 
 If a server is already running when the screen opens, its status is shown and only Monitor

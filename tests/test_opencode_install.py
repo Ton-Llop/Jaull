@@ -143,3 +143,23 @@ def test_a_failed_write_keeps_the_original_and_leaves_no_copy_of_the_key(
     assert result is not None and result.outcome == "unreadable"
     assert json.loads(target.read_text(encoding="utf-8")) == THEIRS
     assert not (opencode_home / "opencode.json.tmp").exists()
+
+
+def test_switching_model_moves_the_default_only_if_the_default_was_ours() -> None:
+    first = merge_opencode_config(json.dumps(THEIRS), opencode_config(
+        base_url="http://127.0.0.1:8090/v1", api_key="KEY", alias="model-a", context_limit=8192))
+    assert first.config is not None
+    # The person picked the server as their default, then starts another model.
+    chosen = {**first.config, "model": "jaull/model-a"}
+    other = opencode_config(base_url="http://127.0.0.1:8090/v1", api_key="KEY",
+                            alias="model-b", context_limit=8192)
+
+    moved = merge_opencode_config(json.dumps(chosen), other)
+
+    assert moved.config is not None
+    assert list(moved.config["provider"]["jaull"]["models"]) == ["model-b"]  # model-a is gone
+    assert moved.config["model"] == "jaull/model-b" and moved.selected
+    # A default that belongs to another provider is theirs and stays.
+    kept = merge_opencode_config(json.dumps(first.config), other)
+    assert kept.config is not None and kept.config["model"] == "anthropic/claude"
+    assert not kept.selected

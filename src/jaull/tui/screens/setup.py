@@ -2,8 +2,8 @@
 
 1. Machine and backend: detected, and changeable when there is more than one.
 2. llama.cpp: the build Jaull installed for that backend, or a button to install it.
-3. Server: this PC only or the local network, how many people at once, context, port.
-4. Model: one already downloaded, or a repository and quantization to download.
+3. Model: one already downloaded, or a repository and quantization to download.
+4. Server: this PC only or the local network, how many people at once, context, port.
 5. Start: the same composition as ``jaull serve start``, through ``AdvisorService``.
 
 Everything slow runs in a worker thread; the screen only collects choices and
@@ -12,6 +12,7 @@ shows the text that ``presentation.serving`` writes for the CLI too.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,7 @@ from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError
 from jaull.presentation.qr import qr_lines
 from jaull.presentation.serving import (
+    full_command,
     opencode_run_command,
     plan_lines,
     start_lines,
@@ -77,8 +79,8 @@ _MODEL_HINT = (
     "comes back to this screen."
 )
 
-_STEPS = ("Machine", "llama.cpp", "Server", "Model", "Start")
-_TITLES = ("Machine and backend", "llama.cpp", "Server", "Model", "Start")
+_STEPS = ("Machine", "llama.cpp", "Model", "Server", "Start")
+_TITLES = ("Machine and backend", "llama.cpp", "Model", "Server", "Start")
 
 _EXPOSURE_NOTE = {
     False: "Only programs on this PC can connect.",
@@ -116,12 +118,31 @@ def _qr_markup(text: str, *, plain: bool = False) -> str:
     return "\n".join(f"[{style}]{line}[/]" for line in qr_lines(text, inverted=not plain))
 
 
+def _breakdown_row(line: str) -> str:
+    """One line of the command breakdown: the flag stands out, what it means recedes."""
+    match = re.match(r"^(\s+)(\S.*?)(\s{2,})(\S.*)$", line)
+    if match is None:
+        return f"[{palette.ACCENT}]{escape(line)}[/]"
+    indent, command, gap, meaning = match.groups()
+    return (f"{indent}[{palette.ACCENT}]{escape(command)}[/]{gap}"
+            f"[{palette.INK_2}]{escape(meaning)}[/]")
+
+
 def _styled_output(lines: list[str]) -> str:
     """The plain output lines, coloured by role. The text itself is unchanged."""
     styled: list[str] = []
     key_next = False
+    breakdown = False
     for line in lines:
         text = escape(line)
+        if line == "How it was started":
+            styled.append(f"[b {palette.INK}]{text}[/]")
+            breakdown = True
+            continue
+        if breakdown and line.startswith("  "):
+            styled.append(_breakdown_row(line))
+            continue
+        breakdown = False
         if key_next and line.startswith("  "):
             styled.append(f"[b {palette.WARN} on {palette.WARN_TINT}] {text.strip()} [/]")
             key_next = False
@@ -184,6 +205,7 @@ class SetupScreen(Screen[None]):
         # How to run opencode with the server's certificate, and whether Jaull already added
         # the server to the opencode on this PC.
         self._run_command: str | None = None
+        self._full_command: str | None = None
         self._opencode_done = False
         self._key_qr = False
         self._key_qr_timer: Timer | None = None
@@ -223,6 +245,18 @@ class SetupScreen(Screen[None]):
                 yield ActionButton("Install llama.cpp", id="setup-install", disabled=True)
             with Vertical(classes="setup-section"):
                 yield from self._heading(3)
+                yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
+                                  allow_blank=True)
+                yield Button("Use another model instead", id="setup-other", classes="chip")
+                with Vertical(id="setup-download"):
+                    yield Static("or download one", classes="setup-or")
+                    with Horizontal(id="setup-model-inputs"):
+                        yield Input(placeholder="Hugging Face repo id", id="setup-repo")
+                        yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
+                yield Static(_MODEL_HINT, classes="setup-note", markup=False)
+                yield ActionButton("Find a model", id="setup-find")
+            with Vertical(classes="setup-section"):
+                yield from self._heading(4)
                 with RadioSet(id="setup-exposure"):
                     yield RadioButton("Only this PC", value=True, id="setup-local")
                     yield RadioButton("Share on the local network", id="setup-lan")
@@ -261,18 +295,6 @@ class SetupScreen(Screen[None]):
                 yield Static("", id="setup-capacity", classes="setup-capacity")
                 yield Static("Choose a model to see the largest context this machine can serve.",
                              id="setup-limit", classes="setup-note", markup=False)
-            with Vertical(classes="setup-section"):
-                yield from self._heading(4)
-                yield Select[int]([], prompt="Choose a downloaded model", id="setup-model",
-                                  allow_blank=True)
-                yield Button("Use another model instead", id="setup-other", classes="chip")
-                with Vertical(id="setup-download"):
-                    yield Static("or download one", classes="setup-or")
-                    with Horizontal(id="setup-model-inputs"):
-                        yield Input(placeholder="Hugging Face repo id", id="setup-repo")
-                        yield Input(placeholder="quantization, e.g. Q4_K_M", id="setup-quant")
-                yield Static(_MODEL_HINT, classes="setup-note", markup=False)
-                yield ActionButton("Find a model", id="setup-find")
             with Vertical(classes="setup-section -last", id="setup-result"):
                 yield from self._heading(5)
                 # What to hand over once the server runs: a row and a Copy for each thing.
@@ -303,6 +325,7 @@ class SetupScreen(Screen[None]):
                 yield Static("", id="setup-share-hint", classes="setup-note", markup=False)
                 with Collapsible(title="Technical details", collapsed=True, id="setup-details"):
                     yield Static("", id="setup-output", classes="setup-output -empty")
+                    yield ActionButton("Copy the full command", id="setup-copy-command")
         yield Static("Reading this machine...", id="setup-status", classes="status-line")
         with Horizontal(id="setup-actions"):
             yield Button("Start server", id="setup-start", classes="-primary", disabled=True)
@@ -520,7 +543,7 @@ class SetupScreen(Screen[None]):
                 prompt_cache=choice.prompt_cache,
             )
             self._later(self._opencode_added, started.opencode)
-            lines += ["", *start_lines(started)]
+            lines += ["", *start_lines(started, explained=True)]
             notice = advisor.llama_cpp_update_notice()
             if notice is not None:
                 lines += ["", f"Note: {notice}"]
@@ -573,6 +596,7 @@ class SetupScreen(Screen[None]):
         for row in self.query(".setup-copy-row"):
             row.display = running  # the key and its config only exist with a server
         self.query_one("#setup-run-row").display = bool(running and self._run_command)
+        self.query_one("#setup-copy-command").display = bool(running and self._full_command)
         self.query_one("#setup-run", Static).update(
             f"Run opencode with this command   [b]{escape(self._run_command or '')}[/]")
         self.query_one("#setup-opencode-label", Static).update(
@@ -645,10 +669,12 @@ class SetupScreen(Screen[None]):
                        if status.running and status.state is not None else None)
         self._run_command = (opencode_run_command(status.state)
                              if status.running and status.state is not None else None)
+        self._full_command = (full_command(status.state)
+                              if status.running and status.state is not None else None)
         if not status.running:
             self._opencode_done = False
         if status.running and describe:
-            self._output(status_lines(status))
+            self._output(status_lines(status, explained=True))
         self._refresh()
 
     def _refresh(self, status: str = "") -> None:
@@ -707,15 +733,15 @@ class SetupScreen(Screen[None]):
             else (_DONE, "found on this PC") if local is not None and local.supports_backend
             else (_WARN, f"no {backend.value if backend else ''} build") if local is not None
             else (_WARN, "not installed"),
-            (_WARN, numbers) if isinstance(numbers, str)
-            else (_WARN, "context too large") if over
-            else (_DONE, "this PC" if not self._lan() else "local network"),
             (_PENDING, "choose one") if isinstance(model, str)
             else (_PENDING, "context not checked") if limit is None
             # The check found no context at all that fits: nothing to start.
             else (_WARN, "does not fit here")
             if limit is not None and limit.largest_per_user is None
             else (_DONE, model[0].split("/")[-1]),
+            (_WARN, numbers) if isinstance(numbers, str)
+            else (_WARN, "context too large") if over
+            else (_DONE, "this PC" if not self._lan() else "local network"),
         ]
         if self._running:
             states.append((_DONE, "ready") if self._healthy else (_WARN, "not ready"))
@@ -810,6 +836,9 @@ class SetupScreen(Screen[None]):
             self._open_monitor()
         elif event.button.id == "setup-copy-key":
             self._copy_api_key()
+        elif event.button.id == "setup-copy-command" and self._full_command is not None:
+            self._note = copy_text(self.app, self._full_command, "Command")
+            self._refresh(self._note)
         elif event.button.id == "setup-copy-run" and self._run_command is not None:
             self._note = copy_text(self.app, self._run_command, "Command")
             self._refresh(self._note)

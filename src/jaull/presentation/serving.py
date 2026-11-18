@@ -134,13 +134,81 @@ def _opencode_install_lines(started: ServerStart) -> list[str]:
     return lines + _certificate_trust_lines(started)
 
 
-def _command_lines(state: ServerState) -> list[str]:
-    """What was run, for whoever wants to see or repeat it. The key itself is never in it."""
-    if not state.argv:
+# What each flag Jaull gives llama-server means, in words for someone who has never seen one.
+# (meaning, whether the flag is followed by a value). A flag missing here is shown without text.
+FLAG_MEANINGS: dict[str, tuple[str, bool]] = {
+    "--model": ("the model file", True),
+    "--ctx-size": ("memory for all the chats together, in tokens", True),
+    "--parallel": ("chats served at the same time", True),
+    "--kv-unified": ("the chats share one pool of memory", False),
+    "--kv-unified-per-slot": ("the most one chat can use, in tokens", True),
+    "--n-gpu-layers": ("layers of the model on the graphics card (-1: all)", True),
+    "--device": ("which graphics card runs it", True),
+    "--flash-attn": ("lighter reading of long chats (on, off or auto)", True),
+    "--host": ("who can connect (127.0.0.1: only this PC)", True),
+    "--port": ("the door the server listens on", True),
+    "--api-key-file": ("the password file (the password is never shown)", True),
+    "--alias": ("the name the model answers to", True),
+    "--metrics": ("lets Jaull read the live counters", False),
+    "--slots": ("lets Jaull see how full each chat is", False),
+    "--no-slots": ("keeps the per-chat figures hidden", False),
+    "--no-webui": ("no built-in chat page", False),
+    "--no-cache-prompt": ("remembers nothing between turns", False),
+    "--cache-ram": ("memory that may keep past conversations, in MiB", True),
+    "-lm": ("how the file is read; dio keeps it out of RAM", True),
+    "--sleep-idle-seconds": ("frees the graphics card after this many idle seconds", True),
+    "--ssl-cert-file": ("the HTTPS certificate", True),
+    "--ssl-key-file": ("the HTTPS private key", True),
+}
+_SHORTEN_FROM = 34
+_FLAG_COLUMN = 46
+
+
+def _short(value: str) -> str:
+    """A long path as its last part, so the lines stay readable; the copy is not shortened."""
+    if len(value) <= _SHORTEN_FROM or ("/" not in value and "\\" not in value):
+        return value
+    separator = "\\" if "\\" in value else "/"
+    return f"…{separator}{value.replace(chr(92), '/').rsplit('/', 1)[-1]}"
+
+
+def command_breakdown(argv: list[str]) -> list[str]:
+    """The command one flag per line, each with what it means."""
+    if not argv:
         return []
-    quoted = (subprocess.list2cmdline(state.argv) if os.name == "nt"
-              else shlex.join(state.argv))
-    return ["Command that was run:", f"  {quoted}"]
+    lines = [f"  {_short(argv[0]):<{_FLAG_COLUMN}}  the program that runs the model"]
+    index = 1
+    while index < len(argv):
+        flag = argv[index]
+        meaning, takes_value = FLAG_MEANINGS.get(flag, ("", None))
+        has_next = index + 1 < len(argv)
+        if takes_value is None:  # unknown: a value is whatever does not look like a flag
+            takes_value = has_next and not argv[index + 1].startswith("-")
+        if takes_value and has_next:
+            text = f"{flag} {_short(argv[index + 1])}"
+            index += 2
+        else:
+            text = flag
+            index += 1
+        lines.append(f"    {text:<{_FLAG_COLUMN}}  {meaning}".rstrip())
+    return lines
+
+
+def full_command(state: ServerState) -> str | None:
+    """The whole command as one line to copy. The key is never in it, only its file."""
+    if not state.argv:
+        return None
+    return subprocess.list2cmdline(state.argv) if os.name == "nt" else shlex.join(state.argv)
+
+
+def _command_lines(state: ServerState, *, explained: bool = False) -> list[str]:
+    """What was run, for whoever wants to see or repeat it."""
+    command = full_command(state)
+    if command is None:
+        return []
+    if explained:
+        return ["", "How it was started", *command_breakdown(state.argv)]
+    return ["Command that was run:", f"  {command}"]
 
 
 def opencode_run_command(state: ServerState) -> str | None:
@@ -159,7 +227,7 @@ def _certificate_trust_lines(started: ServerStart) -> list[str]:
             f"    {command}"]
 
 
-def start_lines(started: ServerStart) -> list[str]:
+def start_lines(started: ServerStart, *, explained: bool = False) -> list[str]:
     """Everything the person needs after a start. The API key appears only when new."""
     state = started.state
     reach = started.lan_url or state.url
@@ -193,7 +261,7 @@ def start_lines(started: ServerStart) -> list[str]:
         )
     lines += _opencode_install_lines(started)
     lines += [f"Start script: {started.start_script}", "Stop it with: jaull serve stop"]
-    lines += _command_lines(state)
+    lines += _command_lines(state, explained=explained)
     if started.firewall_rule is not None:
         lines += [
             "",
@@ -204,7 +272,7 @@ def start_lines(started: ServerStart) -> list[str]:
     return lines
 
 
-def status_lines(status: ServerStatus) -> list[str]:
+def status_lines(status: ServerStatus, *, explained: bool = False) -> list[str]:
     if status.state is None or not status.running:
         return ["No Jaull server is running."]
     state = status.state
@@ -214,8 +282,16 @@ def status_lines(status: ServerStatus) -> list[str]:
         f"  URL:     {state.url}",
         f"  PID:     {state.pid} (started {state.started_at})",
         f"  Log:     {state.log_path}",
-        *_command_lines(state),
+        *_command_lines(state, explained=explained),
     ]
 
 
-__all__ = ["opencode_run_command", "plan_lines", "start_lines", "status_lines"]
+__all__ = [
+    "FLAG_MEANINGS",
+    "command_breakdown",
+    "full_command",
+    "opencode_run_command",
+    "plan_lines",
+    "start_lines",
+    "status_lines",
+]

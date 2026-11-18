@@ -394,7 +394,10 @@ If this PC has opencode (the `opencode` command, or its config folder
 `~/.config/opencode`, or `$XDG_CONFIG_HOME/opencode`), `start` also adds the server to it,
 pointing at this PC's own address. Only the `jaull` provider is written: your other
 providers and settings are untouched and your default `model` is kept (a config without
-one gets the server's; otherwise pick it with `/models`). Before the first change the file
+one gets the server's; otherwise pick it with `/models`). The `jaull` entry always holds
+the model being served now, so starting another model replaces the previous one, and a
+default that named the previous one (`jaull/…`) follows the new one; a default from any
+other provider is never moved. Before the first change the file
 is copied to `opencode.json.jaull-backup`, and the result is mode 0600 because it now
 holds the API key. A file that cannot be edited safely (it has comments, an
 `opencode.jsonc` exists, or an unexpected shape) is left alone and `start` says so; copy

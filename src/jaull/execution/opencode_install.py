@@ -54,7 +54,11 @@ def merge_opencode_config(existing: str | None, ours: dict[str, Any]) -> Opencod
     merged = dict(current)
     merged.setdefault("$schema", ours["$schema"])
     merged["provider"] = {**providers, _PROVIDER_ID: ours["provider"][_PROVIDER_ID]}
-    merged.setdefault("model", ours["model"])
+    default = merged.setdefault("model", ours["model"])
+    if isinstance(default, str) and default.startswith(f"{_PROVIDER_ID}/"):
+        # Their default is the server from an earlier start: it follows the model now served,
+        # since the one it named is no longer in the list. Any other default is theirs.
+        merged["model"] = ours["model"]
     selected = merged["model"] == ours["model"]
     if merged == current:
         return OpencodeMerge(merged, "unchanged", selected)
