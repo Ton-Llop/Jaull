@@ -1,6 +1,7 @@
 # Status
 
-Updated 2026-11-17. Last verified remote CI checkpoint: [`ba5b5da`](https://github.com/Ton-Llop/Jaull/actions/runs/44152938519).
+Updated 2026-11-21. Last verified remote CI checkpoint: [`ba5b5da`](https://github.com/Ton-Llop/Jaull/actions/runs/44152938519).
+The commits after it (up to `89a2b8f`) have not been checked against CI here.
 
 ## What works
 
@@ -19,6 +20,18 @@ and compares predictions with measurements when the evidence allows it.
   and distinguishes a live process from one that responds to its health check.
   It checks the server binary and device before launch and rehashes cached models.
   Older published GGUFs are still accepted when the bytes match their accepted SHA.
+  - HTTPS is on by default when the server is shared (`--https` and `--no-https`,
+    and a checkbox in Setup), with a self-signed certificate Jaull makes.
+  - If opencode is installed, starting a server adds a `jaull` provider to its
+    config. Other providers and the default model are left alone, a backup is kept
+    and the file is mode 0600. A config with comments is left untouched.
+  - On native Windows with a dedicated Intel GPU the server gets
+    `--sleep-idle-seconds 45`, and `-lm dio` when the model fits on the GPU. Neither
+    is applied under WSL or on CPU, because they were only measured on native Windows.
+  - The TUI monitor does not keep a sleeping server awake: only `/slots` wakes it,
+    so with sleep on the monitor reads `/slots` only when the counters show activity.
+  - Setup can show the full `llama-server` command broken into flags, with what each
+    one means, and the command to make opencode in WSL trust the certificate.
 - **Measured ranking policies are active.** After the base order, stored
   measurements may reorder plans:
   - Quality reads a complete audited IFEval run of the plan's exact GGUF.
@@ -52,6 +65,22 @@ and compares predictions with measurements when the evidence allows it.
   These results are specific to the tested model, build and workload; they do not
   validate general VRAM availability or sustainable concurrency.
   See [the B60 experiments](docs/TFG/concurrencia-b60.md).
+- Qwen3.6-35B-A3B (UD-IQ4_XS) on the B60, native Windows, llama.cpp b11889, one run each:
+  - The KV cache plus recurrent state Jaull predicted matched llama.cpp's buffers
+    at 32K, 128K and 256K of context, and 1, 2 and 4 people at 32K each.
+  - With the server started from Jaull's TUI, `-lm dio` kept the process at 0.7 GB
+    resident while loading. Without it the same load took 12.2 GB resident and left
+    0.5 GB of RAM free.
+    Generation stayed at 61 to 65 tok/s over 7 requests with up to 14,859 tokens of
+    context. The sleep took the VRAM to zero and the first message woke it.
+  - IFEval, strict prompt level, 541 prompts: 0.824, tied with the dense Qwen3.8 27B
+    (0.821) inside the error, at about a quarter of the time per prompt. See
+    [the IFEval report](docs/ifeval-b60-prova.md).
+  - As a coding agent in opencode, 6 of 6 small tasks pass their tests, and 3 of 6 are
+    clean after ruff, mypy and a read of the patch. One attempt per task. See
+    [the mini-benchmark](docs/TFG/mini-benchmark-agentic.md).
+  - opencode on WSL2 reaches the server through the PC's network address. With the
+    self-signed certificate it needs `NODE_EXTRA_CA_CERTS` (a `/mnt/c/...` path).
 - RTX 2060 campaigns (2026-10-10/11), all three plans ranking-ready, tg128
   median over all stored calls: Qwen2.5-0.5B Q5_K_M 246.1 tok/s (6 calls),
   IFEval 25.9 %; Qwen2.5-1.5B 150.7 tok/s (4), 41.0 %; LFM2.5-1.2B 230.5 tok/s
@@ -90,12 +119,26 @@ and compares predictions with measurements when the evidence allows it.
 - NVML process VRAM is unavailable on the measured WDDM machines.
 - Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
 - Memory overhead, reserve and headroom are not calibrated from these runs.
+- The prompt cache grows in RAM while the server is used (the process went from 1.3 to
+  5.6 GB and free RAM fell to 3.7 GB). Its ceiling is computed once, at start, from the
+  RAM free at that moment, so it does not adapt if other programs use RAM later.
+- One run saw the VRAM drop to zero and the free RAM to 0 about 67 seconds after loading,
+  with the server awake. It did not repeat and its cause is unknown.
+- Under WSL2 the idle sleep is not applied and did not protect the PC. A shared server
+  that Windows runs and WSL reaches needs the firewall and the certificate set by hand:
+  a "This PC and WSL" sharing mode is designed but not built.
+- Serve was tried on three machines (a CPU laptop, an RTX 2060 PC and the B60 PC). The
+  B60 sweeps with 4, 8 and 16 people were started by hand with the configuration Jaull
+  proposes. The run Jaull started itself had 2 people.
 
 ## Next steps
 
-1. Repeat the native Windows B60 Serve run and compare prompt cache on/off with the
-   same workload, recording effective flags and minimum free system RAM.
-2. Consolidate the TFG evidence by separating tested code, physical measurements,
+1. Repeat the native Windows B60 Serve run with Jaull starting the server for several
+   people, and compare prompt cache on/off with the same workload, recording effective
+   flags and minimum free system RAM.
+2. Decide whether to put several models behind one address (llama.cpp's router mode or
+   llama-swap). Neither has been tried with Jaull's flags.
+3. Consolidate the TFG evidence by separating tested code, physical measurements,
    and unsupported or unvalidated configurations.
 
 Historical audits remain in [`docs/history/`](docs/history/).

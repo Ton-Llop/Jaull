@@ -2,9 +2,13 @@
 
 **Find out which local AI models your PC can actually run, and why.**
 
+[![CI](https://github.com/Ton-Llop/Jaull/actions/workflows/ci.yml/badge.svg)](https://github.com/Ton-Llop/Jaull/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Ton-Llop/Jaull/graph/badge.svg)](https://codecov.io/gh/Ton-Llop/Jaull)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [Website](https://jaull.tech) · [Quick start](#quick-start) ·
+[Serve a model](#serve-a-model-for-your-team) ·
 [What each button does](#what-each-button-does) · [Project status](STATUS.md)
 
 Running a language model on your own computer means picking a model, a quantization and a
@@ -23,21 +27,50 @@ there, and each one says whether it was measured or estimated.
 English general chat, Balanced priority, commercial use required. Five plans, each with its
 memory fit, runtime and file format.*
 
-## What you can do with it
+## Jaull in one picture
 
-- Get recommendations for your machine. Jaull reads model metadata from Hugging Face, so
-  nothing big is downloaded until you choose a model.
-- Run a recommended model from the same screen, then measure its speed and quality on your
-  own PC. Those measurements can reorder the list; an estimate never passes for a measurement.
-- Install a verified build of llama.cpp with one command, for CUDA, Vulkan or the CPU.
-- Serve a model to the people at home or in the office (work in progress). You pick the model
-  and how many people will use it, and Jaull sizes the context, starts `llama-server` and
-  gives you the address and an API key.
+```mermaid
+flowchart LR
+    subgraph predict["1. Predict (nothing is downloaded)"]
+        A["Scan<br/>CPU, RAM, GPU"] --> B["Ask<br/>what for, speed or quality"] --> C["Recommend<br/>the exact file, and why"]
+    end
+    subgraph verify["2. Check it on your PC"]
+        D["Run<br/>and verify the file"] --> E["Benchmark<br/>speed and quality"]
+    end
+    subgraph share["3. Share it"]
+        F["Serve<br/>for the people who need it"]
+    end
+    C --> D
+    E --> F
+```
 
-It runs on Linux, Windows and WSL2, with NVIDIA GPUs (CUDA), Intel Arc GPUs (Vulkan, tested
-on an Arc Pro B60) or just the CPU. AMD and Apple Silicon are untested, and a report from one
-of them helps a lot (see [Contributing](#contributing)). No language model writes the ranking
-or the explanations: they come from explicit, tested rules.
+Recommendations only read small metadata files. A model is downloaded when you press Run,
+Validate, Benchmark or Start server, and in the TUI each download asks first.
+
+## What do you want to do?
+
+| You want to | Use | How |
+|---|---|---|
+| Know which models fit your machine | Guided analysis | `uv run jaull ui` |
+| Check one model before downloading it | Estimate | `uv run jaull estimate <repo>` |
+| See how fast it really is here | Run, Validate, Benchmark | buttons on the results screen |
+| Leave a model running for your team | Set up a local server | `uv run jaull serve start <repo> --users 4 --lan` |
+| Find out why something does not work | Doctor | `uv run jaull doctor` |
+
+Measurements taken on your PC can reorder the list. An estimate never passes for a
+measurement, and no language model writes the ranking or the explanations: they come from
+explicit, tested rules.
+
+## Where it runs
+
+| Hardware | State |
+|---|---|
+| NVIDIA GPU (CUDA) | Tested on an RTX 2060 and an RTX 4060 |
+| Intel Arc GPU (Vulkan) | Tested on an Arc Pro B60. Use native Windows: under WSL2 the same card was 4 to 18 times slower and one model crashed |
+| CPU only | Tested on a laptop |
+| AMD (HIP, Vulkan) and Apple Silicon | Untested. A report from one of them helps a lot, see [Contributing](#contributing) |
+
+Operating systems: Linux, Windows and WSL2.
 
 ## Quick start
 
@@ -63,10 +96,11 @@ uv run jaull runtime install --backend vulkan   # or cuda, or cpu
 
 If something doesn't work, `uv run jaull doctor` tells you what is missing for each action.
 
-### Serve a model (work in progress)
+### Serve a model for your team
 
-The **Set up a local server** screen does this step by step and shows the largest context
-your machine can serve for the model you pick:
+Jaull can also leave the model running for the people who need it. The **Set up a local
+server** screen does it step by step and shows the largest context your machine can serve
+for the model you pick:
 
 ![Set up a local server, right after starting it](docs/assets/tui-setup.svg)
 
@@ -78,9 +112,41 @@ uv run jaull serve status
 uv run jaull serve stop
 ```
 
-The server speaks the OpenAI API, so any client that lets you set a base URL can use it. The
-API key is shown once. Jaull never touches your firewall: with `--lan` it prints the rule an
-administrator can run.
+When you press Start, Jaull does this, in order:
+
+| | What happens |
+|---|---|
+| 1 | Installs the llama.cpp build it was tested with, after checking its SHA-256. |
+| 2 | Sizes the server for the people who will use it at once, and the context each one gets. |
+| 3 | Starts `llama-server` locked down: this PC only unless you share it, a random API key kept off the command line, HTTPS when shared. |
+| 4 | Waits until the server answers, then prints the address and the API key (shown once). |
+| 5 | If [opencode](https://opencode.ai) is installed, adds the server to its config. Your other providers stay as they were and a backup is kept. |
+
+The server speaks the OpenAI API, so any client that lets you set a base URL can use it.
+Jaull never touches your firewall: with `--lan` it prints the rule an administrator can run.
+With HTTPS the certificate is self-signed, so each client has to be told to trust it
+(`jaull serve cert` makes it, and [docs/cli.md](docs/cli.md#serve--a-model-as-a-local-openai-compatible-server)
+explains the WSL case).
+
+On native Windows with a dedicated Intel GPU, the server also sleeps after 45 seconds without
+requests and loads the model file with direct I/O. On the B60 an idle card had its video
+memory copied into RAM, and a plain load filled the RAM of the PC. Both were measured on
+native Windows only, so Linux and WSL do not get them by default.
+
+How many people can use it at once? One run on the B60 with the Qwen3.6 35B A3B
+(`UD-IQ4_XS`), 8 slots sharing a 192K context pool:
+
+| People at once | Speed for each | Total speed | First token |
+|---:|---:|---:|---:|
+| 1 | 62.5 tok/s | 53.5 tok/s | 0.6 s |
+| 4 | 33.2 tok/s | 104.1 tok/s | 2.1 s |
+| 8 | 19.4 tok/s | 116.9 tok/s | 4.5 s |
+| 16 (8 waiting) | 19.4 tok/s | 118.5 tok/s | 12.0 s |
+
+Medians of 3 rounds with prompts of about 650 words and 256-token answers, on 2026-11-13,
+with a server started by hand using the configuration Jaull now proposes. It holds for that
+model, that build and that workload, not for any machine. Details and the memory checks are
+in [docs/TFG/concurrencia-b60.md](docs/TFG/concurrencia-b60.md).
 
 Setup probes the selected `llama-server` itself, then checks its SHA-256 and device
 binding again before starting. A changed binary or device requires preparing the server
@@ -387,7 +453,7 @@ button that says so, and downloads always need their own checkbox. Keys: `Esc` g
 |---|---|
 | **Guided analysis** | Scans the hardware, asks the questions, searches the Hub and ranks plans. |
 | **Advanced tools** | Opens the individual tools: Scan, Inspect, Estimate, Doctor and Evaluate local GGUF quality. |
-| **Set up a local server** | Five steps on one screen: backend, llama.cpp (with an install button), who can connect and how much context, the model, and **Start server**. Work in progress. |
+| **Set up a local server** | Five steps on one screen: backend, llama.cpp (with an install button), who can connect and how much context, the model, and **Start server**. The newest feature: tried on three machines, see [STATUS.md](STATUS.md). |
 | **Find models** (wizard) | Runs the search with your answers. *What matters most?* picks the priority: Best quality, Balanced, Fast responses or Lowest memory. |
 | **Cancel / Retry / Start again** (search) | Stop the search, try again after an error, or go back to the questions. |
 
@@ -485,10 +551,12 @@ Running real load rather than single prompts: concurrency sweeps, throughput and
 load, RAM and VRAM behaviour, degradation curves, and an estimate of the concurrency a
 machine can actually sustain.
 
-The next planned step is small: one loaded llama.cpp server with 1, 2 and 4
-simultaneous users. Loading and warm-up stay separate from request measurements.
-Multiple model processes would measure a different workload. This experiment is
-not implemented yet; see [the current status](STATUS.md).
+The first sweeps exist as experiments, not as a Jaull feature: one loaded llama.cpp server
+with 1, 4, 8 and 16 simultaneous users on the B60 (see
+[docs/TFG/concurrencia-b60.md](docs/TFG/concurrencia-b60.md) and the table in
+[Serve a model for your team](#serve-a-model-for-your-team)). Loading and warm-up stay separate
+from request measurements. Turning them into a repeatable command, and into a sustainable
+capacity estimate, is not done; see [the current status](STATUS.md).
 
 ### Deployment qualification
 
@@ -700,16 +768,18 @@ The short version — the full list is in [docs/limitations.md](docs/limitations
   device-local heaps and driver budgets for unambiguously identified discrete Intel/AMD
   devices. Capacity alone does not demonstrate available memory. The Vulkan heap/budget
   path still awaits physical B60 validation; unknown memory is never invented.
-- Vulkan and HIP/ROCm execution are implemented but not validated on real hardware.
+- Vulkan execution is validated on one machine, an Arc Pro B60 on native Windows (it is much
+  slower under WSL2). HIP/ROCm execution is implemented but not validated on real hardware.
 - The CLI `run` path is limited to single-file GGUF artifacts.
-- KV cache estimation assumes MHA/GQA with `sliding_window` as the only refinement; MoE,
+- KV cache estimation covers MHA/GQA, `sliding_window` and hybrid models whose GGUF header
+  declares how often a layer keeps a KV cache (checked on the Qwen3.6 35B A3B, to the byte).
   MLA and multimodal composites return `unknown` rather than a fabricated number.
 - Runtime overhead, device reserve and safety margin are documented heuristics tagged
   `ASSUMED`. Per-block offloading *is* modelled, but as a runtime-agnostic placement, not as
   a measured runtime layer cost — `gpu_transformer_blocks` is not the same unit as
   llama.cpp's `--n-gpu-layers`.
-- Benchmarks measure single-process throughput. There is no load model, no concurrency
-  sweep and no capacity curve yet.
+- The benchmark command measures single-process throughput. The concurrency sweeps on the
+  B60 were run by hand: there is no load model or capacity curve in the product yet.
 - No estimate substitutes for a real benchmark. That is the entire point of the second half
   of the pipeline.
 
