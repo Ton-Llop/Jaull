@@ -54,7 +54,8 @@ Original bytes are stored privately as described above.
 [`b60-contextos-20261124/`](b60-contextos-20261124/README.md) holds the raw llama.cpp logs behind
 [`docs/TFG/resultados-b60.md`](../docs/TFG/resultados-b60.md). It has 18 runs of three models
 (Qwen3-Coder 30B-A3B, Qwen2.5 32B and Qwen3.8 27B) on one Intel Arc Pro B60, native Windows, llama.cpp
-b11889 with Vulkan. The predictions were written and committed before measuring, in
+b11889 with Vulkan, plus one full-context run that fills the context of the P1 case up to 43,543 tokens.
+The predictions of the 18 runs were written and committed before measuring, in
 [`preregistre-b60.md`](../docs/TFG/preregistre-b60.md) and
 [`preregistre-b60-2.md`](../docs/TFG/preregistre-b60-2.md).
 
@@ -64,7 +65,8 @@ Cases whose projected memory exceeded the free VRAM were stopped at llama.cpp's 
 loaded, so nothing is known about whether they would have run.
 
 This is memory-fit evidence from one GPU on one day, with one run per case (P3, P4 and P6 were repeated and
-came out identical). It does not calibrate any estimator constant. The first run of P1 is kept and labeled
+came out identical). The full-context run covers one case and did not record VRAM while it ran. It does not
+calibrate any estimator constant. The first run of P1 is kept and labeled
 discarded because it lacked the flags that print the memory breakdown. These logs are not anonymized:
 `summary.txt` contains the author's Linux home path on the test PC.
 

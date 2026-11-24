@@ -50,5 +50,14 @@ All values are in MiB except tok/s. Projected is weights + KV + compute as repor
 | [`Q7-20261124-120635`](Q7-20261124-120635/summary.txt) | Q7 | Qwen3.8 27B | 114,688 | 22,256 | 1,357 | Meets | 15.42 | |
 | [`Q8-20261124-120748`](Q8-20261124-120748/summary.txt) | Q8 | Qwen3.8 27B | 131,072 | 23,296 | 317 | Does not meet | | Stopped at the fit step by a 500 MiB safety margin, not because it overflowed VRAM. Its `summary.txt` says "no cabe en VRAM", which is inaccurate for this case. |
 
+### Full-context run
+
+[`fill-P1-20261124-141935`](fill-P1-20261124-141935/summary.txt) is a separate run made with
+[`scripts/b60/b60-fill.sh`](../../scripts/b60/b60-fill.sh) on the P1 case (Coder 30B, `-c 49152`). It sends four requests
+with prompts of 3,883, 15,493, 30,973 and 43,543 tokens and generates 128 tokens after each. Its `summary.txt` lists the
+four steps. It also has `server.log` and `ram.csv`; the responses were not kept. The first lines of the summary say
+`abort=step 45000 took 332826 ms, longer than 240000`. That is not a failure: the slow-step guard fired after the last
+step, and the script no longer reports it that way.
+
 P3, P4 and P6 appear twice. The first run is the official one and the second is the repeat that the preregistration asks for
 (P3 and P6 end up within 100 MiB of the threshold). P4 was also run twice, and both runs came out identical.

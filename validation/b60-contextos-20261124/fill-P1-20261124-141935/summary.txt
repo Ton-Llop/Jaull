@@ -1,0 +1,9 @@
+case=P1 model=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf ctx=49152 steps=4000 16000 32000 45000
+loaded=1 abort=step 45000 took 332826 ms, longer than 240000: stopping the ramp
+--- steps
+target=4000 prompt_tokens=3883 prompt_ms=4360.417 prompt_tok_s=890.511159827145 gen_tokens=128 gen_tok_s=81.64619297302718 stop=limit
+target=16000 prompt_tokens=15493 prompt_ms=46792.824 prompt_tok_s=331.09777687279575 gen_tokens=128 gen_tok_s=58.429435185193704 stop=limit
+target=32000 prompt_tokens=30973 prompt_ms=172400.998 prompt_tok_s=179.65673261357804 gen_tokens=128 gen_tok_s=41.36266195761988 stop=limit
+target=45000 prompt_tokens=43543 prompt_ms=332826.183 prompt_tok_s=130.82804846516538 gen_tokens=128 gen_tok_s=33.37342524076824 stop=limit
+minimum available RAM=7176 MiB (threshold 3072)
+folder: /home/tonllop/b60-results/fill-P1-20261124-141935
