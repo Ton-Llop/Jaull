@@ -1,0 +1,12 @@
+caso=Q4 modelo=Qwen2.5-32B-Instruct-Q4_K_M.gguf ctx=32768
+ajuste: proyectado=26934 MiB libre=23613 MiB
+parado en el ajuste=no cabe en VRAM: parado antes de reservar el KV cargo=0 aborto=no
+generacion: no se genero
+RAM disponible minima=? MiB (umbral 3072)
+carpeta: /home/tonllop/b60-results/Q4-20261124-115554
+
+--- run.log ---
+[11:55:55] caso Q4: Qwen2.5-32B-Instruct-Q4_K_M.gguf ctx=32768; RAM disponible al inicio=8032 MiB; umbral de aborto=3072 MiB; flags extra: -lm dio
+[11:55:55] servidor Windows PID=18508
+[11:55:56] ajuste de llama.cpp: proyectado 26934 MiB, libre 23613 MiB, quedarian -3321 MiB
+[11:55:56] no cabe en VRAM: parado antes de reservar el KV

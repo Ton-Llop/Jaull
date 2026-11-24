@@ -1,7 +1,7 @@
 # Resultats de la B60
 
 Mesures del 2026-11-24 contra les prediccions de `preregistre-b60.md`. Les va executar l'autor per SSH a `monk-e` amb
-un script que no és al repositori. Les xifres són del log de llama.cpp b11889 amb `-lv 4`. **MESURAT** vol dir una lectura
+uns scripts que ara són a `scripts/b60/` (reconstruïts a partir de les versions que es van executar). Les xifres són del log de llama.cpp b11889 amb `-lv 4`. **MESURAT** vol dir una lectura
 de llama.cpp, **CALCULAT** una operació feta sobre aquestes lectures i **UNVERIFIED** el que no s'ha comprovat.
 
 ## Condicions
@@ -12,6 +12,9 @@ de llama.cpp, **CALCULAT** una operació feta sobre aquestes lectures i **UNVERI
 - Respecte del preregistre s'hi van afegir `-dev Vulkan1`, `--jinja` i `-lv 4`, que són els de la mesura de D123. `Vulkan0`
   és la gràfica integrada AMD i `-lv 4` fa imprimir el desglossament de memòria. `-lm dio` evita omplir la RAM del PC i no afecta la VRAM.
 - Els GGUF de `C:\llama-win` tenen el mateix sha256 que els que va verificar Jaull (comprovat el 2026-11-24).
+- Els logs crus de cada execució (`server.log` i `summary.txt`, que també porta la cronologia de l'script, la sèrie de RAM i els temps de
+  generació) són a `validation/b60-contextos-20261124/`, una carpeta per execució amb la data i l'hora al nom. El `README.md` d'aquella carpeta
+  té l'índex de les 18 execucions.
 - El preregistre també definia un mètode senzill de referència (mida del fitxer per 1,2). No s'usa aquí: no mira el context i
   els sis casos són a prop de la frontera de Jaull, on no els distingeix.
 

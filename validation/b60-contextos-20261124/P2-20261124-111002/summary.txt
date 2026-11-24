@@ -1,0 +1,42 @@
+caso=P2 modelo=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf ctx=51200
+cargo=1 aborto=no
+generacion: tokens=512 tok/s=95.9992184799435 stop=limit
+RAM disponible minima=12273 MiB (umbral 3072)
+flags extra: -lm dio
+carpeta: /home/tonllop/b60-results/P2-20261124-111002
+
+--- run.log ---
+[11:10:03] caso P2: Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf ctx=51200; RAM disponible al inicio=12945 MiB; umbral de aborto=3072 MiB; flags extra: -lm dio
+[11:10:03] servidor Windows PID=29704
+[11:10:23] carga: LOADED=1 ABORT=no
+
+--- ram.csv (hora,MiB disponibles de Windows) ---
+11:10:04,12878
+11:10:06,12512
+11:10:09,12451
+11:10:12,12497
+11:10:15,12492
+11:10:18,12426
+11:10:20,12273
+11:10:23,12389
+11:10:24,12384
+11:10:27,12384
+
+--- response.json (campos clave; se omite el texto generado) ---
+{
+  "tokens_predicted": 512,
+  "tokens_evaluated": 16,
+  "stop_type": "limit",
+  "truncated": false,
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 16,
+    "prompt_ms": 202.59,
+    "prompt_per_token_ms": 12.661875,
+    "prompt_per_second": 78.97724468137618,
+    "predicted_n": 512,
+    "predicted_ms": 5322.96,
+    "predicted_per_token_ms": 10.416751467710371,
+    "predicted_per_second": 95.9992184799435
+  }
+}

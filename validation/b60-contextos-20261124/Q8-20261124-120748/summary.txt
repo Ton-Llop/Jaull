@@ -1,0 +1,12 @@
+caso=Q8 modelo=Qwen3.8-27B-UD-Q4_K_M.gguf ctx=131072
+ajuste: proyectado=23296 MiB libre=23613 MiB
+parado en el ajuste=no cabe en VRAM: parado antes de reservar el KV cargo=0 aborto=no
+generacion: no se genero
+RAM disponible minima=? MiB (umbral 3072)
+carpeta: /home/tonllop/b60-results/Q8-20261124-120748
+
+--- run.log ---
+[12:07:49] caso Q8: Qwen3.8-27B-UD-Q4_K_M.gguf ctx=131072; RAM disponible al inicio=12598 MiB; umbral de aborto=3072 MiB; flags extra: -lm dio
+[12:07:50] servidor Windows PID=30472
+[12:07:50] ajuste de llama.cpp: proyectado 23296 MiB, libre 23613 MiB, quedarian 317 MiB
+[12:07:50] no cabe en VRAM: parado antes de reservar el KV

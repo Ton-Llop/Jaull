@@ -1,0 +1,81 @@
+0.00.391.762 I srv  llama_server: initializing ...
+0.00.391.777 I cmn  common_param: common_params_print_info: build 11889 (d854d98ba) with Clang 20.1.8 for Windows x86_64
+0.00.391.778 I cmn  common_param: common_params_print_info: verbosity = 4 (adjust with the `-lv N` CLI arg)
+0.00.391.780 I cmn  common_param: device_info:
+0.00.393.832 I cmn  common_param:   - Vulkan0 : AMD Radeon(TM) Graphics (18121 MiB, 17214 MiB free)
+0.00.395.899 I cmn  common_param:   - Vulkan1 : Intel(R) Arc(TM) Pro B60 Graphics (24382 MiB, 23613 MiB free)
+0.00.395.918 I cmn  common_param:   - CPU     : AMD Ryzen 7 5700G with Radeon Graphics          (28562 MiB, 8945 MiB free)
+0.00.395.995 I cmn  common_param: system_info: n_threads = 8 (n_threads_batch = 8) / 16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.396.122 I srv  init_listene: running without SSL
+0.00.396.353 I srv          init: using 15 threads for HTTP server
+0.00.396.447 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.408.860 I srv    load_model: loading model 'C:\llama-win\Qwen2.5-32B-Instruct-Q4_K_M.gguf'
+0.00.408.867 I srv    load_model: local path 'C:\llama-win\Qwen2.5-32B-Instruct-Q4_K_M.gguf'
+0.00.408.893 I cmn  common_init_: fitting params to device memory ...
+0.00.408.895 I cmn  common_init_: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.00.408.972 I common_params_fit_impl: getting device memory data for initial parameters:
+0.00.670.484 I common_memory_breakdown_print: | memory breakdown [MiB]                          | total    free     self   model   context   compute    unaccounted |
+0.00.670.491 I common_memory_breakdown_print: |   - Vulkan1 (Intel(R) Arc(TM) Pro B60 Graphics) | 24382 = 23613 + (35158 = 18508 +   16384 +     266) +      -34389 |
+0.00.670.492 I common_memory_breakdown_print: |   - Host                                        |                    521 =   417 +       0 +     104                |
+0.00.696.962 I common_params_fit_impl: projected to use 35158 MiB of device memory vs. 23613 MiB of free device memory
+0.00.696.975 I common_params_fit_impl: cannot meet free memory target of 1024 MiB, need to reduce device memory by 12568 MiB
+0.00.696.975 I common_params_fit_impl: context size set by user to 65536 -> no change
+0.00.697.029 W common_fit_params: failed to fit params to free device memory: n_gpu_layers already set by user to 99, abort
+0.00.697.036 I common_fit_params: fitting params to free memory took 0.29 seconds
+0.00.735.314 I llama_model_loader: loaded meta data with 38 key-value pairs and 771 tensors from C:\llama-win\Qwen2.5-32B-Instruct-Q4_K_M.gguf (version GGUF V3 (latest))
+0.00.735.366 I llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+0.00.735.371 I llama_model_loader: - kv   0:                       general.architecture str              = qwen2
+0.00.735.372 I llama_model_loader: - kv   1:                               general.type str              = model
+0.00.735.373 I llama_model_loader: - kv   2:                               general.name str              = Qwen2.5 32B Instruct
+0.00.735.374 I llama_model_loader: - kv   3:                           general.finetune str              = Instruct
+0.00.735.375 I llama_model_loader: - kv   4:                           general.basename str              = Qwen2.5
+0.00.735.376 I llama_model_loader: - kv   5:                         general.size_label str              = 32B
+0.00.735.377 I llama_model_loader: - kv   6:                            general.license str              = apache-2.0
+0.00.735.380 I llama_model_loader: - kv   7:                       general.license.link str              = https://huggingface.co/Qwen/Qwen2.5-3...
+0.00.735.381 I llama_model_loader: - kv   8:                   general.base_model.count u32              = 1
+0.00.735.382 I llama_model_loader: - kv   9:                  general.base_model.0.name str              = Qwen2.5 32B
+0.00.735.383 I llama_model_loader: - kv  10:          general.base_model.0.organization str              = Qwen
+0.00.735.385 I llama_model_loader: - kv  11:              general.base_model.0.repo_url str              = https://huggingface.co/Qwen/Qwen2.5-32B
+0.00.735.388 I llama_model_loader: - kv  12:                               general.tags arr[str,2]       = ["chat", "text-generation"]
+0.00.735.390 I llama_model_loader: - kv  13:                          general.languages arr[str,1]       = ["en"]
+0.00.735.391 I llama_model_loader: - kv  14:                          qwen2.block_count u32              = 64
+0.00.735.392 I llama_model_loader: - kv  15:                       qwen2.context_length u32              = 32768
+0.00.735.393 I llama_model_loader: - kv  16:                     qwen2.embedding_length u32              = 5120
+0.00.735.394 I llama_model_loader: - kv  17:                  qwen2.feed_forward_length u32              = 27648
+0.00.735.395 I llama_model_loader: - kv  18:                 qwen2.attention.head_count u32              = 40
+0.00.735.396 I llama_model_loader: - kv  19:              qwen2.attention.head_count_kv u32              = 8
+0.00.735.402 I llama_model_loader: - kv  20:                       qwen2.rope.freq_base f32              = 1000000.000000
+0.00.735.405 I llama_model_loader: - kv  21:     qwen2.attention.layer_norm_rms_epsilon f32              = 0.000001
+0.00.735.406 I llama_model_loader: - kv  22:                          general.file_type u32              = 15
+0.00.735.407 I llama_model_loader: - kv  23:                       tokenizer.ggml.model str              = gpt2
+0.00.735.408 I llama_model_loader: - kv  24:                         tokenizer.ggml.pre str              = qwen2
+0.00.735.413 I llama_model_loader: - kv  25:                      tokenizer.ggml.tokens arr[str,152064]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+0.00.735.416 I llama_model_loader: - kv  26:                  tokenizer.ggml.token_type arr[i32,152064]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+0.00.735.420 I llama_model_loader: - kv  27:                      tokenizer.ggml.merges arr[str,151387]  = ["Ġ Ġ", "ĠĠ ĠĠ", "i n", "Ġ t",...
+0.00.735.421 I llama_model_loader: - kv  28:                tokenizer.ggml.eos_token_id u32              = 151645
+0.00.735.422 I llama_model_loader: - kv  29:            tokenizer.ggml.padding_token_id u32              = 151643
+0.00.735.424 I llama_model_loader: - kv  30:                tokenizer.ggml.bos_token_id u32              = 151643
+0.00.735.425 I llama_model_loader: - kv  31:               tokenizer.ggml.add_bos_token bool             = false
+0.00.735.432 I llama_model_loader: - kv  32:                    tokenizer.chat_template str              = {%- if tools %}\n    {{- '<|im_start|>...
+0.00.735.433 I llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+0.00.735.435 I llama_model_loader: - kv  34:                      quantize.imatrix.file str              = /models_out/Qwen2.5-32B-Instruct-GGUF...
+0.00.735.436 I llama_model_loader: - kv  35:                   quantize.imatrix.dataset str              = /training_dir/calibration_datav3.txt
+0.00.735.437 I llama_model_loader: - kv  36:             quantize.imatrix.entries_count i32              = 448
+0.00.735.438 I llama_model_loader: - kv  37:              quantize.imatrix.chunks_count i32              = 128
+0.00.735.439 I llama_model_loader: - type  f32:  321 tensors
+0.00.735.439 I llama_model_loader: - type q4_K:  385 tensors
+0.00.735.440 I llama_model_loader: - type q6_K:   65 tensors
+0.00.735.441 I print_info: file format = GGUF V3 (latest)
+0.00.735.442 I print_info: file type   = Q4_K - Medium
+0.00.735.444 I print_info: file size   = 18.48 GiB (4.85 BPW) 
+0.00.737.475 I llama_prepare_model_devices: using device Vulkan1 (Intel(R) Arc(TM) Pro B60 Graphics) (unknown id) - 23613 MiB free
+0.00.830.532 I load: 0 unused tokens
+0.00.855.429 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.00.866.677 I load: printing all EOG tokens:
+0.00.866.684 I load:   - 128247 ('</s>')
+0.00.866.685 I load:   - 151643 ('<|endoftext|>')
+0.00.866.686 I load:   - 151645 ('<|im_end|>')
+0.00.866.688 I load:   - 151662 ('<|fim_pad|>')
+0.00.866.689 I load:   - 151663 ('<|repo_name|>')
+0.00.866.689 I load:   - 151664 ('<|file_sep|>')
+0.00.867.064 I load: special tokens cache size = 23

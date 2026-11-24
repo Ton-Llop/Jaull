@@ -49,6 +49,25 @@ Original bytes are stored privately as described above.
 | [Helper mismatch](rtx4060-validate-repeat-20260930-121948/REPORT.md) | Runtime/prediction mismatch; no persisted experiment record. Keep the diagnostic, do not reconstruct a result. |
 | [Explicit batch=1 failure](rtx4060-validate-repeat-20260930-122455/FINAL-REPORT.md) | Real failed Validate and log; regression evidence, not OOM/calibration evidence. |
 
+## Intel Arc Pro B60: memory limits by context (2026-11-24)
+
+[`b60-contextos-20261124/`](b60-contextos-20261124/README.md) holds the raw llama.cpp logs behind
+[`docs/TFG/resultados-b60.md`](../docs/TFG/resultados-b60.md). It has 18 runs of three models
+(Qwen3-Coder 30B-A3B, Qwen2.5 32B and Qwen3.8 27B) on one Intel Arc Pro B60, native Windows, llama.cpp
+b11889 with Vulkan. The predictions were written and committed before measuring, in
+[`preregistre-b60.md`](../docs/TFG/preregistre-b60.md) and
+[`preregistre-b60-2.md`](../docs/TFG/preregistre-b60-2.md).
+
+Each run folder has `server.log`, where the memory breakdown comes from, and a `summary.txt` that also
+carries the script timeline, the RAM series and the generation timings. The folder README is an index.
+Cases whose projected memory exceeded the free VRAM were stopped at llama.cpp's fit step and never
+loaded, so nothing is known about whether they would have run.
+
+This is memory-fit evidence from one GPU on one day, with one run per case (P3, P4 and P6 were repeated and
+came out identical). It does not calibrate any estimator constant. The first run of P1 is kept and labeled
+discarded because it lacked the flags that print the memory breakdown. These logs are not anonymized:
+`summary.txt` contains the author's Linux home path on the test PC.
+
 ## Retention policy
 
 - Keep one self-contained, validated bundle per scientifically distinct case

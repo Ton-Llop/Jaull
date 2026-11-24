@@ -1,0 +1,50 @@
+caso=Q6 modelo=Qwen3.8-27B-UD-Q4_K_M.gguf ctx=98304
+ajuste: proyectado=21216 MiB libre=23613 MiB
+parado en el ajuste=no cargo=1 aborto=no
+generacion: tokens=512 tok/s=15.43438599369643 stop=limit
+RAM disponible minima=9632 MiB (umbral 3072)
+carpeta: /home/tonllop/b60-results/Q6-20261124-120324
+
+--- run.log ---
+[12:03:24] caso Q6: Qwen3.8-27B-UD-Q4_K_M.gguf ctx=98304; RAM disponible al inicio=11217 MiB; umbral de aborto=3072 MiB; flags extra: -lm dio
+[12:03:25] servidor Windows PID=8520
+[12:03:26] ajuste de llama.cpp: proyectado 21216 MiB, libre 23613 MiB, quedarian 2397 MiB
+[12:03:43] carga: LOADED=1 ABORT=no
+
+--- ram.csv (hora,MiB disponibles de Windows) ---
+12:03:26,11000
+12:03:29,10202
+12:03:32,9981
+12:03:35,9841
+12:03:37,9749
+12:03:40,9632
+12:03:43,9974
+12:03:44,9815
+12:03:47,9819
+12:03:51,9783
+12:03:55,9809
+12:03:58,9816
+12:04:02,9791
+12:04:05,9775
+12:04:09,9793
+12:04:13,9761
+12:04:16,9751
+
+--- response.json (campos clave; se omite el texto generado) ---
+{
+  "tokens_predicted": 512,
+  "tokens_evaluated": 16,
+  "stop_type": "limit",
+  "truncated": false,
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 16,
+    "prompt_ms": 462.628,
+    "prompt_per_token_ms": 28.91425,
+    "prompt_per_second": 34.58502295580899,
+    "predicted_n": 512,
+    "predicted_ms": 33107.893,
+    "predicted_per_token_ms": 64.79039726027396,
+    "predicted_per_second": 15.43438599369643
+  }
+}

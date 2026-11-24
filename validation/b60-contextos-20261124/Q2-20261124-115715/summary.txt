@@ -1,0 +1,12 @@
+caso=Q2 modelo=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf ctx=98304
+ajuste: proyectado=26920 MiB libre=23613 MiB
+parado en el ajuste=no cabe en VRAM: parado antes de reservar el KV cargo=0 aborto=no
+generacion: no se genero
+RAM disponible minima=? MiB (umbral 3072)
+carpeta: /home/tonllop/b60-results/Q2-20261124-115715
+
+--- run.log ---
+[11:57:16] caso Q2: Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf ctx=98304; RAM disponible al inicio=9025 MiB; umbral de aborto=3072 MiB; flags extra: -lm dio
+[11:57:16] servidor Windows PID=18976
+[11:57:17] ajuste de llama.cpp: proyectado 26920 MiB, libre 23613 MiB, quedarian -3307 MiB
+[11:57:17] no cabe en VRAM: parado antes de reservar el KV
