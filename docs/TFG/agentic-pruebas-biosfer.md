@@ -13,7 +13,7 @@ Els estats són els de sempre: **VALIDATED** (comprovat), **UNVERIFIED** (hipòt
 - Model: Qwen3-Coder 30B-A3B Q4_K_M, a través d'OpenCode.
 - Servidor: `llama-server.exe` de Windows amb `-c 32768 -np 1 --jinja --cache-ram 0 -lm dio
   --sleep-idle-seconds 45`, al port 8090. OpenCode hi arriba pel port 8081 de WSL, amb un túnel invers.
-- Codi: clon local de Lipopótamo a `~/projects/lipopotamo`, branca `Qwen3-30B-A3B`. L'agent no havia de fer commits.
+- Codi: clon local de Lipopótamo a `~/projects/<aplicació>`, branca `Qwen3-30B-A3B`. L'agent no havia de fer commits.
 - Sense el vigilant de RAM de X004. Només un monitor que llegeix.
 
 **Incidència d'entorn abans de la prova.** El primer enviament va fallar en 218 ms amb «Unable to find matching target
@@ -90,7 +90,7 @@ COMPORTAMIENTO REQUERIDO
 
 8. Al cambiar los batches o la variable, actualiza correctamente los gráficos y evita mostrar datos obsoletos. Mantén un rendimiento razonable con batches grandes.
 
-9. Sigue el sistema visual existente de Lipopotamo y comprueba modo claro y oscuro. La interfaz debe seguir siendo utilizable en pantallas pequeñas. Los colores deben ser distinguibles y acompañarse de nombres, no depender únicamente del color.
+9. Sigue el sistema visual existente de <aplicació> y comprueba modo claro y oscuro. La interfaz debe seguir siendo utilizable en pantallas pequeñas. Los colores deben ser distinguibles y acompañarse de nombres, no depender únicamente del color.
 
 10. Si el contrato de las APIs existentes no permite obtener los datos necesarios, explica en el código de forma mínima el motivo y añade la solución más pequeña y compatible. No crees una segunda fuente de verdad ni alteres resultados científicos.
 
@@ -173,7 +173,7 @@ el model a inventar una solució sense veure com carrega la taula.
 **Prompt 1: muntar la vista (tal com es va enviar).**
 
 ```
-Implementa SOLO el paso 1 de una comparación de batches en Lipopotamo.
+Implementa SOLO el paso 1 de una comparación de batches en <aplicació>.
 
 No hagas commits. No ejecutes Docker. No toques backend. No explores todo el repositorio.
 

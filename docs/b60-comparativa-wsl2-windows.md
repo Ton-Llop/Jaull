@@ -151,6 +151,6 @@ Windows (llançat des de WSL2 amb interoperabilitat, binari natiu):
 ./llama-bench.exe -m 'C:\llama-win\<model>.gguf' -dev Vulkan1 -ngl 99 -p 128 -n 64 -r 2
 ```
 
-Per veure la interfície web de `llama-server.exe` des d'un altre ordinador, quan WSL2 no pot arribar a Windows (el cortafuegs descarta la connexió de WSL cap al port de Windows), s'ha fet servir un túnel invers amb el client SSH de Windows. El servidor escolta només a `127.0.0.1`, i `ssh.exe -N -R 8081:127.0.0.1:8080 -p 2222 <usuari>@<ip-del-pc>` obre un port a WSL que apunta al servidor. Després, des de l'ordinador remot, `ssh -N -L 8080:127.0.0.1:8081 -p 2222 <usuari>@<ip-del-pc>` i `http://localhost:8080`. No s'ha tocat el cortafuegs.
+Per veure la interfície web de `llama-server.exe` des d'un altre ordinador, quan WSL2 no pot arribar a Windows (el cortafuegs descarta la connexió de WSL cap al port de Windows), s'ha fet servir un túnel invers amb el client SSH de Windows. El servidor escolta només a `127.0.0.1`, i `ssh.exe -N -R 8081:127.0.0.1:8080 -p <port-ssh> <usuari>@<ip-del-pc>` obre un port a WSL que apunta al servidor. Després, des de l'ordinador remot, `ssh -N -L 8080:127.0.0.1:8081 -p <port-ssh> <usuari>@<ip-del-pc>` i `http://localhost:8080`. No s'ha tocat el cortafuegs.
 
 El binari de Windows es descarrega de la versió `b11889` de `ggml-org/llama.cpp`. L'etiqueta `latest` no té binaris (només un `nightly-tag.txt`), per això cal fer servir l'etiqueta del build.

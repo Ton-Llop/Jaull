@@ -157,7 +157,7 @@ On the measured machine the mapped device was Vulkan1, but the helper must estab
 In Windows PowerShell, keep the known reverse tunnel open (replace SSH user/host):
 
 ```powershell
-ssh.exe -N -o ExitOnForwardFailure=yes -R 8081:127.0.0.1:8080 -p 2222 USER@HOST
+ssh.exe -N -o ExitOnForwardFailure=yes -R 8081:127.0.0.1:8080 -p <port-ssh> USER@HOST
 ```
 
 Back in the first WSL terminal, preserving its variables:
