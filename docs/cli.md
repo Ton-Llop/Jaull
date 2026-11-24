@@ -425,6 +425,32 @@ quantization, 4 artifact error, 5 the server did not start (busy port, already r
 early exit or no `/health` in time, with the last log lines), 6 it does not fit or could
 not be planned.
 
+### Server on Windows, opencode in WSL2
+
+WSL2 has its own network and cannot reach `127.0.0.1` of Windows, so a server that listens
+only on this PC is not reachable from a client inside WSL2. This is what worked for one person
+on a Windows PC with an Arc Pro B60 (`docs/TFG/valoracio-usuari.md`):
+
+1. Start the server on Windows with `--lan`, so it listens on all interfaces. Add
+   `--no-https` if you do not want to set up the certificate; otherwise follow the
+   certificate notes above (`NODE_EXTRA_CA_CERTS` with a `/mnt/c/...` path).
+   `uv run jaull serve start <repo> --lan --no-https`.
+2. Point opencode in WSL2 at the PC's network address (`192.168.x.x`), not at the address WSL2
+   reports for Windows (`172.x`). Jaull writes that address into `serve/opencode.json`, but it
+   only edits the opencode config of the system it runs on, which is Windows here. Copy the
+   file into `~/.config/opencode/opencode.json` inside WSL2 yourself, merging by hand if you
+   already have one.
+3. `--lan` prints a firewall rule limited to the local subnet. If only WSL2 needs to connect,
+   an administrator can narrow it by replacing `-RemoteAddress LocalSubnet` with
+   `-RemoteAddress 172.16.0.0/12`, the range WSL2 usually picks (check yours with `ip addr` in
+   WSL2). That exact rule has not been tested here (**not verified**).
+
+`--lan` listens on every interface of the PC: only the firewall rule keeps other computers
+out, and Jaull never applies it. With `--no-https` the API key and the prompts are not
+encrypted. Between WSL2 and Windows that traffic should stay inside the PC, but anyone else the
+rule lets in could read it. A mode that does all this in one step, limited to WSL2 and with
+HTTPS off by default, is designed and not built.
+
 ## `doctor` — environment health
 
 ```bash
