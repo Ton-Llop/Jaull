@@ -19,6 +19,9 @@ cache and compute buffer.
 |---|---|---|
 | `b60-case.sh` | P1 to P6 | Loads the model, generates 512 tokens and records tok/s. Cases close to the limit. |
 | `b60-case2.sh` | Q1 to Q8 | Same, but if the model does not fit it stops at llama.cpp's fit step, before the KV cache is reserved, so nothing overflows VRAM. |
+| `b60-fill.sh` | P1 to P6 | Fills the context in steps (4,000, 16,000, 32,000 and 45,000 tokens by default) and records prompt speed, generation speed and RAM. A full run on P1 takes about 10 minutes. |
+| `gguf_tensor_groups.py` | any GGUF | Reads only the header and totals the tensors by group, to see which ones llama.cpp keeps off the GPU. `--blocks` adds the tensor kinds and the size of each block. |
+| `plot_context_limits.py` | | Draws the figures in `docs/TFG/figures/` from the runs in `validation/`. Run it with `uv run --no-project --with matplotlib python scripts/b60/plot_context_limits.py`. |
 
 | Case | Model | Context |
 |---|---|---:|

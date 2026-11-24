@@ -92,7 +92,9 @@ and compares predictions with measurements when the evidence allows it.
     is a flat 256 MiB. That leaves Jaull 6 to 14 % short of the real context limit
     (about 3,100, 1,850 and 16,300 tokens for the three models, interpolated).
   - Cases that did not fit were stopped at llama.cpp's fit step and never loaded.
-    Generation was tested with a 16-token prompt, not a full context.
+    Generation was tested with a 16-token prompt in those cases. A later run on one case
+    (Qwen3-Coder, `-c 49152`) filled the context up to 43,543 tokens: no step failed, and
+    generation fell from 96 to 33 tok/s while the prompt took 5.5 minutes.
   See [the results](docs/TFG/resultados-b60.md) and
   [the raw logs](validation/b60-contextos-20261124/README.md).
 - RTX 2060 campaigns (2026-10-10/11), all three plans ranking-ready, tg128
@@ -134,8 +136,9 @@ and compares predictions with measurements when the evidence allows it.
 - Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
 - Memory overhead, reserve and headroom are not calibrated from these runs. No
   constant was changed after the B60 context measurements.
-- The B60 context limits come from one GPU on one day. Speed and stability with a full
-  context, and other cards, are not measured.
+- The B60 context limits come from one GPU on one day. The full-context run covers one
+  case and did not measure VRAM during the run; sustained use over hours and other cards
+  are not measured.
 - The prompt cache grows in RAM while the server is used (the process went from 1.3 to
   5.6 GB and free RAM fell to 3.7 GB). Its ceiling is computed once, at start, from the
   RAM free at that moment, so it does not adapt if other programs use RAM later.
@@ -157,7 +160,7 @@ and compares predictions with measurements when the evidence allows it.
    llama-swap). Neither has been tried with Jaull's flags.
 3. Consolidate the TFG evidence by separating tested code, physical measurements,
    and unsupported or unvalidated configurations.
-4. Repeat the B60 context set on another GPU and with the context filled for at least
-   one case (`scripts/b60/` has the scripts).
+4. Repeat the B60 context set on another GPU, and repeat the full-context run with VRAM
+   recorded during it (`scripts/b60/` has the scripts).
 
 Historical audits remain in [`docs/history/`](docs/history/).

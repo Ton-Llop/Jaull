@@ -14,7 +14,7 @@ de llama.cpp, **CALCULAT** una operació feta sobre aquestes lectures i **UNVERI
 - Els GGUF de `C:\llama-win` tenen el mateix sha256 que els que va verificar Jaull (comprovat el 2026-11-24).
 - Els logs crus de cada execució (`server.log` i `summary.txt`, que també porta la cronologia de l'script, la sèrie de RAM i els temps de
   generació) són a `validation/b60-contextos-20261124/`, una carpeta per execució amb la data i l'hora al nom. El `README.md` d'aquella carpeta
-  té l'índex de les 18 execucions.
+  té l'índex de les 18 execucions i de la prova de context ple.
 - El preregistre també definia un mètode senzill de referència (mida del fitxer per 1,2). No s'usa aquí: no mira el context i
   els sis casos són a prop de la frontera de Jaull, on no els distingeix.
 
@@ -117,13 +117,74 @@ Tots els errors són cap al costat prudent.
 - Una execució per cas. P3, P4 i P6 es van repetir (P3 i P6 pel criteri de 100 MiB del preregistre) i van sortir idèntics: això només
   diu que, amb la mateixa VRAM lliure de partida, el desglossament es repeteix. La variància entre sessions o amb un altre escriptori
   és **UNVERIFIED**.
-- El context es reserva però no s'omple: el prompt té 16 tokens i a la sessió n'hi ha uns 527. «Genera» vol dir amb el context gairebé buit.
-  La velocitat amb el context ple i el comportament durant hores no s'han mesurat.
+- Als 14 casos el context es reserva però no s'omple: el prompt té 16 tokens i a la sessió n'hi ha uns 527. «Genera» vol dir amb el context gairebé buit.
+  Una prova posterior a un sol cas (P1) el va omplir fins a 43.543 tokens (vegeu «Context ple»). El comportament durant hores no s'ha mesurat.
 - Una GPU, dos models, un sol dia. Sis casos no donen percentatges.
 - Els sis casos es van triar a prop de la frontera de Jaull. Els contextos grans i els casos que no caben queden per a un segon preregistre.
 - L'execució 0 de P1, sense `-dev` ni `-lv 4`, va carregar i generar a 95,74 tok/s però sense xifres de memòria. Es va descartar.
 - Als casos que no caben (Q2 a Q5) no es va carregar el model, i Q8 es va parar per un marge de seguretat de 500 MiB. No sabem si haurien carregat ni generat.
 - El Qwen2.5 32B es va entrenar amb 32.768 tokens de context. Q4 i Q5 mesuren memòria, no qualitat.
+
+## Dues proves més (2026-11-24, tarda)
+
+Les dues es van fer al mateix PC, després de les 18 execucions, amb les prediccions escrites al xat abans de veure cap resultat.
+Cap de les dues no canvia cap fórmula de Jaull.
+
+### La VRAM lliure de la B60 no es va moure
+
+Deu mesures de `llama-server.exe --list-devices`, una cada 30 s, de les 14:07 a les 14:12: **23.613 MiB lliures a totes** (variació de 0 MiB).
+La RAM disponible de Windows va anar de 8.099 a 8.226 MiB. Les 17 execucions amb desglossament de les proves anteriors també van començar
+amb 23.613 MiB. La predicció (entre 22.800 i 23.613 MiB) es compleix, però de manera trivial.
+
+Això **retira una afirmació** feta abans de mesurar: que la diferència de Jaull de 0,3 a 0,5 GiB era menor que el que es mou la VRAM lliure en
+ús real. En aquest PC no és així, i el més probable (**UNVERIFIED**) és que l'escriptori faci servir la gràfica integrada AMD (`Vulkan0`) i no la B60.
+Al PC de la RTX 2060, que sí té pantalla connectada, la VRAM lliure es va moure uns 400 MiB en una sessió (B001-R9). La variació depèn de la màquina,
+i a la B60 la diferència de Jaull no queda absorbida pel soroll. Són 10 mesures de 5 minuts en un moment, no una conclusió general.
+
+### Què hi ha dins dels GGUF: la diferència dels pesos queda explicada
+
+`scripts/b60/gguf_tensor_groups.py` llegeix només la capçalera dels fitxers i suma els tensors per grup. Als tres models, `token_embd` mesura el mateix
+que el buffer del host de llama.cpp (682,0, 417,7 i 166,9 MiB contra 682, 417 i 166), i la suma de `blk` i `output` coincideix amb el buffer de la GPU
+(17.524,4 i 18.508,3 MiB, iguals als 17.524,42 i 18.508,35 de llama.cpp). Al 27B hi manquen 334,7 MiB: són el **bloc 64**, que té tensors `nextn.*`
+(`eh_proj`, `enorm`, `hnorm`, `shared_head_norm`) i pesa 335 MiB. És la capa de predicció múltiple, que llama.cpp no carrega. Que la salti és una
+inferència dels números, no s'ha comprovat al seu codi.
+
+| Model | Pesos de Jaull menys buffer de la GPU | `token_embd` (host) | Capçalera del fitxer | Bloc `nextn` | Suma |
+|---|---:|---:|---:|---:|---:|
+| Coder 30B | +171 | 166,9 | 5,7 | 0 | 172,6 |
+| Qwen2.5 32B | +426 | 417,7 | 5,7 | 0 | 423,4 |
+| Qwen3.8 27B | +1.028 | 682,0 | 10,5 | 334,7 | 1.027,2 |
+
+Les prediccions: la primera (els embeddings són el buffer del host) **es compleix**. La segona (els 346 MiB sobrants són un grup apart, com tensors de visió)
+**no es compleix**: no hi ha cap grup així, i són un bloc de predicció múltiple.
+
+**CALCULAT, no aplicat:** si Jaull restés els embeddings, la capçalera i el bloc `nextn`, la diferència quedaria en la del còmput (124, 42 i 8 MiB), és a dir,
+uns 1.300 tokens al Coder, 170 al 32B i 130 al 27B, en lloc del 6 al 14 %. El còmput de llama.cpp creix amb el context, així que són ordres de magnitud.
+Fer-ho exigiria llegir la capçalera del GGUF i saber quins tensors no es carreguen; queda com a treball futur, i la fórmula no s'ha tocat.
+
+### Context ple (P1, Coder 30B, `-c 49152`)
+
+Prova feta a les 14:19 amb `scripts/b60/b60-fill.sh`: quatre peticions seguides, cada una amb un prompt més llarg i 128 tokens generats, sense memòria cau de prompt.
+Els quatre passos van acabar amb `stop=limit` i els 128 tokens generats. Cap resposta va donar error. La RAM de Windows disponible va baixar com a màxim a 7.176 MiB
+(a l'inici 7.988; el llindar d'aborament, 3.072).
+
+| Prompt (tokens) | Processar el prompt (tok/s) | Temps del prompt | Generar (tok/s) |
+|---:|---:|---:|---:|
+| 3.883 | 890,5 | 4,4 s | 81,6 |
+| 15.493 | 331,1 | 46,8 s | 58,4 |
+| 30.973 | 179,7 | 172,4 s | 41,4 |
+| 43.543 | 130,8 | 332,8 s | 33,4 |
+| (context gairebé buit, P1) | | | 96,0 |
+
+A 43.543 tokens, el 89 % del context reservat, el model genera a **33,4 tok/s, un 35 % dels 96,0 del context gairebé buit**, i el prompt triga gairebé 5 minuts i
+mig. La velocitat baixa de manera contínua amb el context. Això és independent del càlcul de memòria de Jaull, que no diu res de la velocitat.
+
+Prediccions escrites abans de la prova (al xat, no comitejades): carrega com P1; els quatre passos acaben sense error (**es compleix**); el prompt va més lent
+amb més context i la generació queda per sota de 96 tok/s (**es compleix**, per molt). El temps total el vaig estimar en 3 o 4 minuts i en va ser uns 10 (de les 14:19 a les 14:29): m'hi vaig equivocar.
+
+No es va mesurar la VRAM durant la prova: que no n'hi hagi cap reserva nova és el que s'espera (el KV i el buffer de càlcul es reserven en carregar), i només sé que no
+hi va haver cap fallada (**UNVERIFIED** la xifra). El resum de l'script diu `abort=step 45000 took 332826 ms…`: no és un error. La guarda de «pas massa lent» (240 s)
+va saltar després de l'últim pas. L'script ja no ho marca així.
 
 ## Conclusions
 
@@ -159,4 +220,5 @@ Context màxim aproximat, **CALCULAT** per interpolació lineal entre els casos 
 - El KV de Jaull és exacte als 14 casos, també el del 27B híbrid. La diferència ve dels pesos (Jaull usa la mida del fitxer i llama.cpp en deixa
   part al host) i d'un còmput fix de 256 MiB. Fa uns 0,3 GiB al Coder, 0,45 al 32B i 1,0 al 27B.
 - Jaull aprova un cas quan el marge real sobre l'1 GiB és igual o superior a aquesta diferència.
-- Una sola GPU, tres models i un sol dia, amb una execució per cas (P3, P4 i P6 repetits i idèntics) i el context gairebé buit a la prova de generació.
+- Una sola GPU, tres models i un sol dia, amb una execució per cas (P3, P4 i P6 repetits i idèntics) i el context gairebé buit a la prova de generació,
+  tret d'una prova amb el context ple en un sol cas.
