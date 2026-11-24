@@ -1,6 +1,6 @@
 # Status
 
-Updated 2026-11-21. Last verified remote CI checkpoint: [`ba5b5da`](https://github.com/Ton-Llop/Jaull/actions/runs/44152938519).
+Updated 2026-11-24. Last verified remote CI checkpoint: [`ba5b5da`](https://github.com/Ton-Llop/Jaull/actions/runs/44152938519).
 The commits after it (up to `89a2b8f`) have not been checked against CI here.
 
 ## What works
@@ -81,6 +81,20 @@ and compares predictions with measurements when the evidence allows it.
     [the mini-benchmark](docs/TFG/mini-benchmark-agentic.md).
   - opencode on WSL2 reaches the server through the PC's network address. With the
     self-signed certificate it needs `NODE_EXTRA_CA_CERTS` (a `/mnt/c/...` path).
+- Memory limits by context on the B60 (native Windows, llama.cpp b11889), 14 cases of
+  Qwen3-Coder 30B-A3B, Qwen2.5 32B and Qwen3.8 27B, with the predictions written before
+  measuring. One run per case; the three repeated ones came out identical:
+  - Jaull's verdict matched llama.cpp's own rule (1 GiB left free) in 10 of 14 cases.
+    The 4 misses were cases Jaull rejected that llama.cpp accepted. It never approved
+    a case that did not fit.
+  - The KV cache, including the hybrid 27B's, matched exactly. The total sits 0.3 to
+    1.0 GiB above llama.cpp's projection, because weights count at file size and compute
+    is a flat 256 MiB. That leaves Jaull 6 to 14 % short of the real context limit
+    (about 3,100, 1,850 and 16,300 tokens for the three models, interpolated).
+  - Cases that did not fit were stopped at llama.cpp's fit step and never loaded.
+    Generation was tested with a 16-token prompt, not a full context.
+  See [the results](docs/TFG/resultados-b60.md) and
+  [the raw logs](validation/b60-contextos-20261124/README.md).
 - RTX 2060 campaigns (2026-10-10/11), all three plans ranking-ready, tg128
   median over all stored calls: Qwen2.5-0.5B Q5_K_M 246.1 tok/s (6 calls),
   IFEval 25.9 %; Qwen2.5-1.5B 150.7 tok/s (4), 41.0 %; LFM2.5-1.2B 230.5 tok/s
@@ -118,7 +132,10 @@ and compares predictions with measurements when the evidence allows it.
   concurrency experiments on the RTX 2060 and B60 are evidence, not a product gate.
 - NVML process VRAM is unavailable on the measured WDDM machines.
 - Host RSS is not the host share of GPU offload because llama.cpp uses mmap.
-- Memory overhead, reserve and headroom are not calibrated from these runs.
+- Memory overhead, reserve and headroom are not calibrated from these runs. No
+  constant was changed after the B60 context measurements.
+- The B60 context limits come from one GPU on one day. Speed and stability with a full
+  context, and other cards, are not measured.
 - The prompt cache grows in RAM while the server is used (the process went from 1.3 to
   5.6 GB and free RAM fell to 3.7 GB). Its ceiling is computed once, at start, from the
   RAM free at that moment, so it does not adapt if other programs use RAM later.
@@ -140,5 +157,7 @@ and compares predictions with measurements when the evidence allows it.
    llama-swap). Neither has been tried with Jaull's flags.
 3. Consolidate the TFG evidence by separating tested code, physical measurements,
    and unsupported or unvalidated configurations.
+4. Repeat the B60 context set on another GPU and with the context filled for at least
+   one case (`scripts/b60/` has the scripts).
 
 Historical audits remain in [`docs/history/`](docs/history/).
