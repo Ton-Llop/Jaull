@@ -55,6 +55,10 @@ coincideixen. Que la inferència acabi amb aquest marge és **UNVERIFIED**.
 - **El biaix que queda és conservador**: la fórmula actual queda entre 1,3 i 2,6 GiB per sobre de la mesura. Hi ha
   dues causes documentades: l'1 GiB de marge que Jaull deixa a propòsit (la regla de llama.cpp) i que els pesos
   són la mida del fitxer, quan llama.cpp en deixa de 167 a 1.030 MiB al host (embeddings).
+  **Matís (2026-11-24, vegeu `resultados-b60.md`):** aquests 1,3 a 2,6 GiB comparen el total de Jaull, que inclou l'1 GiB de
+  marge, amb el projectat de llama.cpp, que no l'inclou. L'1 GiB és el mateix llindar que llama.cpp exigeix sobre la
+  memòria lliure, no un excés. Comparant el mateix amb el mateix (pesos + KV + còmput), la diferència als sis casos de la B60 és de
+  0,3 a 0,5 GiB.
 - **Compte amb la lectura de les xifres «ara».** Es van ajustar després de veure aquestes mateixes mesures (D120 i D123
   són calibratges, amb «mesura de base en quatre models i una sola GPU»). Per això no són una validació: sobre
   aquests casos no poden fallar. La part que sí és una predicció de veritat és la de **B7 a B9**: les prediccions del
