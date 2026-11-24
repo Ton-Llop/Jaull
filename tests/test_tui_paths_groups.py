@@ -294,7 +294,11 @@ def test_transformers_variants_can_be_told_apart() -> None:
                 h for h in screen.query(".path-group-head") if "Transformers" in str(h.content)
             )
             header.action_open_close()
-            await pilot.pause()
+            # Opening only posts a message; the screen handles it later, so wait for the
+            # rows instead of assuming a pause was long enough.
+            await _wait_until(
+                pilot, lambda: len([n for n in _shown_names(screen) if n != "Q4_K_M"]) == 2,
+            )
             names = [n for n in _shown_names(screen) if n != "Q4_K_M"]
             assert len(names) == 2 and len(set(names)) == 2
             assert any("float16" in n for n in names) and any("bfloat16" in n for n in names)
@@ -309,15 +313,14 @@ def test_collapsing_a_group_keeps_the_selection_and_its_actions() -> None:
             screen = await _open(pilot, pilot.app, [q4], recommended=q4)
             header = screen.query_one(".path-group-head")
             header.action_open_close()
-            await pilot.pause()
-            assert _shown_names(screen) == []
+            # The header only posts a message; the screen applies it on its own turn.
+            await _wait_until(pilot, lambda: _shown_names(screen) == [])
             assert str(header.content).startswith("▸")
             assert screen._selected_plan_id == q4.plan_id
             assert not screen.query_one("#paths-run", Button).disabled
             header.action_open_close()
-            await pilot.pause()
+            await _wait_until(pilot, lambda: len(_shown_names(screen)) == 2)
             assert str(header.content).startswith("▾")
-            assert len(_shown_names(screen)) == 2
 
     _run(scenario())
 
