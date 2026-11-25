@@ -346,7 +346,21 @@ def test_a_model_fully_on_the_gpu_is_read_from_disk_without_filling_ram_on_windo
     assert load_mode(backend=ComputeBackend.CUDA, windows=True, resident=True) == "dio"
     assert load_mode(backend=ComputeBackend.VULKAN, windows=False, resident=True) is None
     assert load_mode(backend=ComputeBackend.VULKAN, windows=True, resident=False) is None
-    assert load_mode(backend=ComputeBackend.CPU, windows=True, resident=True) is None
+    assert load_mode(backend=ComputeBackend.CPU, windows=False, resident=False) is None
+
+
+def test_the_cpu_loads_without_mmap_on_windows_so_the_memory_matches_the_estimate() -> None:
+    # With mmap the CPU run kept the whole file plus a reordered copy (CPU_REPACK) resident:
+    # 2.2 to 3.2 GB more than the buffers (docs/TFG/resultados-cpu.md). Only measured on
+    # native Windows, so only applied there.
+    from jaull.application.serving.planner import load_mode
+    from jaull.domain.hardware import ComputeBackend
+
+    assert load_mode(backend=ComputeBackend.CPU, windows=True, resident=False) == "none"
+    assert load_mode(backend=ComputeBackend.CPU, windows=True, resident=False,
+                     requested="mmap") == "mmap"
+    assert load_mode(backend=ComputeBackend.CPU, windows=True, resident=False,
+                     requested="default") is None
 
 
 def test_the_person_can_choose_the_load_mode_or_get_llama_cpps_default_back() -> None:

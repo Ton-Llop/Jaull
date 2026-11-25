@@ -66,7 +66,10 @@ def plan_lines(plan: ServerPlan) -> list[str]:
     if plan.load_mode is not None:
         lines.append(
             f"  The model file is read with -lm {plan.load_mode}"
-            + (": it is not also copied into system RAM." if plan.load_mode == "dio" else ".")
+            + {
+                "dio": ": it is not also copied into system RAM.",
+                "none": ": loaded into RAM without mmap, so the memory used matches the estimate.",
+            }.get(plan.load_mode, ".")
         )
     if plan.sleep_idle_seconds is not None:
         lines.append(

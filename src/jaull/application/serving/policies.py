@@ -52,6 +52,13 @@ SERVE_INTEL_SLEEP_IDLE_SECONDS = 45
 # Windows only (docs/TFG/DECISIONS-2.md), so applied there, for a model fully on the GPU.
 # What it does to generation speed was not compared.
 SERVE_DIRECT_IO_LOAD_MODE = "dio"
+# On the CPU the default mmap leaves the whole file resident and, for Q4_K_M, Q3_K_M and
+# MXFP4, also a reordered copy of some tensors (CPU_REPACK) that the estimate cannot size:
+# free RAM fell 2.2 to 3.2 GB more than the buffers llama.cpp prints (5 of 7 paired runs, a
+# Ryzen 5 5500U on native Windows; docs/TFG/resultados-cpu.md). -lm none loads into RAM and
+# the buffers match the estimate (38 of 38 approvals held). Generation was equal or faster in
+# all 8 paired runs. Load time and models larger than RAM were not compared.
+SERVE_CPU_LOAD_MODE = "none"
 # What the person types to get llama.cpp's own default back.
 SERVE_LOAD_MODE_DEFAULT = "default"
 

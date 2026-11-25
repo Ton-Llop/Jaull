@@ -177,11 +177,15 @@ def load_mode(
 
     ``requested`` is the person's choice ("default" gives llama.cpp's own back). Otherwise
     direct I/O, so the file is not also copied into system RAM, for a model that lives
-    entirely on a GPU on native Windows, which is where it was measured.
+    entirely on a GPU on native Windows, which is where it was measured. On the CPU, also
+    on native Windows only, the model is loaded into RAM without mmap so the memory used
+    matches the estimate.
     """
     if requested is not None:
         return None if requested == policies.SERVE_LOAD_MODE_DEFAULT else requested
-    if windows and resident and backend is not ComputeBackend.CPU:
+    if windows and backend is ComputeBackend.CPU:
+        return policies.SERVE_CPU_LOAD_MODE
+    if windows and resident:
         return policies.SERVE_DIRECT_IO_LOAD_MODE
     return None
 

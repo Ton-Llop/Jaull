@@ -605,6 +605,8 @@ def test_the_plan_says_the_model_is_not_copied_into_ram() -> None:
     assert "-lm" not in "\n".join(plan_lines(_plan()))
     text = "\n".join(plan_lines(replace(_plan(), load_mode="dio")))
     assert "-lm dio" in text and "RAM" in text
+    text = "\n".join(plan_lines(replace(_plan(), load_mode="none")))
+    assert "-lm none" in text and "without mmap" in text
 
 
 def test_start_says_where_the_opencode_backup_is() -> None:
