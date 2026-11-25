@@ -1,0 +1,176 @@
+{
+  "schema_version": 3,
+  "model": {
+    "repo_id": "LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
+    "repository_type": "gguf",
+    "author": "LiquidAI",
+    "pipeline_tag": "text-generation",
+    "library_name": null,
+    "license": "other",
+    "gated": false
+  },
+  "inference_configuration": {
+    "context_length": 8192,
+    "batch_size": 1,
+    "target_device": "cpu",
+    "precision": null,
+    "quantization": "Q5_K_M",
+    "kv_cache_dtype": "float16",
+    "safety_margin_percent": null,
+    "device_reserve_bytes": 536870912,
+    "ram_reserve_bytes": 536870912
+  },
+  "memory": {
+    "weights_bytes": 843354944,
+    "kv_cache_bytes": 268435456,
+    "runtime_overhead_bytes": 621206406,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 0,
+    "total_bytes": 2269867718,
+    "components": [
+      {
+        "name": "Weights",
+        "bytes": 843354944,
+        "source": "exact",
+        "confidence": "high",
+        "explanation": "Exact remote file size of the Q5_K_M variant."
+      },
+      {
+        "name": "KV cache",
+        "bytes": 268435456,
+        "source": "derived",
+        "confidence": "medium",
+        "explanation": "16 layers x 8 KV heads x 64 head_dim x 8192 tokens x batch 1 x 2 bytes x 1 sessions x 2."
+      },
+      {
+        "name": "Runtime overhead",
+        "bytes": 621206406,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Base 0.50 GiB + 10% of weights (0.08 GiB). CPU allowance, not GPU calibration. CPU repacking is runtime-dependent and is not separately sized; this heuristic is not an upper bound."
+      },
+      {
+        "name": "RAM reserve",
+        "bytes": 536870912,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Configured RAM reserve of 0.50 GiB."
+      }
+    ],
+    "physical_bytes": 1732996806,
+    "reserve_shortfall_bytes": 0,
+    "budget_bytes": 2269867718,
+    "runtime_overhead_components": [
+      {
+        "name": "CPU compute allowance",
+        "bytes": 268435456,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "0.25 GiB heuristic; actual compute buffers depend on token batching."
+      },
+      {
+        "name": "Other CPU runtime allowance",
+        "bytes": 352770950,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Remaining general runtime heuristic; not a measured allocation."
+      },
+      {
+        "name": "CPU repacking",
+        "bytes": null,
+        "source": "unknown",
+        "confidence": "unknown",
+        "explanation": "Depends on tensor types, CPU kernels and runtime build. Not separately added to the heuristic total."
+      }
+    ],
+    "unmodelled_overhead_components": [
+      "CPU repacking"
+    ]
+  },
+  "weights": {
+    "num_parameters": null,
+    "bits_per_parameter": null,
+    "precision": null,
+    "gguf_variant": "Q5_K_M",
+    "transformer_block_decomposition": {
+      "total_weight_bytes": 843354944,
+      "estimated_transformer_block_weight_bytes": 843354944,
+      "estimated_non_block_weight_bytes": 0,
+      "estimated_bytes_per_transformer_block": 52709684,
+      "total_transformer_blocks": 16,
+      "method": "uniform_weight_fallback"
+    }
+  },
+  "kv_cache": {
+    "layers": 16,
+    "kv_heads": 8,
+    "head_dim": 64,
+    "context_length": 8192,
+    "batch_size": 1,
+    "dtype_bytes": 2,
+    "formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+    "notes": [
+      "Per-layer KV heads (0 to 8 over 16 layers): every layer is sized with the largest and the full context, so this is an upper bound; layers with a sliding window or fewer heads are not modelled.",
+      "Grouped-Query Attention: 8 KV heads for 32 attention heads."
+    ]
+  },
+  "hardware": {
+    "available_vram_bytes": null,
+    "available_ram_bytes": 5236535296
+  },
+  "assessment": {
+    "status": "comfortable",
+    "confidence": "low",
+    "target_device": "cpu",
+    "effective_device": "cpu",
+    "utilisation_ratio": 0.4334674722299437,
+    "reasons": [
+      "CPU consumption is checked separately from the desired RAM reserve and margin."
+    ],
+    "warnings": [],
+    "physical_bytes": 1732996806,
+    "budget_bytes": 2269867718,
+    "desired_reserve_bytes": 536870912,
+    "reserve_shortfall_bytes": 0
+  },
+  "hardware_fit": null,
+  "assumptions": [
+    "Selected explicitly by user: Q5_K_M.",
+    "Base model resolved to LiquidAI/LFM2.5-1.2B-Instruct via model_card_metadata.",
+    "KV cache dtype assumed to be float16.",
+    "GGUF CPU headroom: 512 MiB of RAM; the GPU's 1 GiB minimum does not apply.",
+    "No automatic percentage margin is added to GGUF headroom."
+  ],
+  "warnings": [
+    "Q4_0: Multiple artifacts share this quantization: LFM2.5-1.2B-Instruct-Q4_0.gguf, LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf. No artifact was selected.",
+    "Repository contains 8 GGUF artifact representations (BF16, F16, Q4_0, Q4_0, Q4_K_M, Q5_K_M, Q6_K, Q8_0); only one is loaded at a time.",
+    "GGUF header read up to its tokenizer; every key the memory estimate reads was present, the rest was not fetched.",
+    "Per-layer KV heads (0 to 8 over 16 layers): every layer is sized with the largest and the full context, so this is an upper bound; layers with a sliding window or fewer heads are not modelled.",
+    "Grouped-Query Attention: 8 KV heads for 32 attention heads.",
+    "CPU overhead uses a general 512 MiB + 10% of weights heuristic, not the GPU compute-buffer calibration. CPU repacking is not separately sized and can exceed this allowance."
+  ],
+  "base_model_resolution": {
+    "repo_id": "LiquidAI/LFM2.5-1.2B-Instruct",
+    "source": "model_card_metadata",
+    "confidence": "high",
+    "evidence": [
+      "Model card `base_model` list with one entry: LiquidAI/LFM2.5-1.2B-Instruct."
+    ],
+    "warnings": [],
+    "candidates": []
+  },
+  "configuration_sources": {
+    "architectures": "gguf_header",
+    "model_type": "gguf_header",
+    "max_position_embeddings": "gguf_header",
+    "hidden_size": "gguf_header",
+    "num_hidden_layers": "gguf_header",
+    "num_attention_heads": "gguf_header",
+    "num_key_value_heads": "gguf_header",
+    "intermediate_size": "base_model_config",
+    "vocab_size": "base_model_config",
+    "per_layer_kv_heads": "gguf_header"
+  },
+  "architecture": "lfm2",
+  "runtime_recommendation": null
+}

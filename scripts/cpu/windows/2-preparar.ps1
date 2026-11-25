@@ -29,7 +29,11 @@ $models = @(
   @('Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', 'qwen2.5-coder-7b-instruct-q3_k_m.gguf', 3808391104),
   @('bartowski/Qwen2.5-7B-Instruct-GGUF', 'Qwen2.5-7B-Instruct-Q4_K_M.gguf', 4683074240),
   @('Qwen/Qwen2.5-Coder-14B-Instruct-GGUF', 'qwen2.5-coder-14b-instruct-q3_k_m.gguf', 7339203968),
-  @('ornith-ai/Ornith-1.5-9B-GGUF', 'Ornith-1.5-9B-Q6_K.gguf', 7558901696)
+  @('ornith-ai/Ornith-1.5-9B-GGUF', 'Ornith-1.5-9B-Q6_K.gguf', 7558901696),
+  # campana v2
+  @('TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF', 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf', 668788096),
+  @('LiquidAI/LFM2.5-1.2B-Instruct-GGUF', 'LFM2.5-1.2B-Instruct-Q5_K_M.gguf', 843354944),
+  @('Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', 'qwen2.5-coder-7b-instruct-q2_k.gguf', 3015940032)
 )
 $falta = 0
 foreach ($m in $models) {

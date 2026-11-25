@@ -5,6 +5,9 @@ param(
   [switch]$Smoke,
   [string]$Only = '',
   [string]$Root = 'C:\cpu-bench',
+  [string]$Cases = 'cases.csv',
+  [string]$Out = 'resultats',
+  [switch]$Warmup,
   [int]$LoadTimeoutS = 400,
   [int]$GenTimeoutS = 300,
   [int]$PauseS = 15
@@ -23,7 +26,7 @@ function Get-AvailMiB { [int](Get-CimInstance Win32_PerfFormattedData_PerfOS_Mem
 if ($Smoke) {
   $m = Find-Model 'Qwen2.5-0.5B-Instruct-Q4_K_M.gguf'
   if (-not $m) { throw 'Falta Qwen2.5-0.5B-Instruct-Q4_K_M.gguf (ejecuta 2-preparar.ps1)' }
-  & $caso -Id 'S00' -Model $m -Ctx 2048 -Mode 'nommap' -LoadTimeoutS $LoadTimeoutS -GenTimeoutS $GenTimeoutS
+  & $caso -Id 'S00' -Model $m -Ctx 2048 -Mode 'nommap' -Out $Out -LoadTimeoutS $LoadTimeoutS -GenTimeoutS $GenTimeoutS
   Write-Host "Prueba de humo terminada. Si arriba pone carregat=1 generat=1, todo funciona." -ForegroundColor Green
   return
 }
@@ -32,7 +35,10 @@ if ($Smoke) {
 $orden = @('C14', 'C13', 'C12', 'C09', 'C05', 'C06', 'C10', 'C07', 'C11', 'C01', 'C02', 'C03', 'C08', 'C04',
            'C18', 'C19', 'C20', 'C23', 'C15', 'C16', 'C17', 'C24', 'C21', 'C22')
 $cases = @{}
-Import-Csv (Join-Path $scripts 'cases.csv') | ForEach-Object { $cases[$_.id] = $_ }
+$rows = @(Import-Csv (Join-Path $scripts $Cases))
+$rows | ForEach-Object { $cases[$_.id] = $_ }
+# con cases.csv se usa el orden de arriba; con otro fichero (p. ej. cases-v2.csv), el orden del propio fichero
+if ($Cases -ne 'cases.csv') { $orden = @($rows | ForEach-Object { $_.id }) }
 $sel = if ($Only) { $Only.Split(',') | ForEach-Object { $_.Trim() } } else { $orden }
 
 $baseline = Get-AvailMiB
@@ -48,7 +54,7 @@ foreach ($id in $sel) {
     if (-not $m) { Write-Host "[$n/$total] ${id} ${mode}: FALTA el fichero $($c.file) (se salta)" -ForegroundColor Yellow; continue }
     Write-Host "[$n/$total] $id $mode" -ForegroundColor Cyan
     try {
-      & $caso -Id $id -Model $m -Ctx ([int]$c.ctx) -Mode $mode -LoadTimeoutS $LoadTimeoutS -GenTimeoutS $GenTimeoutS
+      & $caso -Id $id -Model $m -Ctx ([int]$c.ctx) -Mode $mode -Out $Out -Warmup:$Warmup -LoadTimeoutS $LoadTimeoutS -GenTimeoutS $GenTimeoutS
     } catch {
       Write-Host "   ERROR en ${id} ${mode}: $($_.Exception.Message) (se sigue con el siguiente)" -ForegroundColor Red
       Get-Process llama-server -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

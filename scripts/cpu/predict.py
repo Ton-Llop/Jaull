@@ -5,18 +5,23 @@ Run from the repository root, in WSL (it only reads Hub metadata, it does not do
     uv run python scripts/cpu/predict.py
 
 It stores each full JSON report in validation/cpu-20261125/predicciones/ and a summary CSV
-next to it.
+next to it. For another campaign: --cases scripts/cpu/cases-v2.csv --out <folder>.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import subprocess
 from pathlib import Path
 
-CASES = Path("scripts/cpu/cases.csv")
-OUT = Path("validation/cpu-20261125/predicciones")
+parser = argparse.ArgumentParser()
+parser.add_argument("--cases", default="scripts/cpu/cases.csv")
+parser.add_argument("--out", default="validation/cpu-20261125/predicciones")
+args = parser.parse_args()
+CASES = Path(args.cases)
+OUT = Path(args.out)
 OUT.mkdir(parents=True, exist_ok=True)
 
 GIT_HEAD = ["git", "rev-parse", "HEAD"]

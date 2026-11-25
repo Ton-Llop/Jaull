@@ -4,11 +4,15 @@
 #
 # Version corta (solo los casos cerca del limite, sin velocidad; ~1 h):
 #   powershell -ExecutionPolicy Bypass -File C:\cpu-bench\scripts\0-todo.ps1 -Only C18,C19,C20,C23,C15,C16,C17,C24,C21,C22 -SinBenchmark
-param([string]$Root = 'C:\cpu-bench', [string]$Only = '', [switch]$SinBenchmark)
+#
+# Campana v2 (casos nuevos, con calentamiento, sin velocidad; resultados en resultats-v2):
+#   powershell -ExecutionPolicy Bypass -File C:\cpu-bench\scripts\0-todo.ps1 -Cases cases-v2.csv -Out resultats-v2 -Warmup -SinBenchmark
+param([string]$Root = 'C:\cpu-bench', [string]$Only = '', [switch]$SinBenchmark,
+      [string]$Cases = 'cases.csv', [string]$Out = 'resultats', [switch]$Warmup)
 $ErrorActionPreference = 'Stop'
 $scripts = Join-Path $Root 'scripts'
-New-Item -ItemType Directory -Force "$Root\resultats" | Out-Null
-Start-Transcript -Path (Join-Path $Root ("resultats\transcript-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmm'))) -Append | Out-Null
+New-Item -ItemType Directory -Force "$Root\$Out" | Out-Null
+Start-Transcript -Path (Join-Path $Root ("$Out\transcript-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmm'))) -Append | Out-Null
 
 # que el portatil no se duerma mientras corre
 Add-Type -Namespace Win -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
@@ -25,12 +29,12 @@ try {
   & (Join-Path $scripts '2-preparar.ps1')
 
   Write-Host '=== 2/5 Prueba de humo ===' -ForegroundColor Green
-  & (Join-Path $scripts '4-campanya.ps1') -Smoke
-  $last = Import-Csv (Join-Path $Root 'resultats\resum.csv') | Select-Object -Last 1
+  & (Join-Path $scripts '4-campanya.ps1') -Smoke -Out $Out
+  $last = Import-Csv (Join-Path $Root "$Out\resum.csv") | Select-Object -Last 1
   if ($last.id -ne 'S00' -or $last.carregat -ne '1' -or $last.generat -ne '1') { throw 'La prueba de humo ha fallado: no sigo. Mira C:\cpu-bench\resultats\S00-*\server.log' }
 
   Write-Host '=== 3/5 Campana ===' -ForegroundColor Green
-  & (Join-Path $scripts '4-campanya.ps1') -Only $Only
+  & (Join-Path $scripts '4-campanya.ps1') -Only $Only -Cases $Cases -Out $Out -Warmup:$Warmup
 
   if (-not $SinBenchmark) {
     Write-Host '=== 4/5 Velocidad ===' -ForegroundColor Green
@@ -38,7 +42,7 @@ try {
   }
 
   Write-Host '=== 5/5 Empaquetar ===' -ForegroundColor Green
-  & (Join-Path $scripts '6-empaquetar.ps1')
+  & (Join-Path $scripts '6-empaquetar.ps1') -Out $Out
 
   Write-Host 'TERMINADO. Ya puedes decirme "listo".' -ForegroundColor Green
   try { [console]::Beep(880, 400); [console]::Beep(1175, 600) } catch { }

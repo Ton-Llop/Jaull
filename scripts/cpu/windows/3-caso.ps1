@@ -11,6 +11,8 @@ param(
   [int]$LoadTimeoutS = 900,
   [int]$GenTimeoutS = 900,
   [string]$Root = 'C:\cpu-bench',
+  [string]$Out = 'resultats',
+  [switch]$Warmup,
   [int]$Port = 8099
 )
 $ErrorActionPreference = 'Stop'
@@ -25,7 +27,7 @@ function Get-AvailMiB { [int](Get-CimInstance Win32_PerfFormattedData_PerfOS_Mem
 function Get-PageMiB { [int](Get-CimInstance Win32_PageFileUsage | Measure-Object -Property CurrentUsage -Sum).Sum }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$dir = Join-Path $Root "resultats\$Id-$Mode-$stamp"
+$dir = Join-Path $Root "$Out\$Id-$Mode-$stamp"
 New-Item -ItemType Directory -Force $dir | Out-Null
 $ram = Join-Path $dir 'ram.csv'
 'seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib' | Set-Content $ram -Encoding Ascii
@@ -62,7 +64,8 @@ function Sample {
 }
 
 $loaded = 0; $generated = 0; $availLoaded = 0; $exitCode = ''
-$tokOut = ''; $ppOut = ''; $tgOut = ''
+$tokOut = ''; $ppOut = ''; $tgOut = ''; $ppN = ''; $ppMs = ''
+$loadS = ''; $warmMs = ''
 try {
   $srvArgs = @('-m', ('"' + $Model + '"'), '-c', "$Ctx", '-np', '1', '-t', '6', '-lv', '4', '--host', '127.0.0.1', '--port', "$Port")
   # llama.cpp b11889 ya no tiene --no-mmap: el modo de carga es -lm (none = a RAM sin mmap, mmap = proyeccion del fichero)
@@ -86,8 +89,27 @@ try {
   $availLoaded = Get-AvailMiB
 
   # 2) generar
+  if ($loaded -eq 1) { $loadS = [int]((Get-Date) - $t0).TotalSeconds }
+
+  # 1b) peticion de calentamiento: con mmap el servidor dice "listo" antes de tener el modelo leido,
+  # y la primera peticion paga esa lectura. Se hace con otro prompt y su tiempo se guarda aparte.
+  if ($Warmup -and $loaded -eq 1 -and -not $script:abort) {
+    $wbody = '{"prompt":"Write a short note about the weather today.","n_predict":32,"temperature":0,"ignore_eos":true,"cache_prompt":false}'
+    Set-Content -Path "$dir\warmup-request.json" -Value $wbody -Encoding Ascii
+    $wargs = @('-s', '-m', "$GenTimeoutS", '-X', 'POST', '-H', '"Content-Type: application/json"', '--data-binary', "@$dir\warmup-request.json", "http://127.0.0.1:$Port/completion")
+    $tw = Get-Date
+    $w = Start-Process -FilePath 'curl.exe' -ArgumentList $wargs -RedirectStandardOutput "$dir\warmup-response.json" -PassThru -WindowStyle Hidden
+    while (-not $w.HasExited) {
+      Sample
+      if ($script:abort) { break }
+      Start-Sleep -Seconds 1
+    }
+    $warmMs = [int]((Get-Date) - $tw).TotalMilliseconds
+    if ($w -and -not $w.HasExited) { Stop-Process -Id $w.Id -Force -ErrorAction SilentlyContinue }
+  }
+
   if ($loaded -eq 1 -and -not $script:abort) {
-    $body = '{"prompt":"Explain in detail how a transformer language model generates text, step by step.","n_predict":' + $Tokens + ',"temperature":0,"ignore_eos":true,"cache_prompt":false}'
+    $body ='{"prompt":"Explain in detail how a transformer language model generates text, step by step.","n_predict":' + $Tokens + ',"temperature":0,"ignore_eos":true,"cache_prompt":false}'
     Set-Content -Path "$dir\request.json" -Value $body -Encoding Ascii
     $curlArgs = @('-s', '-m', "$GenTimeoutS", '-X', 'POST', '-H', '"Content-Type: application/json"', '--data-binary', "@$dir\request.json", "http://127.0.0.1:$Port/completion")
     $curl = Start-Process -FilePath 'curl.exe' -ArgumentList $curlArgs -RedirectStandardOutput "$dir\response.json" -PassThru -WindowStyle Hidden
@@ -118,6 +140,8 @@ if (Test-Path "$dir\response.json") {
       $tokOut = "$($j.tokens_predicted)"
       $tgOut = [string]::Format($ci, '{0:N2}', [double]$j.timings.predicted_per_second)
       $ppOut = [string]::Format($ci, '{0:N2}', [double]$j.timings.prompt_per_second)
+      $ppN = "$($j.timings.prompt_n)"
+      $ppMs = [string]::Format($ci, '{0:N0}', [double]$j.timings.prompt_ms)
     } catch { }
   }
 }
@@ -146,13 +170,14 @@ $summary = @(
   "disponible_abans_mib=$avail0", "disponible_carregat_mib=$availLoaded", "disponible_min_mib=$($script:minAvail)", "disponible_final_mib=$availEnd",
   "pagefile_abans_mib=$page0", "pagefile_max_mib=$($script:maxPage)", "servidor_ws_max_mib=$($script:maxWS)",
   "carregat=$loaded", "generat=$generated", "tokens=$tokOut", "tok_s_generacio=$tgOut", "tok_s_prompt=$ppOut",
+  "prompt_tokens=$ppN", "prompt_ms=$ppMs", "carrega_s=$loadS", "calentament=$([int][bool]$Warmup)", "calentament_ms=$warmMs",
   "buffer_model_mib=$(F $bm)", "buffer_kv_mib=$(F $bk)", "buffer_compute_mib=$(F $bc)", "buffer_rs_mib=$(F $br)", "buffer_total_mib=$(F $bt)",
   "aturat=$($script:abort)", "exit_code=$exitCode", "carpeta=$dir"
 )
 $summary | Set-Content "$dir\summary.txt" -Encoding Ascii
 
 # una fila por ejecucion en un CSV unico
-$csv = Join-Path $Root 'resultats\resum.csv'
+$csv = Join-Path $Root "$Out\resum.csv"
 if (-not (Test-Path $csv)) {
   'id,mode,ctx,disponible_abans,disponible_min,pagefile_abans,pagefile_max,carregat,generat,tok_s_generacio,tok_s_prompt,buffer_model,buffer_kv,buffer_compute,buffer_total,aturat,carpeta' | Set-Content $csv -Encoding Ascii
 }
