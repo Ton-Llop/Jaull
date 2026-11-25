@@ -21,17 +21,19 @@ de llama.cpp, **CALCULAT** una operació feta sobre aquestes lectures i **UNVERI
 ## Resultats
 
 Tot en MiB. **Projectat** és pesos + KV + còmput, tal com ho imprimeix llama.cpp. **Jaull (marge)** és el que Jaull necessita
-(inclou l'1 GiB lliure) i el seu marge sobre els 23.613 MiB. **Dif.** és pesos + KV + 256 de Jaull menys el projectat.
+(inclou l'1 GiB lliure) i el seu marge sobre els 23.613 MiB. **Dif.** és el projectat menys (pesos + KV + 256 de Jaull), és a dir, **observat
+menys predit**, la convenció del projecte (apartat 5.6 de la memòria): un valor negatiu vol dir que Jaull és conservador. El `preregistre-b60-2.md`,
+que ja està comitejat i no es modifica, escriu aquestes diferències amb el signe contrari (+291 a +468).
 La regla de llama.cpp es compleix quan en queden lliures 1.024 o més.
 
 | Cas | Context | Pesos | KV | Còmput | Projectat | Lliure | Jaull (marge) | Dif. | tok/s | Resultat |
 |---|---:|---:|---:|---:|---:|---:|---|---:|---:|---|
-| P1 Coder 30B | 49.152 | 17.524 | 4.608 | 132 | 22.264 | 1.349 | 23.583 (+30), cap | +295 | 95,96 | Encert |
-| P2 Coder 30B | 51.200 | 17.524 | 4.800 | 134 | 22.458 | 1.155 | 23.775 (−162), no | +293 | 96,00 | Fals negatiu |
-| P3 Coder 30B | 53.248 | 17.524 | 4.992 | 136 | 22.652 | 961 | 23.967 (−354), no | +291 | 96,15 | Encert |
-| P4 Qwen2.5 32B | 12.288 | 18.508 | 3.072 | 214 | 21.794 | 1.819 | 23.286 (+327), cap | +468 | 18,07 | Encert |
-| P5 Qwen2.5 32B | 14.336 | 18.508 | 3.584 | 216 | 22.308 | 1.305 | 23.798 (−185), no | +466 | 18,05 | Fals negatiu |
-| P6 Qwen2.5 32B | 15.360 | 18.508 | 3.840 | 217 | 22.565 | 1.048 | 24.054 (−441), no | +465 | 18,07 | Fals negatiu |
+| P1 Coder 30B | 49.152 | 17.524 | 4.608 | 132 | 22.264 | 1.349 | 23.583 (+30), cap | −295 | 95,96 | Encert |
+| P2 Coder 30B | 51.200 | 17.524 | 4.800 | 134 | 22.458 | 1.155 | 23.775 (−162), no | −293 | 96,00 | Fals negatiu |
+| P3 Coder 30B | 53.248 | 17.524 | 4.992 | 136 | 22.652 | 961 | 23.967 (−354), no | −291 | 96,15 | Encert |
+| P4 Qwen2.5 32B | 12.288 | 18.508 | 3.072 | 214 | 21.794 | 1.819 | 23.286 (+327), cap | −468 | 18,07 | Encert |
+| P5 Qwen2.5 32B | 14.336 | 18.508 | 3.584 | 216 | 22.308 | 1.305 | 23.798 (−185), no | −466 | 18,05 | Fals negatiu |
+| P6 Qwen2.5 32B | 15.360 | 18.508 | 3.840 | 217 | 22.565 | 1.048 | 24.054 (−441), no | −465 | 18,07 | Fals negatiu |
 
 P3 és l'únic cas que no compleix la regla (961 lliures, `cannot meet free memory target of 1024 MiB`). Carrega les 49 capes igualment
 perquè `-ngl 99` el fixa l'usuari, i genera.
@@ -39,7 +41,7 @@ perquè `-ngl 99` el fixa l'usuari, i genera.
 ## Què diu
 
 - El KV de Jaull coincideix amb el de llama.cpp als sis casos.
-- La diferència és de 291 a 295 MiB al Coder 30B i de 465 a 468 MiB al 32B, entre l'1,3 % i el 2,1 % del projectat. Sempre és positiva.
+- La diferència és de −291 a −295 MiB al Coder 30B i de −465 a −468 MiB al 32B, entre l'1,3 % i el 2,1 % del projectat. Sempre és negativa: Jaull és conservador.
   Ve de dues coses: Jaull compta els pesos com la mida del fitxer, i llama.cpp en deixa 171 MiB (Coder) o 426 MiB (32B) al host,
   i Jaull fixa el còmput en 256 MiB, contra 132 a 217 mesurats.
 - L'1 GiB és el llindar que llama.cpp aplica a la memòria que li queda lliure, no un excés de Jaull. La diferència real entre els
@@ -60,33 +62,33 @@ tenien el mateix 23.613 MiB lliures de partida.
 
 | Cas | Model | Context | Projectat: predit i mesurat | Lliure després | Jaull (marge) | Dif. | Resultat |
 |---|---|---:|---|---:|---|---:|---|
-| Q1 | Coder 30B | 8.192 | 18.387 → 18.384 | 5.229 | 19.743 (+3.870), cap | +335 | Encert |
-| Q2 | Coder 30B | 98.304 | 26.921 → 26.920 | −3.307 | 28.191 (−4.578), no | +247 | Encert |
-| Q3 | Coder 30B | 131.072 | 30.026 → 30.024 | −6.411 | 31.263 (−7.650), no | +215 | Encert |
-| Q4 | Qwen2.5 32B | 32.768 | 26.935 → 26.934 | −3.321 | 28.406 (−4.793), no | +448 | Encert |
-| Q5 | Qwen2.5 32B | 65.536 | 35.159 → 35.158 | −11.545 | 36.598 (−12.985), no | +416 | Encert |
-| Q6 | Qwen3.8-27B | 98.304 | 21.675 → 21.216 | 2.397 | 23.279 (+334), cap | +1.039 | Encert |
-| Q7 | Qwen3.8-27B | 114.688 | 22.713 → 22.256 | 1.357 | 24.303 (−690), no | +1.023 | **Fals negatiu** |
-| Q8 | Qwen3.8-27B | 131.072 | 23.756 → 23.296 | 317 | 25.327 (−1.714), no | +1.007 | Encert |
+| Q1 | Coder 30B | 8.192 | 18.387 → 18.384 | 5.229 | 19.743 (+3.870), cap | −335 | Encert |
+| Q2 | Coder 30B | 98.304 | 26.921 → 26.920 | −3.307 | 28.191 (−4.578), no | −247 | Encert |
+| Q3 | Coder 30B | 131.072 | 30.026 → 30.024 | −6.411 | 31.263 (−7.650), no | −215 | Encert |
+| Q4 | Qwen2.5 32B | 32.768 | 26.935 → 26.934 | −3.321 | 28.406 (−4.793), no | −448 | Encert |
+| Q5 | Qwen2.5 32B | 65.536 | 35.159 → 35.158 | −11.545 | 36.598 (−12.985), no | −416 | Encert |
+| Q6 | Qwen3.8-27B | 98.304 | 21.675 → 21.216 | 2.397 | 23.279 (+334), cap | −1.039 | Encert |
+| Q7 | Qwen3.8-27B | 114.688 | 22.713 → 22.256 | 1.357 | 24.303 (−690), no | −1.023 | **Fals negatiu** |
+| Q8 | Qwen3.8-27B | 131.072 | 23.756 → 23.296 | 317 | 25.327 (−1.714), no | −1.007 | Encert |
 
 Q1 carrega i genera 512 tokens a 93,36 tok/s. Q2 a Q5 es van parar a l'ajust, en un segon, sense reservar el KV; no es sap si carregarien.
 
 - Jaull encerta set dels vuit casos i falla Q7, un fals negatiu. Els cinc primers són lluny de la frontera (el més proper és a més de 4 GiB del
   llindar d'1 GiB lliure) i només proven que Jaull no aprova el que no cap. La precisió fina es veu a Q6, Q7 i Q8.
 - L'extrapolació del còmput que vaig fer abans de mesurar (uns 0,001 MiB per token) va encertar el projectat de llama.cpp amb 1 a 3 MiB de diferència.
-- **Dif.** baixa amb el context: de +335 (8K) a +215 (131K) al Coder i de +448 a +416 al 32B. El còmput de llama.cpp creix amb el context
+- **Dif.** es fa menys negativa amb el context: de −335 (8K) a −215 (131K) al Coder i de −448 a −416 al 32B. El còmput de llama.cpp creix amb el context
   (de 92 a 212 MiB al Coder i de 234 a 266 al 32B, **CALCULAT** per diferència) i Jaull el fixa en 256. Al 32B a 65.536, el còmput real
   (266) ja supera els 256 de Jaull per 10 MiB. Amb contextos molt més grans la diferència podria canviar de signe (**UNVERIFIED**).
 
 **Q6 (Qwen3.8-27B híbrid)** carrega i genera 512 tokens a 15,43 tok/s, amb la RAM de Windows disponible mínima a 9.632 MiB.
-La diferència de Jaull és de +1.039 MiB, el triple que als altres models, i gairebé tota és als pesos:
+La diferència de Jaull és de −1.039 MiB, el triple que als altres models, i gairebé tota és als pesos:
 
-| Component | Jaull | llama.cpp | Diferència |
+| Component | Jaull | llama.cpp | Diferència (observat menys predit) |
 |---|---:|---:|---:|
-| Pesos a la GPU | 15.702 | 14.674 | +1.028 |
+| Pesos a la GPU | 15.702 | 14.674 | −1.028 |
 | KV (16 capes d'atenció de 65) | 6.144 | 6.144 | 0 |
-| Estat recurrent | 153 | 149,6 | +3 |
-| Còmput | 256 | 248 | +8 |
+| Estat recurrent | 153 | 149,6 | −3 |
+| Còmput | 256 | 248 | −8 |
 
 llama.cpp deixa 682 MiB (embeddings) en un buffer del host, i els dos buffers sumen 15.356 MiB, 346 menys que el fitxer. Aquests 346
 MiB no s'han explicat (**UNVERIFIED**). El KV híbrid i l'estat recurrent de Jaull són exactes.
@@ -102,7 +104,7 @@ estimació és posterior a Q6 i no és una predicció preregistrada; la de Jaull
 - **Q8** no la compleix: queden 317 MiB i llama.cpp diu `cannot meet free memory target of 1024 MiB, need to reduce device memory by 706 MiB`.
   Jaull encerta. L'script va parar el servidor a l'ajust perquè havia fixat un marge de seguretat de 500 MiB (317 < 500), **no perquè
   desbordés la VRAM**: hi cabia amb 317 MiB lliures. No es sap si hauria carregat ni si hauria generat.
-- La diferència de Jaull al 27B és de +1.039, +1.023 i +1.007 MiB (Q6, Q7, Q8): constant i gairebé tota als pesos (+1.028).
+- La diferència de Jaull al 27B és de −1.039, −1.023 i −1.007 MiB (Q6, Q7, Q8): constant i gairebé tota als pesos (−1.028).
   El còmput de llama.cpp creix 16 MiB cada 16.384 tokens (248, 264 i 280), com al Coder i al 32B.
 - **Regla que ho resumeix:** Jaull aprova un cas si el marge real per sobre de l'1 GiB és igual o superior a la seva diferència. Q6 té 1.373
   de marge contra 1.039 i s'aprova; Q7 en té 333 contra 1.023 i no. Les diferències per model són uns 0,3 GiB (Coder 30B), 0,45 (32B) i 1,0 (27B).
@@ -149,11 +151,11 @@ que el buffer del host de llama.cpp (682,0, 417,7 i 166,9 MiB contra 682, 417 i 
 (`eh_proj`, `enorm`, `hnorm`, `shared_head_norm`) i pesa 335 MiB. És la capa de predicció múltiple, que llama.cpp no carrega. Que la salti és una
 inferència dels números, no s'ha comprovat al seu codi.
 
-| Model | Pesos de Jaull menys buffer de la GPU | `token_embd` (host) | Capçalera del fitxer | Bloc `nextn` | Suma |
+| Model | Buffer de la GPU menys pesos de Jaull | `token_embd` (host) | Capçalera del fitxer | Bloc `nextn` | Suma |
 |---|---:|---:|---:|---:|---:|
-| Coder 30B | +171 | 166,9 | 5,7 | 0 | 172,6 |
-| Qwen2.5 32B | +426 | 417,7 | 5,7 | 0 | 423,4 |
-| Qwen3.8 27B | +1.028 | 682,0 | 10,5 | 334,7 | 1.027,2 |
+| Coder 30B | −171 | 166,9 | 5,7 | 0 | 172,6 |
+| Qwen2.5 32B | −426 | 417,7 | 5,7 | 0 | 423,4 |
+| Qwen3.8 27B | −1.028 | 682,0 | 10,5 | 334,7 | 1.027,2 |
 
 Les prediccions: la primera (els embeddings són el buffer del host) **es compleix**. La segona (els 346 MiB sobrants són un grup apart, com tensors de visió)
 **no es compleix**: no hi ha cap grup així, i són un bloc de predicció múltiple.
