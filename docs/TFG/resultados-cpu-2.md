@@ -10,12 +10,56 @@ RAM disponible abans de cada cas: de 6.881 a 10.581 MiB.
 - **Sense mmap, Jaull no ha aprovat mai res que no funcionés.** 28 aprovacions i 28 van funcionar amb marge, amb un mínim de 1.745 MiB lliures (C21).
   L'aprovació més justa (C21) tenia només 89 MiB de marge sobre l'estimació de Jaull i va quedar 1.745 MiB lliures. Cap fals negatiu.
 - **Els buffers de les 24 configuracions repetides són idèntics als de la campanya 1** (diferència màxima: 0,0 MiB).
-- **Amb mmap, Jaull aprova 15 configuracions i 8 acaben sense marge** (C01, C15, C16, C17, C18, C19, C20, C21). És el contrast de la campanya: 0 falsos positius sense mmap i 8 amb mmap, amb les mateixes prediccions.
+- **Amb el mode de càrrega que Jaull fa servir a CPU sobre Windows (`-lm none`), no hi ha hagut cap fals positiu en 66 aprovacions de dues campanyes** (38 i 28). L'error del total és sempre del costat prudent; el KV del Mellum es queda curt, i el tapa l'overhead sobrat.
+- **Amb mmap hi ha una limitació coneguda:** Jaull aprova 15 configuracions i 8 acaben sense marge (C01, C15, C16, C17, C18, C19, C20, C21), amb les mateixes prediccions. Només afecta qui força mmap o treballa a Linux o WSL, on no s'ha mesurat.
 - **Els models nous confirmen l'overhead conservador** (error del total entre −522 i −651 MiB als tres models amb arquitectura coneguda) **i un error nou**: Jaull sobreestima el KV de l'LFM2.5, un híbrid.
 - **Sense mmap, la regla simple (GGUF × 1,2) té aquí un fals positiu i Jaull cap:** aprova la C22, que va quedar a 444 MiB lliures, perquè no mira el KV. A la campanya 1 va ser al revés (Jaull en tenia 4 de falsos negatius i la regla 1).
 - **No s'ha pogut comprovar** la hipòtesi H7 al Mellum: amb mmap es para abans de generar.
 
 ## Ha encertat Jaull?
+
+### Resum
+
+Sense mmap, que és el mode amb què Jaull carrega el model a CPU sobre Windows (D129):
+
+| Cas | Model | Context | Predit | Observat | Ha encertat? |
+|---|---|---:|---:|---:|:-:|
+| N01 | TinyLlama-1.1B-Chat-v1.0 Q4_K_M | 2.048 | 1.258 | 735 | ✅ |
+| N02 | LFM2.5-1.2B Q5_K_M | 8.192 | 1.653 | 974 | ✅ |
+| N03 | LFM2.5-1.2B Q5_K_M | 32.768 | 2.421 | 1.286 | ✅ |
+| C14 | Qwen2.5-0.5B Q4_K_M | 32.768 | 1.313 | 827 | ✅ |
+| C13 | Qwen2.5-1.5B Q5_K_M | 32.768 | 2.756 | 2.216 | ✅ |
+| C12 | Qwen2.5-3B Q4_K_M | 32.768 | 3.872 | 3.270 | ✅ |
+| N04 | Qwen2.5-Coder-7B Q2_K | 8.192 | 4.124 | 3.473 | ✅ |
+| N05 | Qwen2.5-Coder-7B Q2_K | 32.768 | 5.468 | 4.841 | ✅ |
+| C09 | Qwen2.5-7B IQ2_M | 8.192 | 3.877 | 3.248 | ✅ |
+| C05 | Qwen2.5-7B Q3_K_M | 2.048 | 4.619 | 3.886 | ✅ |
+| C06 | Qwen2.5-7B Q3_K_M | 8.192 | 4.955 | 4.228 | ✅ |
+| C10 | Qwen2.5-7B IQ2_M | 32.768 | 5.221 | 4.616 | ✅ |
+| C07 | Qwen2.5-7B Q3_K_M | 16.384 | 5.403 | 4.684 | ✅ |
+| C11 | Qwen2.5-Coder-7B Q3_K_M | 16.384 | 5.403 | 4.684 | ✅ |
+| C01 | Qwen2.5-7B Q4_K_M | 2.048 | 5.537 | 4.720 | ✅ |
+| C02 | Qwen2.5-7B Q4_K_M | 8.192 | 5.873 | 5.062 | ✅ |
+| C03 | Qwen2.5-7B Q4_K_M | 16.384 | 6.321 | 5.518 | ✅ |
+| C08 | Qwen2.5-7B Q3_K_M | 32.768 | 6.299 | 5.596 | ✅ |
+| C04 | Qwen2.5-7B Q4_K_M | 32.768 | 7.217 | 6.430 | ✅ |
+| C18 | Mellum2.1-12B-A2.5B-Thinking MXFP4 | 8.192 | 7.942 | 6.986 | ✅ |
+| C19 | Mellum2.1-12B-A2.5B-Thinking MXFP4 | 32.768 | 7.942 | 7.346 | ✅ |
+| C20 | Qwen2.5-Coder-14B Q3_K_M | 2.048 | 8.595 | 7.510 | ✅ |
+| C23 | Ornith-1.5-9B Q6_K | 4.096 | 8.622 | 7.302 | ✅ |
+| C15 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 2.048 | 9.035 | 7.889 | ✅ |
+| C16 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 8.192 | 9.035 | 7.979 | ✅ |
+| C17 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 32.768 | 9.035 | 8.339 | ✅ |
+| C24 | Ornith-1.5-9B Q6_K | 32.768 | 9.518 | 8.226 | ✅ |
+| C21 | Qwen2.5-Coder-14B Q3_K_M | 8.192 | 9.747 | 8.668 | ✅ |
+| C22 | Qwen2.5-Coder-14B Q3_K_M | 16.384 | 11.283 | 10.212 | ✅ |
+| **Encerts** | | | | | **29 de 29** |
+
+✅ és un encert amb el criteri de marge (almenys 1.024 MiB lliures): aprovar una configuració que funciona o rebutjar-ne una que no. ❌ FP és un fals positiu: Jaull va dir «cap» i el cas es va quedar sense marge.
+**Predit** és el que Jaull calcula per a pesos, KV i overhead, en MiB, i **Observat** és el que va reservar llama.cpp. El veredicte «cap» fa servir, a més, la reserva de 512 MiB i la RAM lliure mesurada a cada cas.
+El 29 de 29 són 28 aprovacions i 1 rebuig correctes. **Amb mmap hi ha una limitació coneguda, a la secció «Limitació coneguda: mmap».**
+
+### Detall
 
 Una fila per configuració. **Marge** és la RAM lliure menys el total predit de Jaull (positiu vol dir «cap»). **Mínim** és la RAM lliure més baixa durant l'execució, i **parat** vol dir que l'script va aturar el servidor al límit de 400 MiB que vam posar nosaltres.
 «Encert» segueix el criteri de marge (almenys 1.024 MiB lliures): aprovar una configuració que funciona o rebutjar-ne una que no. Els errors van en negreta.
@@ -81,7 +125,35 @@ Amb mmap la regla simple té un fals positiu més (la C22, també rebutjada per 
 - **LFM2.5 (H5):** Jaull n'estima el KV com si totes les capes tinguessin atenció i el sobreestima unes 2,7 vegades (96 MiB observats contra 256 predits a 8.192 tokens, 384 contra 1.024 a 32.768).
   La proporció és d'aproximadament 0,375, que és el que sortiria si només 6 de les 16 capes en tinguessin; **no s'ha comprovat a l'arquitectura del model**. És un error conservador, de la mateixa família que el del Mellum (amb signe contrari).
 
-## Mmap, una altra vegada
+## Limitació coneguda: mmap
+
+**Jaull no carrega amb mmap per defecte, però només a CPU sobre Windows natiu.** A Linux i a WSL el mode per defecte de llama.cpp és mmap i no s'ha mesurat allà. Qui demani `-lm mmap` o executi llama.cpp pel seu compte també hi cau.
+Amb mmap, Jaull aprova 15 configuracions i 8 acaben sense marge, amb les mateixes prediccions que funcionen sense mmap:
+
+| Cas | Model | Context | Predit | Observat | Ha encertat? |
+|---|---|---:|---:|---:|:-:|
+| N01 | TinyLlama-1.1B-Chat-v1.0 Q4_K_M | 2.048 | 1.258 | 735 | ✅ |
+| N02 | LFM2.5-1.2B Q5_K_M | 8.192 | 1.653 | 974 | ✅ |
+| C12 | Qwen2.5-3B Q4_K_M | 32.768 | 3.872 | 3.270 | ✅ |
+| N04 | Qwen2.5-Coder-7B Q2_K | 8.192 | 4.124 | 3.473 | ✅ |
+| C05 | Qwen2.5-7B Q3_K_M | 2.048 | 4.619 | 3.886 | ✅ |
+| C01 | Qwen2.5-7B Q4_K_M | 2.048 | 5.537 | 4.720 | ❌ FP |
+| C18 | Mellum2.1-12B-A2.5B-Thinking MXFP4 | 8.192 | 7.942 | 6.986 | ❌ FP |
+| C19 | Mellum2.1-12B-A2.5B-Thinking MXFP4 | 32.768 | 7.942 | 7.346 | ❌ FP |
+| C20 | Qwen2.5-Coder-14B Q3_K_M | 2.048 | 8.595 | 7.510 | ❌ FP |
+| C23 | Ornith-1.5-9B Q6_K | 4.096 | 8.622 | 7.302 | ✅ |
+| C15 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 2.048 | 9.035 | 7.889 | ❌ FP |
+| C16 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 8.192 | 9.035 | 7.979 | ❌ FP |
+| C17 | Mellum2.1-12B-A2.5B-Thinking Q4_K_M | 32.768 | 9.035 | 8.339 | ❌ FP |
+| C24 | Ornith-1.5-9B Q6_K | 32.768 | 9.518 | 8.226 | ✅ |
+| C21 | Qwen2.5-Coder-14B Q3_K_M | 8.192 | 9.747 | 8.668 | ❌ FP |
+| C22 | Qwen2.5-Coder-14B Q3_K_M | 16.384 | 11.283 | 10.212 | ✅ |
+| **Encerts** | | | | | **8 de 16** |
+
+Els tres fals positius que van executar (C01, C20, C21) van generar, amb 785, 445 i 510 MiB lliures. Els cinc del Mellum es van parar pel límit de 400 MiB que vam posar nosaltres: no se sap si haurien generat.
+Amb el criteri «executa» els falsos positius confirmats serien 0 i els 5 del Mellum quedarien com a desconeguts; amb el criteri de marge són 8. Aquesta taula fa servir el segon.
+
+### Diferència entre modes
 
 Diferència de RAM lliure mínima (sense mmap menys amb mmap, en MiB), amb el buffer `CPU_REPACK` que imprimeix el registre:
 

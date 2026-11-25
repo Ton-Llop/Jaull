@@ -3624,6 +3624,43 @@ l'emeti a la línia d'ordres només ho cobreixen proves unitàries.
 **Fonts:** D120, D123, D127, [resultats de la campanya](resultados-cpu.md), [preregistre](preregistre-cpu.md),
 [política](../../src/jaull/application/serving/planner.py).
 
+### D130. Proposta oberta: amb mmap explícit a CPU, comptar els pesos una segona vegada
+
+**Data i necessitat:** 2026-11-25. D129 evita el problema de mmap triant `-lm none` per defecte, però **només a CPU sobre Windows
+natiu**. A Linux i a WSL, o si algú demana `-lm mmap` o executa llama.cpp pel seu compte, el mode és mmap i l'estimació no cobreix
+el consum extra. La preferència de l'autor és **un fals negatiu abans que un fals positiu**: rebutjar una configuració que
+hauria funcionat costa poc, aprovar-ne una que deixa la màquina sense RAM no.
+
+**Evidència** (campanya CPU 2, 16 casos amb mmap, **sobre les mateixes dades, de manera que només és un argument i no una validació**):
+
+| Regla amb mmap explícit | Aprova i funciona | Falsos positius | Falsos negatius |
+|---|---:|---:|---:|
+| Actual (total de Jaull) | 7 | **8** | 0 |
+| **Total + pesos (cota alta)** | 4 | **0** | 3 (C05, C23, C24) |
+| Total + 1 GiB | 5 | 1 (C01) | 2 (C23, C24) |
+
+L'extra de mmap observat mai passa de 0,64 vegades els pesos (de 0,18 a 0,64 als models amb `CPU_REPACK`), de manera que «+ pesos» té marge.
+Els dos falsos negatius de l'Ornith (Q6_K) són un rebuig sense motiu: sense `CPU_REPACK`, amb mmap gasta menys.
+
+**Proposta (no implementada):** quan el mode de càrrega sigui mmap explícit (o per defecte fora de Windows) i el backend sigui CPU,
+sumar els pesos al total estimat com a cota alta, i dir-ho al pla. Per ara només s'ha implementat un **avís** a `plan_lines`
+(`CPU_MMAP_WARNING`), que no canvia cap veredicte.
+
+**Per què no s'aplica encara:**
+- La campanya CPU és «mesura, no ajustis»: una fórmula canviada amb les dades que la justifiquen no es pot validar amb les mateixes dades.
+- Només hi ha una màquina i l'argument surt de 16 casos.
+- No se sap què passa a Linux o a WSL, on mmap és el mode per defecte.
+
+**Condicions per acceptar-la:** una campanya nova, preregistrada i amb models diferents, amb mmap forçat, on la regla es comprovi i es
+mesuri també el cost dels falsos negatius; i alguna mesura a Linux o a WSL.
+
+**Estat:** PROPOSED. Només l'avís està IMPLEMENTED (`presentation/serving.py`, prova a `test_cli_serve.py`).
+
+**Límits:** la cota és grollera (compta pesos que no es duplicaran en un Q6_K); el model concret del `CPU_REPACK` queda per a una altra
+decisió, perquè depèn de la CPU i de la quantització.
+
+**Fonts:** D129, [resultats de la campanya 2](resultados-cpu-2.md), [preregistre 2](preregistre-cpu-2.md).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3732,7 +3769,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D129 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D130 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
