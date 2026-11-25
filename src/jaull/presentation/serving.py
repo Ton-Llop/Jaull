@@ -20,6 +20,15 @@ from jaull.execution.server_process import ServerState, ServerStatus
 from jaull.presentation.console import format_bytes
 from jaull.runtime.policies import LLAMA_SERVER_LAN_HOST
 
+# Measured on one Ryzen 5 5500U on native Windows (docs/TFG/resultados-cpu-2.md): with -lm mmap the
+# whole file stays resident and some tensors also exist as a reordered copy (CPU_REPACK), which
+# the estimate does not size. Free RAM fell up to 3.2 GB more than with -lm none for the same
+# buffers, and 8 of the 15 approvals ended below the 1 GiB margin.
+CPU_MMAP_WARNING = (
+    "Warning: with -lm mmap on the CPU the model can use more RAM than this estimate says "
+    "(up to about 3 GB more in the tests, one PC). -lm none keeps it matching."
+)
+
 
 def plan_lines(plan: ServerPlan) -> list[str]:
     sizing = plan.sizing
@@ -71,6 +80,8 @@ def plan_lines(plan: ServerPlan) -> list[str]:
                 "none": ": loaded into RAM without mmap, so the memory used matches the estimate.",
             }.get(plan.load_mode, ".")
         )
+    if plan.load_mode == "mmap" and plan.backend == "cpu":
+        lines.append(f"  {CPU_MMAP_WARNING}")
     if plan.sleep_idle_seconds is not None:
         lines.append(
             f"  The model leaves the GPU after {plan.sleep_idle_seconds} s without requests "

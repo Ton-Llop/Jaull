@@ -609,6 +609,23 @@ def test_the_plan_says_the_model_is_not_copied_into_ram() -> None:
     assert "-lm none" in text and "without mmap" in text
 
 
+def test_the_plan_warns_that_mmap_on_the_cpu_can_use_more_ram_than_estimated() -> None:
+    # CPU run with -lm mmap used up to 3.2 GB more free RAM than with -lm none for the same
+    # buffers (docs/TFG/resultados-cpu-2.md), so the estimate does not cover it.
+    from dataclasses import replace
+
+    from jaull.presentation.serving import plan_lines
+
+    def says(plan: object) -> bool:
+        return "more RAM than this estimate" in "\n".join(plan_lines(plan))  # type: ignore[arg-type]
+
+    cpu = replace(_plan(), backend=ComputeBackend.CPU)
+    assert says(replace(cpu, load_mode="mmap"))
+    assert not says(replace(cpu, load_mode="none"))
+    assert not says(cpu)
+    assert not says(replace(_plan(), load_mode="mmap"))
+
+
 def test_start_says_where_the_opencode_backup_is() -> None:
     from dataclasses import replace
 
