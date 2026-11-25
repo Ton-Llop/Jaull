@@ -36,6 +36,84 @@ MODELS = {
 }
 BLUE, ORANGE, GREEN, GREY = "#0072B2", "#D55E00", "#009E73", "#666666"
 
+LANG = "en"  # "ca" writes the Catalan versions the thesis uses, with a -ca suffix
+TEXT = {
+    "en": {
+        "short_title": "{label}\nJaull stops {gap}k tokens ({pct} %) short",
+        "ctx_k": "Context (thousand tokens)",
+        "free_vram": "Free VRAM after loading (GiB)",
+        "loaded": "llama.cpp, loaded",
+        "not_loaded": "llama.cpp projection, not loaded",
+        "estimate": "Jaull estimate",
+        "rule": "1 GiB rule (llama.cpp)",
+        "fits_rejected": "Fits per llama.cpp, rejected by Jaull",
+        "suptitle": "Intel Arc Pro B60: context that fits, llama.cpp versus Jaull",
+        "wants": "llama.cpp wants at least 1 GiB left free",
+        "enough": "Enough memory left",
+        "not_enough": "Not enough memory left",
+        "projection_only": "projection only,\nnot loaded",
+        "measured": "Measured by llama.cpp",
+        "jaull_est": "Jaull's estimate",
+        "jaull_stops": "Jaull stops at {x}k",
+        "llama_stops": "llama.cpp stops at {x}k",
+        "note": "In this strip it fits\n(the blue line is above 1 GiB),\n"
+        "but Jaull's line is below it",
+        "ctx_ask": "Context you ask for (thousand tokens)",
+        "left_after": "Memory left after loading the model (GiB)",
+        "on_b60": "{label} on an Intel Arc Pro B60",
+        "of": "{a}k of {b}k",
+        "pct_short": "{n} % short",
+        "approves": "Context Jaull approves, as % of what llama.cpp accepts",
+        "limits_title": "How far Jaull's estimate stops before the real limit",
+    },
+    "ca": {
+        "short_title": "{label}\nJaull s'atura {gap}k tokens ({pct} %) abans",
+        "ctx_k": "Context (milers de tokens)",
+        "free_vram": "VRAM lliure després de carregar (GiB)",
+        "loaded": "llama.cpp, carregat",
+        "not_loaded": "projecció de llama.cpp, sense carregar",
+        "estimate": "Estimació de Jaull",
+        "rule": "Regla d'1 GiB (llama.cpp)",
+        "fits_rejected": "Hi cap segons llama.cpp, Jaull ho rebutja",
+        "suptitle": "Intel Arc Pro B60: context que hi cap, llama.cpp contra Jaull",
+        "wants": "llama.cpp vol almenys 1 GiB lliure",
+        "enough": "Queda prou memòria",
+        "not_enough": "No en queda prou",
+        "projection_only": "només projecció,\nsense carregar",
+        "measured": "Mesurat per llama.cpp",
+        "jaull_est": "Estimació de Jaull",
+        "jaull_stops": "Jaull s'atura a {x}k",
+        "llama_stops": "llama.cpp s'atura a {x}k",
+        "note": "En aquesta franja hi cap\n(la línia blava és per sobre d'1 GiB),\n"
+        "però la de Jaull és per sota",
+        "ctx_ask": "Context demanat (milers de tokens)",
+        "left_after": "Memòria que queda després de carregar el model (GiB)",
+        "on_b60": "{label} a una Intel Arc Pro B60",
+        "of": "{a}k de {b}k",
+        "pct_short": "{n} % per sota",
+        "approves": "Context que aprova Jaull, en % del que accepta llama.cpp",
+        "limits_title": "Quant abans s'atura l'estimació de Jaull respecte del límit real",
+    },
+}
+
+
+def tx(key: str, **kw: object) -> str:
+    """Text for the current language; Catalan writes the decimal comma."""
+    if LANG == "ca":
+        kw = {k: _decimal_comma(v) for k, v in kw.items()}
+    return TEXT[LANG][key].format(**kw)
+
+
+def _decimal_comma(value: object) -> object:
+    """Turn a numeric string such as "49.5" into "49,5"; leave any other value alone."""
+    if isinstance(value, str) and value.replace(".", "", 1).isdigit():
+        return value.replace(".", ",")
+    return value
+
+
+def suffix() -> str:
+    return "-ca" if LANG == "ca" else ""
+
 FIT_RE = re.compile(r"projected to use (\d+) MiB of device memory vs\. (\d+) MiB")
 HEAD_RE = re.compile(r"modelo=(\S+) ctx=(\d+)")
 LOADED_RE = re.compile(r"cargo=(\d)")
@@ -101,28 +179,28 @@ def draw_free_vram(runs, out: Path) -> dict[str, tuple[float, float]]:
         ax.axvline(lim_jaull / 1000, color=ORANGE, lw=1, alpha=0.7)
         gap = lim_llama - lim_jaull
         pct = 100 * gap / lim_llama
-        title = f"{label}\nJaull stops {gap / 1000:.1f}k tokens ({pct:.0f} %) short"
+        title = tx("short_title", label=label, gap=f"{gap / 1000:.1f}", pct=f"{pct:.0f}")
         ax.set_title(title, fontsize=11)
-        ax.set_xlabel("Context (thousand tokens)")
+        ax.set_xlabel(tx("ctx_k"))
         top = max(jaull_free(0, weights, kv, fixed) / 1024, max(ys))
         ax.set_ylim(min(ys) - 0.8, top + 0.8)
         ax.set_xlim(0, max(xs) * 1.04)
         ax.grid(alpha=0.25)
-    axes[0].set_ylabel("Free VRAM after loading (GiB)")
+    axes[0].set_ylabel(tx("free_vram"))
     handles = [
-        plt.Line2D([], [], color=BLUE, marker="o", ms=8, lw=1.5, label="llama.cpp, loaded"),
+        plt.Line2D([], [], color=BLUE, marker="o", ms=8, lw=1.5, label=tx("loaded")),
         plt.Line2D(
             [], [], color=BLUE, marker="o", ms=8, lw=0, markerfacecolor="white",
-            markeredgewidth=2, label="llama.cpp projection, not loaded",
+            markeredgewidth=2, label=tx("not_loaded"),
         ),
-        plt.Line2D([], [], color=ORANGE, ls="--", lw=2, label="Jaull estimate"),
-        plt.Line2D([], [], color=GREY, ls=":", lw=1.5, label="1 GiB rule (llama.cpp)"),
-        Patch(color=GREEN, alpha=0.28, label="Fits per llama.cpp, rejected by Jaull"),
+        plt.Line2D([], [], color=ORANGE, ls="--", lw=2, label=tx("estimate")),
+        plt.Line2D([], [], color=GREY, ls=":", lw=1.5, label=tx("rule")),
+        Patch(color=GREEN, alpha=0.28, label=tx("fits_rejected")),
     ]
     fig.legend(handles=handles, loc="outside lower center", ncol=5, frameon=False, fontsize=10)
-    fig.suptitle("Intel Arc Pro B60: context that fits, llama.cpp versus Jaull", fontsize=13)
-    for ext in ("png", "svg"):
-        fig.savefig(out / f"b60-free-vram-vs-context.{ext}", dpi=200)
+    fig.suptitle(tx("suptitle"), fontsize=13)
+    for ext in ("svg",):
+        fig.savefig(out / f"b60-free-vram-vs-context{suffix()}.{ext}", dpi=200)
     plt.close(fig)
     return limits
 
@@ -165,9 +243,9 @@ def draw_simple(runs, out: Path, key: str) -> None:
     ax.axhspan(ymin, rule, color=ORANGE, alpha=0.10, lw=0)
     ax.axhline(rule, color=GREY, ls=":", lw=1.8)
     left = xmin + 0.015 * span
-    ax.text(left, rule + 0.12, "llama.cpp wants at least 1 GiB left free", color=GREY, fontsize=10)
-    ax.text(left, ymax - 0.55, "Enough memory left", color=GREEN, fontsize=11, fontweight="bold")
-    ax.text(left, ymin + 0.25, "Not enough memory left", color=ORANGE, fontsize=11,
+    ax.text(left, rule + 0.12, tx("wants"), color=GREY, fontsize=10)
+    ax.text(left, ymax - 0.55, tx("enough"), color=GREEN, fontsize=11, fontweight="bold")
+    ax.text(left, ymin + 0.25, tx("not_enough"), color=ORANGE, fontsize=11,
             fontweight="bold")
 
     grid = np.linspace(xmin, xmax, 100)
@@ -177,30 +255,30 @@ def draw_simple(runs, out: Path, key: str) -> None:
         face = BLUE if loaded[ctx] else "white"
         ax.plot(x, y, "o", ms=8, color=face, markeredgecolor=BLUE, markeredgewidth=2, zorder=3)
         if not loaded[ctx]:
-            ax.annotate("projection only,\nnot loaded", xy=(x, y), xytext=(14, 10),
+            ax.annotate(tx("projection_only"), xy=(x, y), xytext=(14, 10),
                         textcoords="offset points", ha="left", va="bottom", fontsize=9, color=GREY)
 
     fx, fy, arrow_x = cfg["blue"]
     blue_arrow = None if arrow_x is None else {"arrowstyle": "->", "color": BLUE, "lw": 1.5}
     target = next((y for _, x, y in shown if arrow_x is not None and abs(x - arrow_x) < 0.5), 0)
-    ax.annotate("Measured by llama.cpp", xy=(arrow_x or 0, target), xytext=(fx, fy),
+    ax.annotate(tx("measured"), xy=(arrow_x or 0, target), xytext=(fx, fy),
                 xycoords="data", textcoords="axes fraction", color=BLUE, fontsize=11,
                 fontweight="bold", arrowprops=blue_arrow)
     fx, fy, arrow_x = cfg["orange"]
-    ax.annotate("Jaull's estimate", xy=(arrow_x, jaull_at(arrow_x)), xytext=(fx, fy),
+    ax.annotate(tx("jaull_est"), xy=(arrow_x, jaull_at(arrow_x)), xytext=(fx, fy),
                 textcoords="axes fraction", color=ORANGE, fontsize=11, fontweight="bold",
                 arrowprops={"arrowstyle": "->", "color": ORANGE, "lw": 1.5})
 
     ax.axvspan(lim_jaull / 1000, lim_llama / 1000, color=GREEN, alpha=0.35, lw=0)
     top = ymax - 1.4
-    ax.annotate(f"Jaull stops at {lim_jaull / 1000:.1f}k", xy=(lim_jaull / 1000, top),
+    ax.annotate(tx("jaull_stops", x=f"{lim_jaull / 1000:.1f}"), xy=(lim_jaull / 1000, top),
                 xytext=(lim_jaull / 1000 - 0.01 * span, top), ha="right", va="center",
                 color=ORANGE, fontsize=10.5, fontweight="bold")
-    ax.annotate(f"llama.cpp stops at {lim_llama / 1000:.1f}k", xy=(lim_llama / 1000, top),
+    ax.annotate(tx("llama_stops", x=f"{lim_llama / 1000:.1f}"), xy=(lim_llama / 1000, top),
                 xytext=(lim_llama / 1000 + 0.01 * span, top), ha="left", va="center",
                 color=BLUE, fontsize=10.5, fontweight="bold")
     inside = [(x, y) for _, x, y in shown if lim_jaull / 1000 <= x <= lim_llama / 1000]
-    note = "In this strip it fits\n(the blue line is above 1 GiB),\nbut Jaull's line is below it"
+    note = tx("note")
     nx, ny = cfg["note"]
     ax.annotate(note, xy=(inside[0][0], inside[0][1] + 0.1), xytext=(nx, ny), ha="center",
                 va="center", fontsize=10, xycoords="data", textcoords="axes fraction",
@@ -208,12 +286,12 @@ def draw_simple(runs, out: Path, key: str) -> None:
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
-    ax.set_xlabel("Context you ask for (thousand tokens)")
-    ax.set_ylabel("Memory left after loading the model (GiB)")
-    ax.set_title(f"{label} on an Intel Arc Pro B60", fontsize=13)
+    ax.set_xlabel(tx("ctx_ask"))
+    ax.set_ylabel(tx("left_after"))
+    ax.set_title(tx("on_b60", label=label), fontsize=13)
     ax.grid(alpha=0.2)
-    for ext in ("png", "svg"):
-        fig.savefig(out / f"b60-simple-{cfg['slug']}.{ext}", dpi=200)
+    for ext in ("svg",):
+        fig.savefig(out / f"b60-simple-{cfg['slug']}{suffix()}.{ext}", dpi=200)
     plt.close(fig)
 
 
@@ -226,19 +304,19 @@ def draw_limits(limits: dict[str, tuple[float, float]], out: Path) -> None:
     ax.barh(rows, [100 - s for s in shares], left=shares, color=GREEN, alpha=0.3, height=0.55)
     for i, (jaull, llama) in enumerate(limits.values()):
         ax.text(
-            shares[i] - 1.5, i, f"{jaull / 1000:.1f}k of {llama / 1000:.1f}k",
+            shares[i] - 1.5, i, tx("of", a=f"{jaull / 1000:.1f}", b=f"{llama / 1000:.1f}"),
             va="center", ha="right", color="white", fontsize=10, fontweight="bold",
         )
-        ax.text(101, i, f"{100 - shares[i]:.0f} % short", va="center", fontsize=10)
+        ax.text(101, i, tx("pct_short", n=f"{100 - shares[i]:.0f}"), va="center", fontsize=10)
     ax.set_yticks(rows, labels)
     ax.invert_yaxis()
     ax.set_xlim(0, 118)
     ax.set_xticks([0, 25, 50, 75, 100])
-    ax.set_xlabel("Context Jaull approves, as % of what llama.cpp accepts")
-    ax.set_title("How far Jaull's estimate stops before the real limit", fontsize=12)
+    ax.set_xlabel(tx("approves"))
+    ax.set_title(tx("limits_title"), fontsize=12)
     ax.grid(axis="x", alpha=0.25)
-    for ext in ("png", "svg"):
-        fig.savefig(out / f"b60-context-limits.{ext}", dpi=200)
+    for ext in ("svg",):
+        fig.savefig(out / f"b60-context-limits{suffix()}.{ext}", dpi=200)
     plt.close(fig)
 
 
@@ -246,7 +324,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--runs", type=Path, default=Path("validation/b60-contextos-20261124"))
     parser.add_argument("--out", type=Path, default=Path("docs/TFG/figures"))
+    parser.add_argument("--lang", choices=sorted(TEXT), default="en")
     args = parser.parse_args()
+    global LANG
+    LANG = args.lang
     args.out.mkdir(parents=True, exist_ok=True)
     runs = read_runs(args.runs)
     missing = [key for key in MODELS if key not in runs]
