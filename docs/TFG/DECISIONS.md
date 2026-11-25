@@ -3572,6 +3572,49 @@ de la TUI només s'ha provat amb proves de Textual (14 de noves), **no s'ha revi
 **Fonts:** D120, D123, D125, D127, [escombratge](../../src/jaull/estimator/context_fit.py),
 [comandament](../../src/jaull/cli/estimate.py), [proves](../../tests/test_context_fit.py).
 
+### D129. A CPU, Windows carrega el model sense mmap (`-lm none`) perquè el consum coincideixi amb l'estimació
+
+**Data i necessitat:** 2026-11-25. La campanya de CPU (`resultados-cpu.md`) va trobar que, amb mmap (el mode per defecte de
+llama.cpp), la RAM lliure de Windows cau molt més del que diuen els buffers que llama.cpp imprimeix. Jaull estima aquests
+buffers; amb mmap, 6 de les 9 configuracions que Jaull aprovava a la passada A van acabar per sota del marge de 1.024 MiB
+(en 3 el servidor es va parar al límit de seguretat dels 400 MiB, que el vam posar nosaltres).
+
+**Evidència** (passada A, un Ryzen 5 5500U, Windows natiu, llama.cpp b11889, `ram.csv` de cada cas):
+- **Els buffers són els mateixos en els dos modes** (al 14B, 7.510,5 i 7.510,8 MiB), però la caiguda de RAM lliure no ho és:
+  amb mmap és igual al working set del servidor, que és la memòria privada més gairebé tot el fitxer.
+- Al 14B Q3_K_M, amb mmap la memòria privada és de 3.209 MiB (el buffer `CPU_REPACK`, 2.513, més KV i còmput) i el working
+  set de 9.652, davant dels 7.466 de caiguda sense mmap. Al Mellum Q4_K_M, 4.599 i 11.017 davant de 7.887.
+- Als models amb `CPU_REPACK` (Q4_K_M, Q3_K_M), amb mmap la RAM lliure baixa entre 2.180 i 3.167 MiB més. A l'Ornith Q6_K,
+  que no en té, baixa entre 726 i 771 MiB **menys**.
+- **Velocitat:** en 8 parelles, la generació és igual o millor sense mmap (al Mellum, 20,4 contra 17,7 tok/s).
+  **Temps de càrrega:** 10 a 12 s sense mmap i 6 a 11 s amb mmap, uns 3 s més, amb el fitxer ja a la memòria cau del disc.
+  La primera petició (16 tokens) és més lenta amb mmap, perquè paga la lectura de les pàgines (2.323 ms contra 395 ms al
+  Mellum): el temps fins a la primera resposta queda gairebé igual. No és una mesura de velocitat de prompt.
+
+**Decisió (de l'autor):** a Windows natiu i amb el backend CPU, `jaull serve` carrega el model amb `-lm none` per defecte
+(`SERVE_CPU_LOAD_MODE`). Qui demana un altre mode (`-lm mmap`, `dio`) l'obté, i `default` torna el de llama.cpp. No canvia
+res a GPU ni a Linux o WSL, perquè només s'ha mesurat a Windows. **No es modela `CPU_REPACK`:** quins tensors es reordenen
+depèn de la CPU i de la quantització, i amb cinc punts seria una constant inventada. La fórmula de l'estimador no es toca
+(la campanya és «mesura, no ajustis»).
+
+**Estat:** IMPLEMENTED (`planner.load_mode`, línia del pla a `presentation/serving.py`, proves a `test_serving_planner.py`
+i `test_cli_serve.py`; suite completa i `ruff` nets). **No VALIDATED:** cap execució ha provat el canvi fet servir pel
+servidor; en una tanda nova, preregistrada i amb models diferents, hauria de comprovar-se que els buffers i la RAM lliure
+coincideixen.
+
+**Límits:**
+- La causa és una **hipòtesi sustentada en les mesures, no una lectura del codi de llama.cpp**: el patró (sobreconsum
+  només si hi ha `CPU_REPACK`) hi encaixa, però no s'ha aïllat.
+- Les pàgines projectades són memòria de fitxer neta que Windows pot recuperar. Amb mmap el model potser funcionaria amb
+  menys RAM, més lent. La campanya mesura que la RAM lliure baixa, no que el servidor es trenqui.
+- Una màquina, una versió de llama.cpp i tres quantitzacions amb dades de mmap. Un model més gran que la RAM disponible no
+  s'ha provat: sense mmap no es carrega, i Jaull ja el rebutja a CPU.
+- Falta decidir què fer amb el KV de la finestra lliscant (Mellum) i amb l'overhead de CPU, que se sobreestima entre 0,5 i
+  1,3 GiB; són dos treballs a part.
+
+**Fonts:** D120, D123, D127, [resultats de la campanya](resultados-cpu.md), [preregistre](preregistre-cpu.md),
+[política](../../src/jaull/application/serving/planner.py).
+
 ## 14. Què s'ha substituït i no s'ha de redactar com a actual
 
 | Decisió o simplificació anterior | Substitució o límit actual | Decisions |
@@ -3680,7 +3723,7 @@ Aquests punts d'entrada faciliten la consulta a GitHub:
 
 ### 16.3. Com mantenir aquest registre
 
-Conservar els IDs D001-D128 perquè es puguin citar a la memòria. Quan canviï
+Conservar els IDs D001-D129 perquè es puguin citar a la memòria. Quan canviï
 una decisió, no esborrar la motivació antiga: marcar-la com a substituïda,
 enllaçar la nova i afegir data, commit, efecte i evidència. Afegir nous IDs
 sense renumerar els existents.
