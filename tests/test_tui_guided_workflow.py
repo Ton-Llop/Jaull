@@ -436,7 +436,9 @@ def test_wizard_question_numbers_never_skip() -> None:
             assert chat == list(range(1, len(chat) + 1)), chat
 
             screen.query_one("#uc-document_qa").value = True  # type: ignore[attr-defined]
-            await pilot.pause()
+            # The radio change is a message handled on a later tick; one pause() was not enough
+            # on a slow Windows runner (CI saw 6 visible questions instead of 7).
+            await _wait_for(pilot, lambda: len(visible_numbers()) == len(chat) + 1)
 
             documents = visible_numbers()
             assert documents == list(range(1, len(documents) + 1)), documents

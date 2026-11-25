@@ -1,0 +1,2805 @@
+# CPU campaign 1, pass B: tight RAM (6.1 to 9.6 GiB free), same configurations (addendum to the preregistration).
+# One section per run: summary, llama.cpp memory lines, RAM samples and the response timings
+# (the generated text is not kept). Windows user name replaced by <user>. server.log files and the
+# PowerShell transcripts are not included.
+
+==== C01-nommap-20261125-123017 ====
+[summary.txt]
+id=C01
+mode=nommap
+ctx=2048
+model=Qwen2.5-7B-Instruct-Q4_K_M.gguf
+disponible_abans_mib=8008
+disponible_carregat_mib=3436
+disponible_min_mib=3405
+disponible_final_mib=8061
+pagefile_abans_mib=252
+pagefile_max_mib=252
+servidor_ws_max_mib=4653
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.31
+tok_s_prompt=31.48
+buffer_model_mib=4,460.5
+buffer_kv_mib=112.0
+buffer_compute_mib=148.0
+buffer_rs_mib=0.0
+buffer_total_mib=4,720.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C01-nommap-20261125-123017
+[memlines.txt]
+0.00.471.945 I print_info: n_ctx_train           = 32768
+0.00.471.990 I print_info: n_ctx_orig_yarn       = 32768
+0.00.477.418 I load_tensors: offloaded 29/29 layers to GPU
+0.00.477.422 I load_tensors:          CPU model buffer size =  1483.70 MiB
+0.00.477.423 I load_tensors:   CPU_REPACK model buffer size =  2976.75 MiB
+0.07.363.806 I llama_context: n_ctx                 = 2048
+0.07.363.808 I llama_context: n_ctx_seq             = 2048
+0.07.363.835 I llama_context: n_ctx_seq (2048) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.07.364.108 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.07.364.494 I llama_kv_cache:        CPU KV buffer size =   112.00 MiB
+0.07.404.556 I sched_reserve:        CPU compute buffer size =   148.02 MiB
+0.07.806.475 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.07.807.059 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 2048
+0.08.675.970 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 2048, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7947,252,65,110
+2,7149,252,874,4570
+3,6244,252,1757,4570
+4,5463,252,2441,4570
+6,4787,252,3133,4534
+7,3749,252,4261,4534
+8,3405,252,4643,4846
+9,3428,252,4651,4846
+10,3439,252,4652,4848
+12,3449,252,4652,4848
+13,3453,252,4652,4848
+15,3456,252,4652,4848
+16,3463,252,4652,4848
+17,3462,252,4652,4848
+19,3467,252,4652,4848
+20,3468,252,4652,4848
+21,3471,252,4652,4848
+23,3475,252,4652,4848
+24,3466,252,4652,4848
+26,3439,252,4652,4848
+27,3433,252,4653,4848
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 508.254, "prompt_per_token_ms": 31.765875, "prompt_per_second": 31.480322830710627, "predicted_n": 128, "predicted_ms": 17377.598, "predicted_per_token_ms": 136.83148031496066, "predicted_per_second": 7.308259749132186}}
+
+==== C02-nommap-20261125-123103 ====
+[summary.txt]
+id=C02
+mode=nommap
+ctx=8192
+model=Qwen2.5-7B-Instruct-Q4_K_M.gguf
+disponible_abans_mib=8034
+disponible_carregat_mib=3054
+disponible_min_mib=3005
+disponible_final_mib=8046
+pagefile_abans_mib=252
+pagefile_max_mib=252
+servidor_ws_max_mib=4990
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.32
+tok_s_prompt=29.21
+buffer_model_mib=4,460.5
+buffer_kv_mib=448.0
+buffer_compute_mib=154.0
+buffer_rs_mib=0.0
+buffer_total_mib=5,062.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C02-nommap-20261125-123103
+[memlines.txt]
+0.00.480.906 I print_info: n_ctx_train           = 32768
+0.00.480.959 I print_info: n_ctx_orig_yarn       = 32768
+0.00.486.536 I load_tensors: offloaded 29/29 layers to GPU
+0.00.486.541 I load_tensors:          CPU model buffer size =  1483.70 MiB
+0.00.486.542 I load_tensors:   CPU_REPACK model buffer size =  2976.75 MiB
+0.05.747.937 I llama_context: n_ctx                 = 8192
+0.05.747.937 I llama_context: n_ctx_seq             = 8192
+0.05.747.950 I llama_context: n_ctx_seq (8192) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.05.748.104 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.05.748.365 I llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+0.05.869.389 I sched_reserve:        CPU compute buffer size =   154.02 MiB
+0.06.297.171 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.06.299.742 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 8192
+0.07.334.388 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 8192, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7966,252,54,46
+2,7177,252,868,4570
+3,6172,252,1895,4570
+4,5082,252,2968,4541
+6,3576,252,4451,4535
+7,3057,252,4981,5189
+8,3045,252,4988,5189
+9,3038,252,4989,5191
+10,3037,252,4989,5191
+12,3039,252,4989,5191
+13,3027,252,4990,5191
+15,3029,252,4990,5191
+16,3005,252,4990,5191
+17,3020,252,4990,5191
+19,3023,252,4990,5191
+20,3041,252,4990,5191
+22,3043,252,4990,5191
+23,3046,252,4990,5191
+24,3044,252,4990,5191
+26,3050,252,4990,5191
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 547.737, "prompt_per_token_ms": 34.2335625, "prompt_per_second": 29.211099487527775, "predicted_n": 128, "predicted_ms": 17339.213, "predicted_per_token_ms": 136.52923622047243, "predicted_per_second": 7.324438542856587}}
+
+==== C03-nommap-20261125-123148 ====
+[summary.txt]
+id=C03
+mode=nommap
+ctx=16384
+model=Qwen2.5-7B-Instruct-Q4_K_M.gguf
+disponible_abans_mib=8046
+disponible_carregat_mib=2813
+disponible_min_mib=2730
+disponible_final_mib=8635
+pagefile_abans_mib=252
+pagefile_max_mib=252
+servidor_ws_max_mib=5438
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.21
+tok_s_prompt=28.81
+buffer_model_mib=4,460.5
+buffer_kv_mib=896.0
+buffer_compute_mib=162.0
+buffer_rs_mib=0.0
+buffer_total_mib=5,518.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C03-nommap-20261125-123148
+[memlines.txt]
+0.00.462.735 I print_info: n_ctx_train           = 32768
+0.00.462.785 I print_info: n_ctx_orig_yarn       = 32768
+0.00.468.237 I load_tensors: offloaded 29/29 layers to GPU
+0.00.468.241 I load_tensors:          CPU model buffer size =  1483.70 MiB
+0.00.468.243 I load_tensors:   CPU_REPACK model buffer size =  2976.75 MiB
+0.06.749.748 I llama_context: n_ctx                 = 16384
+0.06.749.749 I llama_context: n_ctx_seq             = 16384
+0.06.749.762 I llama_context: n_ctx_seq (16384) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.06.749.916 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.06.750.290 I llama_kv_cache:        CPU KV buffer size =   896.00 MiB
+0.06.970.096 I sched_reserve:        CPU compute buffer size =   162.02 MiB
+0.07.452.887 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 16384, kv_unified = 'false'
+0.07.455.435 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 16384
+0.08.731.863 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 16384, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7978,252,66,111
+2,7157,252,889,4570
+3,6219,252,1858,4570
+4,5310,252,2719,4540
+6,4375,252,3727,4534
+7,2730,252,5427,5646
+8,2812,252,5429,5646
+9,2810,252,5436,5646
+10,2804,252,5438,5648
+12,2814,252,5438,5648
+13,2831,252,5438,5648
+15,2833,252,5438,5648
+16,2864,252,5438,5648
+17,2837,252,5438,5648
+19,3164,252,5438,5648
+20,3175,252,5438,5648
+22,3175,252,5438,5648
+23,3189,252,5438,5648
+24,3192,252,5438,5648
+26,3196,252,5438,5648
+27,3218,252,5438,5648
+28,3216,252,5438,5648
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 555.376, "prompt_per_token_ms": 34.711, "prompt_per_second": 28.80931116936994, "predicted_n": 128, "predicted_ms": 17604.421, "predicted_per_token_ms": 138.61748818897635, "predicted_per_second": 7.21409695894003}}
+
+==== C04-nommap-20261125-123320 ====
+[summary.txt]
+id=C04
+mode=nommap
+ctx=32768
+model=Qwen2.5-7B-Instruct-Q4_K_M.gguf
+disponible_abans_mib=7819
+disponible_carregat_mib=1561
+disponible_min_mib=1561
+disponible_final_mib=7886
+pagefile_abans_mib=253
+pagefile_max_mib=253
+servidor_ws_max_mib=6335
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.59
+tok_s_prompt=27.70
+buffer_model_mib=4,460.5
+buffer_kv_mib=1,792.0
+buffer_compute_mib=178.0
+buffer_rs_mib=0.0
+buffer_total_mib=6,430.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C04-nommap-20261125-123320
+[memlines.txt]
+0.00.470.228 I print_info: n_ctx_train           = 32768
+0.00.470.271 I print_info: n_ctx_orig_yarn       = 32768
+0.00.475.734 I load_tensors: offloaded 29/29 layers to GPU
+0.00.475.738 I load_tensors:          CPU model buffer size =  1483.70 MiB
+0.00.475.739 I load_tensors:   CPU_REPACK model buffer size =  2976.75 MiB
+0.07.045.234 I llama_context: n_ctx                 = 32768
+0.07.045.235 I llama_context: n_ctx_seq             = 32768
+0.07.045.427 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.07.046.139 I llama_kv_cache:        CPU KV buffer size =  1792.00 MiB
+0.07.478.621 I sched_reserve:        CPU compute buffer size =   178.02 MiB
+0.08.088.533 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.08.088.576 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.08.638.093 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7754,253,72,64
+2,6997,253,838,4570
+3,6115,253,1749,4570
+4,5277,253,2552,4570
+6,4477,253,3355,4535
+7,3376,253,4473,4535
+8,1561,253,6326,6560
+9,1580,252,6333,6561
+10,1594,252,6335,6563
+12,1636,252,6335,6563
+13,1636,252,6335,6563
+15,1643,252,6335,6563
+16,1641,252,6335,6563
+17,1639,252,6335,6563
+19,1642,252,6335,6563
+20,1641,252,6335,6563
+22,1641,252,6335,6563
+23,1637,252,6335,6563
+24,1639,252,6335,6563
+26,1642,252,6335,6563
+27,1641,252,6335,6563
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 577.686, "prompt_per_token_ms": 36.105375, "prompt_per_second": 27.69670720772184, "predicted_n": 128, "predicted_ms": 16730.835, "predicted_per_token_ms": 131.73885826771652, "predicted_per_second": 7.590774758103825}}
+
+==== C05-nommap-20261125-122653 ====
+[summary.txt]
+id=C05
+mode=nommap
+ctx=2048
+model=qwen2.5-7b-instruct-q3_k_m.gguf
+disponible_abans_mib=7840
+disponible_carregat_mib=4080
+disponible_min_mib=4029
+disponible_final_mib=7897
+pagefile_abans_mib=249
+pagefile_max_mib=249
+servidor_ws_max_mib=3819
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=9.13
+tok_s_prompt=26.89
+buffer_model_mib=3,626.3
+buffer_kv_mib=112.0
+buffer_compute_mib=148.0
+buffer_rs_mib=0.0
+buffer_total_mib=3,886.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C05-nommap-20261125-122653
+[memlines.txt]
+0.00.473.602 I print_info: n_ctx_train           = 131072
+0.00.473.649 I print_info: n_ctx_orig_yarn       = 131072
+0.00.479.237 I load_tensors: offloaded 29/29 layers to GPU
+0.00.479.240 I load_tensors:          CPU model buffer size =  2424.37 MiB
+0.00.479.241 I load_tensors:   CPU_REPACK model buffer size =  1201.92 MiB
+0.04.942.506 I llama_context: n_ctx                 = 2048
+0.04.942.507 I llama_context: n_ctx_seq             = 2048
+0.04.942.524 I llama_context: n_ctx_seq (2048) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.04.942.636 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.04.942.753 I llama_kv_cache:        CPU KV buffer size =   112.00 MiB
+0.04.977.329 I sched_reserve:        CPU compute buffer size =   148.02 MiB
+0.05.298.129 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.05.298.156 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 2048
+0.05.964.657 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 2048, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7773,249,72,64
+2,6949,249,875,3734
+3,5851,249,1934,3699
+4,4722,249,3106,3699
+6,4029,249,3810,4010
+6,4078,249,3817,4010
+8,4070,249,3819,4012
+9,4070,249,3819,4012
+10,4069,249,3819,4012
+12,4065,249,3819,4012
+13,4047,249,3819,4012
+15,4060,249,3819,4012
+16,4066,249,3819,4012
+17,4067,249,3819,4012
+19,4063,249,3819,4012
+20,4069,249,3819,4012
+21,4079,249,3819,4012
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 594.952, "prompt_per_token_ms": 37.1845, "prompt_per_second": 26.892925815864135, "predicted_n": 128, "predicted_ms": 13913.787, "predicted_per_token_ms": 109.55737795275591, "predicted_per_second": 9.127637213362545}}
+
+==== C06-nommap-20261125-122733 ====
+[summary.txt]
+id=C06
+mode=nommap
+ctx=8192
+model=qwen2.5-7b-instruct-q3_k_m.gguf
+disponible_abans_mib=7929
+disponible_carregat_mib=3843
+disponible_min_mib=3754
+disponible_final_mib=7900
+pagefile_abans_mib=249
+pagefile_max_mib=249
+servidor_ws_max_mib=4156
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=9.07
+tok_s_prompt=27.82
+buffer_model_mib=3,626.3
+buffer_kv_mib=448.0
+buffer_compute_mib=154.0
+buffer_rs_mib=0.0
+buffer_total_mib=4,228.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C06-nommap-20261125-122733
+[memlines.txt]
+0.00.454.955 I print_info: n_ctx_train           = 131072
+0.00.455.000 I print_info: n_ctx_orig_yarn       = 131072
+0.00.460.545 I load_tensors: offloaded 29/29 layers to GPU
+0.00.460.548 I load_tensors:          CPU model buffer size =  2424.37 MiB
+0.00.460.549 I load_tensors:   CPU_REPACK model buffer size =  1201.92 MiB
+0.02.708.576 I llama_context: n_ctx                 = 8192
+0.02.708.578 I llama_context: n_ctx_seq             = 8192
+0.02.708.591 I llama_context: n_ctx_seq (8192) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.02.708.717 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.02.708.936 I llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+0.02.805.994 I sched_reserve:        CPU compute buffer size =   154.02 MiB
+0.03.243.739 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.03.243.783 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 8192
+0.04.650.717 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 8192, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7859,249,50,42
+2,6743,249,1206,3705
+3,3763,249,4145,4353
+4,3847,249,4147,4354
+5,3827,249,4154,4354
+6,3817,249,4156,4356
+8,3818,249,4156,4356
+9,3820,249,4156,4356
+11,3819,249,4156,4356
+12,3776,249,4156,4356
+13,3768,249,4156,4356
+15,3771,249,4156,4356
+16,3765,249,4156,4356
+17,3763,249,4156,4356
+19,3754,249,4156,4356
+20,3760,249,4156,4356
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 575.16, "prompt_per_token_ms": 35.9475, "prompt_per_second": 27.81834619931845, "predicted_n": 128, "predicted_ms": 14007.24, "predicted_per_token_ms": 110.29322834645669, "predicted_per_second": 9.066739771718055}}
+
+==== C07-nommap-20261125-122855 ====
+[summary.txt]
+id=C07
+mode=nommap
+ctx=16384
+model=qwen2.5-7b-instruct-q3_k_m.gguf
+disponible_abans_mib=7923
+disponible_carregat_mib=3400
+disponible_min_mib=3312
+disponible_final_mib=7796
+pagefile_abans_mib=249
+pagefile_max_mib=252
+servidor_ws_max_mib=4604
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=8.55
+tok_s_prompt=25.60
+buffer_model_mib=3,626.3
+buffer_kv_mib=896.0
+buffer_compute_mib=162.0
+buffer_rs_mib=0.0
+buffer_total_mib=4,684.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C07-nommap-20261125-122855
+[memlines.txt]
+0.00.454.569 I print_info: n_ctx_train           = 131072
+0.00.454.615 I print_info: n_ctx_orig_yarn       = 131072
+0.00.460.143 I load_tensors: offloaded 29/29 layers to GPU
+0.00.460.147 I load_tensors:          CPU model buffer size =  2424.37 MiB
+0.00.460.148 I load_tensors:   CPU_REPACK model buffer size =  1201.92 MiB
+0.04.697.421 I llama_context: n_ctx                 = 16384
+0.04.697.423 I llama_context: n_ctx_seq             = 16384
+0.04.697.442 I llama_context: n_ctx_seq (16384) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.04.697.632 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.04.698.020 I llama_kv_cache:        CPU KV buffer size =   896.00 MiB
+0.04.906.289 I sched_reserve:        CPU compute buffer size =   162.02 MiB
+0.05.379.520 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 16384, kv_unified = 'false'
+0.05.380.291 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 16384
+0.05.963.427 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 16384, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7854,249,39,30
+2,7022,249,911,3734
+3,5790,249,2158,3699
+4,4625,249,3330,3699
+6,3399,252,4595,4810
+6,3381,252,4602,4810
+8,3388,252,4604,4812
+9,3385,252,4604,4812
+10,3337,252,4604,4812
+12,3313,252,4604,4812
+13,3313,252,4604,4812
+15,3312,252,4604,4812
+16,3317,252,4604,4812
+17,3316,252,4604,4812
+19,3315,252,4604,4812
+20,3318,252,4604,4812
+21,3313,252,4604,4812
+23,3317,252,4604,4812
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 624.923, "prompt_per_token_ms": 39.0576875, "prompt_per_second": 25.603154308610822, "predicted_n": 128, "predicted_ms": 14850.391, "predicted_per_token_ms": 116.9322125984252, "predicted_per_second": 8.55196337928072}}
+
+==== C08-nommap-20261125-123235 ====
+[summary.txt]
+id=C08
+mode=nommap
+ctx=32768
+model=qwen2.5-7b-instruct-q3_k_m.gguf
+disponible_abans_mib=8704
+disponible_carregat_mib=3265
+disponible_min_mib=2266
+disponible_final_mib=7838
+pagefile_abans_mib=252
+pagefile_max_mib=253
+servidor_ws_max_mib=5500
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.17
+tok_s_prompt=25.30
+buffer_model_mib=3,626.3
+buffer_kv_mib=1,792.0
+buffer_compute_mib=178.0
+buffer_rs_mib=0.0
+buffer_total_mib=5,596.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C08-nommap-20261125-123235
+[memlines.txt]
+0.00.468.660 I print_info: n_ctx_train           = 131072
+0.00.468.708 I print_info: n_ctx_orig_yarn       = 131072
+0.00.474.157 I load_tensors: offloaded 29/29 layers to GPU
+0.00.474.159 I load_tensors:          CPU model buffer size =  2424.37 MiB
+0.00.474.160 I load_tensors:   CPU_REPACK model buffer size =  1201.92 MiB
+0.04.633.840 I llama_context: n_ctx                 = 32768
+0.04.633.841 I llama_context: n_ctx_seq             = 32768
+0.04.633.855 I llama_context: n_ctx_seq (32768) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.04.634.001 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.04.634.691 I llama_kv_cache:        CPU KV buffer size =  1792.00 MiB
+0.05.041.074 I sched_reserve:        CPU compute buffer size =   178.02 MiB
+0.05.535.409 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.05.535.438 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.05.986.299 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8635,252,68,112
+2,7775,252,888,3734
+3,6491,252,2195,3699
+4,5288,252,3425,3699
+6,3264,252,5492,5725
+6,3251,252,5499,5725
+8,3245,252,5500,5727
+9,3243,252,5500,5727
+10,3265,252,5500,5727
+12,3252,252,5500,5727
+13,3101,252,5500,5727
+15,2857,253,5500,5727
+16,2734,253,5500,5727
+17,2713,253,5500,5727
+19,2614,253,5500,5727
+20,2582,253,5500,5727
+22,2568,253,5500,5727
+23,2496,253,5500,5727
+24,2428,253,5500,5727
+26,2266,253,5500,5727
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 632.492, "prompt_per_token_ms": 39.53075, "prompt_per_second": 25.29676264680028, "predicted_n": 128, "predicted_ms": 17701.315, "predicted_per_token_ms": 139.38043307086613, "predicted_per_second": 7.174608214135503}}
+
+==== C09-nommap-20261125-122610 ====
+[summary.txt]
+id=C09
+mode=nommap
+ctx=8192
+model=Qwen2.5-7B-Instruct-IQ2_M.gguf
+disponible_abans_mib=7272
+disponible_carregat_mib=4249
+disponible_min_mib=4232
+disponible_final_mib=7527
+pagefile_abans_mib=238
+pagefile_max_mib=238
+servidor_ws_max_mib=3175
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.28
+tok_s_prompt=20.50
+buffer_model_mib=2,645.9
+buffer_kv_mib=448.0
+buffer_compute_mib=154.0
+buffer_rs_mib=0.0
+buffer_total_mib=3,247.9
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C09-nommap-20261125-122610
+[memlines.txt]
+0.00.530.055 I print_info: n_ctx_train           = 32768
+0.00.530.100 I print_info: n_ctx_orig_yarn       = 32768
+0.00.535.583 I load_tensors: offloaded 29/29 layers to GPU
+0.00.535.585 I load_tensors:          CPU model buffer size =  2618.30 MiB
+0.00.535.586 I load_tensors:   CPU_REPACK model buffer size =    27.56 MiB
+0.03.268.902 I llama_context: n_ctx                 = 8192
+0.03.268.903 I llama_context: n_ctx_seq             = 8192
+0.03.268.916 I llama_context: n_ctx_seq (8192) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+0.03.269.027 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.03.269.195 I llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+0.03.356.794 I sched_reserve:        CPU compute buffer size =   154.02 MiB
+0.03.942.154 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.03.942.231 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 8192
+0.04.678.770 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 8192, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7227,238,67,59
+2,6054,238,1328,2716
+3,4962,238,2483,2716
+4,4281,238,3166,3370
+5,4232,238,3173,3371
+6,4239,238,3175,3372
+8,4290,238,3175,3372
+9,4301,238,3175,3372
+10,4337,238,3175,3372
+12,4347,238,3175,3372
+13,4346,238,3175,3372
+14,4333,238,3175,3372
+16,4358,238,3175,3372
+17,4360,238,3175,3372
+18,4356,238,3175,3372
+20,4358,238,3175,3372
+21,4359,238,3175,3372
+22,4357,238,3175,3372
+24,4360,238,3175,3372
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 780.427, "prompt_per_token_ms": 48.7766875, "prompt_per_second": 20.50159720255706, "predicted_n": 128, "predicted_ms": 17433.49, "predicted_per_token_ms": 137.2715748031496, "predicted_per_second": 7.284829371514252}}
+
+==== C10-nommap-20261125-122812 ====
+[summary.txt]
+id=C10
+mode=nommap
+ctx=32768
+model=Qwen2.5-7B-Instruct-IQ2_M.gguf
+disponible_abans_mib=7903
+disponible_carregat_mib=3416
+disponible_min_mib=3399
+disponible_final_mib=7918
+pagefile_abans_mib=249
+pagefile_max_mib=249
+servidor_ws_max_mib=4520
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=7.47
+tok_s_prompt=21.58
+buffer_model_mib=2,645.9
+buffer_kv_mib=1,792.0
+buffer_compute_mib=178.0
+buffer_rs_mib=0.0
+buffer_total_mib=4,615.9
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C10-nommap-20261125-122812
+[memlines.txt]
+0.00.454.993 I print_info: n_ctx_train           = 32768
+0.00.455.041 I print_info: n_ctx_orig_yarn       = 32768
+0.00.460.544 I load_tensors: offloaded 29/29 layers to GPU
+0.00.460.546 I load_tensors:          CPU model buffer size =  2618.30 MiB
+0.00.460.548 I load_tensors:   CPU_REPACK model buffer size =    27.56 MiB
+0.02.902.069 I llama_context: n_ctx                 = 32768
+0.02.902.069 I llama_context: n_ctx_seq             = 32768
+0.02.902.286 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.02.902.802 I llama_kv_cache:        CPU KV buffer size =  1792.00 MiB
+0.03.340.254 I sched_reserve:        CPU compute buffer size =   178.02 MiB
+0.04.015.895 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.04.015.930 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.04.616.698 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7834,249,48,39
+2,6488,249,1433,2716
+3,5181,249,2747,4503
+4,3423,249,4511,4742
+5,3401,249,4518,4743
+6,3399,249,4520,4744
+8,3406,249,4520,4744
+9,3406,249,4520,4744
+10,3403,249,4520,4744
+12,3402,249,4520,4744
+13,3406,249,4520,4744
+14,3403,249,4520,4744
+16,3407,249,4520,4744
+17,3409,249,4520,4744
+18,3406,249,4520,4744
+20,3406,249,4520,4744
+21,3409,249,4520,4744
+22,3407,249,4520,4744
+24,3409,249,4520,4744
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 741.411, "prompt_per_token_ms": 46.3381875, "prompt_per_second": 21.580472909088215, "predicted_n": 128, "predicted_ms": 16993.935, "predicted_per_token_ms": 133.81051181102364, "predicted_per_second": 7.4732544287123615}}
+
+==== C11-nommap-20261125-122936 ====
+[summary.txt]
+id=C11
+mode=nommap
+ctx=16384
+model=qwen2.5-coder-7b-instruct-q3_k_m.gguf
+disponible_abans_mib=7917
+disponible_carregat_mib=3401
+disponible_min_mib=3392
+disponible_final_mib=8045
+pagefile_abans_mib=252
+pagefile_max_mib=252
+servidor_ws_max_mib=4604
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=8.79
+tok_s_prompt=29.31
+buffer_model_mib=3,626.3
+buffer_kv_mib=896.0
+buffer_compute_mib=162.0
+buffer_rs_mib=0.0
+buffer_total_mib=4,684.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C11-nommap-20261125-122936
+[memlines.txt]
+0.00.469.883 I print_info: n_ctx_train           = 131072
+0.00.469.927 I print_info: n_ctx_orig_yarn       = 131072
+0.00.475.415 I load_tensors: offloaded 29/29 layers to GPU
+0.00.475.419 I load_tensors:          CPU model buffer size =  2424.37 MiB
+0.00.475.420 I load_tensors:   CPU_REPACK model buffer size =  1201.92 MiB
+0.04.760.925 I llama_context: n_ctx                 = 16384
+0.04.760.926 I llama_context: n_ctx_seq             = 16384
+0.04.760.941 I llama_context: n_ctx_seq (16384) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.04.761.108 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.04.761.541 I llama_kv_cache:        CPU KV buffer size =   896.00 MiB
+0.04.977.167 I sched_reserve:        CPU compute buffer size =   162.02 MiB
+0.05.394.606 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 16384, kv_unified = 'false'
+0.05.395.201 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 16384
+0.06.034.347 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 16384, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7841,252,57,50
+2,6998,252,891,3734
+3,5773,252,2157,3699
+4,4619,252,3274,3699
+6,3400,252,4595,4810
+6,3392,252,4602,4811
+8,3392,252,4604,4812
+9,3394,252,4604,4812
+10,3394,252,4604,4812
+12,3405,252,4604,4812
+13,3400,252,4604,4812
+15,3421,252,4604,4812
+16,3428,252,4604,4812
+17,3428,252,4604,4812
+19,3561,252,4604,4812
+20,3531,252,4604,4812
+21,3541,252,4604,4812
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 545.797, "prompt_per_token_ms": 34.1123125, "prompt_per_second": 29.31492844409185, "predicted_n": 128, "predicted_ms": 14456.405, "predicted_per_token_ms": 113.82996062992126, "predicted_per_second": 8.785033346810636}}
+
+==== C12-nommap-20261125-122536 ====
+[summary.txt]
+id=C12
+mode=nommap
+ctx=32768
+model=qwen2.5-3b-instruct-q4_k_m.gguf
+disponible_abans_mib=7825
+disponible_carregat_mib=4625
+disponible_min_mib=4544
+disponible_final_mib=7587
+pagefile_abans_mib=238
+pagefile_max_mib=238
+servidor_ws_max_mib=3235
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=15.06
+tok_s_prompt=64.90
+buffer_model_mib=2,001.7
+buffer_kv_mib=1,152.0
+buffer_compute_mib=116.5
+buffer_rs_mib=0.0
+buffer_total_mib=3,270.3
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C12-nommap-20261125-122536
+[memlines.txt]
+0.00.469.448 I print_info: n_ctx_train           = 32768
+0.00.469.496 I print_info: n_ctx_orig_yarn       = 32768
+0.00.476.632 I load_tensors: offloaded 37/37 layers to GPU
+0.00.476.636 I load_tensors:          CPU model buffer size =   736.12 MiB
+0.00.476.637 I load_tensors:   CPU_REPACK model buffer size =  1265.62 MiB
+0.03.247.215 I llama_context: n_ctx                 = 32768
+0.03.247.215 I llama_context: n_ctx_seq             = 32768
+0.03.247.380 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.03.248.437 I llama_kv_cache:        CPU KV buffer size =  1152.00 MiB
+0.03.602.685 I sched_reserve:        CPU compute buffer size =   116.52 MiB
+0.03.911.374 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.03.911.419 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.04.621.138 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7755,238,68,127
+2,7085,238,763,2082
+3,6075,238,1749,2070
+4,4592,238,3228,3410
+5,4623,238,3235,3412
+6,4628,238,3235,3412
+8,4637,238,3235,3412
+9,4626,238,3235,3412
+11,4627,238,3235,3412
+12,4587,238,3235,3412
+13,4544,238,3235,3412
+15,4552,238,3235,3412
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 246.522, "prompt_per_token_ms": 15.407625, "prompt_per_second": 64.90292955598284, "predicted_n": 128, "predicted_ms": 8432.281, "predicted_per_token_ms": 66.39591338582677, "predicted_per_second": 15.06116790937114}}
+
+==== C13-nommap-20261125-122507 ====
+[summary.txt]
+id=C13
+mode=nommap
+ctx=32768
+model=qwen2.5-1.5b-instruct-q5_k_m.gguf
+disponible_abans_mib=7809
+disponible_carregat_mib=5348
+disponible_min_mib=5290
+disponible_final_mib=7779
+pagefile_abans_mib=238
+pagefile_max_mib=238
+servidor_ws_max_mib=2196
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=22.05
+tok_s_prompt=73.18
+buffer_model_mib=1,220.3
+buffer_kv_mib=896.0
+buffer_compute_mib=99.5
+buffer_rs_mib=0.0
+buffer_total_mib=2,215.8
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C13-nommap-20261125-122507
+[memlines.txt]
+0.00.465.084 I print_info: n_ctx_train           = 32768
+0.00.465.132 I print_info: n_ctx_orig_yarn       = 32768
+0.00.470.705 I load_tensors: offloaded 29/29 layers to GPU
+0.00.470.708 I load_tensors:          CPU model buffer size =  1220.27 MiB
+0.01.708.906 I llama_context: n_ctx                 = 32768
+0.01.708.907 I llama_context: n_ctx_seq             = 32768
+0.01.709.057 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.01.709.597 I llama_kv_cache:        CPU KV buffer size =   896.00 MiB
+0.01.854.482 I sched_reserve:        CPU compute buffer size =    99.52 MiB
+0.02.228.075 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.02.228.137 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.03.309.675 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7736,238,67,111
+2,6557,238,1221,1287
+3,5354,238,2189,2337
+4,5331,238,2196,2339
+5,5290,238,2196,2339
+6,5523,238,2196,2339
+8,5540,238,2196,2339
+9,5563,238,2196,2339
+11,5577,238,2196,2339
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 218.63, "prompt_per_token_ms": 13.664375, "prompt_per_second": 73.18300324749578, "predicted_n": 128, "predicted_ms": 5760.325, "predicted_per_token_ms": 45.35688976377953, "predicted_per_second": 22.04736711904276}}
+
+==== C14-nommap-20261125-122443 ====
+[summary.txt]
+id=C14
+mode=nommap
+ctx=32768
+model=Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+disponible_abans_mib=7710
+disponible_carregat_mib=6879
+disponible_min_mib=6817
+disponible_final_mib=7633
+pagefile_abans_mib=238
+pagefile_max_mib=238
+servidor_ws_max_mib=835
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=63.21
+tok_s_prompt=181.04
+buffer_model_mib=373.7
+buffer_kv_mib=384.0
+buffer_compute_mib=69.3
+buffer_rs_mib=0.0
+buffer_total_mib=827.0
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C14-nommap-20261125-122443
+[memlines.txt]
+0.00.471.675 I print_info: n_ctx_train           = 32768
+0.00.471.722 I print_info: n_ctx_orig_yarn       = 32768
+0.00.476.392 I load_tensors: offloaded 25/25 layers to GPU
+0.00.476.396 I load_tensors:          CPU model buffer size =   345.65 MiB
+0.00.476.397 I load_tensors:   CPU_REPACK model buffer size =    28.05 MiB
+0.00.869.779 I llama_context: n_ctx                 = 32768
+0.00.869.780 I llama_context: n_ctx_seq             = 32768
+0.00.869.902 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.00.870.452 I llama_kv_cache:        CPU KV buffer size =   384.00 MiB
+0.00.915.719 I sched_reserve:        CPU compute buffer size =    69.27 MiB
+0.01.001.153 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.01.001.792 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.02.106.252 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7638,238,25,16
+2,6875,238,830,937
+2,6859,238,835,939
+4,6846,238,835,939
+5,6817,238,835,939
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 88.38, "prompt_per_token_ms": 5.52375, "prompt_per_second": 181.03643358225844, "predicted_n": 128, "predicted_ms": 2009.205, "predicted_per_token_ms": 15.820511811023621, "predicted_per_second": 63.209080208341106}}
+
+==== C15-mmap-20261125-124031 ====
+[summary.txt]
+id=C15
+mode=mmap
+ctx=2048
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=7227
+disponible_carregat_mib=344
+disponible_min_mib=345
+disponible_final_mib=7123
+pagefile_abans_mib=246
+pagefile_max_mib=489
+servidor_ws_max_mib=6549
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,693.9
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,693.9
+aturat=disponible 345 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C15-mmap-20261125-124031
+[memlines.txt]
+0.00.320.880 I print_info: n_ctx_train           = 131072
+0.00.320.931 I print_info: n_ctx_orig_yarn       = 8192
+0.03.193.976 I load_tensors: offloaded 29/29 layers to GPU
+0.03.193.982 I load_tensors:   CPU_Mapped model buffer size =   298.70 MiB
+0.03.193.984 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.985 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.193.986 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.193.986 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.987 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.193.988 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.193.989 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.990 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.193.990 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.193.991 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.992 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.193.993 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.193.994 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.193.995 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.995 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.193.996 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.193.997 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.193.998 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.193.999 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.193.999 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.000 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.001 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.002 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.003 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.003 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.004 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.005 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.006 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.006 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.007 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.008 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.009 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.009 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.010 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.011 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.011 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.012 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.013 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.013 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.014 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.015 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.016 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.016 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.017 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.018 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.018 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.019 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.020 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.020 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.021 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.022 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.023 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.024 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.025 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.026 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.027 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.043 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.045 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.045 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.046 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.047 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.048 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.049 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.050 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.051 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.052 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.053 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.054 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.055 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.056 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.057 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.058 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.059 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.060 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.061 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.062 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.063 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.064 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.065 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.066 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.067 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.194.067 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.194.068 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.069 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.070 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.072 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.073 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.074 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.075 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.076 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.077 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.078 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.079 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.080 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.081 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.082 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.194.083 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.194.084 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.194.086 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7188,246,42,33
+3,1249,246,59,4344
+5,5408,246,1816,4344
+6,4609,246,2541,4344
+7,3878,246,3251,4344
+9,3119,278,3957,4344
+10,2505,314,4613,4344
+11,1830,470,5340,4344
+13,1206,488,5898,4344
+14,578,489,6449,4344
+16,345,489,6549,4344
+[response timings]
+(none)
+
+==== C15-nommap-20261125-123959 ====
+[summary.txt]
+id=C15
+mode=nommap
+ctx=2048
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=7945
+disponible_carregat_mib=326
+disponible_min_mib=330
+disponible_final_mib=8077
+pagefile_abans_mib=255
+pagefile_max_mib=255
+servidor_ws_max_mib=7839
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,694.0
+buffer_kv_mib=91.0
+buffer_compute_mib=104.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,889.0
+aturat=disponible 330 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C15-nommap-20261125-123959
+[memlines.txt]
+0.00.310.787 I print_info: n_ctx_train           = 131072
+0.00.310.836 I print_info: n_ctx_orig_yarn       = 8192
+0.00.316.835 I load_tensors: offloaded 29/29 layers to GPU
+0.00.316.837 I load_tensors:          CPU model buffer size =  3414.89 MiB
+0.00.316.838 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+0.11.636.187 I llama_context: n_ctx                 = 2048
+0.11.636.188 I llama_context: n_ctx_seq             = 2048
+0.11.636.200 I llama_context: n_ctx_seq (2048) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.11.636.320 I llama_context:        CPU  output buffer size =     0.38 MiB
+0.11.636.433 I llama_kv_cache:        CPU KV buffer size =    28.00 MiB
+0.11.645.982 I llama_kv_cache:        CPU KV buffer size =    63.00 MiB
+0.11.681.024 I sched_reserve:        CPU compute buffer size =   104.03 MiB
+0.11.959.522 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.11.959.579 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 2048
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7914,255,37,30
+2,7086,255,902,7822
+3,6177,255,1688,7822
+4,5516,255,2451,7822
+6,4675,255,3171,7822
+7,4098,255,3857,7822
+8,3173,255,4738,7751
+10,1885,255,5959,7751
+11,692,255,7183,7751
+12,330,255,7839,8003
+[response timings]
+(none)
+
+==== C16-mmap-20261125-124137 ====
+[summary.txt]
+id=C16
+mode=mmap
+ctx=8192
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=7713
+disponible_carregat_mib=28
+disponible_min_mib=133
+disponible_final_mib=8253
+pagefile_abans_mib=455
+pagefile_max_mib=463
+servidor_ws_max_mib=8003
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,693.9
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,693.9
+aturat=disponible 133 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C16-mmap-20261125-124137
+[memlines.txt]
+0.00.304.601 I print_info: n_ctx_train           = 131072
+0.00.304.653 I print_info: n_ctx_orig_yarn       = 8192
+0.03.316.534 I load_tensors: offloaded 29/29 layers to GPU
+0.03.316.540 I load_tensors:   CPU_Mapped model buffer size =   298.70 MiB
+0.03.316.542 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.543 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.545 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.546 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.547 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.548 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.549 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.550 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.551 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.552 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.554 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.555 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.556 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.557 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.559 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.560 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.561 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.562 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.563 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.564 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.565 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.566 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.567 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.568 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.570 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.571 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.572 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.573 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.574 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.575 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.576 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.577 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.578 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.579 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.580 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.581 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.582 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.583 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.584 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.585 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.586 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.587 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.588 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.589 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.590 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.592 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.593 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.594 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.595 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.596 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.597 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.598 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.599 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.600 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.601 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.602 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.603 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.604 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.605 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.607 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.607 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.609 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.610 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.611 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.612 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.613 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.614 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.615 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.616 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.617 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.618 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.619 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.620 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.621 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.622 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.623 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.624 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.625 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.626 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.627 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.629 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.316.630 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.316.631 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.632 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.633 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.634 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.635 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.636 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.637 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.639 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.640 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.641 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.642 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.643 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.644 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.645 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.316.646 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.316.647 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.316.649 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7721,455,45,37
+2,3511,455,51,57
+4,7412,455,530,4344
+5,4845,455,3112,4344
+6,3166,455,4762,4344
+8,2037,456,5945,4344
+9,1024,460,6994,4344
+10,133,463,8003,4344
+[response timings]
+(none)
+
+==== C16-nommap-20261125-124107 ====
+[summary.txt]
+id=C16
+mode=nommap
+ctx=8192
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=6932
+disponible_carregat_mib=37
+disponible_min_mib=86
+disponible_final_mib=7933
+pagefile_abans_mib=484
+pagefile_max_mib=484
+servidor_ws_max_mib=6279
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,694.0
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,694.0
+aturat=disponible 86 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C16-nommap-20261125-124107
+[memlines.txt]
+0.00.341.234 I print_info: n_ctx_train           = 131072
+0.00.341.286 I print_info: n_ctx_orig_yarn       = 8192
+0.00.348.113 I load_tensors: offloaded 29/29 layers to GPU
+0.00.348.117 I load_tensors:          CPU model buffer size =  3414.89 MiB
+0.00.348.118 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,6925,484,29,20
+2,6065,484,972,7821
+3,4931,484,2144,7821
+4,3935,484,3163,7821
+6,3060,479,3963,7821
+7,2268,479,4829,7751
+8,1198,480,5958,7751
+10,86,480,6279,7751
+[response timings]
+(none)
+
+==== C17-mmap-20261125-124239 ====
+[summary.txt]
+id=C17
+mode=mmap
+ctx=32768
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=8273
+disponible_carregat_mib=86
+disponible_min_mib=20
+disponible_final_mib=7291
+pagefile_abans_mib=454
+pagefile_max_mib=550
+servidor_ws_max_mib=7291
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,693.9
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,693.9
+aturat=disponible 20 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C17-mmap-20261125-124239
+[memlines.txt]
+0.00.427.499 I print_info: n_ctx_train           = 131072
+0.00.427.556 I print_info: n_ctx_orig_yarn       = 8192
+0.03.698.027 I load_tensors: offloaded 29/29 layers to GPU
+0.03.698.032 I load_tensors:   CPU_Mapped model buffer size =   298.70 MiB
+0.03.698.034 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.035 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.037 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.038 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.038 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.039 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.040 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.041 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.042 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.043 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.044 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.045 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.046 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.047 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.048 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.049 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.050 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.051 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.052 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.053 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.054 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.055 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.056 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.056 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.057 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.058 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.059 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.060 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.061 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.062 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.063 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.063 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.064 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.065 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.066 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.067 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.068 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.069 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.069 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.070 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.071 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.072 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.073 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.073 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.074 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.075 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.076 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.077 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.078 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.079 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.080 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.081 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.081 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.082 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.083 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.084 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.085 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.086 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.087 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.087 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.088 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.089 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.090 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.091 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.092 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.092 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.093 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.094 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.095 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.096 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.097 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.098 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.099 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.100 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.100 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.101 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.102 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.103 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.104 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.105 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.106 I load_tensors:   CPU_Mapped model buffer size =     0.00 MiB
+0.03.698.107 I load_tensors:   CPU_Mapped model buffer size =    86.62 MiB
+0.03.698.108 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.109 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.110 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.111 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.112 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.113 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.114 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.115 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.116 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.117 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.118 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.118 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.119 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.120 I load_tensors:   CPU_Mapped model buffer size =     0.01 MiB
+0.03.698.121 I load_tensors:   CPU_Mapped model buffer size =   134.80 MiB
+0.03.698.122 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.03.698.124 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8180,454,44,37
+2,1146,454,51,57
+3,1146,454,51,57
+5,6895,454,1306,4344
+6,5271,453,2742,4344
+7,4250,453,3579,4344
+9,3578,453,4121,4344
+10,2795,506,4808,4344
+12,2094,505,5394,4344
+13,1483,516,5960,4344
+14,690,550,6755,4344
+16,20,549,7291,4344
+[response timings]
+(none)
+
+==== C17-nommap-20261125-124207 ====
+[summary.txt]
+id=C17
+mode=nommap
+ctx=32768
+model=Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
+disponible_abans_mib=8240
+disponible_carregat_mib=135
+disponible_min_mib=110
+disponible_final_mib=8392
+pagefile_abans_mib=451
+pagefile_max_mib=453
+servidor_ws_max_mib=7926
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,694.0
+buffer_kv_mib=511.0
+buffer_compute_mib=134.0
+buffer_rs_mib=0.0
+buffer_total_mib=8,339.0
+aturat=disponible 110 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C17-nommap-20261125-124207
+[memlines.txt]
+0.00.420.860 I print_info: n_ctx_train           = 131072
+0.00.420.950 I print_info: n_ctx_orig_yarn       = 8192
+0.00.427.845 I load_tensors: offloaded 29/29 layers to GPU
+0.00.427.849 I load_tensors:          CPU model buffer size =  3414.89 MiB
+0.00.427.850 I load_tensors:   CPU_REPACK model buffer size =  4279.08 MiB
+0.11.510.271 I llama_context: n_ctx                 = 32768
+0.11.510.271 I llama_context: n_ctx_seq             = 32768
+0.11.510.286 I llama_context: n_ctx_seq (32768) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.11.510.339 I llama_context:        CPU  output buffer size =     0.38 MiB
+0.11.510.853 I llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+0.11.719.442 I llama_kv_cache:        CPU KV buffer size =    63.00 MiB
+0.11.764.979 I sched_reserve:        CPU compute buffer size =   134.03 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8201,451,41,32
+2,7325,451,951,7822
+3,6397,451,1894,7822
+4,5542,451,2745,7822
+6,4568,451,3737,7822
+7,3815,451,4452,7752
+8,2712,451,5520,7752
+10,1611,451,6579,7752
+11,799,453,7469,7752
+13,110,453,7926,8454
+[response timings]
+(none)
+
+==== C18-mmap-20261125-123444 ====
+[summary.txt]
+id=C18
+mode=mmap
+ctx=8192
+model=Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf
+disponible_abans_mib=8007
+disponible_carregat_mib=6
+disponible_min_mib=10
+disponible_final_mib=8471
+pagefile_abans_mib=253
+pagefile_max_mib=253
+servidor_ws_max_mib=8305
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,700.6
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=6,700.6
+aturat=disponible 10 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C18-mmap-20261125-123444
+[memlines.txt]
+0.00.323.189 I print_info: n_ctx_train           = 131072
+0.00.323.237 I print_info: n_ctx_orig_yarn       = 8192
+0.02.711.634 I load_tensors: offloaded 29/29 layers to GPU
+0.02.711.639 I load_tensors:   CPU_Mapped model buffer size =   480.53 MiB
+0.02.711.640 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.641 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.642 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.643 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.643 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.644 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.645 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.646 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.646 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.647 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.648 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.649 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.649 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.650 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.651 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.651 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.652 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.653 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.653 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.654 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.655 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.656 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.656 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.657 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.658 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.658 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.659 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.660 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.660 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.661 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.664 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.665 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.665 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.666 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.667 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.668 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.668 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.669 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.670 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.670 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.671 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.672 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.672 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.673 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.674 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.674 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.675 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.676 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.676 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.677 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.678 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.678 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.679 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.679 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.711.680 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.711.681 I load_tensors:   CPU_REPACK model buffer size =  5622.75 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7941,253,30,21
+2,3417,253,51,55
+3,7432,253,619,5688
+4,4118,253,3935,5688
+6,2179,253,5820,5688
+7,698,253,7296,5689
+8,10,253,8305,5689
+[response timings]
+(none)
+
+==== C18-nommap-20261125-123406 ====
+[summary.txt]
+id=C18
+mode=nommap
+ctx=8192
+model=Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf
+disponible_abans_mib=7918
+disponible_carregat_mib=1134
+disponible_min_mib=1027
+disponible_final_mib=7956
+pagefile_abans_mib=252
+pagefile_max_mib=253
+servidor_ws_max_mib=6936
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=17.27
+tok_s_prompt=39.04
+buffer_model_mib=6,700.5
+buffer_kv_mib=175.0
+buffer_compute_mib=110.0
+buffer_rs_mib=0.0
+buffer_total_mib=6,985.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C18-nommap-20261125-123406
+[memlines.txt]
+0.00.326.698 I print_info: n_ctx_train           = 131072
+0.00.326.744 I print_info: n_ctx_orig_yarn       = 8192
+0.00.332.653 I load_tensors: offloaded 29/29 layers to GPU
+0.00.332.656 I load_tensors:          CPU model buffer size =  1077.72 MiB
+0.00.332.657 I load_tensors:   CPU_REPACK model buffer size =  5622.75 MiB
+0.09.313.394 I llama_context: n_ctx                 = 8192
+0.09.313.394 I llama_context: n_ctx_seq             = 8192
+0.09.313.410 I llama_context: n_ctx_seq (8192) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.09.313.456 I llama_context:        CPU  output buffer size =     0.38 MiB
+0.09.313.644 I llama_kv_cache:        CPU KV buffer size =   112.00 MiB
+0.09.339.682 I llama_kv_cache:        CPU KV buffer size =    63.00 MiB
+0.09.366.941 I sched_reserve:        CPU compute buffer size =   110.03 MiB
+0.09.541.988 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.09.542.017 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 8192
+0.09.973.185 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 8192, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7888,252,41,32
+2,6792,252,1189,6822
+3,5650,252,2301,6822
+4,4736,252,3235,6822
+6,3831,252,4119,6822
+7,2973,252,4937,6822
+8,2173,253,5866,6755
+10,1083,253,6930,7095
+10,1131,253,6934,7097
+12,1079,253,6936,7098
+13,1095,253,6936,7098
+14,1082,253,6936,7098
+16,1082,253,6936,7098
+17,1027,253,6936,7098
+19,1035,253,6936,7098
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 409.88, "prompt_per_token_ms": 25.6175, "prompt_per_second": 39.03581536059335, "predicted_n": 128, "predicted_ms": 7352.447, "predicted_per_token_ms": 57.89328346456693, "predicted_per_second": 17.273160894597403}}
+
+==== C19-mmap-20261125-123549 ====
+[summary.txt]
+id=C19
+mode=mmap
+ctx=32768
+model=Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf
+disponible_abans_mib=8557
+disponible_carregat_mib=13
+disponible_min_mib=39
+disponible_final_mib=9007
+pagefile_abans_mib=254
+pagefile_max_mib=255
+servidor_ws_max_mib=8592
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,700.6
+buffer_kv_mib=0.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=6,700.6
+aturat=disponible 39 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C19-mmap-20261125-123549
+[memlines.txt]
+0.00.308.595 I print_info: n_ctx_train           = 131072
+0.00.308.644 I print_info: n_ctx_orig_yarn       = 8192
+0.02.571.233 I load_tensors: offloaded 29/29 layers to GPU
+0.02.571.238 I load_tensors:   CPU_Mapped model buffer size =   480.53 MiB
+0.02.571.239 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.240 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.241 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.242 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.242 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.243 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.244 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.245 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.245 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.246 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.247 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.247 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.248 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.249 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.252 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.253 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.253 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.254 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.255 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.255 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.256 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.257 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.257 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.258 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.260 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.261 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.262 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.262 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.263 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.263 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.264 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.265 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.265 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.266 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.267 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.267 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.268 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.269 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.269 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.270 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.271 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.271 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.272 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.273 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.273 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.274 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.275 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.275 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.276 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.277 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.277 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.278 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.279 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.279 I load_tensors:   CPU_Mapped model buffer size =    21.53 MiB
+0.02.571.280 I load_tensors:   CPU_Mapped model buffer size =     0.57 MiB
+0.02.571.281 I load_tensors:   CPU_REPACK model buffer size =  5622.75 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8531,254,43,35
+2,3915,254,51,55
+3,7532,254,1128,5688
+4,4035,254,4603,5688
+6,1511,254,7065,5688
+7,39,255,8592,5688
+[response timings]
+(none)
+
+==== C19-nommap-20261125-123512 ====
+[summary.txt]
+id=C19
+mode=nommap
+ctx=32768
+model=Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf
+disponible_abans_mib=8428
+disponible_carregat_mib=1299
+disponible_min_mib=1219
+disponible_final_mib=8548
+pagefile_abans_mib=250
+pagefile_max_mib=254
+servidor_ws_max_mib=7272
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=18.06
+tok_s_prompt=36.86
+buffer_model_mib=6,700.5
+buffer_kv_mib=511.0
+buffer_compute_mib=134.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,345.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C19-nommap-20261125-123512
+[memlines.txt]
+0.00.303.571 I print_info: n_ctx_train           = 131072
+0.00.303.620 I print_info: n_ctx_orig_yarn       = 8192
+0.00.309.642 I load_tensors: offloaded 29/29 layers to GPU
+0.00.309.646 I load_tensors:          CPU model buffer size =  1077.72 MiB
+0.00.309.647 I load_tensors:   CPU_REPACK model buffer size =  5622.75 MiB
+0.07.424.132 I llama_context: n_ctx                 = 32768
+0.07.424.132 I llama_context: n_ctx_seq             = 32768
+0.07.424.150 I llama_context: n_ctx_seq (32768) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.07.424.269 I llama_context:        CPU  output buffer size =     0.38 MiB
+0.07.424.705 I llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+0.07.530.626 I llama_kv_cache:        CPU KV buffer size =    63.00 MiB
+0.07.560.326 I sched_reserve:        CPU compute buffer size =   134.03 MiB
+0.08.069.953 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.08.070.003 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.08.674.126 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8391,250,35,26
+2,6835,250,1678,6822
+3,5332,250,3171,6822
+4,4001,250,4469,6822
+6,3029,250,5346,6822
+7,2149,252,6340,6755
+8,1219,254,7267,7457
+9,1287,254,7270,7458
+10,1283,254,7272,7460
+12,1280,254,7272,7460
+13,1281,254,7272,7460
+14,1281,254,7272,7460
+16,1282,254,7272,7460
+17,1283,254,7272,7460
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 434.071, "prompt_per_token_ms": 27.1294375, "prompt_per_second": 36.86032930096689, "predicted_n": 128, "predicted_ms": 7030.872, "predicted_per_token_ms": 55.3611968503937, "predicted_per_second": 18.063193299494003}}
+
+==== C20-mmap-20261125-123724 ====
+[summary.txt]
+id=C20
+mode=mmap
+ctx=2048
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=8971
+disponible_carregat_mib=391
+disponible_min_mib=275
+disponible_final_mib=9393
+pagefile_abans_mib=253
+pagefile_max_mib=253
+servidor_ws_max_mib=8787
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,993.8
+buffer_kv_mib=384.0
+buffer_compute_mib=133.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,510.8
+aturat=disponible 275 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C20-mmap-20261125-123724
+[memlines.txt]
+0.00.489.949 I print_info: n_ctx_train           = 131072
+0.00.489.996 I print_info: n_ctx_orig_yarn       = 131072
+0.02.900.609 I load_tensors: offloaded 49/49 layers to GPU
+0.02.900.616 I load_tensors:   CPU_Mapped model buffer size =   425.65 MiB
+0.02.900.618 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.02.900.619 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.02.900.620 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.621 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.622 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.623 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.625 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.02.900.626 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.626 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.627 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.628 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.629 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.02.900.630 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.631 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.632 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.02.900.633 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.634 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.635 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.635 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.636 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.637 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.638 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.638 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.639 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.640 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.641 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.642 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.643 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.644 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.645 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.646 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.02.900.647 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.648 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.649 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.650 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.650 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.651 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.652 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.653 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.653 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.654 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.655 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.656 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.657 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.657 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.658 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.659 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.660 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.661 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.02.900.662 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.663 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.664 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.02.900.664 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.665 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.666 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.666 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.667 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.668 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.668 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.669 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.671 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.672 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.673 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.673 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.674 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.675 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.675 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.676 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.677 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.677 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.678 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.679 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.679 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.680 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.681 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.681 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.682 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.683 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.684 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.684 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.685 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.685 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.686 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.687 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.688 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.688 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.689 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.690 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.690 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.691 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.692 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.692 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.693 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.694 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.02.900.694 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.695 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.696 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.02.900.697 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.697 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.698 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.699 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.700 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.701 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.701 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.702 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.703 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.703 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.704 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.705 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.705 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.706 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.707 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.707 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.708 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.709 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.02.900.709 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.710 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.712 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.02.900.713 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.714 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.714 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.715 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.716 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.716 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.717 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.719 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.720 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.721 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.721 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.722 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.723 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.723 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.724 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.02.900.725 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.02.900.726 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.726 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.02.900.727 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.02.900.728 I load_tensors:   CPU_Mapped model buffer size =   609.10 MiB
+0.02.900.729 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.02.900.730 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.05.412.130 I llama_context: n_ctx                 = 2048
+0.05.412.131 I llama_context: n_ctx_seq             = 2048
+0.05.412.150 I llama_context: n_ctx_seq (2048) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.05.412.331 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.05.412.650 I llama_kv_cache:        CPU KV buffer size =   384.00 MiB
+0.05.516.493 I sched_reserve:        CPU compute buffer size =   133.02 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8906,253,72,64
+2,4092,253,73,79
+3,8812,253,103,2597
+4,6029,253,3049,2597
+6,3557,253,5479,3207
+7,1638,253,7567,3207
+8,275,253,8787,3207
+[response timings]
+(none)
+
+==== C20-nommap-20261125-123616 ====
+[summary.txt]
+id=C20
+mode=nommap
+ctx=2048
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=9256
+disponible_carregat_mib=1484
+disponible_min_mib=1210
+disponible_final_mib=9169
+pagefile_abans_mib=247
+pagefile_max_mib=256
+servidor_ws_max_mib=7457
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=3.72
+tok_s_prompt=13.18
+buffer_model_mib=6,993.5
+buffer_kv_mib=384.0
+buffer_compute_mib=133.0
+buffer_rs_mib=0.0
+buffer_total_mib=7,510.5
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C20-nommap-20261125-123616
+[memlines.txt]
+0.00.475.708 I print_info: n_ctx_train           = 131072
+0.00.475.752 I print_info: n_ctx_orig_yarn       = 131072
+0.00.485.308 I load_tensors: offloaded 49/49 layers to GPU
+0.00.485.311 I load_tensors:          CPU model buffer size =  4480.55 MiB
+0.00.485.312 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.09.943.768 I llama_context: n_ctx                 = 2048
+0.09.943.769 I llama_context: n_ctx_seq             = 2048
+0.09.943.786 I llama_context: n_ctx_seq (2048) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.09.944.034 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.09.944.298 I llama_kv_cache:        CPU KV buffer size =   384.00 MiB
+0.10.054.363 I sched_reserve:        CPU compute buffer size =   133.02 MiB
+0.11.220.521 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.11.220.563 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 2048
+0.12.779.257 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 2048, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,9157,247,64,150
+2,8238,247,780,7110
+3,7373,247,1631,7110
+4,6556,245,2317,7086
+6,5429,245,3353,7072
+7,4240,245,4554,7072
+8,2987,245,5801,7072
+10,1960,254,6865,7072
+11,1372,254,7448,7682
+12,1491,254,7449,7683
+13,1480,254,7455,7683
+14,1475,254,7457,7685
+16,1490,254,7457,7685
+17,1361,254,7457,7685
+19,1223,254,7457,7685
+20,1232,254,7457,7685
+21,1232,254,7457,7685
+23,1210,254,7457,7685
+24,1345,254,7457,7685
+26,1379,254,7457,7685
+27,1397,254,7457,7685
+28,1392,254,7457,7685
+30,1427,254,7457,7685
+31,1449,254,7457,7685
+33,1434,254,7457,7685
+34,1603,254,7457,7685
+35,1610,254,7457,7685
+37,1760,256,7457,7685
+38,2002,256,7092,7685
+40,2215,256,7092,7685
+41,2275,256,7092,7685
+42,2277,256,7092,7685
+44,2253,256,7092,7685
+45,2192,256,7092,7685
+47,2210,256,7092,7685
+48,2226,256,7092,7685
+49,2222,256,7092,7685
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 1213.996, "prompt_per_token_ms": 75.87475, "prompt_per_second": 13.179615089341315, "predicted_n": 128, "predicted_ms": 34151.272, "predicted_per_token_ms": 268.90765354330705, "predicted_per_second": 3.718748748216465}}
+
+==== C21-mmap-20261125-124501 ====
+[summary.txt]
+id=C21
+mode=mmap
+ctx=8192
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=7845
+disponible_carregat_mib=107
+disponible_min_mib=326
+disponible_final_mib=7805
+pagefile_abans_mib=900
+pagefile_max_mib=900
+servidor_ws_max_mib=7551
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,993.8
+buffer_kv_mib=1,536.0
+buffer_compute_mib=139.0
+buffer_rs_mib=0.0
+buffer_total_mib=8,668.8
+aturat=disponible 326 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C21-mmap-20261125-124501
+[memlines.txt]
+0.00.479.045 I print_info: n_ctx_train           = 131072
+0.00.479.093 I print_info: n_ctx_orig_yarn       = 131072
+0.03.276.486 I load_tensors: offloaded 49/49 layers to GPU
+0.03.276.497 I load_tensors:   CPU_Mapped model buffer size =   425.65 MiB
+0.03.276.499 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.03.276.500 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.03.276.501 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.502 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.503 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.504 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.506 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.03.276.506 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.507 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.508 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.509 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.510 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.03.276.511 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.511 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.513 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.03.276.514 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.514 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.515 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.516 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.517 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.517 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.518 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.519 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.520 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.520 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.521 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.522 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.522 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.523 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.524 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.525 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.03.276.526 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.527 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.527 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.528 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.529 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.530 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.530 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.531 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.532 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.533 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.533 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.534 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.535 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.536 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.536 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.537 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.538 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.539 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.03.276.539 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.541 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.541 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.03.276.542 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.543 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.543 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.544 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.545 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.545 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.546 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.547 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.548 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.548 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.549 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.550 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.551 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.551 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.552 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.553 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.553 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.554 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.568 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.568 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.569 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.570 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.570 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.571 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.572 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.572 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.573 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.573 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.574 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.575 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.575 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.576 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.577 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.578 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.578 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.579 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.580 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.581 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.582 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.582 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.583 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.584 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.03.276.584 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.585 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.586 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.03.276.587 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.587 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.588 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.589 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.590 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.591 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.591 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.592 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.593 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.593 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.594 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.595 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.595 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.596 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.597 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.598 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.599 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.599 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.03.276.600 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.601 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.601 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.03.276.602 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.603 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.604 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.604 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.605 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.606 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.606 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.607 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.608 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.608 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.609 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.610 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.610 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.611 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.612 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.276.612 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.276.613 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.614 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.03.276.614 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.276.615 I load_tensors:   CPU_Mapped model buffer size =   609.10 MiB
+0.03.276.616 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.03.276.617 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.05.742.406 I llama_context: n_ctx                 = 8192
+0.05.742.407 I llama_context: n_ctx_seq             = 8192
+0.05.742.419 I llama_context: n_ctx_seq (8192) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.05.742.542 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.05.742.823 I llama_kv_cache:        CPU KV buffer size =  1536.00 MiB
+0.06.042.654 I sched_reserve:        CPU compute buffer size =   139.02 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7771,900,57,50
+2,3461,900,73,79
+3,5377,900,73,79
+5,5058,900,2783,2597
+6,2031,900,5972,4125
+7,326,899,7551,4367
+[response timings]
+(none)
+
+==== C21-nommap-20261125-124430 ====
+[summary.txt]
+id=C21
+mode=nommap
+ctx=8192
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=6111
+disponible_carregat_mib=54
+disponible_min_mib=46
+disponible_final_mib=7900
+pagefile_abans_mib=942
+pagefile_max_mib=946
+servidor_ws_max_mib=6368
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,993.5
+buffer_kv_mib=1,536.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=8,529.5
+aturat=disponible 46 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C21-nommap-20261125-124430
+[memlines.txt]
+0.00.537.817 I print_info: n_ctx_train           = 131072
+0.00.537.874 I print_info: n_ctx_orig_yarn       = 131072
+0.00.548.422 I load_tensors: offloaded 49/49 layers to GPU
+0.00.548.427 I load_tensors:          CPU model buffer size =  4480.55 MiB
+0.00.548.428 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.10.774.482 I llama_context: n_ctx                 = 8192
+0.10.774.482 I llama_context: n_ctx_seq             = 8192
+0.10.774.500 I llama_context: n_ctx_seq (8192) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.10.775.179 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.10.775.781 I llama_kv_cache:        CPU KV buffer size =  1536.00 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,6034,942,67,59
+2,5588,934,719,7110
+3,4939,932,1518,7110
+4,4633,922,2262,7086
+6,3724,915,3313,7072
+7,2773,915,4412,7072
+9,1474,943,5406,7072
+10,829,943,6368,7072
+11,46,946,5911,8601
+[response timings]
+(none)
+
+==== C22-mmap-20261125-124557 ====
+[summary.txt]
+id=C22
+mode=mmap
+ctx=16384
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=7576
+disponible_carregat_mib=289
+disponible_min_mib=47
+disponible_final_mib=8568
+pagefile_abans_mib=850
+pagefile_max_mib=888
+servidor_ws_max_mib=8112
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,993.8
+buffer_kv_mib=3,072.0
+buffer_compute_mib=147.0
+buffer_rs_mib=0.0
+buffer_total_mib=10,212.8
+aturat=disponible 47 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C22-mmap-20261125-124557
+[memlines.txt]
+0.00.503.564 I print_info: n_ctx_train           = 131072
+0.00.503.613 I print_info: n_ctx_orig_yarn       = 131072
+0.03.297.341 I load_tensors: offloaded 49/49 layers to GPU
+0.03.297.346 I load_tensors:   CPU_Mapped model buffer size =   425.65 MiB
+0.03.297.350 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.03.297.350 I load_tensors:   CPU_Mapped model buffer size =   120.81 MiB
+0.03.297.352 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.353 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.353 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.354 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.355 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.03.297.356 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.357 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.358 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.358 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.359 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.03.297.360 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.361 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.361 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.03.297.362 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.363 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.364 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.364 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.365 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.366 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.366 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.367 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.368 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.368 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.369 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.369 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.370 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.371 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.371 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.372 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.03.297.373 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.374 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.374 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.375 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.376 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.376 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.377 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.378 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.378 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.379 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.380 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.380 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.381 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.382 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.382 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.383 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.384 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.385 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.03.297.386 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.386 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.387 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.03.297.387 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.388 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.389 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.389 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.390 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.391 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.391 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.392 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.393 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.393 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.394 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.395 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.395 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.396 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.397 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.397 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.398 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.399 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.400 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.400 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.401 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.402 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.402 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.403 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.404 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.405 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.405 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.406 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.407 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.407 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.408 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.409 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.409 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.410 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.411 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.411 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.412 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.413 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.413 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.414 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.415 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.415 I load_tensors:   CPU_Mapped model buffer size =     2.15 MiB
+0.03.297.416 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.417 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.417 I load_tensors:   CPU_Mapped model buffer size =    58.05 MiB
+0.03.297.418 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.419 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.420 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.420 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.421 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.421 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.422 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.423 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.423 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.424 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.425 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.425 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.426 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.427 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.428 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.428 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.429 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.430 I load_tensors:   CPU_Mapped model buffer size =    31.16 MiB
+0.03.297.430 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.431 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.432 I load_tensors:   CPU_Mapped model buffer size =    29.04 MiB
+0.03.297.432 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.433 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.434 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.435 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.435 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.436 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.437 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.437 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.438 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.438 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.439 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.440 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.441 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.441 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.442 I load_tensors:   CPU_Mapped model buffer size =     0.02 MiB
+0.03.297.442 I load_tensors:   CPU_Mapped model buffer size =    60.18 MiB
+0.03.297.443 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.444 I load_tensors:   CPU_Mapped model buffer size =    60.16 MiB
+0.03.297.444 I load_tensors:   CPU_Mapped model buffer size =    10.77 MiB
+0.03.297.446 I load_tensors:   CPU_Mapped model buffer size =   609.10 MiB
+0.03.297.446 I load_tensors:   CPU_Mapped model buffer size =     0.04 MiB
+0.03.297.447 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.05.790.420 I llama_context: n_ctx                 = 16384
+0.05.790.420 I llama_context: n_ctx_seq             = 16384
+0.05.790.433 I llama_context: n_ctx_seq (16384) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.05.790.558 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.05.790.899 I llama_kv_cache:        CPU KV buffer size =  3072.00 MiB
+0.06.815.867 I sched_reserve:        CPU compute buffer size =   147.02 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7502,850,72,64
+2,1515,850,73,78
+3,1304,850,73,78
+4,5642,850,2083,2596
+6,2965,850,4767,2596
+7,47,888,8112,5914
+[response timings]
+(none)
+
+==== C22-nommap-20261125-124529 ====
+[summary.txt]
+id=C22
+mode=nommap
+ctx=16384
+model=qwen2.5-coder-14b-instruct-q3_k_m.gguf
+disponible_abans_mib=7361
+disponible_carregat_mib=97
+disponible_min_mib=370
+disponible_final_mib=7616
+pagefile_abans_mib=843
+pagefile_max_mib=846
+servidor_ws_max_mib=6861
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=6,993.5
+buffer_kv_mib=3,072.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=10,065.5
+aturat=disponible 370 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C22-nommap-20261125-124529
+[memlines.txt]
+0.00.481.820 I print_info: n_ctx_train           = 131072
+0.00.481.870 I print_info: n_ctx_orig_yarn       = 131072
+0.00.491.402 I load_tensors: offloaded 49/49 layers to GPU
+0.00.491.405 I load_tensors:          CPU model buffer size =  4480.55 MiB
+0.00.491.406 I load_tensors:   CPU_REPACK model buffer size =  2512.97 MiB
+0.08.314.180 I llama_context: n_ctx                 = 16384
+0.08.314.181 I llama_context: n_ctx_seq             = 16384
+0.08.314.197 I llama_context: n_ctx_seq (16384) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.08.314.669 I llama_context:        CPU  output buffer size =     0.58 MiB
+0.08.315.341 I llama_kv_cache:        CPU KV buffer size =  3072.00 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7311,843,72,64
+2,6188,843,1210,7110
+3,5031,843,2362,7086
+4,3728,843,3605,7072
+6,2608,843,4776,7072
+7,1377,843,5951,7072
+8,370,846,6861,7072
+[response timings]
+(none)
+
+==== C23-mmap-20261125-123856 ====
+[summary.txt]
+id=C23
+mode=mmap
+ctx=4096
+model=Ornith-1.5-9B-Q6_K.gguf
+disponible_abans_mib=7533
+disponible_carregat_mib=1193
+disponible_min_mib=1015
+disponible_final_mib=7807
+pagefile_abans_mib=253
+pagefile_max_mib=260
+servidor_ws_max_mib=6575
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=3.91
+tok_s_prompt=10.16
+buffer_model_mib=7,007.9
+buffer_kv_mib=128.0
+buffer_compute_mib=116.0
+buffer_rs_mib=50.3
+buffer_total_mib=7,302.2
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C23-mmap-20261125-123856
+[memlines.txt]
+0.00.863.120 I print_info: n_ctx_train           = 262144
+0.00.863.170 I print_info: n_ctx_orig_yarn       = 262144
+0.03.334.577 I load_tensors: offloaded 34/34 layers to GPU
+0.03.334.583 I load_tensors:   CPU_Mapped model buffer size =  7007.88 MiB
+0.03.353.856 I llama_context: n_ctx                 = 4096
+0.03.353.856 I llama_context: n_ctx_seq             = 4096
+0.03.353.878 I llama_context: n_ctx_seq (4096) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.03.354.169 I llama_context:        CPU  output buffer size =     0.95 MiB
+0.03.354.429 I llama_kv_cache:        CPU KV buffer size =   128.00 MiB
+0.03.426.452 I llama_memory_recurrent:        CPU RS buffer size =    50.25 MiB
+0.03.444.506 I sched_reserve:        CPU compute buffer size =   116.02 MiB
+0.06.076.898 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 4096, kv_unified = 'false'
+0.06.076.954 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+0.07.779.222 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7512,253,91,85
+2,3697,253,109,115
+3,3737,253,109,115
+6,1172,253,6506,829
+7,1191,255,6508,830
+8,1185,255,6521,838
+9,1139,255,6574,891
+11,1124,255,6574,891
+12,1122,255,6574,891
+14,1114,255,6574,891
+15,1110,255,6574,891
+17,1095,255,6574,891
+18,1067,255,6574,891
+19,1067,255,6574,891
+21,1061,255,6574,891
+22,1059,255,6575,891
+24,1017,255,6575,891
+25,1015,255,6575,891
+26,1037,255,6575,891
+28,1047,255,6575,891
+29,1074,255,6575,891
+31,1076,255,6575,891
+32,1077,255,6575,891
+33,1110,255,6575,891
+35,1147,260,6575,891
+36,1191,256,6575,891
+38,1194,256,6575,891
+39,1193,256,6575,891
+40,1213,255,6575,891
+42,1199,255,6575,891
+43,1233,255,6575,891
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 1575.247, "prompt_per_token_ms": 98.4529375, "prompt_per_second": 10.15713726164849, "predicted_n": 128, "predicted_ms": 32506.584, "predicted_per_token_ms": 255.95735433070865, "predicted_per_second": 3.9069008296903793}}
+
+==== C23-nommap-20261125-123753 ====
+[summary.txt]
+id=C23
+mode=nommap
+ctx=4096
+model=Ornith-1.5-9B-Q6_K.gguf
+disponible_abans_mib=8845
+disponible_carregat_mib=1527
+disponible_min_mib=1328
+disponible_final_mib=8675
+pagefile_abans_mib=255
+pagefile_max_mib=256
+servidor_ws_max_mib=7371
+carregat=1
+generat=1
+tokens=128
+tok_s_generacio=4.14
+tok_s_prompt=11.94
+buffer_model_mib=7,007.9
+buffer_kv_mib=128.0
+buffer_compute_mib=116.0
+buffer_rs_mib=50.3
+buffer_total_mib=7,302.2
+aturat=
+exit_code=
+carpeta=C:\cpu-bench\resultats\C23-nommap-20261125-123753
+[memlines.txt]
+0.01.067.669 I print_info: n_ctx_train           = 262144
+0.01.067.719 I print_info: n_ctx_orig_yarn       = 262144
+0.01.075.166 I load_tensors: offloaded 34/34 layers to GPU
+0.01.075.170 I load_tensors:          CPU model buffer size =  7007.88 MiB
+0.08.824.064 I llama_context: n_ctx                 = 4096
+0.08.824.065 I llama_context: n_ctx_seq             = 4096
+0.08.824.090 I llama_context: n_ctx_seq (4096) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.08.824.430 I llama_context:        CPU  output buffer size =     0.95 MiB
+0.08.824.814 I llama_kv_cache:        CPU KV buffer size =   128.00 MiB
+0.08.865.087 I llama_memory_recurrent:        CPU RS buffer size =    50.25 MiB
+0.08.877.418 I sched_reserve:        CPU compute buffer size =   116.02 MiB
+0.09.669.183 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 4096, kv_unified = 'false'
+0.09.669.209 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+0.10.094.361 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,8790,255,83,76
+2,8002,255,749,7123
+3,6816,255,1911,7123
+4,5511,255,3186,7123
+6,4381,254,4408,7123
+7,3262,254,5559,7123
+8,2112,256,6742,7123
+10,1515,256,7304,7838
+10,1560,256,7318,7846
+12,1530,256,7371,7900
+13,1553,256,7371,7900
+15,1536,256,7371,7900
+16,1535,256,7371,7900
+17,1534,256,7371,7900
+19,1532,256,7371,7900
+20,1532,256,7371,7900
+21,1534,256,7371,7900
+23,1532,256,7371,7900
+24,1529,256,7371,7900
+26,1535,256,7371,7900
+27,1549,256,7371,7900
+29,1528,256,7371,7900
+30,1462,256,7371,7900
+31,1407,256,7371,7900
+33,1371,256,7371,7900
+34,1356,256,7371,7900
+36,1362,256,7371,7900
+37,1400,255,7371,7900
+38,1400,255,7371,7900
+40,1403,255,7371,7900
+41,1392,255,7371,7900
+42,1387,255,7371,7900
+44,1328,255,7371,7900
+[response timings]
+{"index": 0, "id_slot": 0, "stop": true, "tokens_predicted": 128, "tokens_evaluated": 16, "has_new_line": true, "truncated": false, "stop_type": "limit", "stopping_word": "", "tokens_cached": 143, "timings": {"cache_n": 0, "prompt_n": 16, "prompt_ms": 1339.606, "prompt_per_token_ms": 83.725375, "prompt_per_second": 11.943810344235544, "predicted_n": 128, "predicted_ms": 30677.345, "predicted_per_token_ms": 241.55389763779527, "predicted_per_second": 4.139862820592851}}
+
+==== C24-mmap-20261125-124348 ====
+[summary.txt]
+id=C24
+mode=mmap
+ctx=32768
+model=Ornith-1.5-9B-Q6_K.gguf
+disponible_abans_mib=9644
+disponible_carregat_mib=1602
+disponible_min_mib=319
+disponible_final_mib=6758
+pagefile_abans_mib=1094
+pagefile_max_mib=1186
+servidor_ws_max_mib=7469
+carregat=1
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,007.9
+buffer_kv_mib=1,024.0
+buffer_compute_mib=144.0
+buffer_rs_mib=50.3
+buffer_total_mib=8,226.2
+aturat=disponible 348 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C24-mmap-20261125-124348
+[memlines.txt]
+0.01.001.951 I print_info: n_ctx_train           = 262144
+0.01.001.993 I print_info: n_ctx_orig_yarn       = 262144
+0.04.277.339 I load_tensors: offloaded 34/34 layers to GPU
+0.04.277.348 I load_tensors:   CPU_Mapped model buffer size =  7007.88 MiB
+0.04.292.610 I llama_context: n_ctx                 = 32768
+0.04.292.611 I llama_context: n_ctx_seq             = 32768
+0.04.292.627 I llama_context: n_ctx_seq (32768) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.04.292.832 I llama_context:        CPU  output buffer size =     0.95 MiB
+0.04.293.652 I llama_kv_cache:        CPU KV buffer size =  1024.00 MiB
+0.04.592.874 I llama_memory_recurrent:        CPU RS buffer size =    50.25 MiB
+0.04.612.220 I sched_reserve:        CPU compute buffer size =   144.02 MiB
+0.07.193.851 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 32768, kv_unified = 'false'
+0.07.194.125 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 32768
+0.08.340.896 I slot   operator(): id  0 | task 0 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 16
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,9582,1094,82,74
+2,4917,1094,109,115
+5,6992,1186,2717,1757
+7,2168,1164,7134,1757
+8,1670,1150,7405,1758
+9,1523,1150,7419,1766
+10,1438,1133,7469,1817
+11,1413,1151,7435,1819
+13,1329,1147,7435,1819
+14,1242,1147,7435,1819
+16,1076,1146,7435,1819
+17,919,1145,7416,1819
+19,561,1145,7416,1819
+20,443,1109,7416,1819
+21,319,1107,7416,1819
+22,348,1107,7416,1819
+[response timings]
+(unreadable)
+
+==== C24-nommap-20261125-124316 ====
+[summary.txt]
+id=C24
+mode=nommap
+ctx=32768
+model=Ornith-1.5-9B-Q6_K.gguf
+disponible_abans_mib=7329
+disponible_carregat_mib=3
+disponible_min_mib=4
+disponible_final_mib=9441
+pagefile_abans_mib=528
+pagefile_max_mib=544
+servidor_ws_max_mib=7332
+carregat=0
+generat=0
+tokens=
+tok_s_generacio=
+tok_s_prompt=
+buffer_model_mib=7,007.9
+buffer_kv_mib=1,024.0
+buffer_compute_mib=0.0
+buffer_rs_mib=0.0
+buffer_total_mib=8,031.9
+aturat=disponible 4 MiB < 400 MiB
+exit_code=
+carpeta=C:\cpu-bench\resultats\C24-nommap-20261125-124316
+[memlines.txt]
+0.00.987.374 I print_info: n_ctx_train           = 262144
+0.00.987.423 I print_info: n_ctx_orig_yarn       = 262144
+0.00.995.178 I load_tensors: offloaded 34/34 layers to GPU
+0.00.995.189 I load_tensors:          CPU model buffer size =  7007.88 MiB
+0.09.605.915 I llama_context: n_ctx                 = 32768
+0.09.605.915 I llama_context: n_ctx_seq             = 32768
+0.09.605.930 I llama_context: n_ctx_seq (32768) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.09.606.155 I llama_context:        CPU  output buffer size =     0.95 MiB
+0.09.607.141 I llama_kv_cache:        CPU KV buffer size =  1024.00 MiB
+[ram.csv]
+seg,disponible_mib,pagefile_mib,servidor_ws_mib,servidor_privat_mib
+0,7252,528,78,71
+2,6747,528,693,7123
+3,5459,528,2003,7123
+4,4437,528,3015,7123
+6,3467,528,4073,7123
+7,2414,531,5112,7123
+8,1462,537,6197,7123
+10,475,542,7332,8133
+11,4,544,5511,8133
+[response timings]
+(none)

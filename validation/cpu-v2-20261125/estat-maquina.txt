@@ -1,0 +1,24 @@
+fecha=2026-11-25T13:40:55
+windows=Microsoft Windows 11 Home build 26200
+cpu=AMD Ryzen 5 5500U with Radeon Graphics         
+ram_total_mib=15723
+dimm=8 GB 3200 MT/s
+dimm=8 GB 3200 MT/s
+pagefile=C:\pagefile.sys tam=19470 MiB
+plan_energia=GUID de plan de energ?a: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado)
+llama_server=version: 0.7.0-dev (build 11889, commit d854d98ba) | built with Clang 20.1.8 for Windows x86_64
+--- sha256 (hash, bytes, fichero)
+fa03f3ac4da941a53a0cd4450aacf6a80804c6a1ff885d2fdcbe9406c03215c4  843354944  LFM2.5-1.2B-Instruct-Q5_K_M.gguf
+b6f76e74f86245b3caee014b797c10dca931c4dfdaabfb134eab655f81e4154a  7558901696  Ornith-1.5-9B-Q6_K.gguf
+66f2c4c2768bb03284b12a9baa404d9bd4dbae46d6b16d01fd94ccf2e54bfe9e  397808160  Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+b46661073c18e5b56a41fa320975f866a00def1ff08feef4718e013258896f8c  1285494304  qwen2.5-1.5b-instruct-q5_k_m.gguf
+626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d  2104932768  qwen2.5-3b-instruct-q4_k_m.gguf
+1ecc8a1b8000b67a3bd73e0a1d3e0d9e63ddc31e3adfc54c52c1bb213a380900  2780342976  Qwen2.5-7B-Instruct-IQ2_M.gguf
+a96b16179dc6cc9afdf0cf7a96a80c199cbd00b9be207c3465be21cb721cca5e  3808391072  qwen2.5-7b-instruct-q3_k_m.gguf
+65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423  4683074240  Qwen2.5-7B-Instruct-Q4_K_M.gguf
+93b69ebf2883dcd4d8fa0ebd4b4589ae0f3eedc721ac391a46d36d90762f4640  7339203968  qwen2.5-coder-14b-instruct-q3_k_m.gguf
+6ce2630974b0ef631e2b29064cd10a9cb16b278d001961d72bfd86987392c8d9  3015940032  qwen2.5-coder-7b-instruct-q2_k.gguf
+ff5c64615cf8a44651d208e9d8da1f753feefc21605e6c1ee67957aa77257c3c  3808391104  qwen2.5-coder-7b-instruct-q3_k_m.gguf
+9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0  668788096  tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+cf09584a30423f6f80b0c9fe2f42e152520dabf08fecd1cad641ce21a7588166  7029537056  Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf
+ecc4d5b8107fc219e23c494b2d107552137637b6c6002ee713e0ba8af7fa2755  8071295264  Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf
