@@ -1,0 +1,176 @@
+{
+  "schema_version": 3,
+  "model": {
+    "repo_id": "ornith-ai/Ornith-1.5-9B-GGUF",
+    "repository_type": "gguf",
+    "author": "ornith-ai",
+    "pipeline_tag": "text-generation",
+    "library_name": "transformers",
+    "license": "mit",
+    "gated": false
+  },
+  "inference_configuration": {
+    "context_length": 32768,
+    "batch_size": 1,
+    "target_device": "cpu",
+    "precision": null,
+    "quantization": "Q6_K",
+    "kv_cache_dtype": "float16",
+    "safety_margin_percent": null,
+    "device_reserve_bytes": 536870912,
+    "ram_reserve_bytes": 536870912
+  },
+  "memory": {
+    "weights_bytes": 7558901696,
+    "kv_cache_bytes": 1128628224,
+    "runtime_overhead_bytes": 1292761081,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 0,
+    "total_bytes": 10517161913,
+    "components": [
+      {
+        "name": "Weights",
+        "bytes": 7558901696,
+        "source": "exact",
+        "confidence": "high",
+        "explanation": "Exact remote file size of the Q6_K variant."
+      },
+      {
+        "name": "KV cache",
+        "bytes": 1128628224,
+        "source": "derived",
+        "confidence": "medium",
+        "explanation": "8 layers x 4 KV heads x 256 head_dim x 32768 tokens x batch 1 x 2 bytes x 1 sessions x 2. Plus the recurrent state of the linear-attention layers."
+      },
+      {
+        "name": "Runtime overhead",
+        "bytes": 1292761081,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Base 0.50 GiB + 10% of weights (0.70 GiB). CPU allowance, not GPU calibration. CPU repacking is runtime-dependent and is not separately sized; this heuristic is not an upper bound."
+      },
+      {
+        "name": "RAM reserve",
+        "bytes": 536870912,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Configured RAM reserve of 0.50 GiB."
+      }
+    ],
+    "physical_bytes": 9980291001,
+    "reserve_shortfall_bytes": 536870912,
+    "budget_bytes": 10517161913,
+    "runtime_overhead_components": [
+      {
+        "name": "CPU compute allowance",
+        "bytes": 268435456,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "0.25 GiB heuristic; actual compute buffers depend on token batching."
+      },
+      {
+        "name": "Other CPU runtime allowance",
+        "bytes": 1024325625,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Remaining general runtime heuristic; not a measured allocation."
+      },
+      {
+        "name": "CPU repacking",
+        "bytes": null,
+        "source": "unknown",
+        "confidence": "unknown",
+        "explanation": "Depends on tensor types, CPU kernels and runtime build. Not separately added to the heuristic total."
+      }
+    ],
+    "unmodelled_overhead_components": [
+      "CPU repacking"
+    ]
+  },
+  "weights": {
+    "num_parameters": null,
+    "bits_per_parameter": null,
+    "precision": null,
+    "gguf_variant": "Q6_K",
+    "transformer_block_decomposition": {
+      "total_weight_bytes": 7558901696,
+      "estimated_transformer_block_weight_bytes": 7558901696,
+      "estimated_non_block_weight_bytes": 0,
+      "estimated_bytes_per_transformer_block": 229057628,
+      "total_transformer_blocks": 33,
+      "method": "uniform_weight_fallback"
+    }
+  },
+  "kv_cache": {
+    "layers": 33,
+    "kv_heads": 4,
+    "head_dim": 256,
+    "context_length": 32768,
+    "batch_size": 1,
+    "dtype_bytes": 2,
+    "formula": "kv_bytes = 2 * attention_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element + recurrent_layers * state_bytes_per_layer * batch * concurrent_users",
+    "notes": [
+      "Hybrid attention: 8 of 33 layers keep a KV cache (full attention every 4 layers); the other 25 keep a constant recurrent state of 52 MiB for 1 sequence(s), in float32 whatever the KV precision. Checked against one llama.cpp measurement (Qwen3.8-27B, D120).",
+      "Grouped-Query Attention: 4 KV heads for 16 attention heads."
+    ]
+  },
+  "hardware": {
+    "available_vram_bytes": null,
+    "available_ram_bytes": 7274016768
+  },
+  "assessment": {
+    "status": "insufficient",
+    "confidence": "low",
+    "target_device": "cpu",
+    "effective_device": "cpu",
+    "utilisation_ratio": 1.4458534051319911,
+    "reasons": [
+      "CPU consumption is checked separately from the desired RAM reserve and margin."
+    ],
+    "warnings": [],
+    "physical_bytes": 9980291001,
+    "budget_bytes": 10517161913,
+    "desired_reserve_bytes": 536870912,
+    "reserve_shortfall_bytes": 536870912
+  },
+  "hardware_fit": null,
+  "assumptions": [
+    "Selected explicitly by user: Q6_K.",
+    "KV cache dtype assumed to be float16.",
+    "GGUF CPU headroom: 512 MiB of RAM; the GPU's 1 GiB minimum does not apply.",
+    "No automatic percentage margin is added to GGUF headroom."
+  ],
+  "warnings": [
+    "Repository contains 5 GGUF artifact representations (BF16, Q4_K_M, Q5_K_M, Q6_K, Q8_0); only one is loaded at a time.",
+    "GGUF header read up to its tokenizer; every key the memory estimate reads was present, the rest was not fetched.",
+    "Base model could not be resolved from model card, GGUF header or URLs.",
+    "Hybrid attention: 8 of 33 layers keep a KV cache (full attention every 4 layers); the other 25 keep a constant recurrent state of 52 MiB for 1 sequence(s), in float32 whatever the KV precision. Checked against one llama.cpp measurement (Qwen3.8-27B, D120).",
+    "Grouped-Query Attention: 4 KV heads for 16 attention heads.",
+    "CPU overhead uses a general 512 MiB + 10% of weights heuristic, not the GPU compute-buffer calibration. CPU repacking is not separately sized and can exceed this allowance."
+  ],
+  "base_model_resolution": {
+    "repo_id": null,
+    "source": "unresolved",
+    "confidence": "low",
+    "evidence": [
+      "Repository name suggests conversion of 'ornith-ai/Ornith-1.5-9B' but this is only a hint."
+    ],
+    "warnings": [
+      "Base model could not be resolved from model card, GGUF header or URLs."
+    ],
+    "candidates": []
+  },
+  "configuration_sources": {
+    "architectures": "gguf_header",
+    "model_type": "gguf_header",
+    "max_position_embeddings": "gguf_header",
+    "hidden_size": "gguf_header",
+    "num_hidden_layers": "gguf_header",
+    "num_attention_heads": "gguf_header",
+    "num_key_value_heads": "gguf_header",
+    "head_dim": "gguf_header",
+    "hybrid_attention": "gguf_header"
+  },
+  "architecture": "qwen35",
+  "runtime_recommendation": null
+}

@@ -1,0 +1,178 @@
+{
+  "schema_version": 3,
+  "model": {
+    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+    "repository_type": "gguf",
+    "author": "bartowski",
+    "pipeline_tag": "text-generation",
+    "library_name": null,
+    "license": "apache-2.0",
+    "gated": false
+  },
+  "inference_configuration": {
+    "context_length": 32768,
+    "batch_size": 1,
+    "target_device": "cpu",
+    "precision": null,
+    "quantization": "Q4_K_M",
+    "kv_cache_dtype": "float16",
+    "safety_margin_percent": null,
+    "device_reserve_bytes": 536870912,
+    "ram_reserve_bytes": 536870912
+  },
+  "memory": {
+    "weights_bytes": 4683074240,
+    "kv_cache_bytes": 1879048192,
+    "runtime_overhead_bytes": 1005178336,
+    "device_reserve_bytes": 536870912,
+    "safety_margin_bytes": 0,
+    "total_bytes": 8104171680,
+    "components": [
+      {
+        "name": "Weights",
+        "bytes": 4683074240,
+        "source": "exact",
+        "confidence": "high",
+        "explanation": "Exact remote file size of the Q4_K_M variant."
+      },
+      {
+        "name": "KV cache",
+        "bytes": 1879048192,
+        "source": "derived",
+        "confidence": "high",
+        "explanation": "28 layers x 4 KV heads x 128 head_dim x 32768 tokens x batch 1 x 2 bytes x 1 sessions x 2."
+      },
+      {
+        "name": "Runtime overhead",
+        "bytes": 1005178336,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Base 0.50 GiB + 10% of weights (0.44 GiB). CPU allowance, not GPU calibration. CPU repacking is runtime-dependent and is not separately sized; this heuristic is not an upper bound."
+      },
+      {
+        "name": "RAM reserve",
+        "bytes": 536870912,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Configured RAM reserve of 0.50 GiB."
+      }
+    ],
+    "physical_bytes": 7567300768,
+    "reserve_shortfall_bytes": 536870912,
+    "budget_bytes": 8104171680,
+    "runtime_overhead_components": [
+      {
+        "name": "CPU compute allowance",
+        "bytes": 268435456,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "0.25 GiB heuristic; actual compute buffers depend on token batching."
+      },
+      {
+        "name": "Other CPU runtime allowance",
+        "bytes": 736742880,
+        "source": "assumed",
+        "confidence": "low",
+        "explanation": "Remaining general runtime heuristic; not a measured allocation."
+      },
+      {
+        "name": "CPU repacking",
+        "bytes": null,
+        "source": "unknown",
+        "confidence": "unknown",
+        "explanation": "Depends on tensor types, CPU kernels and runtime build. Not separately added to the heuristic total."
+      }
+    ],
+    "unmodelled_overhead_components": [
+      "CPU repacking"
+    ]
+  },
+  "weights": {
+    "num_parameters": null,
+    "bits_per_parameter": null,
+    "precision": null,
+    "gguf_variant": "Q4_K_M",
+    "transformer_block_decomposition": {
+      "total_weight_bytes": 4683074240,
+      "estimated_transformer_block_weight_bytes": 4012773975,
+      "estimated_non_block_weight_bytes": 670300265,
+      "estimated_bytes_per_transformer_block": 143313357,
+      "total_transformer_blocks": 28,
+      "method": "config_parameter_decomposition"
+    }
+  },
+  "kv_cache": {
+    "layers": 28,
+    "kv_heads": 4,
+    "head_dim": 128,
+    "context_length": 32768,
+    "batch_size": 1,
+    "dtype_bytes": 2,
+    "formula": "kv_bytes = 2 * num_layers * num_kv_heads * head_dim * context * batch * concurrent_users * bytes_per_kv_element",
+    "notes": [
+      "Grouped-Query Attention: 4 KV heads for 28 attention heads."
+    ]
+  },
+  "hardware": {
+    "available_vram_bytes": null,
+    "available_ram_bytes": 7268634624
+  },
+  "assessment": {
+    "status": "memory_pressure",
+    "confidence": "low",
+    "target_device": "cpu",
+    "effective_device": "cpu",
+    "utilisation_ratio": 1.114951032652154,
+    "reasons": [
+      "CPU consumption is checked separately from the desired RAM reserve and margin."
+    ],
+    "warnings": [
+      "Experimental CPU placement: estimated consumption exceeds available RAM. Paging or closing other applications may be necessary; fit and performance are not confirmed. Swap is not counted as extra RAM capacity."
+    ],
+    "physical_bytes": 7567300768,
+    "budget_bytes": 8104171680,
+    "desired_reserve_bytes": 536870912,
+    "reserve_shortfall_bytes": 536870912
+  },
+  "hardware_fit": null,
+  "assumptions": [
+    "Selected explicitly by user: Q4_K_M.",
+    "Base model resolved to Qwen/Qwen2.5-7B-Instruct via model_card_metadata.",
+    "KV cache dtype assumed to be float16.",
+    "GGUF CPU headroom: 512 MiB of RAM; the GPU's 1 GiB minimum does not apply.",
+    "No automatic percentage margin is added to GGUF headroom."
+  ],
+  "warnings": [
+    "Repository contains 24 GGUF artifact representations (F16, IQ2_M, IQ3_M, IQ3_XS, IQ4_XS, Q2_K, Q2_K_L, Q3_K_L, Q3_K_M, Q3_K_S, Q3_K_XL, Q4_0, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, Q4_K_L, Q4_K_M, Q4_K_S, Q5_K_L, Q5_K_M, Q5_K_S, Q6_K, Q6_K_L, Q8_0); only one is loaded at a time.",
+    "GGUF header read up to its tokenizer; every key the memory estimate reads was present, the rest was not fetched.",
+    "Grouped-Query Attention: 4 KV heads for 28 attention heads.",
+    "CPU overhead uses a general 512 MiB + 10% of weights heuristic, not the GPU compute-buffer calibration. CPU repacking is not separately sized and can exceed this allowance."
+  ],
+  "base_model_resolution": {
+    "repo_id": "Qwen/Qwen2.5-7B-Instruct",
+    "source": "model_card_metadata",
+    "confidence": "high",
+    "evidence": [
+      "Model card `base_model: Qwen/Qwen2.5-7B-Instruct`."
+    ],
+    "warnings": [],
+    "candidates": []
+  },
+  "configuration_sources": {
+    "architectures": "gguf_header",
+    "model_type": "gguf_header",
+    "max_position_embeddings": "gguf_header",
+    "hidden_size": "gguf_header",
+    "num_hidden_layers": "gguf_header",
+    "num_attention_heads": "gguf_header",
+    "num_key_value_heads": "gguf_header",
+    "sliding_window": "base_model_config",
+    "use_sliding_window": "base_model_config",
+    "torch_dtype": "base_model_config",
+    "intermediate_size": "base_model_config",
+    "tie_word_embeddings": "base_model_config",
+    "vocab_size": "base_model_config"
+  },
+  "architecture": "qwen2",
+  "runtime_recommendation": null
+}
