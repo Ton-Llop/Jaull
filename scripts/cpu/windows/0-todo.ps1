@@ -12,7 +12,7 @@ Start-Transcript -Path (Join-Path $Root ("resultats\transcript-{0}.txt" -f (Get-
 
 # que el portatil no se duerma mientras corre
 Add-Type -Namespace Win -Name Power -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-[Win.Power]::SetThreadExecutionState(0x80000003) | Out-Null
+[Win.Power]::SetThreadExecutionState([uint32]2147483651) | Out-Null   # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
 
 try {
   if (Get-Process vmmemWSL -ErrorAction SilentlyContinue) { throw 'WSL sigue encendido y ocupa RAM. Ejecuta "wsl --shutdown", espera 10 s y vuelve a lanzar.' }
@@ -43,6 +43,6 @@ try {
   Write-Host 'TERMINADO. Ya puedes decirme "listo".' -ForegroundColor Green
   try { [console]::Beep(880, 400); [console]::Beep(1175, 600) } catch { }
 } finally {
-  [Win.Power]::SetThreadExecutionState(0x80000000) | Out-Null
+  [Win.Power]::SetThreadExecutionState([uint32]2147483648) | Out-Null   # ES_CONTINUOUS: vuelve al comportamiento normal
   Stop-Transcript | Out-Null
 }

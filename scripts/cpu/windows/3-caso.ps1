@@ -65,8 +65,10 @@ $loaded = 0; $generated = 0; $availLoaded = 0; $exitCode = ''
 $tokOut = ''; $ppOut = ''; $tgOut = ''
 try {
   $srvArgs = @('-m', ('"' + $Model + '"'), '-c', "$Ctx", '-np', '1', '-t', '6', '-lv', '4', '--host', '127.0.0.1', '--port', "$Port")
-  if ($Mode -eq 'nommap') { $srvArgs += '--no-mmap' }
+  # llama.cpp b11889 ya no tiene --no-mmap: el modo de carga es -lm (none = a RAM sin mmap, mmap = proyeccion del fichero)
+  if ($Mode -eq 'nommap') { $srvArgs += @('-lm', 'none') } else { $srvArgs += @('-lm', 'mmap') }
   $proc = Start-Process -FilePath $server -ArgumentList $srvArgs -RedirectStandardOutput "$dir\stdout.log" -RedirectStandardError "$dir\server.log" -PassThru -WindowStyle Hidden
+  $null = $proc.Handle   # sin esto, ExitCode sale vacio en PowerShell 5.1
   $t0 = Get-Date
 
   # 1) esperar la carga

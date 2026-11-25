@@ -4,7 +4,8 @@ Run from the repository root, in WSL (it only reads Hub metadata, it does not do
 
     uv run python scripts/cpu/predict.py
 
-It stores each full JSON report in validation/cpu-20261125/predicciones/ and a summary CSV next to it.
+It stores each full JSON report in validation/cpu-20261125/predicciones/ and a summary CSV
+next to it.
 """
 
 from __future__ import annotations
@@ -18,8 +19,11 @@ CASES = Path("scripts/cpu/cases.csv")
 OUT = Path("validation/cpu-20261125/predicciones")
 OUT.mkdir(parents=True, exist_ok=True)
 
-commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", "src"], capture_output=True, text=True).stdout.strip())
+GIT_HEAD = ["git", "rev-parse", "HEAD"]
+GIT_SRC_STATUS = ["git", "status", "--porcelain", "--", "src"]
+commit = subprocess.run(GIT_HEAD, capture_output=True, text=True, check=True).stdout.strip()
+status = subprocess.run(GIT_SRC_STATUS, capture_output=True, text=True, check=True).stdout
+dirty = bool(status.strip())
 (OUT / "commit.txt").write_text(f"jaull_commit={commit}\nsrc_dirty={dirty}\n")
 
 rows = []
@@ -44,7 +48,8 @@ for case in csv.DictReader(CASES.open(encoding="utf-8")):
         "total_mib": round(mem["total_bytes"] / 2**20, 1),
         "confidence": report["assessment"]["confidence"],
     })
-    print(f"{case['id']}  physical {rows[-1]['physical_mib']:>8} MiB  total {rows[-1]['total_mib']:>8} MiB")
+    last = rows[-1]
+    print(f"{case['id']}  physical {last['physical_mib']:>8} MiB  total {last['total_mib']:>8} MiB")
 
 with (OUT / "predicciones.csv").open("w", newline="", encoding="utf-8") as fh:
     writer = csv.DictWriter(fh, fieldnames=list(rows[0]))

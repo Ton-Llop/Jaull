@@ -25,7 +25,9 @@ foreach ($e in $models) {
   $m = Find-Model $e[1]
   if (-not $m) { Write-Host "FALTA $($e[1]) (se salta)" -ForegroundColor Yellow; continue }
   Write-Host "llama-bench $($e[0]) $($e[1]) ..." -ForegroundColor Cyan
-  & $bench -m $m -t 6 -p 512 -n 128 -r 3 -o jsonl 2> "$out\$($e[0])-stderr.txt" | Set-Content "$out\$($e[0]).jsonl" -Encoding Ascii
+  # Start-Process para que el stderr de llama-bench no se trate como error en PowerShell 5.1
+  $bArgs = @('-m', ('"' + $m + '"'), '-t', '6', '-p', '512', '-n', '128', '-r', '3', '-o', 'jsonl')
+  Start-Process -FilePath $bench -ArgumentList $bArgs -RedirectStandardOutput "$out\$($e[0]).jsonl" -RedirectStandardError "$out\$($e[0])-stderr.txt" -Wait -NoNewWindow
   Start-Sleep -Seconds 20
 }
 Write-Host "Listo. Siguiente: 6-empaquetar.ps1" -ForegroundColor Green

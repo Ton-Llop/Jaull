@@ -69,7 +69,10 @@ $lines += "ram_total_mib=$([int]($os.TotalVisibleMemorySize/1024))"
 Get-CimInstance Win32_PhysicalMemory | ForEach-Object { $lines += "dimm=$([int]($_.Capacity/1GB)) GB $($_.Speed) MT/s" }
 Get-CimInstance Win32_PageFileUsage | ForEach-Object { $lines += "pagefile=$($_.Name) tam=$($_.AllocatedBaseSize) MiB" }
 $lines += "plan_energia=$((powercfg /getactivescheme) -join ' ')"
-$lines += "llama_server=$(& $exe.FullName --version 2>&1 | Select-Object -First 3 | Out-String)"
+$verOut = "$Root\llama-version.txt"
+Start-Process -FilePath $exe.FullName -ArgumentList '--version' -RedirectStandardOutput $verOut -RedirectStandardError "$verOut.err" -Wait -NoNewWindow
+$ver = (Get-Content $verOut, "$verOut.err" -ErrorAction SilentlyContinue | Where-Object { $_ }) -join ' | '
+$lines += "llama_server=$ver"
 $lines += "--- sha256 (hash, bytes, fichero)"
 $gguf = @(Get-ChildItem "$Root\models" -Filter *.gguf) + $mellum
 foreach ($f in $gguf) {
