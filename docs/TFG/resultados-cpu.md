@@ -151,7 +151,7 @@ Amb mmap el model potser funcionaria amb menys RAM, però més lent. El que mesu
 | C23 | 4,7 | 4,8 | 9,6 | 14,5 | 6 | 11 |
 | C24 | 4,8 | 4,8 | 9,5 | 14,2 | 7 | 11 |
 
-La generació (128 tokens) és igual o millor sense mmap en tots els casos.
+La generació (128 tokens) és igual o millor sense mmap en tots aquests casos (la campanya 2, `resultados-cpu-2.md`, ho matisa: de −22 % a +12 % segons el model).
 **Les xifres de prompt no són una velocitat de prompt:** el prompt és de només 16 tokens i es mesura en la primera petició. Amb mmap, el servidor diu «a punt» abans de tenir el model llegit i aquesta petició paga la càrrega de les pàgines (al Mellum, 2.323 ms contra 395 ms); sense mmap la càrrega ja s'ha fet abans. Que el Mellum, un MoE, ho noti més és plausible (cada token toca experts diferents), però no s'ha comprovat.
 Carregar triga uns 3 s més sense mmap i, a canvi, la primera petició és més ràpida: el temps fins a la primera resposta queda gairebé igual. El fitxer ja era a la memòria cau del disc, així que amb un fitxer fred la diferència pot ser una altra.
 Per això Jaull, a Windows i amb backend CPU, carrega per defecte amb `-lm none` (D129). Un model més gran que la RAM disponible no s'ha provat.

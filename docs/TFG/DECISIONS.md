@@ -3586,10 +3586,16 @@ buffers; amb mmap, 6 de les 9 configuracions que Jaull aprovava a la passada A v
   set de 9.652, davant dels 7.466 de caiguda sense mmap. Al Mellum Q4_K_M, 4.599 i 11.017 davant de 7.887.
 - Als models amb `CPU_REPACK` (Q4_K_M, Q3_K_M), amb mmap la RAM lliure baixa entre 2.180 i 3.167 MiB més. A l'Ornith Q6_K,
   que no en té, baixa entre 726 i 771 MiB **menys**.
-- **Velocitat:** en 8 parelles, la generació és igual o millor sense mmap (al Mellum, 20,4 contra 17,7 tok/s).
-  **Temps de càrrega:** 10 a 12 s sense mmap i 6 a 11 s amb mmap, uns 3 s més, amb el fitxer ja a la memòria cau del disc.
-  La primera petició (16 tokens) és més lenta amb mmap, perquè paga la lectura de les pàgines (2.323 ms contra 395 ms al
-  Mellum): el temps fins a la primera resposta queda gairebé igual. No és una mesura de velocitat de prompt.
+- **Campanya 2 (`resultados-cpu-2.md`, preregistrada):** 45 execucions, 24 configuracions repetides i 5 de models nous.
+  Sense mmap, 28 aprovacions de Jaull i 28 van funcionar amb marge (la més justa, 89 MiB de marge i 1.745 MiB lliures);
+  amb mmap, 8 de les 15 aprovacions acaben sense marge. Els buffers dels casos repetits són idèntics als de la campanya 1.
+  A N01, C12, C01 i C05 amb mmap la RAM lliure baixa entre el 62 % i el 89 % del buffer `CPU_REPACK`.
+- **Velocitat (campanya 1, 8 parelles):** igual o millor sense mmap. **La campanya 2 ho matisa:** la generació va de
+  −22 % a +12 % segons el model (una mesura per cas), sense diferència sistemàtica. **La raó de D129 és la memòria, no la velocitat.**
+- **Temps de càrrega:** sense mmap, entre 0 i 4 s més a 12 de 13 casos.
+- **Primera petició:** a la campanya 1 era més lenta amb mmap (2.323 ms contra 395 ms al Mellum). Amb una petició de calentament, el prompt
+  és igual en els dos modes a 8 de 11 casos; la N04 queda sense explicar (609 contra 1.055 ms). El Mellum no es va poder comprovar, perquè
+  amb mmap el servidor es para abans de generar.
 
 **Decisió (de l'autor):** a Windows natiu i amb el backend CPU, `jaull serve` carrega el model amb `-lm none` per defecte
 (`SERVE_CPU_LOAD_MODE`). Qui demana un altre mode (`-lm mmap`, `dio`) l'obté, i `default` torna el de llama.cpp. No canvia
@@ -3598,17 +3604,20 @@ depèn de la CPU i de la quantització, i amb cinc punts seria una constant inve
 (la campanya és «mesura, no ajustis»).
 
 **Estat:** IMPLEMENTED (`planner.load_mode`, línia del pla a `presentation/serving.py`, proves a `test_serving_planner.py`
-i `test_cli_serve.py`; suite completa i `ruff` nets). **No VALIDATED:** cap execució ha provat el canvi fet servir pel
-servidor; en una tanda nova, preregistrada i amb models diferents, hauria de comprovar-se que els buffers i la RAM lliure
-coincideixen.
+i `test_cli_serve.py`; suite completa i `ruff` nets). **VALIDATED a una màquina** pel que fa al comportament: a la campanya 2,
+preregistrada, cap aprovació de Jaull amb `-lm none` va fallar el marge (H1), també amb models que no s'havien vist mai.
+**No provat de punta a punta:** els scripts de la campanya engeguen `llama-server` directament amb `-lm none`; que `jaull serve`
+l'emeti a la línia d'ordres només ho cobreixen proves unitàries.
 
 **Límits:**
 - La causa és una **hipòtesi sustentada en les mesures, no una lectura del codi de llama.cpp**: el patró (sobreconsum
   només si hi ha `CPU_REPACK`) hi encaixa, però no s'ha aïllat.
 - Les pàgines projectades són memòria de fitxer neta que Windows pot recuperar. Amb mmap el model potser funcionaria amb
   menys RAM, més lent. La campanya mesura que la RAM lliure baixa, no que el servidor es trenqui.
-- Una màquina, una versió de llama.cpp i tres quantitzacions amb dades de mmap. Un model més gran que la RAM disponible no
-  s'ha provat: sense mmap no es carrega, i Jaull ja el rebutja a CPU.
+- Una màquina i una versió de llama.cpp. Amb mmap hi ha dades de Q4_K_M, Q3_K_M, Q6_K, Q5_K_M i Q2_K, i el Mellum no arriba a generar. Un model
+  més gran que la RAM disponible no s'ha provat: sense mmap no es carrega, i Jaull ja el rebutja a CPU.
+- La RAM disponible va pujar durant la campanya 2 fins a 10.581 MiB (el rang objectiu era de 7.000 a 9.000), de manera que els darrers casos
+  eren menys ajustats del previst.
 - Falta decidir què fer amb el KV de la finestra lliscant (Mellum) i amb l'overhead de CPU, que se sobreestima entre 0,5 i
   1,3 GiB; són dos treballs a part.
 
