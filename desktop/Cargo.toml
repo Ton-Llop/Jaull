@@ -8,8 +8,11 @@ publish = false
 [dependencies]
 slint = "1"
 serde_json = "1"
-# Plain HTTP to the local llama-server only: no TLS stack.
-ureq = { version = "2", default-features = false, features = ["json"] }
+# HTTP to the local llama-server, and HTTPS when it is shared on the network. The chat trusts
+# only Jaull's own self-signed certificate (no system roots are loaded).
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pemfile = "2"
 
 [build-dependencies]
 slint-build = "1"

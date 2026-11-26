@@ -9,6 +9,7 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::Value;
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -386,11 +387,29 @@ fn start_search(window: &AppWindow, search: &Arc<Search>, use_case: usize, prior
     });
 }
 
+/// Where the chat sends its requests.
+#[derive(Clone)]
+struct Endpoint {
+    url: String,
+    key: String,
+    alias: String,
+    /// Jaull's self-signed certificate when the server uses HTTPS (shared on the network).
+    cert: Option<String>,
+}
+
+/// What the Chat page shows about the running server.
+#[derive(Default)]
+struct ServerInfo {
+    alias: String,
+    lan_url: String,
+    firewall_rule: String,
+    sharing: String,
+}
+
 /// The model server Jaull runs (llama-server), as far as this window knows it.
 #[derive(Default)]
 struct Server {
-    /// Base URL and API key of a ready server.
-    endpoint: Mutex<Option<(String, String)>>,
+    endpoint: Mutex<Option<Endpoint>>,
     /// Stop it when the window closes: only if this window started it.
     started_here: AtomicBool,
     /// The conversation sent with every message (role, content).
@@ -401,10 +420,42 @@ fn read_key(path: &str) -> Option<String> {
     std::fs::read_to_string(path).ok().map(|key| key.trim().to_string()).filter(|key| !key.is_empty())
 }
 
-fn set_server_ready(window: &AppWindow, server: &Server, url: String, key: String, alias: &str) {
-    *server.endpoint.lock().unwrap() = Some((url, key));
+/// An HTTP client for the endpoint. With HTTPS it trusts only the certificate Jaull made,
+/// never the system's store, so it talks to this server and nothing else.
+fn agent_for(endpoint: &Endpoint) -> Result<ureq::Agent, String> {
+    let builder = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(5))
+        .timeout_read(Duration::from_secs(300))
+        .redirects(0);
+    let Some(cert) = &endpoint.cert else {
+        if endpoint.url.starts_with("https://") {
+            return Err("The running HTTPS server has no certificate path. Restart it from Jaull.".into());
+        }
+        return Ok(builder.build());
+    };
+    let pem = std::fs::read(cert).map_err(|e| format!("Could not read the server certificate: {e}"))?;
+    let mut roots = rustls::RootCertStore::empty();
+    for der in rustls_pemfile::certs(&mut pem.as_slice()) {
+        let der = der.map_err(|e| format!("The server certificate is not valid: {e}"))?;
+        roots.add(der).map_err(|e| format!("The server certificate is not valid: {e}"))?;
+    }
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    Ok(builder.tls_config(Arc::new(config)).build())
+}
+
+fn set_server_ready(window: &AppWindow, server: &Server, endpoint: Endpoint, info: ServerInfo) {
+    window.set_server_url(endpoint.url.clone().into());
+    window.set_server_key(endpoint.key.clone().into());
+    window.set_server_lan_url(info.lan_url.into());
+    window.set_firewall_rule(info.firewall_rule.into());
+    window.set_server_sharing(info.sharing.into());
+    *server.endpoint.lock().unwrap() = Some(endpoint);
     window.set_server_running(true);
-    window.set_server_status(format!("{alias} is running. Write below to talk to it.").into());
+    window.set_server_status(format!("{} is running.", info.alias).into());
 }
 
 /// At start-up: is a Jaull server already running (started by the TUI, the CLI or an earlier window)?
@@ -419,22 +470,45 @@ fn check_server(window: &AppWindow, server: &Arc<Server>) {
         }
         let (Some(url), Some(key)) = (status["url"].as_str().map(str::to_string), status["api_key_path"].as_str().and_then(read_key)) else { return };
         let alias = text(&status["alias"]);
+        let endpoint = Endpoint { url, key, alias: alias.clone(), cert: status["tls_cert"].as_str().map(str::to_string) };
+        let info = ServerInfo { alias, sharing: "Started outside this window.".into(), ..Default::default() };
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(window) = weak.upgrade() {
-                set_server_ready(&window, &server, url, key, &alias);
+                if !window.get_server_busy() && !window.get_server_running() {
+                    set_server_ready(&window, &server, endpoint, info);
+                }
             }
         });
     });
 }
 
-fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, context: &str) {
+/// How to start the server: for this window's chat, or for several people.
+struct ServeRequest {
+    users: i32,
+    /// Tokens per person; empty leaves Jaull's default.
+    context: String,
+    shared: bool,
+    lan: bool,
+}
+
+fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, request: ServeRequest) {
+    if window.get_server_busy() || window.get_server_running() || window.get_replying() {
+        return;
+    }
     let mut cmd = jaull_command();
     cmd.args(["serve", "start", repo, "--json", "--no-opencode-config"]);
     if !quant.is_empty() {
         cmd.args(["-q", quant]);
     }
-    if !context.is_empty() {
-        cmd.args(["--context", context]);
+    if !request.context.is_empty() {
+        cmd.args(["--context", &request.context]);
+    }
+    cmd.args(["--users", &request.users.max(1).to_string()]);
+    if request.shared {
+        cmd.arg("--shared-context");
+    }
+    if request.lan {
+        cmd.arg("--lan");
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::null());
     let mut child = match cmd.spawn() {
@@ -451,7 +525,7 @@ fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, 
     let weak = window.as_weak();
     let server = Arc::clone(server);
     std::thread::spawn(move || {
-        let mut outcome: Option<Result<(String, String, String), String>> = None;
+        let mut outcome: Option<Result<(Endpoint, ServerInfo), String>> = None;
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             let Ok(event) = serde_json::from_str::<Value>(&line) else { continue };
             match event["event"].as_str() {
@@ -465,9 +539,36 @@ fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, 
                     });
                 }
                 Some("started") => {
+                    server.started_here.store(true, Ordering::SeqCst);
                     let key = event["api_key_path"].as_str().and_then(read_key);
                     outcome = Some(match key {
-                        Some(key) => Ok((text(&event["url"]), key, text(&event["alias"]))),
+                        Some(key) => {
+                            let users = event["users"].as_u64().unwrap_or(1);
+                            let context = event["context_per_user"].as_u64().unwrap_or(0);
+                            let pool = event["total_context"].as_u64().unwrap_or(context);
+                            let sharing = match users {
+                                1 => format!("1 person, {} tokens of context.", thousands(context)),
+                                n if context.saturating_mul(n) > pool => format!(
+                                    "{n} people at once sharing {} tokens (up to {} per person).",
+                                    thousands(pool), thousands(context)
+                                ),
+                                n => format!("{n} people at once, {} tokens each.", thousands(context)),
+                            };
+                            Ok((
+                                Endpoint {
+                                    url: text(&event["url"]),
+                                    key,
+                                    alias: text(&event["alias"]),
+                                    cert: event["tls_cert"].as_str().map(str::to_string),
+                                },
+                                ServerInfo {
+                                    alias: text(&event["alias"]),
+                                    lan_url: event["lan_url"].as_str().unwrap_or("").to_string(),
+                                    firewall_rule: event["firewall_rule"].as_str().unwrap_or("").to_string(),
+                                    sharing,
+                                },
+                            ))
+                        }
                         None => Err("The server started but its API key could not be read.".into()),
                     });
                 }
@@ -480,11 +581,10 @@ fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, 
             let Some(window) = weak.upgrade() else { return };
             window.set_server_busy(false);
             match outcome {
-                Some(Ok((url, key, alias))) => {
-                    server.started_here.store(true, Ordering::SeqCst);
+                Some(Ok((endpoint, info))) => {
                     server.history.lock().unwrap().clear();
                     window.set_messages(ModelRc::from(Rc::new(VecModel::<Msg>::default())));
-                    set_server_ready(&window, &server, url, key, &alias);
+                    set_server_ready(&window, &server, endpoint, info);
                 }
                 Some(Err(message)) => window.set_server_status(format!("Could not start the model: {message}").into()),
                 None => window.set_server_status("Jaull ended without starting the model.".into()),
@@ -529,9 +629,54 @@ fn messages_model(window: &AppWindow) -> Rc<VecModel<Msg>> {
     model
 }
 
+fn read_chat_stream(reader: impl BufRead, mut on_text: impl FnMut(&str)) -> Result<(), String> {
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("The model response was interrupted: {e}"))?;
+        let Some(data) = line.strip_prefix("data:") else { continue };
+        let data = data.trim();
+        if data == "[DONE]" {
+            return Ok(());
+        }
+        let chunk: Value = serde_json::from_str(data)
+            .map_err(|_| "The server sent an invalid streaming response.".to_string())?;
+        if !chunk["error"].is_null() {
+            return Err("The server reported an error during generation.".into());
+        }
+        if let Some(text) = chunk["choices"][0]["delta"]["content"].as_str() {
+            on_text(text);
+        }
+    }
+    Err("The model response ended before it was complete.".into())
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::read_chat_stream;
+
+    const CHUNK: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\r\n\r\n";
+
+    #[test]
+    fn complete_stream_emits_text() {
+        let event_stream = format!("{CHUNK}data: [DONE]\r\n\r\n");
+        let mut answer = String::new();
+        read_chat_stream(event_stream.as_bytes(), |piece| answer.push_str(piece)).unwrap();
+        assert_eq!(answer, "hello");
+    }
+
+    #[test]
+    fn incomplete_and_error_streams_fail() {
+        assert!(read_chat_stream(CHUNK.as_bytes(), |_| {}).is_err());
+        let error_stream = b"data: {\"error\":{\"message\":\"generation failed\"}}\n\n";
+        assert!(read_chat_stream(error_stream.as_slice(), |_| {}).is_err());
+    }
+}
+
 /// Sends the conversation to llama-server and streams the answer into the last bubble.
 fn send(window: &AppWindow, server: &Arc<Server>, message: &str) {
-    let Some((url, key)) = server.endpoint.lock().unwrap().clone() else { return };
+    if window.get_server_busy() || window.get_replying() || message.trim().is_empty() {
+        return;
+    }
+    let Some(endpoint) = server.endpoint.lock().unwrap().clone() else { return };
     let model = messages_model(window);
     model.push(Msg { mine: true, text: SharedString::from(message) });
     model.push(Msg { mine: false, text: SharedString::from("…") });
@@ -543,20 +688,19 @@ fn send(window: &AppWindow, server: &Arc<Server>, message: &str) {
     let server = Arc::clone(server);
     std::thread::spawn(move || {
         let messages: Vec<Value> = history.iter().map(|(role, content)| serde_json::json!({"role": role, "content": content})).collect();
-        let body = serde_json::json!({"messages": messages, "stream": true});
+        let body = serde_json::json!({"model": endpoint.alias, "messages": messages, "stream": true});
         let mut answer = String::new();
-        let error = match ureq::post(&format!("{url}/v1/chat/completions"))
-            .set("Authorization", &format!("Bearer {key}"))
-            .send_json(body)
-        {
+        let request = agent_for(&endpoint).map(|agent| {
+            agent
+                .post(&format!("{}/v1/chat/completions", endpoint.url))
+                .set("Authorization", &format!("Bearer {}", endpoint.key))
+                .send_json(body)
+        });
+        let error = match request {
+            Err(message) => Some(message),
+            Ok(sent) => match sent {
             Ok(response) => {
-                for line in BufReader::new(response.into_reader()).lines().map_while(Result::ok) {
-                    let Some(data) = line.strip_prefix("data: ") else { continue };
-                    if data.trim() == "[DONE]" {
-                        break;
-                    }
-                    let Ok(chunk) = serde_json::from_str::<Value>(data) else { continue };
-                    if let Some(piece) = chunk["choices"][0]["delta"]["content"].as_str() {
+                read_chat_stream(BufReader::new(response.into_reader()), |piece| {
                         answer.push_str(piece);
                         let shown = answer.clone();
                         let weak = weak.clone();
@@ -567,12 +711,11 @@ fn send(window: &AppWindow, server: &Arc<Server>, message: &str) {
                                 rows.set_row_data(last, Msg { mine: false, text: shown.into() });
                             }
                         });
-                    }
-                }
-                None
+                }).err()
             }
             Err(ureq::Error::Status(code, _)) => Some(format!("The server answered with error {code}.")),
             Err(e) => Some(format!("Could not reach the model: {e}")),
+            },
         };
         if error.is_none() {
             let mut kept = server.history.lock().unwrap();
@@ -591,6 +734,155 @@ fn send(window: &AppWindow, server: &Arc<Server>, message: &str) {
     });
 }
 
+/// Reads the downloaded files (`jaull storage list --json`) for Set up a local server and Free disk space.
+fn refresh_storage(window: &AppWindow) {
+    window.set_storage_busy(true);
+    let weak = window.as_weak();
+    std::thread::spawn(move || {
+        let result = run_jaull_json(&["storage", "list", "--json"]);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = weak.upgrade() else { return };
+            window.set_storage_busy(false);
+            let listing = match result {
+                Ok(listing) => listing,
+                Err(message) => {
+                    window.set_storage_status(message.into());
+                    return;
+                }
+            };
+            let mut total = 0.0;
+            let models: Vec<LocalModel> = listing["models"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|m| {
+                    total += m["size_bytes"].as_f64().unwrap_or(0.0);
+                    let note = match (m["verified"].as_bool(), m["measured"].as_bool(), m["quantization"].as_str()) {
+                        (_, _, None) => "quantization not recognised: start it from the CLI",
+                        (Some(false), _, _) => "not verified",
+                        (_, Some(true), _) => "quality measured on this file",
+                        _ => "",
+                    };
+                    LocalModel {
+                        repo: text(&m["repo_id"]).into(),
+                        filename: text(&m["filename"]).into(),
+                        quant: m["quantization"].as_str().unwrap_or("").into(),
+                        size: gib(&m["size_bytes"]).unwrap_or_else(|| "?".into()).into(),
+                        note: note.into(),
+                    }
+                })
+                .collect();
+            let logs = &listing["evaluation_logs"];
+            window.set_logs_size(gib(&logs["size_bytes"]).unwrap_or_else(|| "?".into()).into());
+            window.set_storage_status(
+                format!(
+                    "{} model files, {:.1} GiB in total. Evaluation logs: {} folders.",
+                    models.len(),
+                    total / 1_073_741_824.0,
+                    logs["folders"].as_u64().unwrap_or(0)
+                )
+                .into(),
+            );
+            let first_usable = models.iter().position(|m| !m.quant.is_empty()).unwrap_or(0);
+            window.set_setup_selected(first_usable as i32);
+            window.set_local_models(ModelRc::from(Rc::new(VecModel::from(models))));
+        });
+    });
+}
+
+/// `jaull storage remove`: one model file, or every evaluation log folder.
+fn remove_storage(window: &AppWindow, args: Vec<String>) {
+    window.set_storage_busy(true);
+    window.set_storage_status("Removing…".into());
+    let weak = window.as_weak();
+    std::thread::spawn(move || {
+        let mut all = vec!["storage".to_string(), "remove".to_string()];
+        all.extend(args);
+        all.push("--json".into());
+        let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+        let result = run_jaull_json(&refs);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = weak.upgrade() else { return };
+            refresh_storage(&window);
+            match result {
+                Ok(v) if v["error"].is_null() => {
+                    window.set_storage_status(format!("Freed {}.", gib(&v["freed_bytes"]).unwrap_or_else(|| "?".into())).into())
+                }
+                Ok(v) => window.set_storage_status(text(&v["error"]).into()),
+                // A file the running server has open cannot be deleted on Windows.
+                Err(message) => window.set_storage_status(format!("{message} Stop the model first if it is using this file.").into()),
+            }
+        });
+    });
+}
+
+/// Removes terminal colour codes, in case a tool prints them anyway.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Advanced tools: runs `jaull inspect|estimate|doctor` and shows its plain-text report.
+fn run_tool(window: &AppWindow, tool: i32, repo: &str, quant: &str, context: &str) {
+    let mut cmd = jaull_command();
+    match tool {
+        1 => {
+            cmd.args(["inspect", repo.trim()]);
+        }
+        2 => {
+            cmd.args(["estimate", repo.trim()]);
+            if !quant.trim().is_empty() {
+                cmd.args(["-q", quant.trim()]);
+            }
+            if !context.trim().is_empty() {
+                cmd.args(["-c", context.trim()]);
+            }
+        }
+        _ => {
+            cmd.arg("doctor");
+        }
+    }
+    cmd.env("NO_COLOR", "1").env("COLUMNS", "100").env("TERM", "dumb");
+    window.set_tool_running(true);
+    window.set_tool_output("".into());
+    let weak = window.as_weak();
+    std::thread::spawn(move || {
+        let output = match cmd.output() {
+            Ok(out) => {
+                let mut text = String::from_utf8_lossy(&out.stdout).to_string();
+                let err = String::from_utf8_lossy(&out.stderr);
+                if !err.trim().is_empty() {
+                    text.push_str("\n");
+                    text.push_str(&err);
+                }
+                strip_ansi(&text)
+            }
+            Err(e) => format!("Could not start Jaull: {e}"),
+        };
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = weak.upgrade() {
+                window.set_tool_running(false);
+                window.set_tool_output(output.trim_end().into());
+            }
+        });
+    });
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     // The software renderer keeps the window at a few MiB; the default OpenGL one loaded
     // the graphics driver and used about 110 MiB in the hello-world measurement.
@@ -598,6 +890,17 @@ fn main() -> Result<(), slint::PlatformError> {
         std::env::set_var("SLINT_BACKEND", "winit-software");
     }
     let window = AppWindow::new()?;
+    let weak = window.as_weak();
+    window.window().on_close_requested(move || {
+        if let Some(window) = weak.upgrade() {
+            if window.get_server_busy() {
+                window.set_page(4);
+                window.set_server_status("Wait until the server operation finishes before closing.".into());
+                return slint::CloseRequestResponse::KeepWindowShown;
+            }
+        }
+        slint::CloseRequestResponse::HideWindow
+    });
     let search = Arc::new(Search::default());
 
     let weak = window.as_weak();
@@ -632,7 +935,16 @@ fn main() -> Result<(), slint::PlatformError> {
     let for_use = Arc::clone(&server);
     window.on_use_model(move |repo, quant, context| {
         if let Some(window) = weak.upgrade() {
-            use_model(&window, &for_use, &repo, &quant, &context);
+            let request = ServeRequest { users: 1, context: context.to_string(), shared: false, lan: false };
+            use_model(&window, &for_use, &repo, &quant, request);
+        }
+    });
+    let weak = window.as_weak();
+    let for_serve = Arc::clone(&server);
+    window.on_serve_model(move |repo, quant, users, context, shared, lan| {
+        if let Some(window) = weak.upgrade() {
+            let request = ServeRequest { users, context: context.to_string(), shared, lan };
+            use_model(&window, &for_serve, &repo, &quant, request);
         }
     });
     let weak = window.as_weak();
@@ -647,6 +959,31 @@ fn main() -> Result<(), slint::PlatformError> {
     window.on_send(move |message| {
         if let Some(window) = weak.upgrade() {
             send(&window, &for_send, &message);
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_refresh_storage(move || {
+        if let Some(window) = weak.upgrade() {
+            refresh_storage(&window);
+        }
+    });
+    let weak = window.as_weak();
+    window.on_remove_model(move |repo, filename| {
+        if let Some(window) = weak.upgrade() {
+            remove_storage(&window, vec![repo.to_string(), filename.to_string()]);
+        }
+    });
+    let weak = window.as_weak();
+    window.on_remove_logs(move || {
+        if let Some(window) = weak.upgrade() {
+            remove_storage(&window, vec!["--evaluation-logs".to_string()]);
+        }
+    });
+    let weak = window.as_weak();
+    window.on_run_tool(move |tool, repo, quant, context| {
+        if let Some(window) = weak.upgrade() {
+            run_tool(&window, tool, &repo, &quant, &context);
         }
     });
 

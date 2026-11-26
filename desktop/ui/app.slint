@@ -49,6 +49,15 @@ export struct Msg {
     text: string,
 }
 
+// A downloaded model file, as `jaull storage list --json` gives it.
+export struct LocalModel {
+    repo: string,
+    filename: string,
+    quant: string,
+    size: string,
+    note: string,
+}
+
 export struct Step {
     label: string,
     detail: string,
@@ -234,6 +243,60 @@ component Hr inherits Rectangle {
     background: Theme.line;
 }
 
+// A choice among a few values, as the demo's Serve view draws them.
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback pick();
+    height: 24px;
+    width: t.preferred-width + 16px;
+    border-radius: 3px;
+    background: root.on ? Theme.cyan : ta.has-hover && root.enabled ? Theme.overlay : transparent;
+    t := Text { text: root.label; color: root.on ? Theme.ink : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; }
+    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.pick(); } } }
+}
+
+component Toggle inherits Rectangle {
+    in-out property <bool> on;
+    in property <string> label;
+    in property <bool> enabled: true;
+    height: 24px;
+    width: row.preferred-width;
+    row := HorizontalLayout {
+        spacing: 8px;
+        Text { text: root.on ? "[x]" : "[ ]"; color: root.on ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+        Text { text: root.label; color: ta.has-hover && root.enabled ? Theme.cyan : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+    }
+    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.on = !root.on; } } }
+}
+
+// A value the person may want to copy (URL, key, firewall rule): selectable, not editable.
+component Copyable inherits Rectangle {
+    in property <string> value;
+    in property <color> tone: Theme.fg;
+    height: 22px;
+    TextInput {
+        width: 100%;
+        height: 100%;
+        text: root.value;
+        read-only: true;
+        single-line: true;
+        color: root.tone;
+        font-size: Theme.text;
+        vertical-alignment: center;
+    }
+}
+
+component KV inherits HorizontalLayout {
+    in property <string> key;
+    in property <string> value;
+    in property <color> tone: Theme.fg;
+    spacing: 12px;
+    Text { text: root.key; width: 150px; color: Theme.subtle; font-size: Theme.text; vertical-alignment: center; }
+    Copyable { value: root.value; tone: root.tone; horizontal-stretch: 1; }
+}
+
 // ---------------------------------------------------------------- window
 
 export component AppWindow inherits Window {
@@ -280,11 +343,54 @@ export component AppWindow inherits Window {
     callback stop-model();
     callback send(string);
 
+    // Serving for several people (repo, quant, people, context per person, shared pool, local network)
+    in property <string> server-url;
+    in property <string> server-key;
+    in property <string> server-lan-url;
+    in property <string> firewall-rule;
+    in property <string> server-sharing;
+    callback serve-model(string, string, int, int, bool, bool);
+    property <[int]> people-options: [1, 2, 4, 8];
+    property <[int]> context-options: [8192, 16384, 32768, 65536, 131072];
+    in-out property <int> serve-people: 2;
+    in-out property <int> serve-context: 2;
+    in-out property <bool> serve-shared: true;
+    in-out property <bool> serve-lan: false;
+    property <bool> show-key: false;
+    // A new server (or none) hides the key again.
+    changed server-key => { root.show-key = false; }
+
     property <[string]> use-cases: ["General chat and assistant", "Programming and code", "Documents and company knowledge", "Summaries and extraction", "Reasoning and problem solving", "Writing and translation"];
     property <[string]> priorities: ["Balanced", "Best quality", "Fast responses", "Lowest memory usage"];
-    property <[string]> titles: ["Home", "Hardware", "Your needs", "Results", "Chat"];
-    property <[string]> slugs: ["home", "hardware", "your-needs", "results", "chat"];
-    property <[string]> modes: ["NORMAL", "COMMAND", "INSERT", "NORMAL", "INSERT"];
+    property <[string]> titles: ["Home", "Hardware", "Your needs", "Results", "Chat", "Set up a local server", "Advanced tools", "Free disk space"];
+    property <[string]> slugs: ["home", "hardware", "your-needs", "results", "chat", "setup", "advanced", "storage"];
+    property <[string]> modes: ["NORMAL", "COMMAND", "INSERT", "NORMAL", "INSERT", "INSERT", "COMMAND", "NORMAL"];
+
+    // Downloaded files (Set up a local server, Free disk space)
+    in property <[LocalModel]> local-models;
+    in property <string> logs-size: "";
+    in property <string> storage-status: "";
+    in property <bool> storage-busy: false;
+    in-out property <int> setup-selected: 0;
+    in-out property <int> confirm-remove: -1;
+    property <bool> confirm-logs: false;
+    callback refresh-storage();
+    callback remove-model(string, string);
+    callback remove-logs();
+    changed page => {
+        root.confirm-remove = -1;
+        root.confirm-logs = false;
+        if (root.page == 5 || root.page == 7) { root.refresh-storage(); }
+    }
+
+    // Advanced tools: 0 scan, 1 inspect, 2 estimate, 3 doctor
+    in-out property <int> tool: 0;
+    in-out property <string> tool-repo;
+    in-out property <string> tool-quant;
+    in-out property <string> tool-context: "4096";
+    in property <string> tool-output: "";
+    in property <bool> tool-running: false;
+    callback run-tool(int, string, string, string);
 
     function fit-color(key: string) -> color {
         if (key == "comfortable" || key == "compatible") { return Theme.green; }
@@ -310,7 +416,19 @@ export component AppWindow inherits Window {
                 Rectangle { horizontal-stretch: 1; }
                 Text { text: root.machine; color: Theme.muted; font-size: Theme.small; overflow: elide; }
             }
-            HorizontalLayout {
+            if root.page >= 5: HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                Text {
+                    text: "Home";
+                    font-size: Theme.small;
+                    color: home-crumb.has-hover ? Theme.fg : Theme.subtle;
+                    home-crumb := TouchArea { mouse-cursor: pointer; clicked => { root.page = 0; } }
+                }
+                Text { text: "›"; color: Theme.line-strong; font-size: Theme.small; }
+                Text { text: root.titles[root.page]; color: Theme.cyan; font-size: Theme.small; }
+            }
+            if root.page <= 4: HorizontalLayout {
                 alignment: start;
                 spacing: 8px;
                 for t[i] in ["Hardware", "Your needs", "Results", "Chat"]: HorizontalLayout {
@@ -353,9 +471,12 @@ export component AppWindow inherits Window {
                         spacing: 6px;
                         Label { text: "Find local AI models this machine can actually run."; color: Theme.subtle; }
                         Rectangle { height: 6px; }
+                        // The TUI's home menu, same entries and words.
                         for m[i] in [
-                            { title: "Guided analysis", sub: "Scan this machine, answer a few questions, get ranked models" },
-                            { title: "Chat", sub: "Talk to the model that is running on this machine" },
+                            { title: "Guided analysis", sub: "Scan this machine, answer a few questions, get ranked models", to: 1 },
+                            { title: "Set up a local server", sub: "Leave a model running for this PC or the local network", to: 5 },
+                            { title: "Advanced tools", sub: "Scan, inspect, estimate, doctor", to: 6 },
+                            { title: "Free disk space", sub: "Remove local model files and evaluation logs; keep saved results", to: 7 },
                         ]: Rectangle {
                             height: 52px;
                             border-radius: 4px;
@@ -368,7 +489,42 @@ export component AppWindow inherits Window {
                                 Text { text: m.title; color: menu.has-hover ? Theme.cyan : Theme.fg; font-size: 14px; }
                                 Muted { text: m.sub; color: Theme.subtle; }
                             }
-                            menu := TouchArea { mouse-cursor: pointer; clicked => { root.page = i == 0 ? 1 : 4; } }
+                            menu := TouchArea { mouse-cursor: pointer; clicked => { root.page = m.to; } }
+                        }
+                        if root.server-running: Rectangle {
+                            height: 40px;
+                            border-radius: 4px;
+                            background: chat-entry.has-hover ? Theme.green.transparentize(92%) : transparent;
+                            HorizontalLayout {
+                                padding-left: 16px;
+                                spacing: 10px;
+                                VerticalLayout { alignment: center; Dot { on: true; tone: Theme.green; } }
+                                Text { text: "Chat · " + root.server-status; color: Theme.green; font-size: Theme.text; vertical-alignment: center; }
+                            }
+                            chat-entry := TouchArea { mouse-cursor: pointer; clicked => { root.page = 4; } }
+                        }
+                    }
+                }
+                // The shark breaching, as on the TUI's home screen: it jumps once, then the
+                // water stays quiet for 5.2 s. Frames are the TUI's own art (src/jaull/tui/widgets/shark_art.py).
+                HorizontalLayout {
+                    alignment: center;
+                    breach := Rectangle {
+                        width: 144px;
+                        height: 176px;
+                        property <int> frame: 8;
+                        property <[duration]> durations: [360ms, 300ms, 280ms, 300ms, 300ms, 300ms, 340ms, 450ms, 5200ms];
+                        if breach.frame < 8: Image {
+                            width: 144px;
+                            height: 176px;
+                            image-rendering: pixelated;
+                            source: [@image-url("breach/f-00.png"), @image-url("breach/f-01.png"), @image-url("breach/f-02.png"), @image-url("breach/f-03.png"),
+                                     @image-url("breach/f-04.png"), @image-url("breach/f-05.png"), @image-url("breach/f-06.png"), @image-url("breach/f-07.png")][breach.frame];
+                        }
+                        Timer {
+                            interval: breach.durations[breach.frame];
+                            running: true;
+                            triggered => { breach.frame = mod(breach.frame + 1, 9); }
                         }
                     }
                 }
@@ -478,6 +634,31 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { height: 10px; }
                 HorizontalLayout { alignment: start; TButton { label: "Cancel"; clicked => { root.cancel(); } } }
+                // The TUI's search screen has a shark patrolling while it waits. So does this one.
+                // The timer only exists while this view is shown, so nothing redraws when idle.
+                sea := Rectangle {
+                    height: 120px;
+                    clip: true;
+                    property <int> frame: 0;
+                    property <length> pos: -150px;
+                    Image {
+                        x: sea.pos;
+                        y: -12px;
+                        width: 148px;
+                        height: 141px;
+                        source: [@image-url("shark/swim-00.png"), @image-url("shark/swim-01.png"), @image-url("shark/swim-02.png"), @image-url("shark/swim-03.png")][sea.frame];
+                        image-rendering: pixelated;
+                        opacity: 0.8;
+                    }
+                    Timer {
+                        interval: 140ms;
+                        running: true;
+                        triggered => {
+                            sea.frame = mod(sea.frame + 1, 4);
+                            sea.pos = sea.pos > sea.width ? -150px : sea.pos + 14px;
+                        }
+                    }
+                }
                 Rectangle { vertical-stretch: 1; }
             }
 
@@ -540,9 +721,50 @@ export component AppWindow inherits Window {
                         TButton {
                             label: "Use this model";
                             primary: true;
-                            enabled: !root.server-busy;
+                            enabled: !root.server-busy && !root.server-running && !root.replying;
                             clicked => { root.use-model(root.recs[root.selected].repo, root.recs[root.selected].quant, root.recs[root.selected].context); }
                         }
+                    }
+                    Muted { text: "Starts it on this PC for the Chat tab, with the context of this estimate."; }
+                    Rectangle { height: 8px; }
+                    Hr { }
+                    Rectangle { height: 6px; }
+                    Label { text: "Serve it for other people"; }
+                    Muted { text: "Jaull sizes llama-server for the people who use it at once. Any app that speaks the OpenAI format can connect."; color: Theme.subtle; }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 6px;
+                        Text { text: "People at once"; width: 170px; color: Theme.subtle; vertical-alignment: center; }
+                        for p[i] in root.people-options: Chip { label: "\{p}"; on: i == root.serve-people; enabled: !root.server-busy; pick => { root.serve-people = i; } }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 6px;
+                        Text { text: "Context per person"; width: 170px; color: Theme.subtle; vertical-alignment: center; }
+                        for c[i] in root.context-options: Chip { label: "\{c / 1024}K"; on: i == root.serve-context; enabled: !root.server-busy; pick => { root.serve-context = i; } }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 24px;
+                        Toggle { label: "Share the context"; on <=> root.serve-shared; enabled: !root.server-busy; }
+                        Toggle { label: "Share on the local network"; on <=> root.serve-lan; enabled: !root.server-busy; }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        TButton {
+                            label: "Start server";
+                            enabled: !root.server-busy && !root.server-running && !root.replying;
+                            clicked => {
+                                root.serve-model(root.recs[root.selected].repo, root.recs[root.selected].quant,
+                                    root.people-options[root.serve-people], root.context-options[root.serve-context],
+                                    root.serve-shared, root.serve-lan);
+                            }
+                        }
+                    }
+                    Muted {
+                        text: root.serve-lan
+                            ? "On the network it uses HTTPS with a certificate made for this PC. Jaull does not change the firewall: it shows the rule for an administrator."
+                            : "Only this PC can reach it.";
                     }
                     Rectangle { height: 8px; }
                     Hr { }
@@ -572,6 +794,194 @@ export component AppWindow inherits Window {
                 }
             }
 
+            // Set up a local server: one of the downloaded models, sized for the people who use it.
+            if root.page == 5: VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                Label { text: "Leave a model running for this PC or the local network."; }
+                Muted { text: "Pick a downloaded model. To get a new one, use Guided analysis and its Use this model."; color: Theme.subtle; }
+                Rectangle { height: 4px; }
+                Label { text: "1  Model"; color: Theme.fg; }
+                if root.local-models.length == 0: Muted { text: root.storage-busy ? "Reading the downloaded models…" : "No downloaded models yet."; }
+                VerticalLayout {
+                    padding-left: 18px;
+                    spacing: 2px;
+                    for lm[i] in root.local-models: Option {
+                        label: lm.repo + " · " + (lm.quant == "" ? "quantization not recognised" : lm.quant) + " · " + lm.size;
+                        on: i == root.setup-selected;
+                        enabled: lm.quant != "" && !root.server-busy;
+                        pick => { root.setup-selected = i; }
+                    }
+                }
+                Rectangle { height: 4px; }
+                Label { text: "2  People and context"; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    padding-left: 18px;
+                    Text { text: "People at once"; width: 170px; color: Theme.subtle; vertical-alignment: center; }
+                    for p[i] in root.people-options: Chip { label: "\{p}"; on: i == root.serve-people; enabled: !root.server-busy; pick => { root.serve-people = i; } }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    padding-left: 18px;
+                    Text { text: "Context per person"; width: 170px; color: Theme.subtle; vertical-alignment: center; }
+                    for c[i] in root.context-options: Chip { label: "\{c / 1024}K"; on: i == root.serve-context; enabled: !root.server-busy; pick => { root.serve-context = i; } }
+                }
+                Rectangle { height: 4px; }
+                Label { text: "3  Who can reach it"; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 24px;
+                    padding-left: 18px;
+                    Toggle { label: "Share the context"; on <=> root.serve-shared; enabled: !root.server-busy; }
+                    Toggle { label: "Share on the local network"; on <=> root.serve-lan; enabled: !root.server-busy; }
+                }
+                Muted {
+                    text: root.serve-lan
+                        ? "On the network it uses HTTPS with a certificate made for this PC. Jaull does not change the firewall: it shows the rule for an administrator."
+                        : "Only this PC can reach it.";
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+                    if root.server-running: TButton { label: "Open chat"; clicked => { root.page = 4; } }
+                    TButton {
+                        label: "Start server";
+                        primary: true;
+                        enabled: !root.server-busy && !root.server-running && !root.replying && root.local-models.length > 0 && root.local-models[root.setup-selected].quant != "";
+                        clicked => {
+                            root.serve-model(root.local-models[root.setup-selected].repo, root.local-models[root.setup-selected].quant,
+                                root.people-options[root.serve-people], root.context-options[root.serve-context],
+                                root.serve-shared, root.serve-lan);
+                        }
+                    }
+                }
+            }
+
+            // Advanced tools: the TUI's direct access to scan, inspect, estimate and doctor.
+            if root.page == 6: HorizontalLayout {
+                padding: 20px;
+                spacing: 20px;
+                VerticalLayout {
+                    width: 260px;
+                    alignment: start;
+                    spacing: 2px;
+                    Label { text: "Choose a tool"; }
+                    Rectangle { height: 6px; }
+                    for t[i] in [
+                        { title: "Scan", sub: "Hardware of this PC" },
+                        { title: "Inspect", sub: "A model on Hugging Face" },
+                        { title: "Estimate", sub: "Memory for a model" },
+                        { title: "Doctor", sub: "Check this environment" },
+                    ]: Rectangle {
+                        height: 46px;
+                        border-radius: 4px;
+                        background: i == root.tool ? Theme.cyan.transparentize(92%) : tool-pick.has-hover ? Theme.overlay : transparent;
+                        Rectangle { x: 0; width: 2px; height: parent.height; background: i == root.tool ? Theme.cyan : transparent; }
+                        VerticalLayout {
+                            padding-left: 12px;
+                            alignment: center;
+                            Text { text: t.title; color: i == root.tool ? Theme.cyan : Theme.fg; font-size: Theme.text; }
+                            Text { text: t.sub; color: Theme.muted; font-size: 11.5px; }
+                        }
+                        tool-pick := TouchArea { mouse-cursor: pointer; clicked => { root.tool = i; } }
+                    }
+                }
+                Rectangle { width: 1px; background: Theme.line; }
+                VerticalLayout {
+                    spacing: 8px;
+                    if root.tool == 0: VerticalLayout {
+                        spacing: 8px;
+                        Muted { text: "The hardware page shows what Jaull detects on this PC."; color: Theme.subtle; }
+                        HorizontalLayout { alignment: start; TButton { label: "Open Hardware"; primary: true; clicked => { root.page = 1; } } }
+                    }
+                    if root.tool == 1 || root.tool == 2: HorizontalLayout {
+                        spacing: 8px;
+                        Field { placeholder: "Hugging Face repo, e.g. Qwen/Qwen2.5-7B-Instruct-GGUF"; text <=> root.tool-repo; horizontal-stretch: 3; }
+                        if root.tool == 2: Field { placeholder: "Quant, e.g. Q4_K_M"; text <=> root.tool-quant; horizontal-stretch: 1; }
+                        if root.tool == 2: Field { placeholder: "Context"; text <=> root.tool-context; horizontal-stretch: 1; }
+                    }
+                    if root.tool >= 1: HorizontalLayout {
+                        alignment: start;
+                        spacing: 10px;
+                        TButton {
+                            label: root.tool-running ? "Running…" : "Run";
+                            primary: true;
+                            enabled: !root.tool-running && (root.tool == 3 || root.tool-repo != "");
+                            clicked => { root.run-tool(root.tool, root.tool-repo, root.tool-quant, root.tool-context); }
+                        }
+                        Muted { text: root.tool == 1 ? "jaull inspect <repo>" : root.tool == 2 ? "jaull estimate <repo> -q <quant> -c <context>" : "jaull doctor"; vertical-alignment: center; }
+                    }
+                    if root.tool >= 1: Rectangle {
+                        vertical-stretch: 1;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        background: Theme.mantle;
+                        out := Flickable {
+                            x: 12px;
+                            y: 10px;
+                            width: parent.width - 24px;
+                            height: parent.height - 20px;
+                            TextInput {
+                                text: root.tool-output == "" ? "The output of the tool appears here." : root.tool-output;
+                                read-only: true;
+                                single-line: false;
+                                wrap: no-wrap;
+                                color: root.tool-output == "" ? Theme.muted : Theme.fg;
+                                font-size: 12px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Free disk space: remove downloaded files and evaluation logs; saved results stay.
+            if root.page == 7: VerticalLayout {
+                padding: 20px;
+                spacing: 8px;
+                Label { text: "Remove local model files and evaluation logs; keep saved results."; }
+                Muted { text: root.storage-status; color: Theme.subtle; }
+                Rectangle { height: 6px; }
+                for lm[i] in root.local-models: Rectangle {
+                    height: 40px;
+                    border-radius: 4px;
+                    background: i == root.confirm-remove ? Theme.red.transparentize(92%) : transparent;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 6px;
+                        spacing: 12px;
+                        Text { text: lm.size; width: 90px; color: Theme.fg; font-size: Theme.text; vertical-alignment: center; horizontal-alignment: right; }
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text { text: lm.repo; color: Theme.fg; font-size: Theme.text; overflow: elide; }
+                            Text { text: lm.filename + (lm.note == "" ? "" : " · " + lm.note); color: Theme.muted; font-size: 11.5px; overflow: elide; }
+                        }
+                        if i != root.confirm-remove: TButton { label: "Remove"; enabled: !root.storage-busy; clicked => { root.confirm-remove = i; } }
+                        if i == root.confirm-remove: Text { text: "Delete this file?"; color: Theme.red; vertical-alignment: center; }
+                        if i == root.confirm-remove: TButton { label: "Yes, remove"; primary: true; clicked => { root.confirm-remove = -1; root.remove-model(lm.repo, lm.filename); } }
+                        if i == root.confirm-remove: TButton { label: "Keep"; clicked => { root.confirm-remove = -1; } }
+                    }
+                }
+                if root.local-models.length == 0 && !root.storage-busy: Muted { text: "No downloaded model files."; }
+                Rectangle { height: 6px; }
+                Hr { }
+                HorizontalLayout {
+                    padding-left: 10px;
+                    spacing: 12px;
+                    Text { text: root.logs-size; width: 90px; color: Theme.fg; vertical-alignment: center; horizontal-alignment: right; }
+                    Text { text: "Evaluation logs (the results stay saved)"; color: Theme.fg; vertical-alignment: center; horizontal-stretch: 1; }
+                    if !root.confirm-logs: TButton { label: "Remove"; enabled: !root.storage-busy; clicked => { root.confirm-logs = true; } }
+                    if root.confirm-logs: TButton { label: "Yes, remove"; primary: true; clicked => { root.confirm-logs = false; root.remove-logs(); } }
+                    if root.confirm-logs: TButton { label: "Keep"; clicked => { root.confirm-logs = false; } }
+                }
+                Rectangle { vertical-stretch: 1; }
+            }
+
             // Chat
             if root.page == 4: VerticalLayout {
                 padding: 20px;
@@ -581,6 +991,24 @@ export component AppWindow inherits Window {
                     VerticalLayout { alignment: center; Dot { on: root.server-running; tone: Theme.green; } }
                     Text { text: root.server-status; color: root.server-running ? Theme.green : Theme.subtle; font-size: Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
                     TButton { label: "Stop model"; enabled: root.server-running && !root.server-busy; clicked => { root.stop-model(); } }
+                }
+                if root.server-running: VerticalLayout {
+                    spacing: 2px;
+                    padding-left: 23px;
+                    if root.server-sharing != "": Muted { text: root.server-sharing; color: Theme.subtle; }
+                    KV { key: "On this PC"; value: root.server-url + "/v1"; tone: Theme.cyan; }
+                    if root.server-lan-url != "": KV { key: "On the network"; value: root.server-lan-url + "/v1"; tone: Theme.cyan; }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text { text: "API key"; width: 150px; color: Theme.subtle; vertical-alignment: center; }
+                        Copyable { value: root.show-key ? root.server-key : "••••••••••••••••"; tone: Theme.amber; horizontal-stretch: 1; }
+                        TButton { label: root.show-key ? "Hide" : "Show"; clicked => { root.show-key = !root.show-key; } }
+                    }
+                    if root.firewall-rule != "": VerticalLayout {
+                        spacing: 2px;
+                        Muted { text: "Jaull does not change the firewall. An administrator can allow this network with:"; color: Theme.amber; }
+                        Copyable { value: root.firewall-rule; tone: Theme.subtle; }
+                    }
                 }
                 Rectangle {
                     vertical-stretch: 1;
@@ -614,14 +1042,14 @@ export component AppWindow inherits Window {
                     spacing: 10px;
                     input := Field {
                         placeholder: root.server-running ? "Write a message and press Enter" : "Start a model first";
-                        enabled: root.server-running && !root.replying;
+                        enabled: root.server-running && !root.server-busy && !root.replying;
                         horizontal-stretch: 1;
                         accepted(t) => { if (t != "") { root.send(t); self.text = ""; } }
                     }
                     TButton {
                         label: "Send";
                         primary: true;
-                        enabled: root.server-running && !root.replying && input.text != "";
+                        enabled: root.server-running && !root.server-busy && !root.replying && input.text != "";
                         clicked => { root.send(input.text); input.text = ""; }
                     }
                 }
