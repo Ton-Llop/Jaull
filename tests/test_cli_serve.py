@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -156,7 +157,30 @@ def test_start_json_streams_progress_and_never_prints_the_key(
     assert lines[0]["message"] == "Downloading model.gguf"
     assert lines[-1]["url"] == "http://127.0.0.1:8090"
     assert lines[-1]["api_key_path"] == str(Path("/data/serve/api-key"))
+    assert lines[-1]["tls_cert"] is None  # no HTTPS on this PC alone
+    assert "sudo ufw allow" in lines[-1]["firewall_rule"]
+    # Report the sizing returned by the planner, rather than the requested inputs.
+    assert lines[-1]["users"] == 8
+    assert lines[-1]["context_per_user"] == 131072
+    assert lines[-1]["total_context"] == 196608
     assert "KEY123" not in out
+
+
+def test_start_json_on_the_network_says_which_certificate_to_trust(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The desktop app's chat talks HTTPS to a shared server and trusts only this file.
+    class Shared(FakeAdvisor):
+        def start_server(self, plan: ServerPlan, **kwargs: Any) -> ServerStart:
+            started = super().start_server(plan, **kwargs)
+            return replace(started, state=STATE.model_copy(update={"tls": True}))
+
+    options = ServeOptions(quantization=None, lan=True, users=4, json=True)
+    assert run_serve_start("a/b", options, Shared()) == 0  # type: ignore[arg-type]
+
+    last = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert last["tls_cert"] == str(CERTIFICATE.cert_path)
+    assert last["url"].startswith("https://") and last["users"] == 8
 
 
 def test_start_json_reports_errors_with_the_exit_code(
@@ -182,6 +206,23 @@ def test_status_json_says_where_the_server_and_its_key_are(
     assert payload["running"] and payload["healthy"]
     assert payload["url"] == "http://127.0.0.1:8090"
     assert payload["api_key_path"] == str(Path("/data/serve/api-key"))
+
+
+def test_status_json_reports_the_certificate_used_at_launch(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    cert = tmp_path / "custom cert.pem"
+
+    class Secure(FakeAdvisor):
+        def server_status(self) -> ServerStatus:
+            state = STATE.model_copy(update={
+                "tls": True,
+                "argv": ["llama-server", "--ssl-cert-file", str(cert)],
+            })
+            return ServerStatus(state=state, running=True, healthy=True)
+
+    assert run_serve_status(Secure(), as_json=True) == 0  # type: ignore[arg-type]
+    assert json.loads(capsys.readouterr().out)["tls_cert"] == str(cert)
 
 
 def test_start_plans_starts_and_reports(capsys: pytest.CaptureFixture[str]) -> None:

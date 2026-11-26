@@ -135,6 +135,13 @@ def run_serve_start(
             lan_url=started.lan_url,
             api_key_path=str(started.api_key_path),
             web_ui=started.web_ui,
+            # With HTTPS, a client trusts this certificate (it covers 127.0.0.1 too).
+            tls_cert=str(tls_cert) if started.state.tls and tls_cert is not None else None,
+            firewall_rule=started.firewall_rule,
+            users=plan.sizing.parallel,
+            context_per_user=plan.sizing.context_per_user,
+            total_context=plan.sizing.total_context,
+            shared_context=options.shared_context,
         )
         return 0
     _print_started(console, started)
@@ -183,6 +190,11 @@ def run_serve_status(advisor: AdvisorService | None = None, *, as_json: bool = F
     ready = status.state is not None and status.running and status.healthy
     if as_json:
         state = status.state
+        cert = None
+        if state is not None and state.tls and "--ssl-cert-file" in state.argv:
+            index = state.argv.index("--ssl-cert-file") + 1
+            if index < len(state.argv):
+                cert = state.argv[index]
         payload = {
             "schema_version": 1,
             "running": status.running,
@@ -190,6 +202,7 @@ def run_serve_status(advisor: AdvisorService | None = None, *, as_json: bool = F
             "alias": state.alias if state else None,
             "url": state.url if state else None,
             "api_key_path": str(resolved.server_api_key_path()),
+            "tls_cert": cert,
         }
         sys.stdout.write(json.dumps(payload) + "\n")
         return 0 if ready else 1

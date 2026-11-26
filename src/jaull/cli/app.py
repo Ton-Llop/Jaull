@@ -37,6 +37,7 @@ from jaull.cli.serve import (
     run_serve_status,
     run_serve_stop,
 )
+from jaull.cli.storage import run_storage_list, run_storage_remove
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
 from jaull.domain.requirements import (
@@ -94,6 +95,34 @@ serve_app = typer.Typer(
     help="Run a model as a local OpenAI-compatible server (llama-server).",
 )
 app.add_typer(serve_app, name="serve")
+storage_app = typer.Typer(
+    add_completion=False,
+    help="Downloaded model files and evaluation logs (the TUI's Free disk space).",
+)
+app.add_typer(storage_app, name="storage")
+
+
+@storage_app.command("list", help="List downloaded model files and evaluation logs.")
+def storage_list_command(
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON object for a front end."),
+) -> None:
+    raise typer.Exit(code=run_storage_list(as_json=as_json))
+
+
+@storage_app.command(
+    "remove", help="Remove a downloaded model file, or the evaluation logs. Saved results stay.",
+)
+def storage_remove_command(
+    repo_id: str | None = typer.Argument(None, help="Repository of the file to remove."),
+    filename: str | None = typer.Argument(None, help="File name, as `storage list` shows it."),
+    evaluation_logs: bool = typer.Option(
+        False, "--evaluation-logs", help="Remove the evaluation run folders instead.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON object for a front end."),
+) -> None:
+    raise typer.Exit(code=run_storage_remove(
+        repo_id, filename, evaluation_logs=evaluation_logs, as_json=as_json,
+    ))
 
 
 def _is_interactive_terminal() -> bool:
