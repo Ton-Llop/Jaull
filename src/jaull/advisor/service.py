@@ -1101,6 +1101,10 @@ class AdvisorService:
     def server_status(self) -> ServerStatus:
         return self._server_manager().status()
 
+    def server_api_key_path(self) -> Path:
+        """Where the running server's API key is kept (the file may not exist yet)."""
+        return self._server_manager().api_key_path
+
     def server_log_tail(self) -> str:
         return self._server_manager().log_tail()
 

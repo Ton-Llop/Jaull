@@ -26,6 +26,7 @@ from jaull.cli.estimate import EstimateOptions, run_estimate
 from jaull.cli.experiments import ReevaluateOptions, run_reevaluate
 from jaull.cli.inspect import run_inspect
 from jaull.cli.quality import run_quality, run_quality_compare, run_quality_setup
+from jaull.cli.recommend import run_recommend
 from jaull.cli.run import RunOptions, run_model
 from jaull.cli.runtime import run_runtime_install
 from jaull.cli.scan import run_scan
@@ -38,6 +39,15 @@ from jaull.cli.serve import (
 )
 from jaull.domain.hardware import ComputeBackend
 from jaull.domain.inference import TargetDevice, WeightPrecision
+from jaull.domain.requirements import (
+    CommercialUse,
+    ConcurrencyLevel,
+    DocumentScale,
+    RecommendationPriority,
+    UseCase,
+    UserAnswers,
+    WorkloadMode,
+)
 from jaull.estimator.policies import (
     DEVICE_RESERVE_DEFAULT_BYTES,
     RAM_RESERVE_DEFAULT_BYTES,
@@ -134,8 +144,49 @@ def _launch_ui() -> None:
 
 
 @app.command("scan", help="Detect and display local hardware resources.")
-def scan_command() -> None:
-    raise typer.Exit(code=run_scan())
+def scan_command(
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit stable JSON to stdout instead of a Rich report."
+    ),
+) -> None:
+    raise typer.Exit(code=run_scan(as_json=as_json))
+
+
+@app.command("recommend", help="Recommend models for this computer, as the guided TUI does.")
+def recommend_command(
+    use_case: UseCase = typer.Option(UseCase.GENERAL_CHAT, "--use-case", help="What it is for."),
+    priority: RecommendationPriority = typer.Option(
+        RecommendationPriority.BALANCED, "--priority", help="What matters most."
+    ),
+    mode: WorkloadMode = typer.Option(
+        WorkloadMode.INTERACTIVE, "--mode", help="Interactive use or batch processing."
+    ),
+    language: list[str] = typer.Option(
+        [], "--language", help="Language the model must handle (repeatable), e.g. ca, es, en."
+    ),
+    concurrency: ConcurrencyLevel = typer.Option(
+        ConcurrencyLevel.SINGLE, "--concurrency", help="How many people use it at once."
+    ),
+    document_scale: DocumentScale | None = typer.Option(
+        None, "--document-scale", help="Text size, for document questions."
+    ),
+    commercial_use: CommercialUse = typer.Option(
+        CommercialUse.YES, "--commercial-use", help="Whether the license must allow it."
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Emit JSON lines (progress events, then the report) to stdout."
+    ),
+) -> None:
+    answers = UserAnswers(
+        use_case=use_case,
+        workload_mode=mode,
+        priority=priority,
+        languages=list(language),
+        concurrency=concurrency,
+        document_scale=document_scale,
+        commercial_use=commercial_use,
+    )
+    raise typer.Exit(code=run_recommend(answers, as_json=as_json))
 
 
 @app.command("inspect", help="Inspect a Hugging Face model by repo_id or URL.")
@@ -526,6 +577,10 @@ def serve_start_command(
         help="Do not add the server to the opencode on this PC (it is added by default, "
         "keeping your other providers, with a backup).",
     ),
+    as_json: bool = typer.Option(
+        False, "--json",
+        help="Emit JSON lines (progress, the plan, then started or error) for a front end.",
+    ),
 ) -> None:
     raise typer.Exit(code=run_serve_start(model_ref, ServeOptions(
         quantization=quantization, users=users, context_per_user=context, lan=lan, port=port,
@@ -533,6 +588,7 @@ def serve_start_command(
         tls_cert=tls_cert, tls_key=tls_key, web_ui=web_ui, shared_context=shared_context,
         prompt_cache=not no_prompt_cache, sleep_idle_seconds=sleep_idle,
         opencode_config=not no_opencode_config, load_mode=load_mode, https=https,
+        json=as_json,
     )))
 
 
@@ -555,8 +611,10 @@ def serve_stop_command() -> None:
 
 
 @serve_app.command("status", help="Show whether the Jaull server is running and ready.")
-def serve_status_command() -> None:
-    raise typer.Exit(code=run_serve_status())
+def serve_status_command(
+    as_json: bool = typer.Option(False, "--json", help="Emit one JSON object for a front end."),
+) -> None:
+    raise typer.Exit(code=run_serve_status(as_json=as_json))
 
 
 @quality_app.command("setup", help="Check local evaluator; optionally prepare its pinned dataset.")

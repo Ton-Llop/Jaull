@@ -1,0 +1,654 @@
+// Jaull desktop: the look of the jaull.ai demo (the TUI, drawn a little better).
+// Only flat shapes and text: nothing animates, so an idle window does not redraw.
+import "fonts/DepartureMono-Regular.otf";
+
+export global Theme {
+    out property <color> ink: #08090c;
+    out property <color> mantle: #0d0f13;
+    out property <color> surface: #13151b;
+    out property <color> overlay: #1c1f27;
+    out property <color> line: #23262f;
+    out property <color> line-strong: #343846;
+    out property <color> fg: #dde1ea;
+    out property <color> subtle: #a6abbd;
+    out property <color> muted: #7f859a;
+    out property <color> green: #8fd6a0;
+    out property <color> cyan: #5fd8e6;
+    out property <color> lavender: #b8a8f0;
+    out property <color> amber: #e6b964;
+    out property <color> red: #ec8590;
+    out property <length> text: 13px;
+    out property <length> small: 12px;
+}
+
+export struct Row {
+    label: string,
+    value: string,
+}
+
+export struct Rec {
+    rank: string,
+    name: string,
+    fit: string,
+    // comfortable, compatible, tight, memory_pressure, offloading_required, insufficient, unknown
+    fit-key: string,
+    total: string,
+    total-gib: float,
+    stack: string,
+    detail: string,
+    reason: string,
+    reasons: string,
+    warnings: string,
+    repo: string,
+    quant: string,
+    context: string,
+}
+
+export struct Msg {
+    mine: bool,
+    text: string,
+}
+
+export struct Step {
+    label: string,
+    detail: string,
+    // 0 pending, 1 running, 2 done
+    state: int,
+}
+
+// ---------------------------------------------------------------- pieces
+
+component Label inherits Text {
+    color: Theme.fg;
+    font-size: Theme.text;
+    wrap: word-wrap;
+}
+
+component Muted inherits Text {
+    color: Theme.muted;
+    font-size: Theme.small;
+    wrap: word-wrap;
+}
+
+// `[ Label ]` as the TUI draws its buttons; the primary one is a filled cyan block.
+component TButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 30px;
+    min-width: row.preferred-width + 20px;
+    border-radius: 4px;
+    background: !root.enabled ? transparent
+        : root.primary ? (ta.has-hover ? Theme.cyan.brighter(15%) : Theme.cyan)
+        : (ta.has-hover ? Theme.overlay : transparent);
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 0px;
+        if !root.primary: Text { text: "[ "; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.muted : root.primary ? Theme.ink : Theme.fg;
+            font-size: Theme.text;
+            vertical-alignment: center;
+        }
+        if !root.primary: Text { text: " ]"; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.clicked(); } }
+    }
+}
+
+// A radio dot drawn with shapes (the face has no ● ○ glyphs).
+component Dot inherits Rectangle {
+    in property <bool> on;
+    in property <color> tone: Theme.cyan;
+    width: 13px;
+    height: 13px;
+    border-radius: 6.5px;
+    border-width: 1px;
+    border-color: root.on ? root.tone : Theme.line-strong;
+    Rectangle {
+        visible: root.on;
+        width: 5px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: root.tone;
+    }
+}
+
+component Option inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback pick();
+    height: 26px;
+    border-radius: 4px;
+    background: root.on ? Theme.cyan.transparentize(90%) : ta.has-hover && root.enabled ? Theme.overlay : transparent;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        VerticalLayout { alignment: center; Dot { on: root.on; } }
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.muted : root.on ? Theme.cyan : Theme.subtle;
+            font-size: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.pick(); } }
+    }
+}
+
+component Question inherits VerticalLayout {
+    in property <int> n;
+    in property <string> label;
+    in property <[string]> options;
+    in-out property <int> selected;
+    in property <bool> enabled: true;
+    spacing: 6px;
+    HorizontalLayout {
+        alignment: start;
+        spacing: 12px;
+        Text { text: "\{root.n}"; color: Theme.cyan; font-size: Theme.text; }
+        Text { text: root.label; color: Theme.fg; font-size: Theme.text; }
+    }
+    VerticalLayout {
+        padding-left: 18px;
+        spacing: 2px;
+        for o[i] in root.options: Option {
+            label: o;
+            on: i == root.selected;
+            enabled: root.enabled;
+            pick => { root.selected = i; }
+        }
+    }
+}
+
+// A text field in the TUI's style: a prompt mark, then the text.
+component Field inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in-out property <string> text <=> input.text;
+    callback accepted(string);
+    height: 34px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.cyan.transparentize(40%) : Theme.line;
+    background: Theme.ink;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Text { text: "›"; width: self.preferred-width; color: root.enabled ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+        Rectangle {
+            horizontal-stretch: 1;
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                enabled: root.enabled;
+                color: Theme.fg;
+                font-size: Theme.text;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                single-line: true;
+                accepted => { root.accepted(self.text); }
+            }
+            Text {
+                visible: input.text == "";
+                x: 0;
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: Theme.text;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// How much of the machine's memory a plan takes.
+component MemoryBar inherits Rectangle {
+    in property <float> fraction;
+    in property <color> tone: Theme.cyan;
+    height: 4px;
+    border-radius: 2px;
+    background: Theme.overlay;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.fraction, 0, 1);
+        height: parent.height;
+        border-radius: 2px;
+        background: root.tone;
+    }
+}
+
+component Hr inherits Rectangle {
+    height: 1px;
+    background: Theme.line;
+}
+
+// ---------------------------------------------------------------- window
+
+export component AppWindow inherits Window {
+    title: "Jaull";
+    preferred-width: 980px;
+    preferred-height: 680px;
+    background: Theme.ink;
+    default-font-family: "Departure Mono";
+    default-font-size: 13px;
+
+    // 0 home, 1 hardware, 2 your needs, 3 results (and search), 4 chat
+    in-out property <int> page: 0;
+
+    // Hardware
+    in property <[Row]> rows;
+    in property <string> status: "Detecting hardware…";
+    in property <bool> busy: true;
+    in property <string> machine: "";
+    in property <float> ram-total-gib: 16;
+    callback rescan();
+
+    // Your needs (kept here so the search and the status line read them)
+    in-out property <int> use-case: 0;
+    in-out property <int> priority: 0;
+    in-out property <int> commercial: 0;
+    in-out property <string> languages;
+
+    // Search and results
+    in property <[Rec]> recs;
+    in property <[Step]> steps;
+    in property <string> search-status: "";
+    in property <bool> searching: false;
+    in-out property <int> selected: 0;
+    callback find(int, int, string, bool);
+    callback cancel();
+
+    // Model server and chat
+    in property <string> server-status: "No model is running. Pick one in Results and press Use this model.";
+    in property <bool> server-running: false;
+    in property <bool> server-busy: false;
+    in property <[Msg]> messages;
+    in property <bool> replying: false;
+    callback use-model(string, string, string);
+    callback stop-model();
+    callback send(string);
+
+    property <[string]> use-cases: ["General chat and assistant", "Programming and code", "Documents and company knowledge", "Summaries and extraction", "Reasoning and problem solving", "Writing and translation"];
+    property <[string]> priorities: ["Balanced", "Best quality", "Fast responses", "Lowest memory usage"];
+    property <[string]> titles: ["Home", "Hardware", "Your needs", "Results", "Chat"];
+    property <[string]> slugs: ["home", "hardware", "your-needs", "results", "chat"];
+    property <[string]> modes: ["NORMAL", "COMMAND", "INSERT", "NORMAL", "INSERT"];
+
+    function fit-color(key: string) -> color {
+        if (key == "comfortable" || key == "compatible") { return Theme.green; }
+        if (key == "tight" || key == "memory_pressure") { return Theme.amber; }
+        if (key == "offloading_required") { return Theme.lavender; }
+        if (key == "insufficient") { return Theme.red; }
+        return Theme.muted;
+    }
+
+    VerticalLayout {
+        // ------------------------------------------------ header
+        if root.page > 0: VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 12px;
+            padding-bottom: 8px;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 12px;
+                Text { text: "JAULL"; color: Theme.cyan; font-size: Theme.text; letter-spacing: 1px; }
+                Text { text: "|"; color: Theme.muted; font-size: Theme.text; }
+                Text { text: root.titles[root.page]; color: Theme.fg; font-size: Theme.text; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: root.machine; color: Theme.muted; font-size: Theme.small; overflow: elide; }
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: 8px;
+                for t[i] in ["Hardware", "Your needs", "Results", "Chat"]: HorizontalLayout {
+                    spacing: 8px;
+                    if i > 0: Text { text: "›"; color: Theme.line-strong; font-size: Theme.small; }
+                    Text {
+                        text: t;
+                        font-size: Theme.small;
+                        color: root.page == i + 1 ? Theme.cyan : crumb.has-hover ? Theme.fg : Theme.subtle;
+                        crumb := TouchArea { mouse-cursor: pointer; clicked => { root.page = i + 1; } }
+                    }
+                }
+            }
+        }
+        if root.page > 0: Rectangle { height: 1px; background: Theme.line; }
+
+        // ------------------------------------------------ pages (only one is shown)
+        VerticalLayout {
+            vertical-stretch: 1;
+
+            // Home
+            if root.page == 0: VerticalLayout {
+                alignment: center;
+                padding: 24px;
+                spacing: 6px;
+                HorizontalLayout {
+                    alignment: center;
+                    Text {
+                        text: "     ██╗ █████╗ ██╗   ██╗██╗     ██╗\n     ██║██╔══██╗██║   ██║██║     ██║\n     ██║███████║██║   ██║██║     ██║\n██   ██║██╔══██║██║   ██║██║     ██║\n╚█████╔╝██║  ██║╚██████╔╝███████╗███████╗\n ╚════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝";
+                        color: Theme.cyan;
+                        font-size: 15px;
+                    }
+                }
+                HorizontalLayout { alignment: center; Muted { text: "Made by Ton · TFG · MIT License"; } }
+                Rectangle { height: 18px; }
+                HorizontalLayout {
+                    alignment: center;
+                    VerticalLayout {
+                        width: 560px;
+                        spacing: 6px;
+                        Label { text: "Find local AI models this machine can actually run."; color: Theme.subtle; }
+                        Rectangle { height: 6px; }
+                        for m[i] in [
+                            { title: "Guided analysis", sub: "Scan this machine, answer a few questions, get ranked models" },
+                            { title: "Chat", sub: "Talk to the model that is running on this machine" },
+                        ]: Rectangle {
+                            height: 52px;
+                            border-radius: 4px;
+                            background: menu.has-hover ? Theme.cyan.transparentize(92%) : transparent;
+                            Rectangle { x: 0; width: 2px; height: parent.height; background: menu.has-hover ? Theme.cyan : transparent; }
+                            VerticalLayout {
+                                padding-left: 16px;
+                                alignment: center;
+                                spacing: 2px;
+                                Text { text: m.title; color: menu.has-hover ? Theme.cyan : Theme.fg; font-size: 14px; }
+                                Muted { text: m.sub; color: Theme.subtle; }
+                            }
+                            menu := TouchArea { mouse-cursor: pointer; clicked => { root.page = i == 0 ? 1 : 4; } }
+                        }
+                    }
+                }
+            }
+
+            // Hardware
+            if root.page == 1: VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                HorizontalLayout {
+                    Label { text: "This machine"; vertical-alignment: center; }
+                    Rectangle { horizontal-stretch: 1; }
+                    TButton { label: "Detect again"; enabled: !root.busy; clicked => { root.rescan(); } }
+                }
+                Muted { text: root.status; }
+                VerticalLayout {
+                    spacing: 6px;
+                    for row in root.rows: HorizontalLayout {
+                        spacing: 16px;
+                        Text { text: row.label; width: 150px; color: Theme.subtle; font-size: Theme.text; }
+                        Text { text: row.value; horizontal-stretch: 1; color: Theme.fg; font-size: Theme.text; wrap: word-wrap; horizontal-alignment: right; }
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    alignment: end;
+                    TButton { label: "Continue"; primary: true; enabled: !root.busy; clicked => { root.page = 2; } }
+                }
+            }
+
+            // Your needs
+            if root.page == 2: VerticalLayout {
+                padding: 20px;
+                spacing: 18px;
+                HorizontalLayout {
+                    spacing: 40px;
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 18px;
+                        Question { n: 1; label: "What will you use it for?"; options: root.use-cases; selected <=> root.use-case; enabled: !root.searching; }
+                        Question { n: 3; label: "Is it for commercial use?"; options: ["Yes, only commercially usable licenses", "No, personal or research use"]; selected <=> root.commercial; enabled: !root.searching; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 18px;
+                        Question { n: 2; label: "What matters most?"; options: root.priorities; selected <=> root.priority; enabled: !root.searching; }
+                        VerticalLayout {
+                            spacing: 6px;
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 12px;
+                                Text { text: "4"; color: Theme.cyan; }
+                                Text { text: "Languages (optional)"; color: Theme.fg; }
+                            }
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                Field { placeholder: "e.g. ca, es"; text <=> root.languages; enabled: !root.searching; }
+                            }
+                        }
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    alignment: end;
+                    TButton {
+                        label: "Find models";
+                        primary: true;
+                        enabled: !root.searching;
+                        clicked => {
+                            root.page = 3;
+                            root.find(root.use-case, root.priority, root.languages, root.commercial == 0);
+                        }
+                    }
+                }
+            }
+
+            // Search progress, then results
+            if root.page == 3 && root.searching: VerticalLayout {
+                padding: 20px;
+                spacing: 6px;
+                Label { text: "Searching Hugging Face"; }
+                Muted { text: root.search-status; color: Theme.subtle; }
+                Rectangle { height: 8px; }
+                for s in root.steps: HorizontalLayout {
+                    spacing: 10px;
+                    height: 24px;
+                    VerticalLayout {
+                        alignment: center;
+                        width: 14px;
+                        if s.state == 2: Text { text: "√"; color: Theme.green; font-size: Theme.text; }
+                        if s.state != 2: Dot { on: s.state == 1; }
+                    }
+                    Text {
+                        text: s.label;
+                        color: s.state == 2 ? Theme.green : s.state == 1 ? Theme.cyan : Theme.muted;
+                        font-size: Theme.text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: s.detail == "" ? "" : "· " + s.detail;
+                        color: s.state == 2 ? Theme.green.transparentize(30%) : Theme.subtle;
+                        font-size: Theme.text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                }
+                Rectangle { height: 10px; }
+                HorizontalLayout { alignment: start; TButton { label: "Cancel"; clicked => { root.cancel(); } } }
+                Rectangle { vertical-stretch: 1; }
+            }
+
+            if root.page == 3 && !root.searching: HorizontalLayout {
+                padding: 20px;
+                spacing: 20px;
+                // list
+                VerticalLayout {
+                    width: 380px;
+                    spacing: 4px;
+                    Muted { text: root.use-cases[root.use-case] + " · " + root.priorities[root.priority]; color: Theme.subtle; }
+                    Label { text: root.recs.length > 0 ? "Recommended · \{root.recs.length} models" : "No recommendations yet"; }
+                    Muted { text: root.search-status; }
+                    Rectangle { height: 6px; }
+                    Flickable {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 4px;
+                            for r[i] in root.recs: Rectangle {
+                                height: item.preferred-height;
+                                border-radius: 4px;
+                                background: i == root.selected ? Theme.cyan.transparentize(93%) : pick.has-hover ? Theme.overlay.transparentize(40%) : transparent;
+                                Rectangle { x: 0; width: 2px; height: parent.height; background: i == root.selected ? Theme.cyan : transparent; }
+                                item := HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 8px;
+                                    Text { text: r.rank; width: 18px; color: i == root.selected ? Theme.cyan : Theme.muted; font-size: Theme.text; }
+                                    VerticalLayout {
+                                        spacing: 3px;
+                                        Text { text: r.name; color: i == root.selected ? Theme.cyan : Theme.fg; font-size: Theme.text; overflow: elide; }
+                                        Text { text: r.fit + " · " + r.total; color: root.fit-color(r.fit-key); font-size: Theme.small; overflow: elide; }
+                                        Text { text: r.stack; color: i == root.selected ? Theme.fg : Theme.muted; font-size: Theme.small; overflow: elide; }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            VerticalLayout { alignment: center; MemoryBar { fraction: r.total-gib / max(root.ram-total-gib, 1); tone: r.fit-key == "comfortable" || r.fit-key == "compatible" ? Theme.cyan.transparentize(25%) : Theme.amber.transparentize(20%); } }
+                                            Text { text: "/\{round(root.ram-total-gib)} GiB"; width: self.preferred-width; color: Theme.muted; font-size: 11px; }
+                                        }
+                                    }
+                                }
+                                pick := TouchArea { mouse-cursor: pointer; clicked => { root.selected = i; } }
+                            }
+                        }
+                    }
+                    HorizontalLayout { alignment: start; TButton { label: "Change needs"; clicked => { root.page = 2; } } }
+                }
+                Rectangle { width: 1px; background: Theme.line; }
+                // detail (scrolls, so long warnings do not grow the window)
+                if root.recs.length > 0: detail := Flickable {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                    width: detail.width;
+                    alignment: start;
+                    spacing: 6px;
+                    Text { text: root.recs[root.selected].name; color: Theme.fg; font-size: 15px; wrap: word-wrap; }
+                    Muted { text: root.recs[root.selected].stack; color: Theme.subtle; }
+                    Rectangle { height: 8px; }
+                    HorizontalLayout {
+                        alignment: start;
+                        TButton {
+                            label: "Use this model";
+                            primary: true;
+                            enabled: !root.server-busy;
+                            clicked => { root.use-model(root.recs[root.selected].repo, root.recs[root.selected].quant, root.recs[root.selected].context); }
+                        }
+                    }
+                    Rectangle { height: 8px; }
+                    Hr { }
+                    Rectangle { height: 6px; }
+                    Label { text: "Hardware fit"; }
+                    HorizontalLayout {
+                        Text { text: "Assessment"; color: Theme.subtle; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Text { text: root.recs[root.selected].fit; color: root.fit-color(root.recs[root.selected].fit-key); }
+                    }
+                    HorizontalLayout {
+                        Text { text: "Required memory"; color: Theme.subtle; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Text { text: root.recs[root.selected].total; color: Theme.fg; }
+                    }
+                    Muted { text: root.recs[root.selected].detail; }
+                    Rectangle { height: 8px; }
+                    Label { text: "Why"; }
+                    Muted { text: root.recs[root.selected].reasons; color: Theme.subtle; }
+                    if root.recs[root.selected].warnings != "": VerticalLayout {
+                        spacing: 4px;
+                        Rectangle { height: 6px; }
+                        Label { text: "Warnings"; }
+                        Muted { text: root.recs[root.selected].warnings; color: Theme.amber; }
+                    }
+                    }
+                }
+            }
+
+            // Chat
+            if root.page == 4: VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout { alignment: center; Dot { on: root.server-running; tone: Theme.green; } }
+                    Text { text: root.server-status; color: root.server-running ? Theme.green : Theme.subtle; font-size: Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+                    TButton { label: "Stop model"; enabled: root.server-running && !root.server-busy; clicked => { root.stop-model(); } }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    background: Theme.mantle;
+                    Flickable {
+                        x: 14px;
+                        y: 10px;
+                        width: parent.width - 28px;
+                        height: parent.height - 20px;
+                        // Follow the conversation: when it grows (a new message, a streamed piece), show its end.
+                        changed content-height => { self.content-y = min(0px, self.height - self.content-height); }
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 12px;
+                            for m in root.messages: VerticalLayout {
+                                spacing: 2px;
+                                if m.mine: HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "›"; color: Theme.cyan; font-size: Theme.text; }
+                                    Text { text: m.text; color: Theme.subtle; font-size: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
+                                }
+                                if !m.mine: Text { text: m.text; color: Theme.fg; font-size: Theme.text; wrap: word-wrap; }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    input := Field {
+                        placeholder: root.server-running ? "Write a message and press Enter" : "Start a model first";
+                        enabled: root.server-running && !root.replying;
+                        horizontal-stretch: 1;
+                        accepted(t) => { if (t != "") { root.send(t); self.text = ""; } }
+                    }
+                    TButton {
+                        label: "Send";
+                        primary: true;
+                        enabled: root.server-running && !root.replying && input.text != "";
+                        clicked => { root.send(input.text); input.text = ""; }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------ status line
+        Rectangle {
+            height: 24px;
+            background: Theme.mantle;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    width: mode.preferred-width + 16px;
+                    background: root.page == 2 || root.page == 4 ? Theme.green : root.page == 1 ? Theme.lavender : Theme.cyan;
+                    mode := Text { text: root.modes[root.page]; color: Theme.ink; font-size: 11px; vertical-alignment: center; }
+                }
+                Text { text: "jaull://" + root.slugs[root.page]; color: Theme.subtle; font-size: 11px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: (root.searching ? "searching · " : "") + (root.server-running ? "model running · " : "") + root.use-cases[root.use-case].to-lowercase() + " · " + root.priorities[root.priority].to-lowercase();
+                    color: Theme.muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                Rectangle { width: 6px; }
+            }
+        }
+    }
+}

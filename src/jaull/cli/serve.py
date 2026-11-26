@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +17,7 @@ from jaull.application.serving import ServerSizingError
 from jaull.application.serving import policies as serving_policies
 from jaull.application.serving.models import ServerPlan, ServerStart
 from jaull.artifacts.errors import ArtifactError
+from jaull.cli.json_lines import emit
 from jaull.domain.hardware import ComputeBackend
 from jaull.exceptions import InvalidModelReferenceError, JaullError, QuantizationNotFoundError
 from jaull.execution.server_process import ServerProcessError
@@ -48,6 +52,8 @@ class ServeOptions:
     load_mode: str | None = None
     #: Encrypt with HTTPS. None: yes when sharing on the network, no for this PC alone.
     https: bool | None = None
+    #: JSON lines on stdout (progress, plan, then ``started`` or ``error``) for a front end.
+    json: bool = False
 
 
 def run_serve_start(
@@ -56,17 +62,27 @@ def run_serve_start(
     advisor: AdvisorService | None = None,
 ) -> int:
     console = make_console()
+
+    def fail(code: int, message: str) -> int:
+        if options.json:
+            emit("error", message=message, code=code)
+        else:
+            _error(console, message)
+        return code
+
     if (options.tls_cert is None) != (options.tls_key is None):
-        _error(console, "TLS needs both --tls-cert and --tls-key.")
-        return 2
+        return fail(2, "TLS needs both --tls-cert and --tls-key.")
     if options.https is False and options.tls_cert is not None:
-        _error(console, "--no-https cannot be combined with --tls-cert and --tls-key.")
-        return 2
+        return fail(2, "--no-https cannot be combined with --tls-cert and --tls-key.")
     resolved = advisor or AdvisorService.default()
+    on_progress: Callable[[str], None] | None = (
+        (lambda message: emit("progress", message=message)) if options.json else None
+    )
     try:
         repo_id = normalize_repo_id(reference)
         artifact = resolved.prepare_serve_artifact(
             repo_id, quantization=options.quantization, revision=options.revision,
+            on_progress=on_progress,
         )
         plan = resolved.plan_server(
             repo_id=repo_id,
@@ -79,7 +95,11 @@ def run_serve_start(
             sleep_idle_seconds=options.sleep_idle_seconds,
             load_mode=options.load_mode,
         )
-        _print_plan(console, plan)
+        if options.json:
+            emit("plan", lines=plan_lines(plan))
+            emit("progress", message="Starting llama-server")
+        else:
+            _print_plan(console, plan)
         tls_cert, tls_key = options.tls_cert, options.tls_key
         https = options.https if options.https is not None else options.lan
         if https and tls_cert is None:
@@ -87,29 +107,36 @@ def run_serve_start(
             tls_cert, tls_key = certificate.cert_path, certificate.key_path
             made = "Created a self-signed certificate" if certificate.created else (
                 "Using the certificate from `jaull serve cert`")
-            console.print(f"{made}, valid until {certificate.expires:%Y-%m-%d}.",
-                          highlight=False, markup=False)
+            if not options.json:
+                console.print(f"{made}, valid until {certificate.expires:%Y-%m-%d}.",
+                              highlight=False, markup=False)
         started = resolved.start_server(
             plan, lan=options.lan, port=options.port,
             tls_cert=tls_cert, tls_key=tls_key, web_ui=options.web_ui,
             prompt_cache=options.prompt_cache, opencode=options.opencode_config,
         )
     except InvalidModelReferenceError as exc:
-        _error(console, str(exc))
-        return 2
+        return fail(2, str(exc))
     except QuantizationNotFoundError as exc:
-        _error(console, str(exc))
-        return 3
+        return fail(3, str(exc))
     except ArtifactError as exc:
-        _error(console, str(exc))
-        return 4
+        return fail(4, str(exc))
     except ServerProcessError as exc:
-        _error(console, str(exc))
-        return 5
+        return fail(5, str(exc))
     except (ServerSizingError, ExecutionPlanningError, JaullError) as exc:
-        _error(console, str(exc))
-        return 6
+        return fail(6, str(exc))
 
+    if options.json:
+        # The key itself is never printed here: a front end reads it from api_key_path.
+        emit(
+            "started",
+            alias=started.state.alias,
+            url=started.state.url,
+            lan_url=started.lan_url,
+            api_key_path=str(started.api_key_path),
+            web_ui=started.web_ui,
+        )
+        return 0
     _print_started(console, started)
     notice = resolved.llama_cpp_update_notice()
     if notice is not None:
@@ -142,19 +169,33 @@ def run_serve_cert(*, renew: bool, advisor: AdvisorService | None = None) -> int
     return 0
 
 
-def run_serve_status(advisor: AdvisorService | None = None) -> int:
+def run_serve_status(advisor: AdvisorService | None = None, *, as_json: bool = False) -> int:
     console = make_console()
     resolved = advisor or AdvisorService.default()
     try:
         status = resolved.server_status()
     except ServerProcessError as exc:
-        _error(console, str(exc))
+        if as_json:
+            sys.stdout.write(json.dumps({"schema_version": 1, "error": str(exc)}) + "\n")
+        else:
+            _error(console, str(exc))
         return 2
+    ready = status.state is not None and status.running and status.healthy
+    if as_json:
+        state = status.state
+        payload = {
+            "schema_version": 1,
+            "running": status.running,
+            "healthy": status.healthy,
+            "alias": state.alias if state else None,
+            "url": state.url if state else None,
+            "api_key_path": str(resolved.server_api_key_path()),
+        }
+        sys.stdout.write(json.dumps(payload) + "\n")
+        return 0 if ready else 1
     for line in status_lines(status):
         console.print(line, highlight=False, markup=False)
-    if status.state is None or not status.running:
-        return 1
-    return 0 if status.healthy else 1
+    return 0 if ready else 1
 
 
 def _print_plan(console: Console, plan: ServerPlan) -> None:

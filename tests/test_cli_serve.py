@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -133,6 +134,55 @@ class FakeAdvisor:
     def server_status(self) -> ServerStatus:
         return ServerStatus(state=STATE, running=True, healthy=True)
 
+    def server_api_key_path(self) -> Path:
+        return Path("/data/serve/api-key")
+
+
+def test_start_json_streams_progress_and_never_prints_the_key(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The desktop app follows the download and reads the key from its file, not from stdout.
+    class Downloading(FakeAdvisor):
+        def prepare_serve_artifact(self, repo_id: str, **kwargs: Any) -> ModelArtifact:
+            kwargs["on_progress"]("Downloading model.gguf")
+            return ARTIFACT
+
+    options = ServeOptions(quantization="IQ4_XS", json=True)
+    assert run_serve_start("a/b", options, Downloading()) == 0  # type: ignore[arg-type]
+
+    out = capsys.readouterr().out
+    lines = [json.loads(line) for line in out.splitlines()]
+    assert [line["event"] for line in lines] == ["progress", "plan", "progress", "started"]
+    assert lines[0]["message"] == "Downloading model.gguf"
+    assert lines[-1]["url"] == "http://127.0.0.1:8090"
+    assert lines[-1]["api_key_path"] == str(Path("/data/serve/api-key"))
+    assert "KEY123" not in out
+
+
+def test_start_json_reports_errors_with_the_exit_code(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class Failing(FakeAdvisor):
+        def start_server(self, plan: ServerPlan, **kwargs: Any) -> ServerStart:
+            raise ServerProcessError("Port 8090 is already in use.")
+
+    options = ServeOptions(quantization=None, json=True)
+    assert run_serve_start("a/b", options, Failing()) == 5  # type: ignore[arg-type]
+
+    last = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert last["event"] == "error" and last["code"] == 5 and "8090" in last["message"]
+
+
+def test_status_json_says_where_the_server_and_its_key_are(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert run_serve_status(FakeAdvisor(), as_json=True) == 0  # type: ignore[arg-type]
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["running"] and payload["healthy"]
+    assert payload["url"] == "http://127.0.0.1:8090"
+    assert payload["api_key_path"] == str(Path("/data/serve/api-key"))
+
 
 def test_start_plans_starts_and_reports(capsys: pytest.CaptureFixture[str]) -> None:
     advisor = FakeAdvisor()
@@ -207,7 +257,7 @@ def test_commands_are_wired(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("jaull.cli.app.run_serve_start", fake_start)
     monkeypatch.setattr("jaull.cli.app.run_serve_stop", lambda: 0)
-    monkeypatch.setattr("jaull.cli.app.run_serve_status", lambda: 1)
+    monkeypatch.setattr("jaull.cli.app.run_serve_status", lambda **_: 1)
     runner = CliRunner()
 
     result = runner.invoke(app, [
