@@ -301,6 +301,7 @@ component KV inherits HorizontalLayout {
 
 export component AppWindow inherits Window {
     title: "Jaull";
+    icon: @image-url("icon.png");
     preferred-width: 980px;
     preferred-height: 680px;
     background: Theme.ink;
@@ -350,6 +351,10 @@ export component AppWindow inherits Window {
     in property <string> firewall-rule;
     in property <string> server-sharing;
     callback serve-model(string, string, int, int, bool, bool);
+    // On a new PC llama.cpp is not installed yet: starting a model says which backend to install.
+    in property <string> runtime-backend: "";
+    in property <bool> runtime-installing: false;
+    callback install-runtime(string);
     property <[int]> people-options: [1, 2, 4, 8];
     property <[int]> context-options: [8192, 16384, 32768, 65536, 131072];
     in-out property <int> serve-people: 2;
@@ -992,6 +997,18 @@ export component AppWindow inherits Window {
                     Text { text: root.server-status; color: root.server-running ? Theme.green : Theme.subtle; font-size: Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
                     TButton { label: "Stop model"; enabled: root.server-running && !root.server-busy; clicked => { root.stop-model(); } }
                 }
+                if root.runtime-backend != "" && !root.server-running: HorizontalLayout {
+                    alignment: start;
+                    spacing: 12px;
+                    padding-left: 23px;
+                    TButton {
+                        label: root.runtime-installing ? "Installing llama.cpp…" : "Install llama.cpp (" + root.runtime-backend + ")";
+                        primary: true;
+                        enabled: !root.runtime-installing;
+                        clicked => { root.install-runtime(root.runtime-backend); }
+                    }
+                    Muted { text: "Downloads the official build Jaull pins and checks its SHA-256. Then start the model again."; vertical-alignment: center; }
+                }
                 if root.server-running: VerticalLayout {
                     spacing: 2px;
                     padding-left: 23px;
@@ -1069,13 +1086,32 @@ export component AppWindow inherits Window {
                 }
                 Text { text: "jaull://" + root.slugs[root.page]; color: Theme.subtle; font-size: 11px; vertical-alignment: center; }
                 Rectangle { horizontal-stretch: 1; }
+                // What is happening now, then a blinking cursor as in the demo's terminal.
+                if root.server-running && !root.server-busy: VerticalLayout { alignment: center; Dot { on: true; tone: Theme.green; width: 9px; height: 9px; } }
                 Text {
-                    text: (root.searching ? "searching · " : "") + (root.server-running ? "model running · " : "") + root.use-cases[root.use-case].to-lowercase() + " · " + root.priorities[root.priority].to-lowercase();
-                    color: Theme.muted;
+                    text: root.searching ? "searching hugging face"
+                        : root.server-busy ? "preparing the model"
+                        : root.tool-running ? "running jaull"
+                        : root.storage-busy ? "reading the disk"
+                        : root.server-running ? "model on " + root.server-url
+                        : (root.page == 2 || root.page == 3) ? root.use-cases[root.use-case].to-lowercase() + " · " + root.priorities[root.priority].to-lowercase()
+                        : root.machine == "" ? "no model running" : root.machine;
+                    color: root.server-running && !root.server-busy ? Theme.green : Theme.muted;
                     font-size: 11px;
                     vertical-alignment: center;
                 }
-                Rectangle { width: 6px; }
+                VerticalLayout {
+                    alignment: center;
+                    cursor := Rectangle {
+                        property <bool> on: true;
+                        width: 7px;
+                        height: 12px;
+                        background: self.on ? Theme.cyan : transparent;
+                        // Twice a second, a few pixels: this is the only thing that redraws when idle.
+                        Timer { interval: 530ms; running: true; triggered => { cursor.on = !cursor.on; } }
+                    }
+                }
+                Rectangle { width: 8px; }
             }
         }
     }

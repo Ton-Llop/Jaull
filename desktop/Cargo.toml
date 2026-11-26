@@ -16,6 +16,8 @@ rustls-pemfile = "2"
 
 [build-dependencies]
 slint-build = "1"
+# Embeds icon.ico in the .exe (Explorer, taskbar, Start menu).
+winresource = "0.1"
 
 [profile.release]
 opt-level = "s"

@@ -66,6 +66,27 @@ does not play GIFs, so a `Timer` changes frame and position; it exists only whil
 License 1.1 (`ui/fonts/DepartureMono-OFL.txt`). It was converted from the website's `woff2` with
 fontTools and is embedded in the executable. It has no ✓ ● ○ glyphs, so the app draws those as shapes.
 
+## Installer
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\installer\build.ps1
+```
+
+It builds the app, puts a portable Python (python-build-standalone, through `uv python install
+--no-bin`, so nothing lands on this PC's PATH) next to it, installs Jaull and every dependency at the
+versions `uv.lock` pins, and packs both with Inno Setup (`installer\jaull.iss`). The result is
+`desktop\target\installer\Jaull-Setup-<version>.exe`: 139 MiB, 0.80 GiB once installed (torch alone is
+about half). It installs per user in `%LOCALAPPDATA%\Programs\Jaull` without administrator rights,
+with a Start menu entry, an optional desktop shortcut and an uninstaller. The app finds that Python
+next to `Jaull.exe` before anything else. Needs Rust, uv and Inno Setup 6 (`winget install
+JRSoftware.InnoSetup`).
+
+Tested on this laptop: a silent install into a test folder (87 s), the bundled Python running
+`jaull scan`, the installed app starting that Python and idling at 10.3 MiB, and a clean uninstall
+(no folder or Programs entry left). llama.cpp is not bundled: on a PC without it, starting a model
+offers **Install llama.cpp**, which runs `jaull runtime install` for the backend Jaull names. The
+installer is not code-signed, so Windows SmartScreen will warn the first time.
+
 ## Build and run
 
 Needs Rust (MSVC toolchain) and the Visual Studio C++ Build Tools, and this repository's `.venv`
@@ -112,6 +133,6 @@ the firewall.
 
 ## Not done
 
-- No installer: it needs the repository and its virtualenv.
+- The installer is not signed, and it was tested on one PC only.
 - No way yet to stop a reply halfway, no Markdown in the chat, no saved conversations.
 - The interface is in English, like the CLI and the TUI.

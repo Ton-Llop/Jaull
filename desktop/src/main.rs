@@ -29,11 +29,17 @@ const USE_CASES: [&str; 6] = [
 ];
 const PRIORITIES: [&str; 4] = ["balanced", "quality", "speed", "memory"];
 
-/// How to start Jaull: JAULL_PYTHON (an interpreter with Jaull installed), then this
-/// checkout's virtualenv, then a `jaull` on PATH. Python is started directly, with
-/// `-m jaull`, so that cancelling a search can end the whole process tree.
+/// How to start Jaull: JAULL_PYTHON (an interpreter with Jaull installed), then the Python
+/// the installer puts next to this executable, then this checkout's virtualenv, then a
+/// `jaull` on PATH. Python is started directly, with `-m jaull`, so that cancelling a
+/// search can end the whole process tree.
 fn jaull_command() -> Command {
-    let python = std::env::var("JAULL_PYTHON").ok().or_else(|| {
+    let bundled = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("python").join("python.exe")))
+        .filter(|python| python.exists())
+        .map(|python| python.to_string_lossy().into_owned());
+    let python = std::env::var("JAULL_PYTHON").ok().or(bundled).or_else(|| {
         let dev = concat!(env!("CARGO_MANIFEST_DIR"), "/../.venv/Scripts/python.exe");
         Path::new(dev).exists().then(|| dev.to_string())
     });
@@ -586,7 +592,14 @@ fn use_model(window: &AppWindow, server: &Arc<Server>, repo: &str, quant: &str, 
                     window.set_messages(ModelRc::from(Rc::new(VecModel::<Msg>::default())));
                     set_server_ready(&window, &server, endpoint, info);
                 }
-                Some(Err(message)) => window.set_server_status(format!("Could not start the model: {message}").into()),
+                Some(Err(message)) => {
+                    // "llama-server was not found. Install it with `jaull runtime install --backend vulkan`."
+                    if let Some(rest) = message.split("runtime install --backend ").nth(1) {
+                        let backend: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+                        window.set_runtime_backend(backend.into());
+                    }
+                    window.set_server_status(format!("Could not start the model: {message}").into());
+                }
                 None => window.set_server_status("Jaull ended without starting the model.".into()),
             }
         });
@@ -816,6 +829,33 @@ fn remove_storage(window: &AppWindow, args: Vec<String>) {
     });
 }
 
+/// `jaull runtime install --backend <b>`: the pinned llama.cpp build, downloaded and checked.
+fn install_runtime(window: &AppWindow, backend: &str) {
+    window.set_runtime_installing(true);
+    window.set_server_status(format!("Installing llama.cpp ({backend})… a few hundred MB.").into());
+    let mut cmd = jaull_command();
+    cmd.args(["runtime", "install", "--backend", backend]).env("NO_COLOR", "1");
+    let weak = window.as_weak();
+    std::thread::spawn(move || {
+        let result = cmd.output();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = weak.upgrade() else { return };
+            window.set_runtime_installing(false);
+            match result {
+                Ok(out) if out.status.success() => {
+                    window.set_runtime_backend("".into());
+                    window.set_server_status("llama.cpp is installed. Start the model again.".into());
+                }
+                Ok(out) => {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    window.set_server_status(format!("Could not install llama.cpp: {}", strip_ansi(err.trim())).into());
+                }
+                Err(e) => window.set_server_status(format!("Could not start Jaull: {e}").into()),
+            }
+        });
+    });
+}
+
 /// Removes terminal colour codes, in case a tool prints them anyway.
 fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -978,6 +1018,12 @@ fn main() -> Result<(), slint::PlatformError> {
     window.on_remove_logs(move || {
         if let Some(window) = weak.upgrade() {
             remove_storage(&window, vec!["--evaluation-logs".to_string()]);
+        }
+    });
+    let weak = window.as_weak();
+    window.on_install_runtime(move |backend| {
+        if let Some(window) = weak.upgrade() {
+            install_runtime(&window, &backend);
         }
     });
     let weak = window.as_weak();
