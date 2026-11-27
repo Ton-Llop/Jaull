@@ -197,6 +197,24 @@ def test_start_json_reports_errors_with_the_exit_code(
     assert last["event"] == "error" and last["code"] == 5 and "8090" in last["message"]
 
 
+def test_start_json_says_when_llama_cpp_is_missing_and_for_which_backend(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The desktop app offers `jaull runtime install --backend <backend>` from these fields,
+    # instead of reading the backend out of the message.
+    from jaull.application.execution import RuntimeMissingError
+
+    class NoRuntime(FakeAdvisor):
+        def plan_server(self, **kwargs: Any) -> ServerPlan:
+            raise RuntimeMissingError("llama-server was not found.", backend="vulkan")
+
+    options = ServeOptions(quantization=None, json=True)
+    assert run_serve_start("a/b", options, NoRuntime()) == 6  # type: ignore[arg-type]
+
+    last = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert (last["reason"], last["backend"], last["code"]) == ("runtime_missing", "vulkan", 6)
+
+
 def test_status_json_says_where_the_server_and_its_key_are(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -206,6 +224,8 @@ def test_status_json_says_where_the_server_and_its_key_are(
     assert payload["running"] and payload["healthy"]
     assert payload["url"] == "http://127.0.0.1:8090"
     assert payload["api_key_path"] == str(Path("/data/serve/api-key"))
+    # The chat trims its history to this; STATE was saved without it.
+    assert payload["context_per_user"] is None
 
 
 def test_status_json_reports_the_certificate_used_at_launch(

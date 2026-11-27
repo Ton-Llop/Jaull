@@ -11,7 +11,7 @@ from pathlib import Path
 from rich.console import Console
 
 from jaull.advisor.service import AdvisorService
-from jaull.application.execution import ExecutionPlanningError
+from jaull.application.execution import ExecutionPlanningError, RuntimeMissingError
 from jaull.application.model_reference import normalize_repo_id
 from jaull.application.serving import ServerSizingError
 from jaull.application.serving import policies as serving_policies
@@ -63,9 +63,10 @@ def run_serve_start(
 ) -> int:
     console = make_console()
 
-    def fail(code: int, message: str) -> int:
+    def fail(code: int, message: str, **detail: str) -> int:
         if options.json:
-            emit("error", message=message, code=code)
+            # ``reason`` (and its details) let a front end act without parsing the message.
+            emit("error", message=message, code=code, **detail)
         else:
             _error(console, message)
         return code
@@ -123,6 +124,8 @@ def run_serve_start(
         return fail(4, str(exc))
     except ServerProcessError as exc:
         return fail(5, str(exc))
+    except RuntimeMissingError as exc:
+        return fail(6, str(exc), reason="runtime_missing", backend=exc.backend)
     except (ServerSizingError, ExecutionPlanningError, JaullError) as exc:
         return fail(6, str(exc))
 
@@ -203,6 +206,8 @@ def run_serve_status(advisor: AdvisorService | None = None, *, as_json: bool = F
             "url": state.url if state else None,
             "api_key_path": str(resolved.server_api_key_path()),
             "tls_cert": cert,
+            # A chat client keeps its history within this (None in states saved before it).
+            "context_per_user": state.context_per_user if state else None,
         }
         sys.stdout.write(json.dumps(payload) + "\n")
         return 0 if ready else 1

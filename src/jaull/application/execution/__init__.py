@@ -3,6 +3,7 @@
 from jaull.application.execution.planner import (
     ExecutionOverrides,
     ExecutionPlanningError,
+    RuntimeMissingError,
     plan_execution,
     plan_launch,
 )
@@ -10,6 +11,7 @@ from jaull.application.execution.planner import (
 __all__ = [
     "ExecutionOverrides",
     "ExecutionPlanningError",
+    "RuntimeMissingError",
     "plan_execution",
     "plan_launch",
 ]

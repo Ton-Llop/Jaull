@@ -59,6 +59,34 @@ def test_recommend_json_streams_progress_then_the_report(
     assert advisor.answers == ANSWERS
 
 
+def test_recommend_command_builds_the_answers_the_tui_wizard_builds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The desktop app asks the TUI's questions; the command turns them into the same answers.
+    from typer.testing import CliRunner
+
+    from jaull.cli.app import app
+    from jaull.domain.requirements import CommercialUse, DocumentScale
+
+    seen: list[UserAnswers] = []
+    monkeypatch.setattr("jaull.cli.app.run_recommend",
+                        lambda answers, **_: seen.append(answers) or 0)
+    runner = CliRunner()
+
+    result = runner.invoke(app, [
+        "recommend", "--use-case", "document_qa", "--language", "English",
+        "--other-language", "french", "--commercial-use", "no", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    answers = seen[-1]
+    assert answers.languages == ["English"] and answers.other_languages == ["fr"]
+    assert answers.document_scale is DocumentScale.MEDIUM  # the wizard's default for documents
+    assert answers.commercial_use is CommercialUse.NO
+
+    runner.invoke(app, ["recommend", "--use-case", "coding", "--document-scale", "long"])
+    assert seen[-1].document_scale is None  # only asked for document work
+
+
 def test_recommend_json_reports_a_failure_as_an_error_line(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

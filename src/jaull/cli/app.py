@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from jaull.application.requirements import normalize_languages
 from jaull.application.serving.policies import (
     SERVE_DEFAULT_CONTEXT_PER_USER,
     SERVE_DEFAULT_USERS,
@@ -191,7 +192,12 @@ def recommend_command(
         WorkloadMode.INTERACTIVE, "--mode", help="Interactive use or batch processing."
     ),
     language: list[str] = typer.Option(
-        [], "--language", help="Language the model must handle (repeatable), e.g. ca, es, en."
+        [], "--language",
+        help="A language the TUI lists (repeatable): Spanish, Catalan, English, Portuguese.",
+    ),
+    other_language: list[str] = typer.Option(
+        [], "--other-language",
+        help="Any other language, as a code or a name (repeatable), e.g. fr, italian.",
     ),
     concurrency: ConcurrencyLevel = typer.Option(
         ConcurrencyLevel.SINGLE, "--concurrency", help="How many people use it at once."
@@ -206,13 +212,22 @@ def recommend_command(
         False, "--json", help="Emit JSON lines (progress events, then the report) to stdout."
     ),
 ) -> None:
+    # The same answers the TUI wizard builds: listed languages by name, the rest as codes
+    # checked with the wizard's own normalisation; the text size only for documents.
+    codes, rejected = normalize_languages(list(other_language))
+    if rejected:
+        typer.echo(f"Not recognised languages: {', '.join(rejected)}", err=True)
+        raise typer.Exit(code=2)
+    if use_case is UseCase.DOCUMENT_QA and document_scale is None:
+        document_scale = DocumentScale.MEDIUM
     answers = UserAnswers(
         use_case=use_case,
         workload_mode=mode,
         priority=priority,
         languages=list(language),
+        other_languages=codes,
         concurrency=concurrency,
-        document_scale=document_scale,
+        document_scale=document_scale if use_case is UseCase.DOCUMENT_QA else None,
         commercial_use=commercial_use,
     )
     raise typer.Exit(code=run_recommend(answers, as_json=as_json))

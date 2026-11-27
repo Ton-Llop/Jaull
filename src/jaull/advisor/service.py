@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from jaull.application.execution import (
     ExecutionOverrides,
     ExecutionPlanningError,
+    RuntimeMissingError,
     plan_execution,
     plan_launch,
 )
@@ -662,19 +663,21 @@ class AdvisorService:
             else:
                 installation, ready = self._found_llama_cpp_for(selection)
                 if installation is not None and not ready:
-                    raise ExecutionPlanningError(
+                    raise RuntimeMissingError(
                         f"The llama-server found on this PC ({server_binary_for(installation)}) "
                         f"does not run {selection.selected_backend.value}. "
                         "Install the pinned build with "
                         f"`jaull runtime install --backend {selection.selected_backend.value}`, "
-                        "or choose another backend."
+                        "or choose another backend.",
+                        backend=selection.selected_backend.value,
                     )
                 binary = server_binary_for(installation) if installation else None
                 build = installation.version_text if installation else None
         if binary is None:
-            raise ExecutionPlanningError(
+            raise RuntimeMissingError(
                 "llama-server was not found. Install it with "
-                f"`jaull runtime install --backend {selection.selected_backend.value}`."
+                f"`jaull runtime install --backend {selection.selected_backend.value}`.",
+                backend=selection.selected_backend.value,
             )
         readiness = self._server_readiness(binary, selection)
         server_sha256 = _server_binary_sha256(binary)

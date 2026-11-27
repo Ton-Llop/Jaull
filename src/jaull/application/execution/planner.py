@@ -68,6 +68,18 @@ class ExecutionPlanningError(RuntimeError):
     """
 
 
+class RuntimeMissingError(ExecutionPlanningError):
+    """No usable llama-server for the selected backend: ``jaull runtime install`` fixes it.
+
+    ``backend`` is the value to pass to ``--backend``, so a front end can offer the
+    install without reading it out of the message.
+    """
+
+    def __init__(self, message: str, *, backend: str) -> None:
+        super().__init__(message)
+        self.backend = backend
+
+
 @dataclass(frozen=True)
 class ExecutionOverrides:
     """Values the user set explicitly. ``None`` means "let the planner decide"."""
