@@ -1,0 +1,310 @@
+// Small pieces every page uses: buttons, radio options, fields, bars, toggles.
+import { Theme } from "theme.slint";
+
+export component Label inherits Text {
+    color: Theme.fg;
+    font-size: Theme.text;
+    wrap: word-wrap;
+}
+
+export component Muted inherits Text {
+    color: Theme.muted;
+    font-size: Theme.small;
+    wrap: word-wrap;
+}
+
+// `[ Label ]` as the TUI draws its buttons; the primary one is a filled cyan block.
+export component TButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 30px;
+    min-width: row.preferred-width + 20px;
+    border-radius: 4px;
+    background: !root.enabled ? transparent
+        : root.primary ? (ta.has-hover ? Theme.cyan.brighter(15%) : Theme.cyan)
+        : (ta.has-hover ? Theme.overlay : transparent);
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 0px;
+        if !root.primary: Text { text: "[ "; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.muted : root.primary ? Theme.ink : Theme.fg;
+            font-size: Theme.text;
+            vertical-alignment: center;
+        }
+        if !root.primary: Text { text: " ]"; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.clicked(); } }
+    }
+}
+
+// A radio dot drawn with shapes (the face has no ● ○ glyphs).
+export component Dot inherits Rectangle {
+    in property <bool> on;
+    in property <color> tone: Theme.cyan;
+    width: 13px;
+    height: 13px;
+    border-radius: 6.5px;
+    border-width: 1px;
+    border-color: root.on ? root.tone : Theme.line-strong;
+    Rectangle {
+        visible: root.on;
+        width: 5px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: root.tone;
+    }
+}
+
+export component Option inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback pick();
+    height: 26px;
+    border-radius: 4px;
+    background: root.on ? Theme.cyan.transparentize(90%) : ta.has-hover && root.enabled ? Theme.overlay : transparent;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        VerticalLayout { alignment: center; Dot { on: root.on; } }
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.muted : root.on ? Theme.cyan : Theme.subtle;
+            font-size: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if (root.enabled) { root.pick(); } }
+    }
+}
+
+export component Question inherits VerticalLayout {
+    in property <int> n;
+    in property <string> label;
+    in property <[string]> options;
+    in-out property <int> selected;
+    in property <bool> enabled: true;
+    spacing: 6px;
+    HorizontalLayout {
+        alignment: start;
+        spacing: 12px;
+        Text { text: "\{root.n}"; color: Theme.cyan; font-size: Theme.text; }
+        Text { text: root.label; color: Theme.fg; font-size: Theme.text; }
+    }
+    VerticalLayout {
+        padding-left: 18px;
+        spacing: 2px;
+        for o[i] in root.options: Option {
+            label: o;
+            on: i == root.selected;
+            enabled: root.enabled;
+            pick => { root.selected = i; }
+        }
+    }
+}
+
+// A text field in the TUI's style: a prompt mark, then the text.
+export component Field inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in-out property <string> text <=> input.text;
+    callback accepted(string);
+    height: 34px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.cyan.transparentize(40%) : Theme.line;
+    background: Theme.ink;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Text { text: "›"; width: self.preferred-width; color: root.enabled ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+        Rectangle {
+            horizontal-stretch: 1;
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                enabled: root.enabled;
+                color: Theme.fg;
+                font-size: Theme.text;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                single-line: true;
+                accepted => { root.accepted(self.text); }
+            }
+            Text {
+                visible: input.text == "";
+                x: 0;
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: Theme.text;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// The chat's message box: wraps and grows up to a few lines. Enter sends, Shift+Enter adds a
+// line. A one-line field would scroll sideways with a long paste, and Slint's software
+// renderer panics once that offset passes the size it can draw (seen with ~20,000 characters).
+export component ChatInput inherits Rectangle {
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in-out property <string> text <=> input.text;
+    callback send(string);
+    callback edited();
+    height: clamp(input.preferred-height + 16px, 34px, 140px);
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.cyan.transparentize(40%) : Theme.line;
+    background: Theme.ink;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 8px;
+        Text { text: "›"; width: self.preferred-width; color: root.enabled ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: top; }
+        Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            FocusScope {
+                capture-key-pressed(event) => {
+                    if (event.text == Key.Return && !event.modifiers.shift) {
+                        if (root.enabled && input.text != "") { root.send(input.text); }
+                        return accept;
+                    }
+                    return reject;
+                }
+                input := TextInput {
+                    width: 100%;
+                    height: 100%;
+                    enabled: root.enabled;
+                    single-line: false;
+                    wrap: word-wrap;
+                    color: Theme.fg;
+                    font-size: Theme.text;
+                    horizontal-alignment: left;
+                    vertical-alignment: top;
+                    edited => { root.edited(); }
+                }
+            }
+            Text {
+                visible: input.text == "";
+                x: 0;
+                y: 0;
+                width: 100%;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: Theme.text;
+                horizontal-alignment: left;
+                vertical-alignment: top;
+            }
+        }
+    }
+}
+
+// How much of the machine's memory a plan takes.
+export component MemoryBar inherits Rectangle {
+    in property <float> fraction;
+    in property <color> tone: Theme.cyan;
+    height: 4px;
+    border-radius: 2px;
+    background: Theme.overlay;
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.fraction, 0, 1);
+        height: parent.height;
+        border-radius: 2px;
+        background: root.tone;
+    }
+}
+
+// One memory pool (GPU or RAM): a bar and "used/available GiB".
+export component MemoryRow inherits HorizontalLayout {
+    in property <string> pool;
+    in property <float> used;
+    in property <float> cap;
+    in property <color> tone: Theme.cyan;
+    spacing: 8px;
+    Text { text: root.pool; width: 28px; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+    VerticalLayout { alignment: center; MemoryBar { fraction: root.used / max(root.cap, 0.1); tone: root.used > root.cap ? Theme.red : root.tone; } }
+    Text {
+        text: "\{round(root.used * 10) / 10}/\{round(root.cap * 10) / 10} GiB";
+        width: self.preferred-width;
+        color: Theme.muted;
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+}
+
+export component Hr inherits Rectangle {
+    height: 1px;
+    background: Theme.line;
+}
+
+// A choice among a few values, as the demo's Serve view draws them.
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <bool> enabled: true;
+    callback pick();
+    height: 24px;
+    width: t.preferred-width + 16px;
+    border-radius: 3px;
+    background: root.on ? Theme.cyan : ta.has-hover && root.enabled ? Theme.overlay : transparent;
+    t := Text { text: root.label; color: root.on ? Theme.ink : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; }
+    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.pick(); } } }
+}
+
+export component Toggle inherits Rectangle {
+    in-out property <bool> on;
+    in property <string> label;
+    in property <bool> enabled: true;
+    height: 24px;
+    width: row.preferred-width;
+    row := HorizontalLayout {
+        spacing: 8px;
+        Text { text: root.on ? "[x]" : "[ ]"; color: root.on ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+        Text { text: root.label; color: ta.has-hover && root.enabled ? Theme.cyan : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
+    }
+    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.on = !root.on; } } }
+}
+
+// A value the person may want to copy (URL, key, firewall rule): selectable, not editable.
+export component Copyable inherits Rectangle {
+    in property <string> value;
+    in property <color> tone: Theme.fg;
+    height: 22px;
+    TextInput {
+        width: 100%;
+        height: 100%;
+        text: root.value;
+        read-only: true;
+        single-line: true;
+        color: root.tone;
+        font-size: Theme.text;
+        vertical-alignment: center;
+    }
+}
+
+export component KV inherits HorizontalLayout {
+    in property <string> key;
+    in property <string> value;
+    in property <color> tone: Theme.fg;
+    spacing: 12px;
+    Text { text: root.key; width: 150px; color: Theme.subtle; font-size: Theme.text; vertical-alignment: center; }
+    Copyable { value: root.value; tone: root.tone; horizontal-stretch: 1; }
+}

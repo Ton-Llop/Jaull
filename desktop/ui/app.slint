@@ -2,24 +2,8 @@
 // Only flat shapes and text: nothing animates, so an idle window does not redraw.
 import "fonts/DepartureMono-Regular.otf";
 
-export global Theme {
-    out property <color> ink: #08090c;
-    out property <color> mantle: #0d0f13;
-    out property <color> surface: #13151b;
-    out property <color> overlay: #1c1f27;
-    out property <color> line: #23262f;
-    out property <color> line-strong: #343846;
-    out property <color> fg: #dde1ea;
-    out property <color> subtle: #a6abbd;
-    out property <color> muted: #7f859a;
-    out property <color> green: #8fd6a0;
-    out property <color> cyan: #5fd8e6;
-    out property <color> lavender: #b8a8f0;
-    out property <color> amber: #e6b964;
-    out property <color> red: #ec8590;
-    out property <length> text: 13px;
-    out property <length> small: 12px;
-}
+import { Theme } from "theme.slint";
+import { Label, Muted, TButton, Dot, Option, Question, Field, MemoryRow, ChatInput, Hr, Chip, Toggle, Copyable, KV } from "components.slint";
 
 export struct Row {
     label: string,
@@ -42,6 +26,13 @@ export struct Rec {
     repo: string,
     quant: string,
     context: string,
+    // Where Jaull expects the model to live, from its hardware fit (GiB).
+    has-gpu: bool,
+    gpu-used: float,
+    gpu-cap: float,
+    ram-used: float,
+    ram-cap: float,
+    placement: string,
 }
 
 export struct Msg {
@@ -65,240 +56,6 @@ export struct Step {
     state: int,
 }
 
-// ---------------------------------------------------------------- pieces
-
-component Label inherits Text {
-    color: Theme.fg;
-    font-size: Theme.text;
-    wrap: word-wrap;
-}
-
-component Muted inherits Text {
-    color: Theme.muted;
-    font-size: Theme.small;
-    wrap: word-wrap;
-}
-
-// `[ Label ]` as the TUI draws its buttons; the primary one is a filled cyan block.
-component TButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 30px;
-    min-width: row.preferred-width + 20px;
-    border-radius: 4px;
-    background: !root.enabled ? transparent
-        : root.primary ? (ta.has-hover ? Theme.cyan.brighter(15%) : Theme.cyan)
-        : (ta.has-hover ? Theme.overlay : transparent);
-    row := HorizontalLayout {
-        alignment: center;
-        spacing: 0px;
-        if !root.primary: Text { text: "[ "; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
-        Text {
-            text: root.label;
-            color: !root.enabled ? Theme.muted : root.primary ? Theme.ink : Theme.fg;
-            font-size: Theme.text;
-            vertical-alignment: center;
-        }
-        if !root.primary: Text { text: " ]"; color: root.enabled ? Theme.cyan : Theme.line-strong; font-size: Theme.text; vertical-alignment: center; }
-    }
-    ta := TouchArea {
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { root.clicked(); } }
-    }
-}
-
-// A radio dot drawn with shapes (the face has no ● ○ glyphs).
-component Dot inherits Rectangle {
-    in property <bool> on;
-    in property <color> tone: Theme.cyan;
-    width: 13px;
-    height: 13px;
-    border-radius: 6.5px;
-    border-width: 1px;
-    border-color: root.on ? root.tone : Theme.line-strong;
-    Rectangle {
-        visible: root.on;
-        width: 5px;
-        height: 5px;
-        border-radius: 2.5px;
-        background: root.tone;
-    }
-}
-
-component Option inherits Rectangle {
-    in property <string> label;
-    in property <bool> on;
-    in property <bool> enabled: true;
-    callback pick();
-    height: 26px;
-    border-radius: 4px;
-    background: root.on ? Theme.cyan.transparentize(90%) : ta.has-hover && root.enabled ? Theme.overlay : transparent;
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 10px;
-        VerticalLayout { alignment: center; Dot { on: root.on; } }
-        Text {
-            text: root.label;
-            color: !root.enabled ? Theme.muted : root.on ? Theme.cyan : Theme.subtle;
-            font-size: Theme.text;
-            vertical-alignment: center;
-        }
-    }
-    ta := TouchArea {
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { if (root.enabled) { root.pick(); } }
-    }
-}
-
-component Question inherits VerticalLayout {
-    in property <int> n;
-    in property <string> label;
-    in property <[string]> options;
-    in-out property <int> selected;
-    in property <bool> enabled: true;
-    spacing: 6px;
-    HorizontalLayout {
-        alignment: start;
-        spacing: 12px;
-        Text { text: "\{root.n}"; color: Theme.cyan; font-size: Theme.text; }
-        Text { text: root.label; color: Theme.fg; font-size: Theme.text; }
-    }
-    VerticalLayout {
-        padding-left: 18px;
-        spacing: 2px;
-        for o[i] in root.options: Option {
-            label: o;
-            on: i == root.selected;
-            enabled: root.enabled;
-            pick => { root.selected = i; }
-        }
-    }
-}
-
-// A text field in the TUI's style: a prompt mark, then the text.
-component Field inherits Rectangle {
-    in property <string> placeholder;
-    in property <bool> enabled: true;
-    in-out property <string> text <=> input.text;
-    callback accepted(string);
-    height: 34px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.cyan.transparentize(40%) : Theme.line;
-    background: Theme.ink;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 8px;
-        Text { text: "›"; width: self.preferred-width; color: root.enabled ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
-        Rectangle {
-            horizontal-stretch: 1;
-            input := TextInput {
-                width: 100%;
-                height: 100%;
-                enabled: root.enabled;
-                color: Theme.fg;
-                font-size: Theme.text;
-                horizontal-alignment: left;
-                vertical-alignment: center;
-                single-line: true;
-                accepted => { root.accepted(self.text); }
-            }
-            Text {
-                visible: input.text == "";
-                x: 0;
-                width: 100%;
-                height: 100%;
-                text: root.placeholder;
-                color: Theme.muted;
-                font-size: Theme.text;
-                horizontal-alignment: left;
-                vertical-alignment: center;
-            }
-        }
-    }
-}
-
-// How much of the machine's memory a plan takes.
-component MemoryBar inherits Rectangle {
-    in property <float> fraction;
-    in property <color> tone: Theme.cyan;
-    height: 4px;
-    border-radius: 2px;
-    background: Theme.overlay;
-    Rectangle {
-        x: 0;
-        width: parent.width * clamp(root.fraction, 0, 1);
-        height: parent.height;
-        border-radius: 2px;
-        background: root.tone;
-    }
-}
-
-component Hr inherits Rectangle {
-    height: 1px;
-    background: Theme.line;
-}
-
-// A choice among a few values, as the demo's Serve view draws them.
-component Chip inherits Rectangle {
-    in property <string> label;
-    in property <bool> on;
-    in property <bool> enabled: true;
-    callback pick();
-    height: 24px;
-    width: t.preferred-width + 16px;
-    border-radius: 3px;
-    background: root.on ? Theme.cyan : ta.has-hover && root.enabled ? Theme.overlay : transparent;
-    t := Text { text: root.label; color: root.on ? Theme.ink : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; }
-    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.pick(); } } }
-}
-
-component Toggle inherits Rectangle {
-    in-out property <bool> on;
-    in property <string> label;
-    in property <bool> enabled: true;
-    height: 24px;
-    width: row.preferred-width;
-    row := HorizontalLayout {
-        spacing: 8px;
-        Text { text: root.on ? "[x]" : "[ ]"; color: root.on ? Theme.cyan : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
-        Text { text: root.label; color: ta.has-hover && root.enabled ? Theme.cyan : root.enabled ? Theme.fg : Theme.muted; font-size: Theme.text; vertical-alignment: center; }
-    }
-    ta := TouchArea { mouse-cursor: root.enabled ? pointer : default; clicked => { if (root.enabled) { root.on = !root.on; } } }
-}
-
-// A value the person may want to copy (URL, key, firewall rule): selectable, not editable.
-component Copyable inherits Rectangle {
-    in property <string> value;
-    in property <color> tone: Theme.fg;
-    height: 22px;
-    TextInput {
-        width: 100%;
-        height: 100%;
-        text: root.value;
-        read-only: true;
-        single-line: true;
-        color: root.tone;
-        font-size: Theme.text;
-        vertical-alignment: center;
-    }
-}
-
-component KV inherits HorizontalLayout {
-    in property <string> key;
-    in property <string> value;
-    in property <color> tone: Theme.fg;
-    spacing: 12px;
-    Text { text: root.key; width: 150px; color: Theme.subtle; font-size: Theme.text; vertical-alignment: center; }
-    Copyable { value: root.value; tone: root.tone; horizontal-stretch: 1; }
-}
-
-// ---------------------------------------------------------------- window
-
 export component AppWindow inherits Window {
     title: "Jaull";
     icon: @image-url("icon.png");
@@ -319,11 +76,20 @@ export component AppWindow inherits Window {
     in property <float> ram-total-gib: 16;
     callback rescan();
 
-    // Your needs (kept here so the search and the status line read them)
+    // Your needs: the TUI wizard's questions, options and defaults (requirements_wizard.py).
     in-out property <int> use-case: 0;
-    in-out property <int> priority: 0;
-    in-out property <int> commercial: 0;
-    in-out property <string> languages;
+    in-out property <int> workload-mode: 0;       // interactive, batch
+    in-out property <int> priority: 1;            // best quality, balanced, fast, lowest memory
+    in-out property <bool> lang-es: false;
+    in-out property <bool> lang-ca: false;
+    in-out property <bool> lang-en: true;
+    in-out property <bool> lang-pt: false;
+    in-out property <bool> lang-other: false;
+    in-out property <string> other-languages;
+    in-out property <int> concurrency: 0;         // one, 2-5, 6-10, 10+
+    in-out property <int> doc-scale: 1;           // short, medium, long, collection
+    in-out property <int> commercial: 0;          // required, non-commercial ok, no preference, not sure
+    property <bool> any-language: root.lang-es || root.lang-ca || root.lang-en || root.lang-pt || (root.lang-other && root.other-languages != "");
 
     // Search and results
     in property <[Rec]> recs;
@@ -331,18 +97,29 @@ export component AppWindow inherits Window {
     in property <string> search-status: "";
     in property <bool> searching: false;
     in-out property <int> selected: 0;
-    callback find(int, int, string, bool);
+    // Rust reads the answers from the properties above.
+    callback find();
     callback cancel();
 
     // Model server and chat
     in property <string> server-status: "No model is running. Pick one in Results and press Use this model.";
     in property <bool> server-running: false;
     in property <bool> server-busy: false;
+    // Downloading or starting a model (not stopping one): Cancel is offered.
+    in property <bool> server-starting: false;
     in property <[Msg]> messages;
     in property <bool> replying: false;
     callback use-model(string, string, string);
     callback stop-model();
     callback send(string);
+    // Stop the answer being written; cancel a download or a start that is still running.
+    callback stop-reply();
+    callback cancel-start();
+    // Shown under the conversation, e.g. when older messages no longer fit the context.
+    in property <string> chat-note: "";
+    // The message being written; Rust caps its length (see chat.rs).
+    in-out property <string> chat-input;
+    callback chat-edited();
 
     // Serving for several people (repo, quant, people, context per person, shared pool, local network)
     in property <string> server-url;
@@ -365,8 +142,8 @@ export component AppWindow inherits Window {
     // A new server (or none) hides the key again.
     changed server-key => { root.show-key = false; }
 
-    property <[string]> use-cases: ["General chat and assistant", "Programming and code", "Documents and company knowledge", "Summaries and extraction", "Reasoning and problem solving", "Writing and translation"];
-    property <[string]> priorities: ["Balanced", "Best quality", "Fast responses", "Lowest memory usage"];
+    property <[string]> use-cases: ["General chat and assistant", "Programming and code", "Documents and company knowledge", "Summarization and extraction", "Reasoning and problem solving", "Writing and translation"];
+    property <[string]> priorities: ["Best quality", "Balanced", "Fast responses", "Lowest memory usage"];
     property <[string]> titles: ["Home", "Hardware", "Your needs", "Results", "Chat", "Set up a local server", "Advanced tools", "Free disk space"];
     property <[string]> slugs: ["home", "hardware", "your-needs", "results", "chat", "setup", "advanced", "storage"];
     property <[string]> modes: ["NORMAL", "COMMAND", "INSERT", "NORMAL", "INSERT", "INSERT", "COMMAND", "NORMAL"];
@@ -396,6 +173,11 @@ export component AppWindow inherits Window {
     in property <string> tool-output: "";
     in property <bool> tool-running: false;
     callback run-tool(int, string, string, string);
+
+    function bar-tone(key: string) -> color {
+        if (key == "comfortable" || key == "compatible") { return Theme.cyan.transparentize(25%); }
+        return Theme.amber.transparentize(20%);
+    }
 
     function fit-color(key: string) -> color {
         if (key == "comfortable" || key == "compatible") { return Theme.green; }
@@ -560,47 +342,63 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Your needs
+            // Your needs: the TUI wizard's seven questions; the text-size one only for documents.
             if root.page == 2: VerticalLayout {
                 padding: 20px;
-                spacing: 18px;
+                spacing: 14px;
                 HorizontalLayout {
-                    spacing: 40px;
+                    spacing: 32px;
                     VerticalLayout {
                         alignment: start;
                         spacing: 18px;
                         Question { n: 1; label: "What will you use it for?"; options: root.use-cases; selected <=> root.use-case; enabled: !root.searching; }
-                        Question { n: 3; label: "Is it for commercial use?"; options: ["Yes, only commercially usable licenses", "No, personal or research use"]; selected <=> root.commercial; enabled: !root.searching; }
+                        Question { n: 2; label: "How will requests be processed?"; options: ["Interactive", "Batch processing"]; selected <=> root.workload-mode; enabled: !root.searching; }
+                        HorizontalLayout { padding-left: 18px; Muted { text: root.workload-mode == 0 ? "Someone is waiting for the answer." : "Jobs run offline or asynchronously."; } }
                     }
                     VerticalLayout {
                         alignment: start;
                         spacing: 18px;
-                        Question { n: 2; label: "What matters most?"; options: root.priorities; selected <=> root.priority; enabled: !root.searching; }
+                        Question { n: 3; label: "What matters most?"; options: root.priorities; selected <=> root.priority; enabled: !root.searching; }
                         VerticalLayout {
                             spacing: 6px;
                             HorizontalLayout {
                                 alignment: start;
                                 spacing: 12px;
                                 Text { text: "4"; color: Theme.cyan; }
-                                Text { text: "Languages (optional)"; color: Theme.fg; }
+                                Text { text: "Which languages?"; color: Theme.fg; }
                             }
-                            HorizontalLayout {
+                            VerticalLayout {
                                 padding-left: 18px;
-                                Field { placeholder: "e.g. ca, es"; text <=> root.languages; enabled: !root.searching; }
+                                spacing: 2px;
+                                Toggle { label: "Spanish"; on <=> root.lang-es; enabled: !root.searching; }
+                                Toggle { label: "Catalan"; on <=> root.lang-ca; enabled: !root.searching; }
+                                Toggle { label: "English"; on <=> root.lang-en; enabled: !root.searching; }
+                                Toggle { label: "Portuguese"; on <=> root.lang-pt; enabled: !root.searching; }
+                                Toggle { label: "Other"; on <=> root.lang-other; enabled: !root.searching; }
+                                if root.lang-other: Field { placeholder: "e.g. fr, italian"; text <=> root.other-languages; enabled: !root.searching; }
                             }
                         }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 18px;
+                        Question { n: 5; label: "How many people at once?"; options: ["One user", "2-5 users", "6-10 users", "10+ users"]; selected <=> root.concurrency; enabled: !root.searching; }
+                        if root.use-case == 2: Question { n: 6; label: "How much text at a time?"; options: ["Short questions and snippets", "Medium reports", "Long documents", "Large document collections"]; selected <=> root.doc-scale; enabled: !root.searching; }
+                        Question { n: root.use-case == 2 ? 7 : 6; label: "Must it allow commercial use?"; options: ["Commercial required", "Non-commercial acceptable", "No preference", "Not sure"]; selected <=> root.commercial; enabled: !root.searching; }
                     }
                 }
                 Rectangle { vertical-stretch: 1; }
                 HorizontalLayout {
                     alignment: end;
+                    spacing: 16px;
+                    if !root.any-language: Muted { text: "Select at least one language."; vertical-alignment: center; }
                     TButton {
                         label: "Find models";
                         primary: true;
-                        enabled: !root.searching;
+                        enabled: !root.searching && root.any-language;
                         clicked => {
                             root.page = 3;
-                            root.find(root.use-case, root.priority, root.languages, root.commercial == 0);
+                            root.find();
                         }
                     }
                 }
@@ -697,11 +495,9 @@ export component AppWindow inherits Window {
                                         Text { text: r.name; color: i == root.selected ? Theme.cyan : Theme.fg; font-size: Theme.text; overflow: elide; }
                                         Text { text: r.fit + " · " + r.total; color: root.fit-color(r.fit-key); font-size: Theme.small; overflow: elide; }
                                         Text { text: r.stack; color: i == root.selected ? Theme.fg : Theme.muted; font-size: Theme.small; overflow: elide; }
-                                        HorizontalLayout {
-                                            spacing: 8px;
-                                            VerticalLayout { alignment: center; MemoryBar { fraction: r.total-gib / max(root.ram-total-gib, 1); tone: r.fit-key == "comfortable" || r.fit-key == "compatible" ? Theme.cyan.transparentize(25%) : Theme.amber.transparentize(20%); } }
-                                            Text { text: "/\{round(root.ram-total-gib)} GiB"; width: self.preferred-width; color: Theme.muted; font-size: 11px; }
-                                        }
+                                        // Where Jaull expects it to live: GPU and RAM apart, as its hardware fit counts them.
+                                        if r.has-gpu: MemoryRow { pool: "GPU"; used: r.gpu-used; cap: r.gpu-cap; tone: root.bar-tone(r.fit-key); }
+                                        MemoryRow { pool: "RAM"; used: r.ram-used; cap: r.ram-cap; tone: root.bar-tone(r.fit-key); }
                                     }
                                 }
                                 pick := TouchArea { mouse-cursor: pointer; clicked => { root.selected = i; } }
@@ -785,6 +581,9 @@ export component AppWindow inherits Window {
                         Rectangle { horizontal-stretch: 1; }
                         Text { text: root.recs[root.selected].total; color: Theme.fg; }
                     }
+                    if root.recs[root.selected].has-gpu: MemoryRow { pool: "GPU"; used: root.recs[root.selected].gpu-used; cap: root.recs[root.selected].gpu-cap; tone: root.bar-tone(root.recs[root.selected].fit-key); }
+                    MemoryRow { pool: "RAM"; used: root.recs[root.selected].ram-used; cap: root.recs[root.selected].ram-cap; tone: root.bar-tone(root.recs[root.selected].fit-key); }
+                    if root.recs[root.selected].placement != "": Muted { text: root.recs[root.selected].placement; }
                     Muted { text: root.recs[root.selected].detail; }
                     Rectangle { height: 8px; }
                     Label { text: "Why"; }
@@ -995,7 +794,9 @@ export component AppWindow inherits Window {
                     spacing: 10px;
                     VerticalLayout { alignment: center; Dot { on: root.server-running; tone: Theme.green; } }
                     Text { text: root.server-status; color: root.server-running ? Theme.green : Theme.subtle; font-size: Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-                    TButton { label: "Stop model"; enabled: root.server-running && !root.server-busy; clicked => { root.stop-model(); } }
+                    // While a model downloads or starts, the same place cancels it.
+                    if root.server-starting: TButton { label: "Cancel"; clicked => { root.cancel-start(); } }
+                    if !root.server-starting: TButton { label: "Stop model"; enabled: root.server-running && !root.server-busy; clicked => { root.stop-model(); } }
                 }
                 if root.runtime-backend != "" && !root.server-running: HorizontalLayout {
                     alignment: start;
@@ -1057,19 +858,24 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 10px;
-                    input := Field {
-                        placeholder: root.server-running ? "Write a message and press Enter" : "Start a model first";
+                    input := ChatInput {
+                        placeholder: root.server-running ? "Write a message and press Enter (Shift+Enter: new line)" : "Start a model first";
                         enabled: root.server-running && !root.server-busy && !root.replying;
                         horizontal-stretch: 1;
-                        accepted(t) => { if (t != "") { root.send(t); self.text = ""; } }
+                        text <=> root.chat-input;
+                        send(t) => { root.send(t); self.text = ""; }
+                        edited => { root.chat-edited(); }
                     }
-                    TButton {
+                    if !root.replying: TButton {
                         label: "Send";
                         primary: true;
-                        enabled: root.server-running && !root.server-busy && !root.replying && input.text != "";
+                        enabled: root.server-running && !root.server-busy && input.text != "";
                         clicked => { root.send(input.text); input.text = ""; }
                     }
+                    // Keeps what was written so far; the server stops when the connection closes.
+                    if root.replying: TButton { label: "Stop"; clicked => { root.stop-reply(); } }
                 }
+                if root.chat-note != "": Muted { text: root.chat-note; }
             }
         }
 
